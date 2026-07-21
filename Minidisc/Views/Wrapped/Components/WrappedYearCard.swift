@@ -1,0 +1,119 @@
+// Minidisc — Music client for Subsonic/OpenSubsonic servers
+// Copyright (C) 2026 Mathieu Dubart
+// Licensed under the Mozilla Public License 2.0.
+// See LICENSE file in the project root for full license information.
+
+import OSLog
+import SwiftUI
+
+struct WrappedYearCard: View {
+    let year: Int
+    let firstTrack: TopTrackEntry?
+    let lastTrack: TopTrackEntry?
+    let playlistId: String?
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var yearString: String { String(year) }
+
+    var body: some View {
+        Group {
+            if let pid = playlistId {
+                NavigationLink {
+                    #if os(macOS)
+                    PlaylistDetailMacOS(
+                        playlistId: pid,
+                        name: "Minidisc Wrapped \(yearString)"
+                    )
+                    #else
+                    PlaylistDetailView(
+                        playlistId: pid,
+                        name: "Minidisc Wrapped \(yearString)"
+                    )
+                    #endif
+                } label: {
+                    cardContent
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture().onEnded {
+                    Logger.wrapped.debug("[WRAPPED-YEAR-CARD] tapped year=\(year, privacy: .public) playlistId=\(pid, privacy: .public)")
+                })
+            } else {
+                cardContent
+                    .grayscale(0.5)
+                    .opacity(0.7)
+            }
+        }
+    }
+
+    private var cardContent: some View {
+        let palette = WrappedYearPalette.colors(for: year)
+        return MeshGradientBackground(palette: palette, animated: !reduceMotion)
+            .frame(maxWidth: .infinity)
+            .frame(height: 380)
+            .overlay { overlayContent }
+            .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.hero, style: .continuous))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var overlayContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Minidisc Wrapped")
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+                Spacer()
+                if playlistId != nil {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+            }
+
+            Spacer()
+
+            Text(yearString)
+                .font(.system(size: 140, weight: .black, design: .rounded))
+                .kerning(-4)
+                .foregroundStyle(.white.opacity(0.95))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+
+            subtitleView
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.white.opacity(0.7))
+                .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
+                .lineLimit(2)
+                .padding(.top, MinidiscSpacing.xs)
+        }
+        .padding(MinidiscSpacing.l)
+    }
+
+    @ViewBuilder
+    private var subtitleView: some View {
+        if playlistId == nil {
+            Text("No playlist generated yet")
+        } else if let first = firstTrack, let last = lastTrack, first.trackId != last.trackId {
+            Text("Started with \(first.title) · Ended with \(last.title)")
+        } else if let first = firstTrack {
+            Text("Your year started with \(first.title)")
+        } else {
+            Text("Minidisc Wrapped \(yearString)")
+        }
+    }
+
+    private var accessibilityLabel: String {
+        var label = "Minidisc Wrapped \(yearString)"
+        if let first = firstTrack, let last = lastTrack, first.trackId != last.trackId {
+            label += ". Started with \(first.title), ended with \(last.title)"
+        } else if let first = firstTrack {
+            label += ". Your year started with \(first.title)"
+        }
+        label += playlistId != nil ? ". Tap to open playlist." : "."
+        return label
+    }
+}

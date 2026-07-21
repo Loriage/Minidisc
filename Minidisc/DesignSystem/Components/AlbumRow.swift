@@ -1,0 +1,68 @@
+// Minidisc — Music client for Subsonic/OpenSubsonic servers
+// Copyright (C) 2026 Mathieu Dubart
+// Licensed under the Mozilla Public License 2.0.
+// See LICENSE file in the project root for full license information.
+
+import SwiftUI
+
+/// Flat list cell for an album — cover 60pt, name, artist, year.
+/// Used in search results and any flat album list (not grids; see ArtistDetailView).
+struct AlbumRow: View {
+    let albumId: String
+    let name: String
+    let artist: String?
+    let year: Int?
+    let coverArtId: String?
+
+    @Environment(ArtworkImageCache.self) private var artworkImageCache
+    @State private var coverImage: PlatformImage?
+
+    var body: some View {
+        HStack(spacing: MinidiscSpacing.m) {
+            CoverArtCard(id: coverArtId ?? albumId, size: 56)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.minidiscCellTitle)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                if let artist {
+                    Text(artist)
+                        .font(.minidiscCellSubtitle)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                if let year {
+                    Text(String(year))
+                        .font(.minidiscCaption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, MinidiscSpacing.xs)
+        .contentShape(Rectangle())
+        .task(id: albumId) {
+            coverImage = await artworkImageCache.load(coverArtId: coverArtId ?? albumId)
+        }
+        .collectionContextMenu(
+            itemType: .album,
+            itemId: albumId,
+            displayName: name,
+            displaySubtitle: artist ?? "",
+            coverArtId: coverArtId,
+            coverImage: coverImage,
+            favoriteType: .album
+        )
+    }
+}
+
+#Preview {
+    List {
+        AlbumRow(albumId: "1", name: "Golden Hour", artist: "JVKE", year: 2022, coverArtId: nil)
+        AlbumRow(albumId: "2", name: "Short n' Sweet", artist: "Sabrina Carpenter", year: 2024, coverArtId: nil)
+        AlbumRow(albumId: "3", name: "Radical Optimism", artist: nil, year: nil, coverArtId: nil)
+    }
+    .listStyle(.plain)
+}

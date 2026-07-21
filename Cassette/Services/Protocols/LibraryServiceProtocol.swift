@@ -69,6 +69,12 @@ protocol LibraryServiceProtocol: AnyObject, Sendable {
     /// fallback. Returns an empty array when the server has nothing under that genre.
     func songsByGenre(_ genre: String, count: Int) async throws -> [Song]
 
+    /// The library's genres with album/song counts (`getGenres`). Drives the Home genre shelves.
+    func genres() async throws -> [Genre]
+
+    /// Albums tagged with a genre (`getAlbumList2?type=byGenre`).
+    func albumsByGenre(_ genre: String, size: Int) async throws -> [AlbumID3]
+
     /// Builds a queue of tracks for Smart Shuffle ("Rediscover Your Library").
     ///
     /// Online: TRULY random — `getRandomSongs(targetSize)`, no recency weighting,
@@ -118,4 +124,10 @@ protocol LibraryServiceProtocol: AnyObject, Sendable {
     /// Returns an empty array when the server has no similarity data — callers surface `instantMixEmpty`.
     /// Not gated on a capability: it simply calls the endpoint and lets an empty/failed result degrade.
     func instantMix(from seed: InstantMixSeed, count: Int) async throws -> [DisplayableSong]
+}
+
+// Defaults so existing test doubles keep compiling without stubbing the Home genre shelves.
+extension LibraryServiceProtocol {
+    func genres() async throws -> [Genre] { [] }
+    func albumsByGenre(_ genre: String, size: Int) async throws -> [AlbumID3] { [] }
 }

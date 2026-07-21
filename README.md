@@ -1,10 +1,10 @@
 # Cassette
 
-> A native iOS and macOS client for Subsonic, OpenSubsonic, and Navidrome servers. Built for people who self-host their music.
+> A native iOS client for Subsonic, OpenSubsonic, and Navidrome servers. Built for people who self-host their music.
 
 [![License: MPL 2.0](https://img.shields.io/badge/license-MPL--2.0-brightgreen.svg)](LICENSE)
 [![Release](https://github.com/CassetteLab/cassette/actions/workflows/release.yml/badge.svg)](https://github.com/CassetteLab/cassette/actions/workflows/release.yml)
-[![Platform](https://img.shields.io/badge/platform-iOS%2026%2B%20%7C%20macOS%2015%2B-blue.svg)](#requirements)
+[![Platform](https://img.shields.io/badge/platform-iOS%2026%2B-blue.svg)](#requirements)
 [![Swift](https://img.shields.io/badge/Swift-6-orange.svg)](https://swift.org)
 [![Discord](https://badgen.net/badge/icon/discord?icon=discord&label)](https://discord.gg/zQxUQedpex)
 
@@ -21,9 +21,9 @@
 
 ## What is Cassette?
 
-Cassette is a native Swift / SwiftUI music client for iOS and macOS, built for people who run their own music server. It speaks the Subsonic and OpenSubsonic API, so it works with Navidrome and any other compliant server.
+Cassette is a native Swift / SwiftUI music client for iOS, built for people who run their own music server. It speaks the Subsonic and OpenSubsonic API, so it works with Navidrome and any other compliant server.
 
-It's a pure streaming client for *your* library — no accounts, no subscriptions, no tracking. Your music stays between your device and your server. The iOS app is distributed via TestFlight; the macOS app ships as a notarized build through Homebrew.
+It's a pure streaming client for *your* library — no accounts, no subscriptions, no tracking. Your music stays between your device and your server. This fork is iOS-only: releases ship as an unsigned `.ipa` for sideloading.
 
 Licensed under MPL-2.0.
 
@@ -32,7 +32,7 @@ Licensed under MPL-2.0.
 ## Features
 
 **Listening**
-- Native iOS 26 / macOS 15 client with a Liquid Glass design language
+- Native iOS 26 client with a Liquid Glass design language
 - Background playback with lock screen and Control Center controls, plus AirPlay
 - True offline mode: download albums, playlists, or individual tracks
 - Playback powered by the AudioStreaming engine — FLAC, MP3, AAC, WAV, and Ogg/Vorbis
@@ -50,31 +50,20 @@ Licensed under MPL-2.0.
 
 **Integrations & extras**
 - **ListenBrainz** — scrobble your listens and surface recommendations (fresh releases, similar artists)
-- **Home-screen widgets** (iOS)
 - **Discord Rich Presence** — *experimental / pre-alpha*; shows your now-playing in Discord through the companion helper, [cassette-discord-rpc](https://github.com/CassetteLab/cassette-discord-rpc)
 
 **Server & privacy**
 - Subsonic and OpenSubsonic API, with OpenSubsonic extensions where available
 - Custom HTTP headers for servers behind a reverse proxy (Cloudflare Access, Authelia, etc.)
-- Credentials stored only in the iOS / macOS Keychain — zero tracking, zero analytics, all traffic direct to your server
+- Credentials stored only in the iOS Keychain — zero tracking, zero analytics, all traffic direct to your server
 
 ---
 
 ## Installation
 
-### macOS — Homebrew
+### iOS — Sideloading
 
-```bash
-brew trust CassetteLab/cassette
-brew tap CassetteLab/cassette
-brew install --cask cassette
-```
-
-This installs the notarized `Cassette.app`.
-
-### iOS — TestFlight
-
-Join the beta: <https://testflight.apple.com/join/pxCpfpxF>
+Download the unsigned `.ipa` from the [GitHub Releases](../../releases) page and install it with AltStore, Sideloadly, or any sideloading tool — it gets re-signed with your own Apple ID during installation.
 
 ### Build from source
 
@@ -93,7 +82,7 @@ Join the beta: <https://testflight.apple.com/join/pxCpfpxF>
 
 3. **Sign and run**
    - Select your team in Signing & Capabilities
-   - Choose an iOS 26+ device/simulator or **My Mac**
+   - Choose an iOS 26+ device/simulator
    - Build and run (⌘R)
 
 4. **First launch**
@@ -105,7 +94,7 @@ Join the beta: <https://testflight.apple.com/join/pxCpfpxF>
 
 ## Requirements
 
-- iOS 26 or later, or macOS 15 (Sequoia) or later
+- iOS 26 or later
 - A running Subsonic, OpenSubsonic, or Navidrome server
 
 ---
@@ -150,7 +139,6 @@ including the CarPlay readiness audit and the release process (previously `docs/
 
 Cassette is built incrementally, one theme per release.
 
-- **v1.8 — Widgets** ✅ shipped
 - **v2.0 — CarPlay** (in progress)
 
 For the full roadmap and discussion, see [GitHub Discussions](https://github.com/CassetteLab/cassette/discussions).
@@ -183,7 +171,7 @@ Cassette is licensed under [MPL-2.0](LICENSE).
 
 - You can use, study, modify, and redistribute the source.
 - Modified files stay under MPL-2.0; you may combine them with proprietary code in a Larger Work.
-- The distributed builds (Homebrew, TestFlight) are the same source, signed for convenience.
+- The distributed builds (GitHub Releases `.ipa`) are the same source, packaged for convenience.
 
 Dependencies: [SwiftSonic](https://github.com/CassetteLab/swiftsonic) (MIT) and [AudioStreaming](https://github.com/dimitris-c/AudioStreaming) by Dimitris C. (MIT) — both compatible with MPL-2.0.
 

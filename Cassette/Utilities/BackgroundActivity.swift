@@ -5,9 +5,7 @@
 
 import Foundation
 import OSLog
-#if os(iOS)
 import UIKit
-#endif
 
 /// Asks iOS to keep the app running while a long piece of work finishes after the user leaves.
 ///
@@ -21,20 +19,25 @@ import UIKit
 /// rather than per run.
 nonisolated enum BackgroundActivity {
 
-    /// Runs `operation` inside a background task assertion. A no-op on macOS, where apps are not
-    /// suspended on losing focus.
+    /// MainActor reference box so the expiration handler reads the final task id
+    /// without capturing a local `var` that is mutated after the closure is formed.
+    @MainActor
+    private final class TaskIDBox {
+        var id: UIBackgroundTaskIdentifier = .invalid
+    }
+
+    /// Runs `operation` inside a background task assertion.
     static func run<T: Sendable>(_ name: String, operation: @Sendable () async -> T) async -> T {
-        #if os(iOS)
         let identifier = await MainActor.run {
             // The expiration handler must end the assertion: iOS terminates the app outright if the
             // time runs out with the task still open. The work itself is left to be suspended, which
             // is exactly what would have happened without the assertion at all.
-            var id: UIBackgroundTaskIdentifier = .invalid
-            id = UIApplication.shared.beginBackgroundTask(withName: name) {
+            let box = TaskIDBox()
+            box.id = UIApplication.shared.beginBackgroundTask(withName: name) {
                 Logger.boot.warning("[BACKGROUND] '\(name, privacy: .public)' ran out of time — suspending")
-                if id != .invalid { UIApplication.shared.endBackgroundTask(id) }
+                if box.id != .invalid { UIApplication.shared.endBackgroundTask(box.id) }
             }
-            return id
+            return box.id
         }
         defer {
             if identifier != .invalid {
@@ -42,8 +45,5 @@ nonisolated enum BackgroundActivity {
             }
         }
         return await operation()
-        #else
-        return await operation()
-        #endif
     }
 }

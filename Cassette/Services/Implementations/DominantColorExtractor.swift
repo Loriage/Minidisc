@@ -17,11 +17,9 @@ import AppKit
 /// Results are cached in memory keyed by coverArtId and persisted to UserDefaults as packed
 /// 0xRRGGBB integers so dominant colors are available immediately at cold start.
 ///
-/// TODO(v2.0): UserDefaults is used intentionally here for two reasons:
-///   1. Synchronous cold-start hydration in init() — SwiftData requires async context.
-///   2. cachedColors() feeds WidgetSyncService for App Group sharing, which UserDefaults
-///      handles natively across process boundaries. Migrating requires an async init
-///      refactor and a separate widget-sync write path.
+/// TODO(v2.0): UserDefaults is used intentionally here — synchronous cold-start
+/// hydration in init() is required, and SwiftData requires an async context.
+/// Migrating requires an async init refactor.
 @MainActor
 @Observable
 final class DominantColorExtractor {
@@ -179,13 +177,6 @@ final class DominantColorExtractor {
             colorSpace: nil
         )
         return (Int(bitmap[0]) << 16) | (Int(bitmap[1]) << 8) | Int(bitmap[2])
-    }
-
-    /// Returns all persisted packed 0xRRGGBB colors keyed by coverArtId.
-    /// Used by WidgetSyncService to mirror the cache to the App Group shared container.
-    func cachedColors() -> [String: Int] {
-        UserDefaults.standard.dictionary(forKey: Self.userDefaultsKey)?
-            .compactMapValues { $0 as? Int } ?? [:]
     }
 
     func invalidate(for coverArtId: String?) {

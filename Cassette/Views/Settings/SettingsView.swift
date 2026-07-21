@@ -6,6 +6,28 @@
 import OSLog
 import SwiftUI
 
+/// Beszel-style settings presentation: a sheet with its own NavigationStack,
+/// inline title, and an X close button.
+struct SettingsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            SettingsView()
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button { dismiss() } label: {
+                            Image(systemName: "xmark")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+        }
+    }
+}
+
 struct SettingsView: View {
     @Environment(\.appContainer) private var container
     @State private var downloadsVM: DownloadsViewModel?
@@ -36,14 +58,13 @@ struct SettingsView: View {
 
     private func form(downloadsVM: DownloadsViewModel) -> some View {
         Form {
-            DownloadsSectionView(vm: downloadsVM)
-            CacheSectionView()
+            serverSection()
             ReplayGainSettingsSection()
             CrossfadeSettingsSection()
-            serverSection()
+            CacheSectionView()
+            DownloadsSectionView(vm: downloadsVM)
             integrationsSection()
             aboutSection()
-            supportSection()
         }
         .formStyle(.grouped)
         .refreshable {
@@ -54,16 +75,17 @@ struct SettingsView: View {
     // MARK: - Sections
 
     private func serverSection() -> some View {
-        Section("Server") {
+        Section {
             if let server = container?.serverState.activeServer,
                let serverService = container?.serverService {
                 NavigationLink {
                     EditServerDestinationView(server: server, serverService: serverService)
                 } label: {
-                    Label {
-                        Text("Server Configuration")
-                    } icon: {
-                        SettingsIcon(systemImage: "server.rack", color: Color.cassetteAccent)
+                    HStack {
+                        Text(server.displayName)
+                        Spacer()
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
                     }
                 }
             } else {
@@ -71,6 +93,12 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
             // TODO(v1.x): multi-server management (add / remove / switch servers)
+        } header: {
+            Text("Server")
+        } footer: {
+            if let server = container?.serverState.activeServer {
+                Text(server.baseURL)
+            }
         }
     }
 
@@ -79,106 +107,59 @@ struct SettingsView: View {
             NavigationLink {
                 ListenBrainzSettingsView()
             } label: {
-                Label {
-                    Text("ListenBrainz")
-                } icon: {
-                    SettingsIcon(systemImage: "link.circle", color: .indigo)
-                }
+                Label("ListenBrainz", systemImage: "link.circle")
+                    .foregroundStyle(.primary)
             }
             NavigationLink {
                 AudioMuseSettingsView()
             } label: {
-                Label {
-                    Text("AudioMuse")
-                } icon: {
-                    SettingsIcon(systemImage: "waveform.badge.magnifyingglass", color: .teal)
-                }
+                Label("AudioMuse", systemImage: "waveform.badge.magnifyingglass")
+                    .foregroundStyle(.primary)
             }
             NavigationLink {
                 ExternalProvidersSettingsView()
             } label: {
-                Label {
-                    Text("Open Releases In")
-                } icon: {
-                    SettingsIcon(systemImage: "arrow.up.right.square", color: .orange)
-                }
+                Label("Open Releases In", systemImage: "arrow.up.right.square")
+                    .foregroundStyle(.primary)
             }
         }
     }
 
-    private func supportSection() -> some View {
-        Section {
-            VStack(spacing: 2) {
-                Text("Cassette is free, forever.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                Button {
-                    Logger.settings.debug("Ko-fi support button tapped")
-                    ExternalLinkOpener.open(CassetteURLs.kofi)
-                } label: {
-                    Image("kofiButton")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: 140)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
-                }
-            }
-            .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets())
-        }
+    private static var appVersion: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
+        return "\(version) (\(build))"
     }
 
     private func aboutSection() -> some View {
-        Section("About") {
-            LabeledContent {
-                Text("Cassette")
-            } label: {
-                Label {
-                    Text("App")
-                } icon: {
-                    SettingsIcon(systemImage: "info.circle.fill", color: .blue)
-                }
+        Section {
+            ShareLink(item: CassetteURLs.cassette) {
+                Label("Share the App", systemImage: "square.and.arrow.up")
             }
-            LabeledContent("Version") {
-                Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—")
+            .foregroundStyle(.primary)
+            Link(destination: CassetteURLs.cassetteIssues) {
+                Label("Report an Issue", systemImage: "exclamationmark.bubble")
             }
-            LabeledContent("License") {
-                Text("Mozilla Public License 2.0")
-            }
-            LabeledContent("SwiftSonic") {
-                Text("MIT License — MathieuDubart")
-            }
-            LabeledContent("AudioStreaming") {
-                Button("MIT License — dimitris-c") {
-                    ExternalLinkOpener.open(CassetteURLs.audioStreaming)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
-            }
-            Button("View on GitHub") {
+            .foregroundStyle(.primary)
+            Button {
                 ExternalLinkOpener.open(CassetteURLs.cassette)
+            } label: {
+                Label("View on GitHub", systemImage: "link")
             }
-            Link("Send Feedback / Report a Bug", destination: URL(string: "mailto:support@getcassette.app?subject=Feedback%20%2F%20Bug%20Report")!)
+            .foregroundStyle(.primary)
+            NavigationLink {
+                AcknowledgementsView()
+            } label: {
+                Label("Acknowledgements", systemImage: "text.badge.star")
+                    .foregroundStyle(.primary)
+            }
+        } header: {
+            Text("About")
+        } footer: {
+            Text("Version \(Self.appVersion)")
+                .frame(maxWidth: .infinity)
+                .padding(.top, 8)
         }
-    }
-}
-
-// MARK: - Shared icon component
-
-struct SettingsIcon: View {
-    let systemImage: String
-    let color: Color
-
-    var body: some View {
-        Image(systemName: systemImage)
-            .font(.system(size: 14))
-            .foregroundStyle(.white)
-            .frame(width: 28, height: 28)
-            .background(color)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }
 
@@ -201,11 +182,8 @@ struct CacheSectionView: View {
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             } label: {
-                Label {
-                    Text("Used")
-                } icon: {
-                    SettingsIcon(systemImage: "externaldrive.fill", color: .green)
-                }
+                Label("Used", systemImage: "externaldrive")
+                    .foregroundStyle(.primary)
             }
 
             if let cacheSettings {
@@ -217,11 +195,8 @@ struct CacheSectionView: View {
                     in: 1...10
                 ) {
                     HStack {
-                        Label {
-                            Text("Max tracks")
-                        } icon: {
-                            SettingsIcon(systemImage: "tray.full.fill", color: Color.cassetteAccent)
-                        }
+                        Label("Max tracks", systemImage: "tray.full")
+                            .foregroundStyle(.primary)
                         Spacer()
                         Text("\(maxTracks)")
                             .foregroundStyle(.secondary)
@@ -240,13 +215,11 @@ struct CacheSectionView: View {
                         Text(format.displayName).tag(format)
                     }
                 } label: {
-                    Label {
-                        Text("Format")
-                    } icon: {
-                        SettingsIcon(systemImage: "waveform", color: .purple)
-                    }
+                    Label("Format", systemImage: "waveform")
+                        .foregroundStyle(.primary)
                 }
                 .pickerStyle(.menu)
+                .tint(.secondary)
             }
 
             if let cacheSettings {
@@ -254,12 +227,10 @@ struct CacheSectionView: View {
                     get: { cacheSettings.cacheOverCellular },
                     set: { cacheSettings.cacheOverCellular = $0 }
                 )) {
-                    Label {
-                        Text("Use cellular data")
-                    } icon: {
-                        SettingsIcon(systemImage: "antenna.radiowaves.left.and.right", color: .blue)
-                    }
+                    Label("Use cellular data", systemImage: "antenna.radiowaves.left.and.right")
+                        .foregroundStyle(.primary)
                 }
+                .tint(Color(.systemGreen))
             }
 
             Button(role: .destructive) {
@@ -271,7 +242,7 @@ struct CacheSectionView: View {
                         Text("Clearing…")
                     }
                 } else {
-                    Label("Clear cache", systemImage: "trash.fill")
+                    Label("Clear cache", systemImage: "trash")
                 }
             }
             .disabled(isClearing || (usedBytes == 0 && trackCount == 0))
@@ -329,11 +300,8 @@ struct DownloadsSectionView: View {
                 Text(vm.usedBytesFormatted)
                     .foregroundStyle(.secondary)
             } label: {
-                Label {
-                    Text("Used")
-                } icon: {
-                    SettingsIcon(systemImage: "arrow.down.circle.fill", color: .green)
-                }
+                Label("Used", systemImage: "arrow.down.circle")
+                    .foregroundStyle(.primary)
             }
 
             if !vm.displayAlbums.isEmpty {
@@ -366,11 +334,8 @@ struct DownloadsSectionView: View {
                         }
                     }
                 } label: {
-                    Label {
-                        Text("Albums (\(vm.displayAlbums.count))")
-                    } icon: {
-                        SettingsIcon(systemImage: "music.note.list", color: Color.cassetteAccent)
-                    }
+                    Label("Albums (\(vm.displayAlbums.count))", systemImage: "music.note.list")
+                        .foregroundStyle(.primary)
                 }
             }
 
@@ -398,11 +363,8 @@ struct DownloadsSectionView: View {
                         }
                     }
                 } label: {
-                    Label {
-                        Text("Playlists (\(vm.downloadedPlaylists.count))")
-                    } icon: {
-                        SettingsIcon(systemImage: "list.bullet", color: .indigo)
-                    }
+                    Label("Playlists (\(vm.downloadedPlaylists.count))", systemImage: "list.bullet")
+                        .foregroundStyle(.primary)
                 }
             }
 
@@ -421,7 +383,7 @@ struct DownloadsSectionView: View {
                         Text("Clearing…")
                     }
                 } else {
-                    Label("Clear all downloads", systemImage: "trash.fill")
+                    Label("Clear all downloads", systemImage: "trash")
                 }
             }
             .disabled(vm.isClearingAll || (vm.displayAlbums.isEmpty && vm.downloadedPlaylists.isEmpty))

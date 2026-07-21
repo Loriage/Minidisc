@@ -32,7 +32,6 @@ actor PlayerService: PlayerServiceProtocol {
     private let crossfadeSettings: CrossfadeSettings
     private var crossfadeConfig = CrossfadeConfig(duration: 0, disableForGapless: true)
     private var nowPlayingService: (any NowPlayingServiceProtocol)?
-    private var widgetSyncService: WidgetSyncService?
     private var replayGainService: ReplayGainService?
     private let toastService: ToastService
     private let statsService: StatsService
@@ -179,10 +178,6 @@ actor PlayerService: PlayerServiceProtocol {
     /// Call from AppContainer after both PlayerService and NowPlayingService are created.
     func setNowPlayingService(_ service: any NowPlayingServiceProtocol) {
         nowPlayingService = service
-    }
-
-    func setWidgetSyncService(_ service: WidgetSyncService) {
-        widgetSyncService = service
     }
 
     func setReplayGainService(_ service: ReplayGainService) async {
@@ -397,12 +392,6 @@ actor PlayerService: PlayerServiceProtocol {
         startPositionSaveTimer()
         preloadNextTrackArtwork()
         await evaluateAutoExtend()
-        if let ws = widgetSyncService {
-            Task { await ws.onTrackStarted(song) }
-        }
-        if let ws = widgetSyncService {
-            Task { [weak ws] in await ws?.onPlayStateChanged(isPlaying: true, currentSong: song) }
-        }
     }
 
     // MARK: - Live Stream
@@ -823,10 +812,6 @@ actor PlayerService: PlayerServiceProtocol {
         stopProgressTimer()
         stopPositionSaveTimer()
         await saveSession()
-        let pauseTrack = await MainActor.run { state.currentTrack }
-        if let ws = widgetSyncService {
-            Task { [weak ws] in await ws?.onPlayStateChanged(isPlaying: false, currentSong: pauseTrack) }
-        }
     }
 
     func resume() async {
@@ -877,10 +862,6 @@ actor PlayerService: PlayerServiceProtocol {
         await pushPositionSnapshot(rate: 1.0)
         startProgressTimer()
         startPositionSaveTimer()
-        let resumeTrack = await MainActor.run { state.currentTrack }
-        if let ws = widgetSyncService {
-            Task { [weak ws] in await ws?.onPlayStateChanged(isPlaying: true, currentSong: resumeTrack) }
-        }
     }
 
     /// Fresh download > cache > stream resolution for the cold-start resume path.
@@ -1832,11 +1813,6 @@ actor PlayerService: PlayerServiceProtocol {
         }
         await pushPositionSnapshot(rate: 0)
         await saveSession()
-
-        let endTrack = await MainActor.run { state.currentTrack }
-        if let ws = widgetSyncService {
-            Task { [weak ws] in await ws?.onPlayStateChanged(isPlaying: false, currentSong: endTrack) }
-        }
     }
 
     // MARK: - Delegate callbacks
@@ -2090,10 +2066,6 @@ extension PlayerService {
             await MainActor.run { state.playbackState = .paused }
             stopProgressTimer()
             await saveSession()
-            let pauseTrack = await MainActor.run { state.currentTrack }
-            if let ws = widgetSyncService {
-                Task { [weak ws] in await ws?.onPlayStateChanged(isPlaying: false, currentSong: pauseTrack) }
-            }
             Logger.player.info("[INTERRUPTION] began — paused playback")
 
         case .ended:

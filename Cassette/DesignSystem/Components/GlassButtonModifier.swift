@@ -9,33 +9,21 @@ extension View {
     /// Applies a circular Liquid Glass effect to a button label.
     /// Apply this to the *label* of a Button (not the Button itself)
     /// so that the parent .buttonStyle(.borderless) gesture fix is preserved.
-    @ViewBuilder
     func cassetteGlassButton(size: CGFloat = 44, tint: Color? = nil) -> some View {
-        if #available(macOS 26.0, iOS 26.0, *) {
-            // .interactive() removed — causes infinite StyleModifier recursion during
-            // NavigationStack transitions on macOS 26.5 (54k-frame stack overflow).
-            // Re-evaluate when Apple fixes Glass StyleModifier composition (rdar://TODO).
-            let glass: Glass = tint.map { Glass.regular.tint($0) } ?? Glass.regular
-            self
-                .frame(width: size, height: size)
-                .glassEffect(glass, in: .circle)
-        } else {
-            self
-                .frame(width: size, height: size)
-                .background(Circle().fill(.ultraThinMaterial))
-        }
+        // .interactive() removed — causes infinite StyleModifier recursion during
+        // NavigationStack transitions (54k-frame stack overflow).
+        // Re-evaluate when Apple fixes Glass StyleModifier composition (rdar://TODO).
+        let glass: Glass = tint.map { Glass.regular.tint($0) } ?? Glass.regular
+        return self
+            .frame(width: size, height: size)
+            .glassEffect(glass, in: .circle)
     }
 
     /// Applies a capsule Liquid Glass effect (for wider controls).
-    @ViewBuilder
     func cassetteGlassCapsule(tint: Color? = nil) -> some View {
-        if #available(macOS 26.0, iOS 26.0, *) {
-            // .interactive() removed — same crash risk as cassetteGlassButton.
-            let glass: Glass = tint.map { Glass.regular.tint($0) } ?? Glass.regular
-            self.glassEffect(glass, in: .capsule)
-        } else {
-            self.background(Capsule().fill(.ultraThinMaterial))
-        }
+        // .interactive() removed — same crash risk as cassetteGlassButton.
+        let glass: Glass = tint.map { Glass.regular.tint($0) } ?? Glass.regular
+        return self.glassEffect(glass, in: .capsule)
     }
 
     /// Over-cover HERO round button: TRANSPARENT — no surface/fill. Just the tap area + a soft shadow so the

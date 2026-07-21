@@ -135,14 +135,6 @@ xcodebuild -scheme Cassette \
   | grep -v "/SourcePackages/" \
   | grep -v "appintentsmetadataprocessor"
 
-# macOS — enabled in v1.1
-# xcodebuild -scheme Cassette \
-#   -destination 'generic/platform=macOS' \
-#   clean build 2>&1 \
-#   | grep -E "warning:|error:" \
-#   | grep -v "/SourcePackages/" \
-#   | grep -v "appintentsmetadataprocessor"
-
 # Test target (required) — the app-only gate let the test target rot unseen.
 # CLEAN on purpose: incremental builds only re-emit diagnostics for recompiled
 # files and have repeatedly hidden real warnings. Two quirks force this shape:
@@ -186,21 +178,6 @@ warning: Metadata extraction skipped. No AppIntents.framework dependency found.
 | **Cause** | The processor is injected by Xcode regardless of whether the project uses AppIntents. It emits this warning when `AppIntents.framework` is absent from the dependency graph. |
 | **Action** | Suppressed by the `-v "appintentsmetadataprocessor"` filter in the quality-gate commands above. No code change possible without adding the AppIntents dependency. |
 | **Revisit** | If Cassette adopts App Intents (Siri shortcuts, Spotlight actions) in a future version — integrate AppIntents properly and remove this entry. |
-
----
-
-### App icon PNG size mismatch
-
-```
-warning: AppIcon.appiconset/cassette-wow-loop-1024 N.png is 1024x1024 but should be <size>.
-```
-
-| Field    | Details |
-|----------|---------|
-| **Source** | `Assets.xcassets/AppIcon.appiconset` — 10 PNG slots for macOS sizes 16×16 through 512×512 |
-| **Cause** | All macOS app icon slots are currently filled with the 1024×1024 master PNG. Xcode compiles them but emits a size-mismatch warning for each slot that expects a smaller size. iOS is unaffected (uses a single 1024×1024 slot). |
-| **Action** | Pre-existing warning — no code fix possible. Proper resolution requires exporting correctly-sized PNG variants (16, 32, 64, 128, 256, 512 pt, 1× and 2×) from the original icon source and replacing the placeholder assets. |
-| **Revisit** | Before App Store submission for the macOS target — regenerate the full icon set from the final design source. |
 
 ---
 

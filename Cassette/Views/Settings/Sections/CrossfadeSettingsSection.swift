@@ -25,11 +25,8 @@ struct CrossfadeSettingsSection: View {
                 step: 0.5
             ) {
                 HStack {
-                    Label {
-                        Text("Duration")
-                    } icon: {
-                        SettingsIcon(systemImage: "waveform.and.magnifyingglass", color: .teal)
-                    }
+                    Label("Duration", systemImage: "timer")
+                        .foregroundStyle(.primary)
                     Spacer()
                     Text(crossfadeDurationLabel(duration))
                         .foregroundStyle(.secondary)
@@ -46,12 +43,10 @@ struct CrossfadeSettingsSection: View {
                         Task { await container?.playerService.crossfadeSettingsDidChange() }
                     }
                 )) {
-                    Label {
-                        Text("Disable for gapless albums")
-                    } icon: {
-                        SettingsIcon(systemImage: "music.note.list", color: .teal)
-                    }
+                    Label("Disable for gapless albums", systemImage: "music.note.list")
+                        .foregroundStyle(.primary)
                 }
+                .tint(Color(.systemGreen))
             }
         }
     }

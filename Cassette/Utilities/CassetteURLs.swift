@@ -6,8 +6,11 @@
 import Foundation
 
 enum CassetteURLs {
-    static let kofi = URL(string: "https://ko-fi.com/mathieudbrt")!
     static let cassette = URL(string: "https://github.com/CassetteLab/cassette")!
+    static let cassetteIssues = URL(string: "https://github.com/CassetteLab/cassette/issues")!
+    static let swiftSonic = URL(string: "https://github.com/CassetteLab/swiftsonic")!
+    static let navidrome = URL(string: "https://www.navidrome.org")!
+    static let openSubsonic = URL(string: "https://opensubsonic.netlify.app")!
     static let audioStreaming = URL(string: "https://github.com/dimitris-c/AudioStreaming")!
     static let listenBrainz = URL(string: "https://listenbrainz.org")!
 }

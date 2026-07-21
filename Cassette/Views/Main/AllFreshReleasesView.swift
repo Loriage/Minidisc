@@ -134,13 +134,9 @@ struct AllFreshReleasesView: View {
         // (bottom of the invisible toolbar) rather than at the true window top.
         // ignoresSafeArea(.container, edges: .top) extends the scroll view frame to y = 0
         // so pinned headers pin at the actual visible top of the detail column.
-        if #available(macOS 26.0, *) {
-            sv
-                .ignoresSafeArea(.container, edges: .top)
-                .scrollEdgeEffectHidden(true, for: .top)
-        } else {
-            sv.ignoresSafeArea(.container, edges: .top)
-        }
+        sv
+            .ignoresSafeArea(.container, edges: .top)
+            .scrollEdgeEffectHidden(true, for: .top)
         #endif
     }
 

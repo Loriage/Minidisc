@@ -25,22 +25,13 @@ struct MeshGradientBackground: View {
             }
     }
 
-    @ViewBuilder
     private var gradient: some View {
-        if #available(iOS 18, macOS 15, *) {
-            MeshGradient(
-                width: 3,
-                height: 3,
-                points: currentPoints,
-                colors: distributedColors
-            )
-        } else {
-            LinearGradient(
-                colors: palette,
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
+        MeshGradient(
+            width: 3,
+            height: 3,
+            points: currentPoints,
+            colors: distributedColors
+        )
     }
 
     private var currentPoints: [SIMD2<Float>] {

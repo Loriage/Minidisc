@@ -19,12 +19,10 @@ struct ReplayGainSettingsSection: View {
                     Task { await container?.playerService.replayGainSettingsDidChange() }
                 }
             )) {
-                Label {
-                    Text("ReplayGain")
-                } icon: {
-                    SettingsIcon(systemImage: "speaker.wave.3", color: .purple)
-                }
+                Label("ReplayGain", systemImage: "speaker.wave.3")
+                    .foregroundStyle(.primary)
             }
+            .tint(Color(.systemGreen))
 
             if rg?.enabled == true {
                 Picker(selection: Binding(
@@ -37,13 +35,11 @@ struct ReplayGainSettingsSection: View {
                     Text("Track").tag(ReplayGainMode.track)
                     Text("Album").tag(ReplayGainMode.album)
                 } label: {
-                    Label {
-                        Text("Mode")
-                    } icon: {
-                        SettingsIcon(systemImage: "music.note", color: .purple)
-                    }
+                    Label("Mode", systemImage: "music.note")
+                        .foregroundStyle(.primary)
                 }
                 .pickerStyle(.menu)
+                .tint(.secondary)
 
                 Stepper(
                     value: Binding(
@@ -57,11 +53,8 @@ struct ReplayGainSettingsSection: View {
                     step: 0.5
                 ) {
                     HStack {
-                        Label {
-                            Text("Pre-amp")
-                        } icon: {
-                            SettingsIcon(systemImage: "slider.horizontal.3", color: .purple)
-                        }
+                        Label("Pre-amp", systemImage: "slider.horizontal.3")
+                            .foregroundStyle(.primary)
                         Spacer()
                         Text(preAmpLabel(rg?.preAmp ?? 0))
                             .foregroundStyle(.secondary)
@@ -77,12 +70,10 @@ struct ReplayGainSettingsSection: View {
                         Task { await container?.playerService.replayGainSettingsDidChange() }
                     }
                 )) {
-                    Label {
-                        Text("Prevent clipping")
-                    } icon: {
-                        SettingsIcon(systemImage: "waveform.path.ecg", color: .purple)
-                    }
+                    Label("Prevent clipping", systemImage: "waveform.path.ecg")
+                        .foregroundStyle(.primary)
                 }
+                .tint(Color(.systemGreen))
             }
         }
     }

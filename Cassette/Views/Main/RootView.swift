@@ -15,13 +15,8 @@ struct RootView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if serverState.activeServer != nil && onboardingComplete {
-                #if os(macOS)
-                RootViewMacOS()
-                    .accentColor(.cassetteAccent)
-                #else
                 MainTabView()
                     .accentColor(.cassetteAccent)
-                #endif
             } else {
                 OnboardingView()
             }

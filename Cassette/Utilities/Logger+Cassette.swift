@@ -31,7 +31,6 @@ extension Logger {
     nonisolated static let wrappedStory  = Logger(subsystem: "app.cassette.wrappedstory",  category: "WrappedStoryPlayer")
     nonisolated static let lyrics        = Logger(subsystem: "app.cassette.lyrics",        category: "LyricsService")
     nonisolated static let moodPlaylists = Logger(subsystem: "app.cassette.moodplaylists", category: "MoodPlaylistService")
-    nonisolated static let widget           = Logger(subsystem: "app.cassette.widget",           category: "WidgetSyncService")
     nonisolated static let recommendations  = Logger(subsystem: "app.cassette.recommendations",  category: "RecommendationService")
     nonisolated static let listenBrainz     = Logger(subsystem: "app.cassette.listenbrainz",     category: "ListenBrainz")
     nonisolated static let integrations       = Logger(subsystem: "app.cassette.integrations",       category: "Integrations")

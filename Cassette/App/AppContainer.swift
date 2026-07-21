@@ -44,7 +44,6 @@ final class AppContainer {
     /// server's own tags when not.
     let moodPlaylistService: MoodPlaylistService
     let lyricsService: LyricsService
-    let widgetSyncService: WidgetSyncService
     let recommendationService: RecommendationService
     let listenBrainzService: ListenBrainzService
     let externalProvidersStore = ExternalProvidersStore()
@@ -125,21 +124,6 @@ final class AppContainer {
         let playlist = PlaylistService(serverService: server, modelContainer: modelContainer, downloadService: download)
         playlistService = playlist
 
-        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            fatalError("Documents directory unavailable — cannot initialise AppContainer")
-        }
-        let coversDir = docs.appendingPathComponent("app.cassette/coverarts", isDirectory: true)
-        let widgetSync = WidgetSyncService(
-            dominantColorExtractor: dominantColorExtractor,
-            modelContainer: modelContainer,
-            artworkCache: artworkImageCache,
-            coversDirectory: coversDir,
-            serverState: serverState
-        )
-        widgetSyncService = widgetSync
-        pin.setWidgetSyncService(widgetSync)
-
-        NowPlayingBridge.performTogglePlayPause = { [weak player] in await player?.togglePlayPause() }
         Task { [playlist] in await playlist.retryMissingPlaylistDownloads() }
 
         let subsonicProvider = SubsonicRecommendationProvider(libraryService: library)
@@ -153,12 +137,11 @@ final class AppContainer {
     }
 
     /// Awaited by CassetteApp's `.task` before the UI appears, ensuring
-    /// PlayerService→NowPlayingService and PlayerService→WidgetSyncService
-    /// wiring is complete before any user interaction is possible.
+    /// PlayerService→NowPlayingService wiring is complete before any user
+    /// interaction is possible.
     func setup() async {
         await _player.setNowPlayingService(nowPlayingService)
         await nowPlayingService.setFavoritesService(favoritesService)
-        await _player.setWidgetSyncService(widgetSyncService)
         await _player.setReplayGainService(replayGainService)
         await _player.crossfadeSettingsDidChange()
     }

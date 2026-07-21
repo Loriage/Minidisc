@@ -7,9 +7,7 @@ import SwiftUI
 import SwiftData
 import OSLog
 import Foundation
-#if os(iOS)
 import BackgroundTasks
-#endif
 
 @main
 struct CassetteApp: App {
@@ -19,14 +17,11 @@ struct CassetteApp: App {
     // Statics for BGTask handler access — set once after AppContainer init.
     // nonisolated(unsafe) is intentional: the BGTask closure runs off-actor;
     // these are written once on MainActor and read in a non-isolated context.
-    #if os(iOS)
     nonisolated(unsafe) private static var _bgTaskService: WrappedPlaylistService?
     nonisolated(unsafe) private static var _bgTaskServerState: ServerState?
     nonisolated(unsafe) private static var _bgTaskMoodService: MoodPlaylistService?
-    #endif
 
     init() {
-        #if os(iOS)
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: "app.cassette.wrapped.monthly-update",
             using: nil
@@ -61,17 +56,14 @@ struct CassetteApp: App {
                 CassetteApp.scheduleWrappedUpdate()
             }
         }
-        #endif
     }
 
-    #if os(iOS)
     static func scheduleWrappedUpdate() {
         let request = BGProcessingTaskRequest(identifier: "app.cassette.wrapped.monthly-update")
         request.requiresNetworkConnectivity = true
         request.earliestBeginDate = Date().addingTimeInterval(24 * 3600)
         try? BGTaskScheduler.shared.submit(request)
     }
-    #endif
 
     var body: some Scene {
         WindowGroup {
@@ -94,13 +86,6 @@ struct CassetteApp: App {
                 }
             }
             .tint(CassetteColors.accent)
-            .onAppear {
-                #if os(macOS)
-                NSApplication.shared.windows
-                    .first { $0.title == "Mini Player" }?
-                    .close()
-                #endif
-            }
             .task {
                 guard container == nil else { return }
                 Logger.boot.notice("🟡 AppContainer init start")
@@ -129,47 +114,22 @@ struct CassetteApp: App {
                 // Fire-and-forget — must never block app launch.
                 Task { await runWrappedUpdate(container: newContainer) }
                 Task { await runMoodUpdate(container: newContainer) }
-                Task { await newContainer.widgetSyncService.fullSync() }
-                #if os(iOS)
                 CassetteApp._bgTaskService = newContainer.wrappedPlaylistService
                 CassetteApp._bgTaskServerState = newContainer.serverState
                 CassetteApp._bgTaskMoodService = newContainer.moodPlaylistService
                 CassetteApp.scheduleWrappedUpdate()
-                #endif
             }
             .task(id: container?.serverState.isOnline) {
                 guard let c = container, c.serverState.isOnline else { return }
                 await c.playerService.handleNetworkRestored()
                 await c.listenBrainzService.flushOfflineQueue()
             }
-            #if os(macOS)
-            .frame(minHeight: 580)
-            .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
-                guard let c = container else { return }
-                // Stop AVAudioEngine synchronously — prevents HALC frame accumulation during teardown.
-                c.playerService.stopAudioEngineSync()
-                let sema = DispatchSemaphore(value: 0)
-                Task {
-                    await c.playerService.stop()
-                    await c.nowPlayingService.stop()
-                    sema.signal()
-                }
-                let result = sema.wait(timeout: .now() + 1.5)
-                #if DEBUG
-                if result == .timedOut {
-                    Logger.boot.warning("[APP] Terminate handler timed out after 1.5s")
-                }
-                #endif
-            }
-            #endif
         }
         .onChange(of: scenePhase) { _, newPhase in
-            #if os(iOS)
             if newPhase == .inactive, let c = container {
                 Task { await c.playerService.saveCurrentPosition() }
                 Logger.session.info("App inactive — position flushed (iOS kill guard)")
             }
-            #endif
             guard newPhase == .background, let c = container else { return }
             let snapshot = SessionPayload(
                 currentIndex: c.playerState.currentIndex,
@@ -181,37 +141,6 @@ struct CassetteApp: App {
             Task { await c.sessionService.save(playerState: snapshot) }
             Logger.session.info("App backgrounded — session flushed")
         }
-        #if os(macOS)
-        .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentMinSize)
-        .restorationBehavior(.disabled)
-        .commands {
-            CassetteCommands()
-        }
-        #endif
-
-        #if os(macOS)
-        CassetteSettingsScene(container: container)
-
-        Window("Mini Player", id: "mini-player") {
-            Group {
-                if let container {
-                    MiniPlayerWindowView()
-                        .environment(\.appContainer, container)
-                        .environment(container.dominantColorExtractor)
-                        .environment(container.artworkImageCache)
-                        .modelContainer(container.modelContainer)
-                } else {
-                    MiniPlayerWindowView()
-                }
-            }
-        }
-        .windowStyle(.plain)
-        .windowResizability(.contentSize)
-        .defaultSize(width: 320, height: 136)
-        .defaultPosition(.topTrailing)
-        .restorationBehavior(.disabled)
-        #endif
     }
 
     // MARK: - Cover art garbage collection

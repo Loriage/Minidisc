@@ -6,7 +6,7 @@
 import SwiftUI
 
 private enum OnboardingStep {
-    case welcome, cache, listenBrainz, externalProviders, complete
+    case welcome, complete
 }
 
 struct OnboardingView: View {
@@ -18,38 +18,11 @@ struct OnboardingView: View {
         Group {
             switch step {
             case .welcome:
-                OnboardingWelcomeView(onServerConnected: { step = .cache })
+                OnboardingWelcomeView(onServerConnected: { step = .complete })
                     .transition(.asymmetric(
                         insertion: .move(edge: .trailing),
                         removal: .move(edge: .leading)
                     ))
-            case .cache:
-                OnboardingCacheStepView(
-                    onSkip: { step = .listenBrainz },
-                    onContinue: { step = .listenBrainz }
-                )
-                .transition(.asymmetric(
-                    insertion: .move(edge: .trailing),
-                    removal: .move(edge: .leading)
-                ))
-            case .listenBrainz:
-                OnboardingListenBrainzStepView(
-                    onSkip: { step = .externalProviders },
-                    onContinue: { step = .externalProviders }
-                )
-                .transition(.asymmetric(
-                    insertion: .move(edge: .trailing),
-                    removal: .move(edge: .leading)
-                ))
-            case .externalProviders:
-                OnboardingExternalProvidersStepView(
-                    onSkip: { step = .complete },
-                    onContinue: { step = .complete }
-                )
-                .transition(.asymmetric(
-                    insertion: .move(edge: .trailing),
-                    removal: .move(edge: .leading)
-                ))
             case .complete:
                 OnboardingCompleteView(onComplete: { onboardingComplete = true })
                     .transition(.asymmetric(

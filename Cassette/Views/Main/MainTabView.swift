@@ -16,36 +16,30 @@ struct MainTabView: View {
     @Namespace private var playerZoom
     private let fullPlayerZoomID = "full-player"
 
-    private enum AppTab: Hashable { case home, discover, search }
+    private enum AppTab: Hashable { case home, discover, library, search }
 
     private var hasTrack: Bool {
         container?.playerState.currentTrack != nil || container?.playerState.isLiveStream == true
     }
 
     var body: some View {
-        #if os(iOS)
         tabs
             .tabBarMinimizeBehavior(.onScrollDown)
-            .tabViewBottomAccessory {
-                if hasTrack {
-                    MiniPlayerAccessoryView(showingFullPlayer: $showingFullPlayer)
-                        .environment(\.colorScheme, colorScheme)
-                        .cassetteMatchedTransitionSource(id: fullPlayerZoomID, in: playerZoom)
-                }
+            // isEnabled at the modifier level — a conditional INSIDE the accessory builder
+            // still renders an empty glass capsule when nothing plays.
+            .tabViewBottomAccessory(isEnabled: hasTrack) {
+                miniPlayer
             }
             .fullScreenCover(isPresented: $showingFullPlayer) {
                 FullPlayerView()
                     .cassetteZoomTransition(sourceID: fullPlayerZoomID, in: playerZoom)
             }
-        #else
-        tabs
-            .safeAreaInset(edge: .bottom) {
-                if hasTrack { MiniPlayerAccessoryView(showingFullPlayer: $showingFullPlayer) }
-            }
-            .sheet(isPresented: $showingFullPlayer) {
-                FullPlayerView()
-            }
-        #endif
+    }
+
+    private var miniPlayer: some View {
+        MiniPlayerAccessoryView(showingFullPlayer: $showingFullPlayer)
+            .environment(\.colorScheme, colorScheme)
+            .cassetteMatchedTransitionSource(id: fullPlayerZoomID, in: playerZoom)
     }
 
     private var tabs: some View {
@@ -56,9 +50,15 @@ struct MainTabView: View {
                 }
             }
 
-            Tab("Discover", systemImage: "sparkles", value: AppTab.discover) {
+            Tab("Discover", systemImage: "square.grid.2x2.fill", value: AppTab.discover) {
                 NavigationStack {
                     DiscoverView()
+                }
+            }
+
+            Tab("Library", systemImage: "music.note.square.stack.fill", value: AppTab.library) {
+                NavigationStack {
+                    LibraryView()
                 }
             }
 

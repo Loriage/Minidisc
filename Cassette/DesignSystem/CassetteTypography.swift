@@ -26,6 +26,10 @@ extension Font {
     /// Section header labels (e.g. "Albums", "Tracks"). ~17pt. Rounded, semibold.
     static let cassetteSectionTitle = Font.system(.headline, design: .rounded, weight: .semibold)
 
+    /// Home shelf titles ("Top Picks for You", genre names). ~22pt. Rounded, bold —
+    /// the Apple Music section-header scale.
+    static let cassetteShelfTitle = Font.system(.title2, design: .rounded, weight: .bold)
+
     // MARK: Body & cells (SF Pro Default)
 
     /// Standard readable body. ~17pt. Regular.

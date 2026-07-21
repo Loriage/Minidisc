@@ -23,15 +23,10 @@ struct MiniPlayerAccessoryView: View {
 
     var body: some View {
         if let playerState = container?.playerState {
-            if #available(macOS 26.0, iOS 26.0, *) {
-                MiniPlayerPlacementReader { isInline in
-                    playerContent(playerState, isInline: isInline)
-                }
-                .environment(\.colorScheme, colorScheme)
-            } else {
-                playerContent(playerState, isInline: false)
-                    .environment(\.colorScheme, colorScheme)
+            MiniPlayerPlacementReader { isInline in
+                playerContent(playerState, isInline: isInline)
             }
+            .environment(\.colorScheme, colorScheme)
         }
     }
 
@@ -64,7 +59,7 @@ struct MiniPlayerAccessoryView: View {
 
     private func inlineBar(coverArtId: String, title: String, artist: String?, audioFormat: String?, isPlaying: Bool, isAvailable: Bool, isLiveStream: Bool) -> some View {
         HStack(spacing: CassetteSpacing.m) {
-            CoverArtCard(id: coverArtId, size: 36)
+            CoverArtCard(id: coverArtId, size: 30)
                 .opacity(isAvailable ? 1.0 : 0.5)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
@@ -91,7 +86,8 @@ struct MiniPlayerAccessoryView: View {
             Spacer(minLength: 0)
             playPauseButton(isPlaying: isPlaying, isAvailable: isAvailable)
         }
-        .padding(.horizontal, CassetteSpacing.m)
+        .padding(.leading, CassetteSpacing.m)
+        .padding(.trailing, CassetteSpacing.xl)
         .padding(.vertical, CassetteSpacing.s)
     }
 
@@ -104,7 +100,7 @@ struct MiniPlayerAccessoryView: View {
             : playerState.position / playerState.duration
         return VStack(spacing: 0) {
             HStack(alignment: .center, spacing: CassetteSpacing.m) {
-                CoverArtCard(id: coverArtId, size: 36)
+                CoverArtCard(id: coverArtId, size: 30)
                     .opacity(isAvailable ? 1.0 : 0.5)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -131,7 +127,7 @@ struct MiniPlayerAccessoryView: View {
 
                 Spacer(minLength: 0)
 
-                HStack(spacing: CassetteSpacing.s) {
+                HStack(spacing: CassetteSpacing.xxl) {
                     playPauseButton(isPlaying: isPlaying, isAvailable: isAvailable)
                     if isAvailable && !isLiveStream {
                         Button {
@@ -139,13 +135,14 @@ struct MiniPlayerAccessoryView: View {
                             Task { try? await container?.playerService.skipToNext() }
                         } label: {
                             Image(systemName: "forward.fill")
-                                .font(.title3)
+                                .font(.title2)
                                 .foregroundStyle(typoColor)
                         }
                         .buttonStyle(.borderless)
                         .accessibilityLabel("Skip to next")
                     }
                 }
+                .padding(.trailing, CassetteSpacing.xs)
                 .frame(height: 36)
             }
             .padding(.horizontal, CassetteSpacing.l)
@@ -188,7 +185,7 @@ struct MiniPlayerAccessoryView: View {
             }
         } label: {
             Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                .font(.title3)
+                .font(.title2)
                 .foregroundStyle(typoColor)
                 .opacity(isAvailable ? 1.0 : 0.3)
         }
@@ -262,9 +259,7 @@ struct MiniPlayerAccessoryView: View {
 }
 
 // Reads tabViewBottomAccessoryPlacement from the environment and passes isInline
-// down as a Bool so MiniPlayerAccessoryView doesn't need to declare the
-// unavailable type at struct level.
-@available(macOS 26.0, iOS 26.0, *)
+// down as a Bool.
 private struct MiniPlayerPlacementReader<Content: View>: View {
     @Environment(\.tabViewBottomAccessoryPlacement) private var placement: TabViewBottomAccessoryPlacement?
     @ViewBuilder let content: (Bool) -> Content

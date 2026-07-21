@@ -21,7 +21,7 @@ struct FreshReleasesCard: View {
         VStack(alignment: .leading, spacing: CassetteSpacing.s) {
             HStack {
                 Text("Fresh Releases")
-                    .font(.cassetteSectionTitle)
+                    .font(.cassetteShelfTitle)
                 Spacer(minLength: 0)
                 if !releases.isEmpty {
                     Button(action: onSeeAll) {

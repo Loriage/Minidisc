@@ -96,25 +96,20 @@ struct PlaylistGradientView: View {
         }
     }
 
-    @ViewBuilder
     private func meshOrFallback(base: Color, light: Color, dark: Color) -> some View {
-        if #available(iOS 18, macOS 15, *) {
-            MeshGradient(
-                width: 3, height: 3,
-                points: [
-                    [0.0, 0.0], [0.5, 0.0], [1.0, 0.0],
-                    [0.0, 0.5], [0.5, 0.5], [1.0, 0.5],
-                    [0.0, 1.0], [0.5, 1.0], [1.0, 1.0],
-                ],
-                colors: [
-                    light, base, light,
-                    base, base.adjusted(hue: 0.05), dark,
-                    dark, base, dark,
-                ]
-            )
-        } else {
-            LinearGradient(colors: [light, base, dark], startPoint: .topLeading, endPoint: .bottomTrailing)
-        }
+        MeshGradient(
+            width: 3, height: 3,
+            points: [
+                [0.0, 0.0], [0.5, 0.0], [1.0, 0.0],
+                [0.0, 0.5], [0.5, 0.5], [1.0, 0.5],
+                [0.0, 1.0], [0.5, 1.0], [1.0, 1.0],
+            ],
+            colors: [
+                light, base, light,
+                base, base.adjusted(hue: 0.05), dark,
+                dark, base, dark,
+            ]
+        )
     }
 }
 

@@ -227,6 +227,14 @@ actor LibraryService: LibraryServiceProtocol {
         try await client().getSongsByGenre(genre, count: count)
     }
 
+    func genres() async throws -> [Genre] {
+        try await client().getGenres()
+    }
+
+    func albumsByGenre(_ genre: String, size: Int) async throws -> [AlbumID3] {
+        try await client().getAlbumList2(type: .byGenre, size: size, genre: genre)
+    }
+
     func randomSongs(size: Int) async throws -> [Song] {
         try await client().getRandomSongs(size: size)
     }

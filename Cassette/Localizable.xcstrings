@@ -268,6 +268,7 @@
       }
     },
     "%@ (%@)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1690,6 +1691,7 @@
       }
     },
     "© 2026 Mathieu Dubart" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2001,6 +2003,9 @@
         }
       }
     },
+    "Acknowledgements" : {
+
+    },
     "Active" : {
       "localizations" : {
         "de" : {
@@ -2106,6 +2111,7 @@
       }
     },
     "Add a provider to look up albums on Discogs,\nMusicBrainz, or anywhere you like." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2418,6 +2424,7 @@
       }
     },
     "Add Music" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2834,6 +2841,7 @@
       }
     },
     "Add to Playlist…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3304,6 +3312,7 @@
       }
     },
     "Allow caching when not on Wi‑Fi" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3512,6 +3521,7 @@
       }
     },
     "App" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3616,6 +3626,7 @@
       }
     },
     "Appearance" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4500,6 +4511,7 @@
       }
     },
     "Back" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4760,6 +4772,7 @@
       }
     },
     "Cache format" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4968,6 +4981,7 @@
       }
     },
     "Cancel Download" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5124,6 +5138,7 @@
       }
     },
     "Cassette is free, forever." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5176,6 +5191,7 @@
       }
     },
     "Cassette uses your system appearance setting. Per-app theme override is planned for a future release." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5956,6 +5972,7 @@
       }
     },
     "Close" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6528,6 +6545,7 @@
       }
     },
     "Connect your ListenBrainz account to log your plays and discover your listening stats." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6575,58 +6593,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "連結你的 ListenBrainz 帳號以記錄播放並探索你的聆聽統計。"
-          }
-        }
-      }
-    },
-    "Connected as" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verbunden als"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Συνδεδεμένος ως"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conectado como"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Connecté en tant que"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Connesso come"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "接続中のアカウント"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已连接为"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已連線，帳號為"
           }
         }
       }
@@ -6679,6 +6645,58 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已連線 — 測試搜尋比對到 %lld 首曲目。"
+          }
+        }
+      }
+    },
+    "Connected as" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbunden als"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Συνδεδεμένος ως"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conectado como"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connecté en tant que"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connesso come"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続中のアカウント"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已连接为"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已連線，帳號為"
           }
         }
       }
@@ -7048,6 +7066,7 @@
       }
     },
     "Continue" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7100,6 +7119,7 @@
       }
     },
     "Copyright" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8611,6 +8631,7 @@
       }
     },
     "dimitris-c" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8975,6 +8996,7 @@
       }
     },
     "Disconnect from ListenBrainz?" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9443,6 +9465,7 @@
       }
     },
     "Download Album" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9599,6 +9622,7 @@
       }
     },
     "Download Playlist" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11379,6 +11403,7 @@
       }
     },
     "Follow System" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11795,6 +11820,7 @@
       }
     },
     "General" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11951,6 +11977,7 @@
       }
     },
     "GitHub Repository" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13147,6 +13174,7 @@
       }
     },
     "Item not found" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13251,6 +13279,7 @@
       }
     },
     "Keep your recent tracks ready instantly,\neven on a slow connection." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13771,6 +13800,7 @@
       }
     },
     "Links" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14031,6 +14061,7 @@
       }
     },
     "ListenBrainz username" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14343,6 +14374,7 @@
       }
     },
     "Loading your library..." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14811,6 +14843,7 @@
       }
     },
     "Mini Player" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15019,6 +15052,7 @@
       }
     },
     "MIT License — dimitris-c" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15071,6 +15105,7 @@
       }
     },
     "MIT License — MathieuDubart" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15487,6 +15522,7 @@
       }
     },
     "MPL-2.0" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15694,6 +15730,9 @@
         }
       }
     },
+    "Navidrome" : {
+
+    },
     "New Playlist" : {
       "localizations" : {
         "de" : {
@@ -15747,6 +15786,7 @@
       }
     },
     "Next Track" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -16735,6 +16775,7 @@
       }
     },
     "No Instant Mix data for this track — continuing from your library." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17307,6 +17348,7 @@
       }
     },
     "No providers yet" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17983,6 +18025,7 @@
       }
     },
     "No tracks in queue" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18659,6 +18702,7 @@
       }
     },
     "Oldest track replaced when limit is reached" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18763,6 +18807,7 @@
       }
     },
     "Open" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18867,6 +18912,7 @@
       }
     },
     "Open releases your way" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18917,6 +18963,12 @@
           }
         }
       }
+    },
+    "Open Source" : {
+
+    },
+    "OpenSubsonic" : {
+
     },
     "Optional headers sent with every request — useful for Cloudflare Access or other reverse-proxy authentication." : {
       "localizations" : {
@@ -19596,6 +19648,7 @@
       }
     },
     "Play / Pause" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -20431,6 +20484,7 @@
       }
     },
     "Previous Track" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -21159,6 +21213,7 @@
       }
     },
     "Releases open in ListenBrainz by default." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -22068,6 +22123,9 @@
         }
       }
     },
+    "Report an Issue" : {
+
+    },
     "Reset to cover colour" : {
       "localizations" : {
         "de" : {
@@ -22589,6 +22647,7 @@
       }
     },
     "See All" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -22641,6 +22700,7 @@
       }
     },
     "Send Feedback / Report a Bug" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -22953,6 +23013,7 @@
       }
     },
     "Set Up Later" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -23055,6 +23116,9 @@
           }
         }
       }
+    },
+    "Share the App" : {
+
     },
     "Share your Wrapped" : {
       "localizations" : {
@@ -23213,6 +23277,7 @@
       }
     },
     "Show Queue" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -24253,6 +24318,7 @@
       }
     },
     "Speed things up" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -24933,6 +24999,9 @@
           }
         }
       }
+    },
+    "Thanks" : {
+
     },
     "Thanks for\nlistening." : {
       "localizations" : {
@@ -25949,6 +26018,7 @@
       }
     },
     "Theme" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -26105,6 +26175,7 @@
       }
     },
     "Third-party" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -26311,6 +26382,9 @@
           }
         }
       }
+    },
+    "This app is a fork of Cassette, originally built by Mathieu Dubart. Thanks to the Navidrome team for an excellent self-hosted music server, and to the OpenSubsonic community for modernizing the Subsonic API." : {
+
     },
     "This artist has no albums in the library." : {
       "localizations" : {
@@ -26885,6 +26959,7 @@
       }
     },
     "Toggle Repeat" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -26937,6 +27012,7 @@
       }
     },
     "Toggle Shuffle" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -27378,6 +27454,9 @@
         }
       }
     },
+    "Top Picks for You" : {
+
+    },
     "Top Songs" : {
       "localizations" : {
         "de" : {
@@ -27588,6 +27667,7 @@
       }
     },
     "Track what you listen to" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -27693,6 +27773,7 @@
       }
     },
     "Tracks to cache" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -29053,6 +29134,7 @@
       }
     },
     "Unknown item type" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -29105,6 +29187,7 @@
       }
     },
     "Unpin" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -29937,6 +30020,7 @@
       }
     },
     "Version" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -29987,6 +30071,9 @@
           }
         }
       }
+    },
+    "Version %@" : {
+
     },
     "View Listening Stats" : {
       "localizations" : {
@@ -30976,6 +31063,9 @@
         }
       }
     },
+    "Your downloaded music lives in the Library tab." : {
+
+    },
     "Your library appears to be empty." : {
       "localizations" : {
         "de" : {
@@ -31653,6 +31743,7 @@
       }
     },
     "your-username" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

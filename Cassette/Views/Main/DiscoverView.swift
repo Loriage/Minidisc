@@ -109,7 +109,7 @@ struct DiscoverView: View {
         if !availableMoods.isEmpty {
             VStack(alignment: .leading, spacing: CassetteSpacing.s) {
                 Text("Moods")
-                    .font(.cassetteSectionTitle)
+                    .font(.cassetteShelfTitle)
                     .padding(.horizontal, CassetteSpacing.m)
 
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -145,25 +145,28 @@ struct DiscoverView: View {
 
     // MARK: - Sections
 
+    // Hidden entirely when ListenBrainz is not connected — no "connect in Settings" teaser.
     @ViewBuilder
     private func freshReleasesSection(vm: DiscoverViewModel) -> some View {
-        #if os(iOS)
-        FreshReleasesCard(
-            releases: vm.freshReleases,
-            isLoading: vm.isLoadingFreshReleases,
-            isListenBrainzConnected: isListenBrainzConnected,
-            onSeeAll: { showAllFreshReleases = true },
-            zoomNamespace: freshReleaseZoomNamespace
-        )
-        #else
-        FreshReleasesCard(
-            releases: vm.freshReleases,
-            isLoading: vm.isLoadingFreshReleases,
-            isListenBrainzConnected: isListenBrainzConnected,
-            onSeeAll: { showAllFreshReleases = true },
-            onTap: { release in selectedRelease = release }
-        )
-        #endif
+        if isListenBrainzConnected {
+            #if os(iOS)
+            FreshReleasesCard(
+                releases: vm.freshReleases,
+                isLoading: vm.isLoadingFreshReleases,
+                isListenBrainzConnected: isListenBrainzConnected,
+                onSeeAll: { showAllFreshReleases = true },
+                zoomNamespace: freshReleaseZoomNamespace
+            )
+            #else
+            FreshReleasesCard(
+                releases: vm.freshReleases,
+                isLoading: vm.isLoadingFreshReleases,
+                isListenBrainzConnected: isListenBrainzConnected,
+                onSeeAll: { showAllFreshReleases = true },
+                onTap: { release in selectedRelease = release }
+            )
+            #endif
+        }
     }
 
     private func recentlyPlayedSection(vm: DiscoverViewModel) -> some View {
@@ -277,7 +280,7 @@ struct DiscoverView: View {
         VStack(alignment: .leading, spacing: CassetteSpacing.s) {
             HStack {
                 Text("Wrapped")
-                    .font(.cassetteSectionTitle)
+                    .font(.cassetteShelfTitle)
                 Spacer(minLength: 0)
                 NavigationLink {
                     WrappedYearlyListView()
@@ -325,7 +328,7 @@ struct DiscoverView: View {
         VStack(alignment: .leading, spacing: CassetteSpacing.s) {
             HStack {
                 Text("Internet Radio")
-                    .font(.cassetteSectionTitle)
+                    .font(.cassetteShelfTitle)
                 Spacer(minLength: 0)
                 NavigationLink {
                     RadioListView()
@@ -379,7 +382,7 @@ struct DiscoverView: View {
     private func section<Content: View>(title: LocalizedStringKey, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: CassetteSpacing.s) {
             Text(title)
-                .font(.cassetteSectionTitle)
+                .font(.cassetteShelfTitle)
                 .padding(.horizontal, CassetteSpacing.m)
             content()
         }

@@ -1,0 +1,111 @@
+// Minidisc — Music client for Subsonic/OpenSubsonic servers
+// Copyright (C) 2026 Mathieu Dubart
+// Licensed under the Mozilla Public License 2.0.
+// See LICENSE file in the project root for full license information.
+
+import SwiftUI
+import OSLog
+
+struct WrappedTopTracksSection: View {
+    let tracks: [TopTrackEntry]
+
+    @Environment(\.appContainer) private var container
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
+            Text("Top Tracks")
+                .font(.minidiscSectionTitle)
+            if tracks.isEmpty {
+                emptyLabel("No track data for this period.")
+            } else {
+                let visible = Array(tracks.prefix(10))
+                VStack(spacing: 0) {
+                    ForEach(Array(visible.enumerated()), id: \.element.id) { index, track in
+                        trackRow(track)
+                        if index < visible.count - 1 {
+                            Divider()
+                                .padding(.leading, MinidiscSpacing.m + 28 + MinidiscSpacing.m + 44 + MinidiscSpacing.m)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func trackRow(_ track: TopTrackEntry) -> some View {
+        Button {
+            Task {
+                guard let container else { return }
+                let song = DisplayableSong(
+                    id: track.trackId,
+                    title: track.title,
+                    artist: track.artistName,
+                    albumId: nil,
+                    albumName: track.albumTitle,
+                    artistId: nil,
+                    genre: nil,
+                    duration: 0,
+                    trackNumber: nil,
+                    isDownloaded: false,
+                    coverArtId: track.trackId,
+                    audioFormat: nil,
+                    replayGainTrackGain: nil,
+                    replayGainTrackPeak: nil,
+                    replayGainAlbumGain: nil,
+                    replayGainAlbumPeak: nil,
+                    replayGainBaseGain: nil,
+                    replayGainFallbackGain: nil
+                )
+                do {
+                    try await container.playerService.play(tracks: [song], startIndex: 0)
+                } catch {
+                    Logger.player.error("[PLAYBACK] play failed: \(error, privacy: .public)")
+                }
+            }
+        } label: {
+            HStack(spacing: MinidiscSpacing.m) {
+                ZStack {
+                    Circle()
+                        .fill(track.rank <= 3 ? medalColor(for: track.rank) : Color.minidiscAccent.opacity(0.15))
+                        .frame(width: 28, height: 28)
+                    Text("\(track.rank)")
+                        .font(.system(.caption, design: .rounded, weight: .heavy))
+                        .foregroundStyle(track.rank <= 3 ? Color.black : Color.minidiscAccent)
+                }
+                .frame(width: 28)
+                CoverArtCard(id: track.trackId, size: 44)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(track.title)
+                        .font(.minidiscCellTitle)
+                        .lineLimit(1)
+                    Text(track.artistName)
+                        .font(.minidiscCaption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Text(track.playCount.plural("play", "plays"))
+                    .font(.minidiscCaption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, MinidiscSpacing.s)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func medalColor(for rank: Int) -> Color {
+        switch rank {
+        case 1: return WrappedYearPalette.medalGold
+        case 2: return WrappedYearPalette.medalSilver
+        case 3: return WrappedYearPalette.medalBronze
+        default: return MinidiscColors.accent
+        }
+    }
+
+    private func emptyLabel(_ text: LocalizedStringKey) -> some View {
+        Text(text)
+            .font(.minidiscCaption)
+            .foregroundStyle(.secondary)
+    }
+}

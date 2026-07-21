@@ -13,9 +13,9 @@ jobs:
   ios-release:
     runs-on: macos-26
     env:
-      APP_NAME: Cassette
-      SCHEME: Cassette
-      PROJECT: Cassette.xcodeproj
+      APP_NAME: Minidisc
+      SCHEME: Minidisc
+      PROJECT: Minidisc.xcodeproj
 
     steps:
       - uses: actions/checkout@v4

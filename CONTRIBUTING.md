@@ -1,11 +1,11 @@
-# Contributing to Cassette
+# Contributing to Minidisc
 
 ## Development Rules
 
 ### B2 — No SwiftSonic bypass, ever
 
 All Subsonic API calls MUST go through `SwiftSonic`. No `URLSession` calls to server
-endpoints directly from Cassette code.
+endpoints directly from Minidisc code.
 
 If a SwiftSonic API is missing or awkward:
 1. Note it in `APP_FEEDBACK.md` (never committed — see `.gitignore`)
@@ -15,7 +15,7 @@ If a SwiftSonic API is missing or awkward:
 **Single exception**: a critical security bug in SwiftSonic → hotfix SwiftSonic
 immediately (e.g. a 0.4.1-style patch), do not bypass.
 
-**Alarm signal**: if you are writing more than 10 lines of networking code in Cassette
+**Alarm signal**: if you are writing more than 10 lines of networking code in Minidisc
 that do not go through SwiftSonic, stop and discuss.
 
 ### B3 — v1 simplifications (documented)
@@ -45,7 +45,7 @@ try await MainActor.run {
 Return a `Sendable` DTO (`ServerSnapshot`, etc.) instead. This is the single rule
 that makes the entire service layer actor-safe with SwiftData.
 
-Tests must pass `inMemory: true` to `ModelContainer.cassette(inMemory:)` — Swift
+Tests must pass `inMemory: true` to `ModelContainer.minidisc(inMemory:)` — Swift
 Testing parallelises tests, so each test must own its own in-memory store.
 
 ### Architecture invariants
@@ -93,14 +93,14 @@ All UI code must use the design system. Never write magic-number spacing, hardco
 
 | Resource | Rule |
 |----------|------|
-| Spacing | Use `CassetteSpacing.*` (`l` = 16, `xxl` = 24, etc.) — never a raw `CGFloat` literal |
-| Corner radii | Use `CassetteCornerRadius.*` — never `RoundedRectangle(cornerRadius: 8)` with a bare number |
-| Typography | Use `Font` extensions from `CassetteTypography.swift` (`.cassetteCellTitle`, `.cassetteCaption`, etc.) |
+| Spacing | Use `MinidiscSpacing.*` (`l` = 16, `xxl` = 24, etc.) — never a raw `CGFloat` literal |
+| Corner radii | Use `MinidiscCornerRadius.*` — never `RoundedRectangle(cornerRadius: 8)` with a bare number |
+| Typography | Use `Font` extensions from `MinidiscTypography.swift` (`.minidiscCellTitle`, `.minidiscCaption`, etc.) |
 | Cover art | Use `CoverArtCard` — never `CoverArtView + .clipShape + .shadow` inline |
-| Colors | Semantic SwiftUI colors for text/background; `cassetteAccent` only on primary interactive elements |
+| Colors | Semantic SwiftUI colors for text/background; `minidiscAccent` only on primary interactive elements |
 | Empty/error states | Use `EmptyStateView` — never `ContentUnavailableView` |
 
-See `Cassette/DesignSystem/README.md` for the full component catalogue, token reference, and rules for adding new components or colors.
+See `Minidisc/DesignSystem/README.md` for the full component catalogue, token reference, and rules for adding new components or colors.
 
 ### Keychain policy
 
@@ -128,7 +128,7 @@ Run the following commands and inspect the filtered output — it must be empty:
 
 ```sh
 # iOS (required)
-xcodebuild -scheme Cassette \
+xcodebuild -scheme Minidisc \
   -destination 'generic/platform=iOS Simulator' \
   clean build 2>&1 \
   | grep -E "warning:|error:" \
@@ -138,15 +138,15 @@ xcodebuild -scheme Cassette \
 # Test target (required) — the app-only gate let the test target rot unseen.
 # CLEAN on purpose: incremental builds only re-emit diagnostics for recompiled
 # files and have repeatedly hidden real warnings. Two quirks force this shape:
-# the CassetteTests scheme has no buildables for the `clean` action (any
+# the MinidiscTests scheme has no buildables for the `clean` action (any
 # invocation containing `clean` fails with "no destinations"), hence the Build
 # dir wipe; and build-for-testing rejects generic destinations, hence the
 # simctl-derived simulator id.
-rm -rf ~/Library/Developer/Xcode/DerivedData/Cassette-*/Build
+rm -rf ~/Library/Developer/Xcode/DerivedData/Minidisc-*/Build
 UDID=$(xcrun simctl list devices available \
   | grep -m1 "iPhone" \
   | grep -oE "[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}")
-xcodebuild -scheme CassetteTests \
+xcodebuild -scheme MinidiscTests \
   -destination "platform=iOS Simulator,id=$UDID" \
   build-for-testing 2>&1 \
   | grep -E "warning:|error:" \
@@ -177,7 +177,7 @@ warning: Metadata extraction skipped. No AppIntents.framework dependency found.
 | **Source** | Xcode build system — `appintentsmetadataprocessor` runs on every project |
 | **Cause** | The processor is injected by Xcode regardless of whether the project uses AppIntents. It emits this warning when `AppIntents.framework` is absent from the dependency graph. |
 | **Action** | Suppressed by the `-v "appintentsmetadataprocessor"` filter in the quality-gate commands above. No code change possible without adding the AppIntents dependency. |
-| **Revisit** | If Cassette adopts App Intents (Siri shortcuts, Spotlight actions) in a future version — integrate AppIntents properly and remove this entry. |
+| **Revisit** | If Minidisc adopts App Intents (Siri shortcuts, Spotlight actions) in a future version — integrate AppIntents properly and remove this entry. |
 
 ---
 
@@ -188,7 +188,7 @@ By contributing code to this repository, you agree that your contributions will 
 All new Swift files must include the MPL-2.0 header at the top of the file:
 
 ```swift
-// Cassette — Music client for Subsonic/OpenSubsonic servers
+// Minidisc — Music client for Subsonic/OpenSubsonic servers
 // Copyright (C) 2026 Mathieu Dubart
 // Licensed under the Mozilla Public License 2.0.
 // See LICENSE file in the project root for full license information.

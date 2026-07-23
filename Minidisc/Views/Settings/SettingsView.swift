@@ -65,6 +65,7 @@ struct SettingsView: View {
             CacheSectionView()
             DownloadsSectionView(vm: downloadsVM)
             integrationsSection()
+            advancedSection()
             aboutSection()
         }
         .formStyle(.grouped)
@@ -107,14 +108,28 @@ struct SettingsView: View {
         Section {
             if let stream = container?.streamSettings {
                 Picker(selection: Binding(
-                    get: { stream.quality },
-                    set: { stream.quality = $0 }
+                    get: { stream.wifiQuality },
+                    set: { stream.wifiQuality = $0 }
                 )) {
                     ForEach(StreamQuality.allCases) { quality in
                         Text(quality.displayName).tag(quality)
                     }
                 } label: {
-                    Label("Streaming Quality", systemImage: "dot.radiowaves.up.forward")
+                    Label("Quality on Wi-Fi", systemImage: "wifi")
+                        .foregroundStyle(.primary)
+                }
+                .pickerStyle(.menu)
+                .tint(.secondary)
+
+                Picker(selection: Binding(
+                    get: { stream.cellularQuality },
+                    set: { stream.cellularQuality = $0 }
+                )) {
+                    ForEach(StreamQuality.allCases) { quality in
+                        Text(quality.displayName).tag(quality)
+                    }
+                } label: {
+                    Label("Quality on cellular", systemImage: "antenna.radiowaves.left.and.right")
                         .foregroundStyle(.primary)
                 }
                 .pickerStyle(.menu)
@@ -123,7 +138,31 @@ struct SettingsView: View {
         } header: {
             Text("Streaming")
         } footer: {
-            Text("Original streams your files untouched — lossless when the source is. A transcoded option lowers on-device decoding cost, which helps if playback occasionally crackles under load. Applies to the next track.")
+            Text("The server transcodes to the chosen tier for each network. Original streams your files untouched (lossless); a lighter tier saves cellular data and lowers decoding load. Applies to the next track.")
+        }
+    }
+
+    private func advancedSection() -> some View {
+        Section {
+            if let settings = container?.playbackEngineSettings {
+                Picker(selection: Binding(
+                    get: { settings.engine },
+                    set: { settings.engine = $0 }
+                )) {
+                    ForEach(PlaybackEngine.allCases) { engine in
+                        Text(engine.displayName).tag(engine)
+                    }
+                } label: {
+                    Label("Playback engine", systemImage: "waveform")
+                        .foregroundStyle(.primary)
+                }
+                .pickerStyle(.menu)
+                .tint(.secondary)
+            }
+        } header: {
+            Text("Advanced")
+        } footer: {
+            Text("AVPlayer (System) is the default: Apple's hardware decoders give bit-perfect lossless without the software-decode crackle, with native format coverage. AudioStreaming is a software-decoding fallback. Restart the app to apply.")
         }
     }
 
@@ -139,6 +178,12 @@ struct SettingsView: View {
                 AudioMuseSettingsView()
             } label: {
                 Label("AudioMuse", systemImage: "waveform.badge.magnifyingglass")
+                    .foregroundStyle(.primary)
+            }
+            NavigationLink {
+                LidarrSettingsView()
+            } label: {
+                Label("Lidarr", systemImage: "square.and.arrow.down.on.square")
                     .foregroundStyle(.primary)
             }
             NavigationLink {

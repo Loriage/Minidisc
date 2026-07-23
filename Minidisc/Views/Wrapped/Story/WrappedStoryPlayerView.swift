@@ -5,9 +5,7 @@
 
 import SwiftUI
 import OSLog
-#if os(iOS)
 import UIKit
-#endif
 
 /// Full-screen annual Wrapped story player.
 ///
@@ -42,11 +40,9 @@ struct WrappedStoryPlayerView: View {
     @State private var longPressTask: Task<Void, Never>? = nil
     @State private var wrappedData: WrappedData? = nil
 
-    #if os(iOS)
     @State private var renderedImage: UIImage? = nil
     @State private var showShareSheet = false
     @State private var isRendering = false
-    #endif
 
     private var palette: [Color] { WrappedYearPalette.colors(for: year) }
 
@@ -64,25 +60,19 @@ struct WrappedStoryPlayerView: View {
 
             overlayControls
 
-            #if os(iOS)
             if slides[currentIndex] == .closing, let data = wrappedData {
                 closingShareOverlay(data: data)
             }
-            #endif
         }
-        #if os(iOS)
         .statusBarHidden(true)
-        #endif
         .persistentSystemOverlays(.hidden)
         .onAppear { startTimer() }
         .onDisappear { timerTask?.cancel() }
         .task { await loadWrappedData() }
-        #if os(iOS)
         .sheet(isPresented: $showShareSheet) {
             if let image = renderedImage { ShareSheet(items: [image]) }
         }
         .onChange(of: showShareSheet) { _, presented in isPaused = presented }
-        #endif
     }
 
     private func loadWrappedData() async {
@@ -271,7 +261,6 @@ struct WrappedStoryPlayerView: View {
 
     // MARK: - Share (iOS only)
 
-    #if os(iOS)
     private func closingShareOverlay(data: WrappedData) -> some View {
         VStack {
             Spacer()
@@ -311,12 +300,10 @@ struct WrappedStoryPlayerView: View {
         isRendering = false
         if renderedImage != nil { showShareSheet = true }
     }
-    #endif
 }
 
 // MARK: - UIActivityViewController wrapper
 
-#if os(iOS)
 private struct ShareSheet: UIViewControllerRepresentable {
     let items: [Any]
 
@@ -326,4 +313,3 @@ private struct ShareSheet: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
-#endif

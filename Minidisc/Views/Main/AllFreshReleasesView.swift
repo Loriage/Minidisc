@@ -16,11 +16,7 @@ struct AllFreshReleasesView: View {
     @Environment(\.appContainer) private var container
     let vm: AllFreshReleasesViewModel
 
-    #if os(iOS)
     @Namespace private var releaseZoomNamespace
-    #else
-    @State private var selectedRelease: AlbumRecommendation?
-    #endif
 
     private static let monthFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -29,12 +25,6 @@ struct AllFreshReleasesView: View {
         f.timeZone = .current
         return f
     }()
-
-    #if os(macOS)
-    private var gridColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: 130))]
-    }
-    #endif
 
     var body: some View {
         Group {
@@ -52,7 +42,6 @@ struct AllFreshReleasesView: View {
             }
         }
         .navigationTitle("Fresh Releases")
-        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: AlbumRecommendation.self) { release in
             FreshReleaseDetailView(
@@ -64,21 +53,6 @@ struct AllFreshReleasesView: View {
                 in: releaseZoomNamespace
             )
         }
-        #else
-        .sheet(isPresented: Binding(
-            get: { selectedRelease != nil },
-            set: { if !$0 { selectedRelease = nil } }
-        )) {
-            if let release = selectedRelease {
-                NavigationStack {
-                    FreshReleaseDetailView(
-                        release: release,
-                        providers: container?.externalProvidersStore.load() ?? []
-                    )
-                }
-            }
-        }
-        #endif
         .task { await vm.loadReleases() }
     }
 
@@ -86,7 +60,6 @@ struct AllFreshReleasesView: View {
 
     @ViewBuilder
     private var scrollContent: some View {
-        #if os(iOS)
         List {
             ForEach(vm.groupedReleases, id: \.month) { section in
                 Section(Self.monthFormatter.string(from: section.month)) {
@@ -104,45 +77,10 @@ struct AllFreshReleasesView: View {
         }
         .listStyle(.plain)
         .refreshable { await vm.loadReleases() }
-        #else
-        let sv = ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
-                ForEach(vm.groupedReleases, id: \.month) { section in
-                    Section {
-                        LazyVGrid(columns: gridColumns, spacing: MinidiscSpacing.m) {
-                            ForEach(Array(section.items.enumerated()), id: \.offset) { _, release in
-                                FreshReleaseAlbumCell(release: release, onTap: { selectedRelease = release })
-                            }
-                        }
-                        .padding(.horizontal, MinidiscSpacing.m)
-                        .padding(.bottom, MinidiscSpacing.l)
-                    } header: {
-                        Text(Self.monthFormatter.string(from: section.month))
-                            .font(.title3.bold())
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, MinidiscSpacing.m)
-                            .padding(.vertical, MinidiscSpacing.xs)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(.regularMaterial)
-                    }
-                }
-            }
-        }
-        // .hiddenTitleBar + fullSizeContentView gives the detail column a top safe-area
-        // equal to the toolbar height. With titlebarAppearsTransparent = true the toolbar
-        // is invisible, but pinned section headers still stick at the safe-area boundary
-        // (bottom of the invisible toolbar) rather than at the true window top.
-        // ignoresSafeArea(.container, edges: .top) extends the scroll view frame to y = 0
-        // so pinned headers pin at the actual visible top of the detail column.
-        sv
-            .ignoresSafeArea(.container, edges: .top)
-            .scrollEdgeEffectHidden(true, for: .top)
-        #endif
     }
 
     // MARK: - iOS row
 
-    #if os(iOS)
     private struct FreshReleaseRow: View {
         let release: AlbumRecommendation
         var zoomSourceId: String? = nil
@@ -187,5 +125,4 @@ struct AllFreshReleasesView: View {
             }
         }
     }
-    #endif
 }

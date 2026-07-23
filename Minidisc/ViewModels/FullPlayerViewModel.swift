@@ -41,7 +41,7 @@ final class FullPlayerViewModel {
                 isLightBackground = cachedColor.luminance > 0.6
             }
         }
-        // Then load the cover image — needed to extract the colour when it isn't cached, and (macOS only) for the
+        // Then load the cover image — needed to extract the colour when it isn't cached, for the
         // blurred wash. The iOS melt reads CoverArtView(id:) from the shared cache, not this image.
         let url: URL?
         if let localURL = await container?.downloadService.localCoverArtURL(forId: coverArtId) {
@@ -59,9 +59,6 @@ final class FullPlayerViewModel {
         guard let processed else { return }
         let color = cachedColor ?? colorExtractor.storeColor(packed: processed.packed, for: coverArtId)
         withAnimation(.easeInOut(duration: 0.4)) {
-            #if os(macOS)
-            coverImage = processed.image
-            #endif
             dominantColor = color
             isLightBackground = color.luminance > 0.6
         }

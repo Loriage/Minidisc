@@ -28,13 +28,6 @@ struct ListenBrainzSettingsView: View {
             }
         }
         .navigationTitle("ListenBrainz")
-        #if os(macOS)
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Close") { dismiss() }
-            }
-        }
-        #endif
         .task {
             guard let container else { return }
             if viewModel == nil {
@@ -82,10 +75,8 @@ struct ListenBrainzSettingsView: View {
         return Section {
             TextField("Username", text: $vm.usernameInput)
                 .autocorrectionDisabled()
-                #if os(iOS)
                 .textInputAutocapitalization(.never)
                 .keyboardType(.asciiCapable)
-                #endif
                 .onChange(of: vm.usernameInput) { _, _ in
                     vm.validateUsernameInputLocally()
                 }
@@ -246,16 +237,12 @@ struct ListenBrainzSettingsView: View {
         return Section {
             SecureField("User token", text: $vm.tokenInput)
                 .autocorrectionDisabled()
-                #if os(iOS)
                 .textContentType(.password)
-                #endif
 
             TextField("Server URL", text: $vm.serverURLInput)
                 .autocorrectionDisabled()
-                #if os(iOS)
                 .textInputAutocapitalization(.never)
                 .keyboardType(.URL)
-                #endif
 
             Button {
                 Task { await vm.validateScrobblingToken() }

@@ -4,9 +4,7 @@
 // See LICENSE file in the project root for full license information.
 
 import SwiftUI
-#if os(iOS)
 import UIKit
-#endif
 
 struct OnboardingWelcomeView: View {
     let onServerConnected: () -> Void
@@ -98,9 +96,7 @@ struct OnboardingWelcomeView: View {
     }
 
     private func triggerHaptic() {
-        #if os(iOS)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        #endif
     }
 }
 

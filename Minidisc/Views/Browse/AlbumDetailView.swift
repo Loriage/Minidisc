@@ -97,11 +97,7 @@ struct AlbumDetailView: View {
     private var theme: PlaylistTheme { PlaylistTheme(dominantColor: dominantColor) }
     private var bodyColor: Color { theme.isThemed ? theme.dominantColor : systemBackgroundColor }
     private var systemBackgroundColor: Color {
-        #if canImport(UIKit)
         Color(UIColor.systemBackground)
-        #else
-        Color(NSColor.windowBackgroundColor)
-        #endif
     }
 
     private var effectiveInitialImage: PlatformImage? {
@@ -240,9 +236,7 @@ struct AlbumDetailView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayModeInline()
         .navigationBarBackButtonHidden(true)
-        #if os(iOS)
         .enableSwipeBack()
-        #endif
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button {
@@ -276,23 +270,26 @@ struct AlbumDetailView: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    Button("Instant Mix", systemImage: instantMixSymbol) {
-                        HapticFeedback.medium.trigger()
-                        startInstantMix(from: .album(id: albumId), using: container)
-                    }
-                    .disabled(displaySongs().isEmpty || !isOnline)
-                    Divider()
-                    // A ColorPicker cannot live inside a Menu — menu content is limited to buttons and
-                    // pickers — so the swatch moves to a sheet. Which is the better home anyway: "Reset to
-                    // cover colour" used to hide in a contextMenu on a toolbar item, where nobody long-presses.
-                    Button("Theme colour", systemImage: "paintpalette") {
-                        showThemeColorSheet = true
-                    }
-                    if colorExtractor.colorOverride(for: albumCoverId) != nil {
-                        Button("Reset to cover colour", systemImage: "arrow.uturn.backward") {
-                            resetThemeColor()
+                    Group {
+                        Button("Instant Mix", systemImage: instantMixSymbol) {
+                            HapticFeedback.medium.trigger()
+                            startInstantMix(from: .album(id: albumId), using: container)
+                        }
+                        .disabled(displaySongs().isEmpty || !isOnline)
+                        Divider()
+                        // A ColorPicker cannot live inside a Menu — menu content is limited to buttons and
+                        // pickers — so the swatch moves to a sheet. Which is the better home anyway: "Reset to
+                        // cover colour" used to hide in a contextMenu on a toolbar item, where nobody long-presses.
+                        Button("Theme colour", systemImage: "paintpalette") {
+                            showThemeColorSheet = true
+                        }
+                        if colorExtractor.colorOverride(for: albumCoverId) != nil {
+                            Button("Reset to cover colour", systemImage: "arrow.uturn.backward") {
+                                resetThemeColor()
+                            }
                         }
                     }
+                    .tint(.primary)
                 } label: {
                     Image(systemName: "ellipsis")
                         .foregroundStyle(headerTextColor)
@@ -315,10 +312,8 @@ struct AlbumDetailView: View {
                 onReset: resetThemeColor
             )
         }
-        #if os(iOS)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(theme.isThemed ? (theme.isLight ? .light : .dark) : nil, for: .navigationBar)
-        #endif
         // Keyed on connectivity so the list re-loads from the right source when
         // NWPathMonitor flips isOnline — same pattern as AlbumDetailMacOS and
         // PlaylistDetailView.
@@ -622,13 +617,6 @@ struct AlbumSongRows: View {
             let isDownloading = downloadingIds.contains(song.id)
             let downloadAction: (() -> Void)? = (liveDownloaded || isDownloading) ? nil : onDownload.map { action in { action(song.id) } }
             let removeAction: (() -> Void)? = liveDownloaded ? onRemoveDownload.map { action in { action(song.id) } } : nil
-            #if os(macOS)
-            SongRow(song: liveSong, index: index + 1, isFavorite: favoriteSongIds.contains("song:\(song.id)"), titleColor: titleColor, secondaryColor: secondaryColor, onDownload: downloadAction, onRemoveDownload: removeAction, isDownloading: isDownloading, onAddToPlaylist: onAddToPlaylist)
-                .padding(.horizontal, MinidiscSpacing.l)
-                .onTapGesture { onTap(index) }
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-            #else
             VStack(spacing: 0) {
                 SongRow(song: liveSong, index: index + 1, isFavorite: favoriteSongIds.contains("song:\(song.id)"), titleColor: titleColor, secondaryColor: secondaryColor, onDownload: downloadAction, onRemoveDownload: removeAction, isDownloading: isDownloading, onAddToPlaylist: onAddToPlaylist)
                     .padding(.horizontal, MinidiscSpacing.l)
@@ -638,11 +626,9 @@ struct AlbumSongRows: View {
                         .padding(.leading, MinidiscSpacing.l)
                 }
             }
-            #endif
         }
     }
 }
-
 
 // MARK: - Theme colour sheet
 

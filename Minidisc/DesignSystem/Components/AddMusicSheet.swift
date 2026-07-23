@@ -73,7 +73,7 @@ enum AddMusicSongSource: Hashable {
 
 // MARK: - Sheet root
 
-/// Apple-Music-style "Add to <playlist>" browse + multi-select sheet. Cross-platform (iOS + macOS). Reuses
+/// Apple-Music-style "Add to <playlist>" browse + multi-select sheet. Reuses
 /// the Home "Library" navigation layout (Playlists / Albums / Artists / Favorites / Downloads / Recently
 /// added) + Recently played, in a SELECTION mode: drill to songs, tap `+` to add, commit adds them all at
 /// once. Browse only — no create/edit playlist here. The actual commit (atomic full-list replace + first-track
@@ -620,7 +620,7 @@ private struct AddMusicPhaseView: View {
 // MARK: - Commit (atomic replace + R1 comment guard + first-track derivation)
 
 /// Commits an add-music selection through the SINGLE shared path used by every entry point (iOS edit "+",
-/// iOS detail, macOS): ONE atomic full-list replace (current tracks + new selection), the R1 comment guard
+/// detail view): ONE atomic full-list replace (current tracks + new selection), the R1 comment guard
 /// (re-assert a non-empty comment AFTER the replace), and — the critical bit — the empty→first-track color
 /// derivation. When the playlist went from empty to its first track on a gradient cover whose color was still
 /// the neutral default, the color is derived from the first added track via the SAME `PlaylistGradientResolver`

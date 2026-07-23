@@ -54,6 +54,8 @@ final class AppContainer {
     let replayGainSettings = ReplayGainSettings()
     let crossfadeSettings = CrossfadeSettings()
     let streamSettings = StreamSettings()
+    let playbackEngineSettings = PlaybackEngineSettings()
+    let lidarrSettings: LidarrSettings
 
     init(inMemory: Bool = false) throws {
         modelContainer = try ModelContainer.minidisc(inMemory: inMemory)
@@ -61,6 +63,7 @@ final class AppContainer {
 
         let keychain = KeychainService()
         keychainService = keychain
+        lidarrSettings = LidarrSettings(keychain: keychain)
 
         let cache = AudioStreamCache(modelContainer: modelContainer, maxTracks: cacheSettings.maxTracks)
         audioStreamCache = cache
@@ -113,7 +116,13 @@ final class AppContainer {
         let lb = ListenBrainzService(client: lbClient, keychain: keychain)
         listenBrainzService = lb
 
-        let player = PlayerService(state: playerState, mediaResolver: resolver, serverService: server, sessionService: sessionService, artworkImageCache: artworkImageCache, libraryService: library, audioStreamCache: cache, downloadService: download, cacheSettings: cacheSettings, replayGainSettings: replayGainSettings, crossfadeSettings: crossfadeSettings, toastService: toastService, statsService: stats, listenBrainzService: lb)
+        // Pick the low-level engine from the user's setting (default AudioStreaming). Changing it
+        // takes effect on the next launch, since the engine is fixed for the PlayerService lifetime.
+        let audioEngine: AudioEngine = switch playbackEngineSettings.engine {
+        case .audioStreaming: AudioStreamingEngine()
+        case .avPlayer:       AVPlayerEngine()
+        }
+        let player = PlayerService(state: playerState, mediaResolver: resolver, serverService: server, sessionService: sessionService, artworkImageCache: artworkImageCache, libraryService: library, audioStreamCache: cache, downloadService: download, cacheSettings: cacheSettings, replayGainSettings: replayGainSettings, crossfadeSettings: crossfadeSettings, toastService: toastService, statsService: stats, listenBrainzService: lb, engine: audioEngine)
         _player = player
         playerService = player
 
@@ -135,6 +144,7 @@ final class AppContainer {
         searchHistoryService = SearchHistoryService(container: modelContainer)
 
         Task { await listenBrainzService.loadPersistedState() }
+        Task { await lidarrSettings.loadPersistedState() }
         Task { await externalArtworkCache.runGarbageCollection() }
     }
 

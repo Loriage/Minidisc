@@ -20,17 +20,10 @@ struct WrappedYearCard: View {
         Group {
             if let pid = playlistId {
                 NavigationLink {
-                    #if os(macOS)
-                    PlaylistDetailMacOS(
-                        playlistId: pid,
-                        name: "Minidisc Wrapped \(yearString)"
-                    )
-                    #else
                     PlaylistDetailView(
                         playlistId: pid,
                         name: "Minidisc Wrapped \(yearString)"
                     )
-                    #endif
                 } label: {
                     cardContent
                 }

@@ -53,6 +53,9 @@
         }
       }
     },
+    "—" : {
+
+    },
     "·" : {
       "localizations" : {
         "de" : {
@@ -215,6 +218,9 @@
         }
       }
     },
+    "(%lld)" : {
+
+    },
     "#%lld" : {
       "localizations" : {
         "de" : {
@@ -263,6 +269,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "#%lld"
+          }
+        }
+      }
+    },
+    "%@ — %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ — %2$@"
           }
         }
       }
@@ -429,6 +445,9 @@
           }
         }
       }
+    },
+    "%@ tracks" : {
+
     },
     "%lld" : {
       "localizations" : {
@@ -611,6 +630,9 @@
           }
         }
       }
+    },
+    "%lld files will be imported." : {
+
     },
     "%lld hours %lld minutes listened" : {
       "localizations" : {
@@ -1743,6 +1765,15 @@
         }
       }
     },
+    "1 album" : {
+
+    },
+    "1 file will be imported." : {
+
+    },
+    "1 track" : {
+
+    },
     "A client configuration error prevented connecting." : {
       "localizations" : {
         "de" : {
@@ -1898,6 +1929,9 @@
           }
         }
       }
+    },
+    "A reverse proxy is blocking the request." : {
+
     },
     "About" : {
       "localizations" : {
@@ -2057,6 +2091,12 @@
           }
         }
       }
+    },
+    "Activity" : {
+
+    },
+    "Add" : {
+
     },
     "Add a custom search provider to open releases in your service of choice. Without a provider, releases fall back to ListenBrainz." : {
       "localizations" : {
@@ -2318,6 +2358,9 @@
           }
         }
       }
+    },
+    "Add Artist" : {
+
     },
     "Add Cover Art" : {
       "localizations" : {
@@ -2736,6 +2779,9 @@
         }
       }
     },
+    "Add to Lidarr" : {
+
+    },
     "Add to Playlist" : {
       "localizations" : {
         "de" : {
@@ -2944,6 +2990,12 @@
           }
         }
       }
+    },
+    "Added to Lidarr" : {
+
+    },
+    "Advanced" : {
+
     },
     "album" : {
       "extractionState" : "manual",
@@ -3311,6 +3363,12 @@
         }
       }
     },
+    "All Indexers" : {
+
+    },
+    "All Qualities" : {
+
+    },
     "Allow caching when not on Wi‑Fi" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3467,6 +3525,9 @@
           }
         }
       }
+    },
+    "API key" : {
+
     },
     "API token (optional)" : {
       "localizations" : {
@@ -3678,6 +3739,9 @@
         }
       }
     },
+    "Approved only" : {
+
+    },
     "artist" : {
       "localizations" : {
         "de" : {
@@ -3782,6 +3846,9 @@
           }
         }
       }
+    },
+    "Artist name" : {
+
     },
     "artists" : {
       "localizations" : {
@@ -3991,6 +4058,9 @@
           }
         }
       }
+    },
+    "Assign to Album" : {
+
     },
     "AudioMuse" : {
       "localizations" : {
@@ -4459,6 +4529,9 @@
           }
         }
       }
+    },
+    "AVPlayer (System) is the default: Apple's hardware decoders give bit-perfect lossless without the software-decode crackle, with native format coverage. AudioStreaming is a software-decoding fallback. Restart the app to apply." : {
+
     },
     "Awards" : {
       "extractionState" : "stale",
@@ -5611,6 +5684,9 @@
         }
       }
     },
+    "Clear Filters" : {
+
+    },
     "Clear search history?" : {
       "localizations" : {
         "de" : {
@@ -5716,7 +5792,6 @@
       }
     },
     "Close" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5975,6 +6050,9 @@
           }
         }
       }
+    },
+    "Connect Lidarr in Settings to add artists." : {
+
     },
     "Connect ListenBrainz in Settings to discover fresh releases based on your listening history." : {
       "localizations" : {
@@ -6496,6 +6574,9 @@
           }
         }
       }
+    },
+    "Connected." : {
+
     },
     "Connecting…" : {
       "localizations" : {
@@ -7073,6 +7154,15 @@
         }
       }
     },
+    "Couldn't Load Files" : {
+
+    },
+    "Couldn't Load Lidarr" : {
+
+    },
+    "Couldn't Load Queue" : {
+
+    },
     "Couldn't play this track." : {
       "localizations" : {
         "de" : {
@@ -7177,6 +7267,15 @@
         }
       }
     },
+    "Couldn't refresh." : {
+
+    },
+    "Couldn't remove the artist." : {
+
+    },
+    "Couldn't remove the download." : {
+
+    },
     "Couldn't start Instant Mix." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7230,6 +7329,12 @@
         }
       }
     },
+    "Couldn't start the import." : {
+
+    },
+    "Couldn't start the search." : {
+
+    },
     "Couldn't sync with your server." : {
       "localizations" : {
         "de" : {
@@ -7281,6 +7386,9 @@
           }
         }
       }
+    },
+    "Couldn't update monitoring." : {
+
     },
     "Cover Art" : {
       "localizations" : {
@@ -8795,6 +8903,9 @@
         }
       }
     },
+    "Disconnect Lidarr?" : {
+
+    },
     "Discover" : {
       "localizations" : {
         "de" : {
@@ -9475,6 +9586,9 @@
         }
       }
     },
+    "Downloaded" : {
+
+    },
     "Downloaded Albums" : {
       "localizations" : {
         "de" : {
@@ -9682,6 +9796,9 @@
           }
         }
       }
+    },
+    "Downloading" : {
+
     },
     "Downloading %lld/%lld tracks" : {
       "localizations" : {
@@ -10313,6 +10430,9 @@
         }
       }
     },
+    "Evens out the volume between tracks. Track mode levels each song on its own, and Album mode keeps an album's dynamics." : {
+
+    },
     "Example: %@" : {
       "localizations" : {
         "de" : {
@@ -10364,6 +10484,12 @@
           }
         }
       }
+    },
+    "Fades one track into the next over the set time. Set Off for no fade. The toggle keeps gapless albums and live mixes seamless." : {
+
+    },
+    "Failed" : {
+
     },
     "Failed to add to %@" : {
       "localizations" : {
@@ -10943,6 +11069,12 @@
         }
       }
     },
+    "Filter releases" : {
+
+    },
+    "Find an Artist" : {
+
+    },
     "Find in library" : {
       "localizations" : {
         "de" : {
@@ -11046,6 +11178,9 @@
           }
         }
       }
+    },
+    "Find the API key in Lidarr under Settings, then General." : {
+
     },
     "Find your user token at listenbrainz.org → Profile → Music Services & API." : {
       "localizations" : {
@@ -11516,6 +11651,9 @@
         }
       }
     },
+    "FreeLeech only" : {
+
+    },
     "Fresh Releases" : {
       "localizations" : {
         "de" : {
@@ -11881,6 +12019,12 @@
           }
         }
       }
+    },
+    "Grab" : {
+
+    },
+    "Grab Release" : {
+
     },
     "Grid view" : {
       "localizations" : {
@@ -12454,6 +12598,21 @@
         }
       }
     },
+    "Import" : {
+
+    },
+    "Import blocked" : {
+
+    },
+    "Import pending" : {
+
+    },
+    "Import started in Lidarr" : {
+
+    },
+    "Importing" : {
+
+    },
     "Incorrect username or password." : {
       "localizations" : {
         "de" : {
@@ -12506,6 +12665,12 @@
         }
       }
     },
+    "Indexer" : {
+
+    },
+    "Information" : {
+
+    },
     "Insecure Redirect" : {
       "localizations" : {
         "de" : {
@@ -12557,6 +12722,9 @@
           }
         }
       }
+    },
+    "Instance" : {
+
     },
     "Instant Mix" : {
       "localizations" : {
@@ -12661,6 +12829,9 @@
           }
         }
       }
+    },
+    "Interactive" : {
+
     },
     "Internet Radio" : {
       "localizations" : {
@@ -13288,6 +13459,9 @@
         }
       }
     },
+    "Learn about Lidarr →" : {
+
+    },
     "Leave the token empty if your AudioMuse instance runs without authentication." : {
       "localizations" : {
         "de" : {
@@ -13495,6 +13669,33 @@
           }
         }
       }
+    },
+    "Lidarr" : {
+
+    },
+    "Lidarr could not match this release to an artist and album, so it may not import on its own. Grab it anyway?" : {
+
+    },
+    "Lidarr could not parse this release. Choose the album it belongs to." : {
+
+    },
+    "Lidarr found no files to import for this download." : {
+
+    },
+    "Lidarr is not connected." : {
+
+    },
+    "Lidarr manages your music collection and downloads new releases for you. Connect it to check its status from Minidisc." : {
+
+    },
+    "Lidarr Not Connected" : {
+
+    },
+    "Lidarr rejected this release." : {
+
+    },
+    "Lidarr stops managing this artist. The downloaded files are kept." : {
+
     },
     "Liked Songs" : {
       "localizations" : {
@@ -14383,6 +14584,9 @@
         }
       }
     },
+    "Manual Import" : {
+
+    },
     "Matching" : {
       "localizations" : {
         "de" : {
@@ -14591,6 +14795,9 @@
         }
       }
     },
+    "Metadata Profile" : {
+
+    },
     "Mini Player" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -14695,6 +14902,9 @@
           }
         }
       }
+    },
+    "Minidisc forgets the address and the API key. Your Lidarr instance is not changed." : {
+
     },
     "Minidisc is free, forever." : {
       "extractionState" : "stale",
@@ -15010,6 +15220,9 @@
         }
       }
     },
+    "Missing" : {
+
+    },
     "MIT License" : {
       "localizations" : {
         "de" : {
@@ -15219,6 +15432,12 @@
           }
         }
       }
+    },
+    "Monitor" : {
+
+    },
+    "Monitored" : {
+
     },
     "Monthly and annual breakdowns" : {
       "localizations" : {
@@ -16057,6 +16276,9 @@
         }
       }
     },
+    "No albums." : {
+
+    },
     "No artist data for this period." : {
       "localizations" : {
         "de" : {
@@ -16161,6 +16383,9 @@
         }
       }
     },
+    "No artist matched your search." : {
+
+    },
     "No Artists" : {
       "localizations" : {
         "de" : {
@@ -16212,6 +16437,9 @@
           }
         }
       }
+    },
+    "No Artists Yet" : {
+
     },
     "No downloaded albums available. Download albums while online to listen offline." : {
       "localizations" : {
@@ -16525,6 +16753,9 @@
         }
       }
     },
+    "No downloads are in progress." : {
+
+    },
     "No downloads yet" : {
       "localizations" : {
         "de" : {
@@ -16628,6 +16859,9 @@
           }
         }
       }
+    },
+    "No Files" : {
+
     },
     "No frequent plays yet — your top tracks will appear here." : {
       "localizations" : {
@@ -17515,6 +17749,12 @@
         }
       }
     },
+    "No release matched this album." : {
+
+    },
+    "No Releases" : {
+
+    },
     "No results" : {
       "localizations" : {
         "de" : {
@@ -17566,6 +17806,9 @@
           }
         }
       }
+    },
+    "No Results" : {
+
     },
     "No Server" : {
       "localizations" : {
@@ -18088,6 +18331,9 @@
         }
       }
     },
+    "No tracks." : {
+
+    },
     "No Wrapped playlists yet." : {
       "localizations" : {
         "de" : {
@@ -18347,6 +18593,9 @@
           }
         }
       }
+    },
+    "Not monitored" : {
+
     },
     "Not yet" : {
       "localizations" : {
@@ -18870,6 +19119,9 @@
         }
       }
     },
+    "Open in MusicBrainz" : {
+
+    },
     "Open Releases In" : {
       "localizations" : {
         "de" : {
@@ -19033,7 +19285,10 @@
         }
       }
     },
-    "Original streams your files untouched — lossless when the source is. A transcoded option lowers on-device decoding cost, which helps if playback occasionally crackles under load. Applies to the next track." : {
+    "Optional headers sent with every request. Use them if Lidarr is behind a reverse proxy, for example Cloudflare Access or Authelia." : {
+
+    },
+    "Original only" : {
 
     },
     "Overrides the colour taken from the cover, here and anywhere else this album appears." : {
@@ -19870,6 +20125,9 @@
         }
       }
     },
+    "Playback engine" : {
+
+    },
     "Playback failed. Please try again." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -20654,6 +20912,18 @@
         }
       }
     },
+    "Quality" : {
+
+    },
+    "Quality on cellular" : {
+
+    },
+    "Quality on Wi-Fi" : {
+
+    },
+    "Quality Profile" : {
+
+    },
     "Queue" : {
       "localizations" : {
         "de" : {
@@ -20706,6 +20976,9 @@
         }
       }
     },
+    "Queue Empty" : {
+
+    },
     "Queue is empty" : {
       "localizations" : {
         "de" : {
@@ -20757,6 +21030,9 @@
           }
         }
       }
+    },
+    "Queued" : {
+
     },
     "Radio" : {
       "localizations" : {
@@ -21226,6 +21502,15 @@
         }
       }
     },
+    "Refresh" : {
+
+    },
+    "Refresh started in Lidarr" : {
+
+    },
+    "Release Rejected" : {
+
+    },
     "Releases open in ListenBrainz by default." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -21330,6 +21615,9 @@
           }
         }
       }
+    },
+    "Remove %@?" : {
+
     },
     "Remove %lld" : {
       "localizations" : {
@@ -21877,6 +22165,12 @@
         }
       }
     },
+    "Removed from Lidarr" : {
+
+    },
+    "Removed from queue" : {
+
+    },
     "Reorder" : {
       "localizations" : {
         "de" : {
@@ -22296,6 +22590,9 @@
         }
       }
     },
+    "Root Folder" : {
+
+    },
     "Save" : {
       "localizations" : {
         "de" : {
@@ -22504,6 +22801,24 @@
         }
       }
     },
+    "Search Album" : {
+
+    },
+    "Search Failed" : {
+
+    },
+    "Search for missing albums" : {
+
+    },
+    "Search Lidarr to add an artist to your collection." : {
+
+    },
+    "Search Monitored" : {
+
+    },
+    "Search started in Lidarr" : {
+
+    },
     "Search Unavailable" : {
       "localizations" : {
         "de" : {
@@ -22607,6 +22922,9 @@
           }
         }
       }
+    },
+    "Searching…" : {
+
     },
     "See all" : {
       "localizations" : {
@@ -22765,6 +23083,9 @@
           }
         }
       }
+    },
+    "Sent to Lidarr" : {
+
     },
     "Server" : {
       "localizations" : {
@@ -24227,6 +24548,9 @@
         }
       }
     },
+    "Sort" : {
+
+    },
     "Sort albums: %@" : {
       "localizations" : {
         "de" : {
@@ -24650,6 +24974,9 @@
         }
       }
     },
+    "Stop monitoring" : {
+
+    },
     "Stream your library from your own server.\nNo subscriptions. No big tech." : {
       "localizations" : {
         "de" : {
@@ -24703,9 +25030,6 @@
       }
     },
     "Streaming" : {
-
-    },
-    "Streaming Quality" : {
 
     },
     "Style" : {
@@ -24968,6 +25292,9 @@
           }
         }
       }
+    },
+    "Tap + to search Lidarr and add an artist." : {
+
     },
     "Test and Update" : {
       "localizations" : {
@@ -25258,6 +25585,9 @@
         }
       }
     },
+    "The API key was rejected." : {
+
+    },
     "The API token was rejected." : {
       "localizations" : {
         "de" : {
@@ -25466,6 +25796,9 @@
         }
       }
     },
+    "The Lidarr address is not valid." : {
+
+    },
     "The mood playlists already on your server are left untouched. They will keep updating from your library tags instead." : {
       "localizations" : {
         "de" : {
@@ -25569,6 +25902,9 @@
           }
         }
       }
+    },
+    "The request was cancelled." : {
+
     },
     "The server did not respond as a Subsonic/Navidrome server. Check the URL." : {
       "localizations" : {
@@ -25725,6 +26061,9 @@
           }
         }
       }
+    },
+    "The server returned a web page, not Lidarr data. A reverse proxy is probably blocking the request. Add its headers under Custom Headers." : {
+
     },
     "The server returned an API-level error." : {
       "localizations" : {
@@ -25933,6 +26272,9 @@
           }
         }
       }
+    },
+    "The server transcodes to the chosen tier for each network. Original streams your files untouched (lossless); a lighter tier saves cellular data and lowers decoding load. Applies to the next track." : {
+
     },
     "The server's TLS certificate could not be verified. Check your server's SSL configuration." : {
       "localizations" : {
@@ -26405,6 +26747,9 @@
       }
     },
     "This app is a fork of Cassette, originally built by Mathieu Dubart. Thanks to the Navidrome team for an excellent self-hosted music server, and to the OpenSubsonic community for modernizing the Subsonic API." : {
+
+    },
+    "This artist has no albums in Lidarr." : {
 
     },
     "This artist has no albums in the library." : {
@@ -27583,6 +27928,9 @@
         }
       }
     },
+    "Torrent" : {
+
+    },
     "track" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -27793,6 +28141,9 @@
           }
         }
       }
+    },
+    "Tracks" : {
+
     },
     "Tracks to cache" : {
       "extractionState" : "stale",
@@ -29105,6 +29456,9 @@
         }
       }
     },
+    "Unknown" : {
+
+    },
     "Unknown Artist" : {
       "localizations" : {
         "de" : {
@@ -29679,6 +30033,9 @@
         }
       }
     },
+    "Usenet" : {
+
+    },
     "User token" : {
       "localizations" : {
         "de" : {
@@ -30045,7 +30402,6 @@
       }
     },
     "Version" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -30463,6 +30819,12 @@
           }
         }
       }
+    },
+    "Warning" : {
+
+    },
+    "Website" : {
+
     },
     "Without it, mood playlists still work, built from your library's genre, BPM and mood tags. The match is rougher." : {
       "localizations" : {

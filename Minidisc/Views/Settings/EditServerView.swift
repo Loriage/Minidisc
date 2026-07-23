@@ -21,24 +21,9 @@ struct EditServerView: View {
             }
         }
         .navigationTitle("Server Configuration")
-        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(viewModel.hasUnsavedChanges)
         .toolbar { toolbar }
-        #endif
-        #if os(macOS)
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Close") {
-                    if viewModel.hasUnsavedChanges {
-                        showDiscardAlert = true
-                    } else {
-                        dismiss()
-                    }
-                }
-            }
-        }
-        #endif
         .alert("Discard Changes?", isPresented: $showDiscardAlert) {
             Button("Discard", role: .destructive) { dismiss() }
             Button("Keep Editing", role: .cancel) {}
@@ -52,7 +37,6 @@ struct EditServerView: View {
 
     // MARK: - Toolbar (iOS only)
 
-    #if os(iOS)
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         if viewModel.hasUnsavedChanges {
@@ -66,7 +50,6 @@ struct EditServerView: View {
             }
         }
     }
-    #endif
 
     // MARK: - Form
 
@@ -78,9 +61,7 @@ struct EditServerView: View {
             customHeadersSection
         }
         .formStyle(.grouped)
-        #if os(iOS)
         .scrollDismissesKeyboard(.interactively)
-        #endif
         .safeAreaInset(edge: .bottom, spacing: 0) {
             saveButton
         }
@@ -117,10 +98,8 @@ struct EditServerView: View {
         Section("Server") {
             TextField("https://music.example.com", text: $viewModel.serverURL)
                 .autocorrectionDisabled()
-                #if os(iOS)
                 .textInputAutocapitalization(.never)
                 .keyboardType(.URL)
-                #endif
             invalidURLHint
             httpWarning
         }
@@ -130,9 +109,7 @@ struct EditServerView: View {
         Section("Credentials") {
             TextField("Username", text: $viewModel.username)
                 .autocorrectionDisabled()
-                #if os(iOS)
                 .textInputAutocapitalization(.never)
-                #endif
 
             HStack(spacing: 8) {
                 passwordField
@@ -154,9 +131,7 @@ struct EditServerView: View {
         if isPasswordRevealed {
             TextField("Password", text: $viewModel.password)
                 .autocorrectionDisabled()
-                #if os(iOS)
                 .textInputAutocapitalization(.never)
-                #endif
         } else {
             SecureField("Password", text: $viewModel.password)
         }

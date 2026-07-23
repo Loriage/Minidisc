@@ -7,7 +7,7 @@ import SwiftUI
 
 extension View {
     /// Shared destructive-confirmation for deleting a playlist — identical across the playlist list and the
-    /// iOS / macOS detail views (data-safety: same affordance everywhere).
+    /// detail views (data-safety: same affordance everywhere).
     ///
     /// When the playlist has downloaded files (`hasDownloads`), it offers a CHOICE — keep the local files or
     /// purge them too — mirroring the per-song "Remove from Playlist" / "Remove Download" split. Otherwise it's

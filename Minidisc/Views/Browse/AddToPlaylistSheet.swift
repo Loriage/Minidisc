@@ -17,9 +17,6 @@ struct AddToPlaylistSheet: View {
 
     var body: some View {
         Group {
-            #if os(macOS)
-            macOSContent
-            #else
             NavigationStack {
                 Group {
                     if let vm {
@@ -36,7 +33,6 @@ struct AddToPlaylistSheet: View {
                     }
                 }
             }
-            #endif
         }
         .onAppear {
             guard vm == nil,
@@ -86,29 +82,6 @@ struct AddToPlaylistSheet: View {
             Text("\"\(dup.songName)\" is already in \"\(dup.playlistName)\". Add it again?")
         }
     }
-
-    #if os(macOS)
-    private var macOSContent: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Add to Playlist")
-                    .font(.headline)
-                Spacer()
-                Button("Cancel") { dismiss() }
-            }
-            .padding()
-            Divider()
-            Group {
-                if let vm {
-                    content(vm)
-                } else {
-                    ProgressView()
-                }
-            }
-        }
-        .frame(minWidth: 400, minHeight: 380)
-    }
-    #endif
 
     @ViewBuilder
     private func content(_ vm: AddToPlaylistViewModel) -> some View {

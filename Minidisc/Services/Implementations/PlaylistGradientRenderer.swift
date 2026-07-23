@@ -15,15 +15,6 @@ enum PlaylistGradientRenderer {
         let renderer = ImageRenderer(content: view)
         renderer.scale = 1.0
 
-        #if os(iOS)
         return renderer.uiImage?.jpegData(compressionQuality: compression)
-        #elseif os(macOS)
-        guard let nsImage = renderer.nsImage,
-              let tiff = nsImage.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff) else { return nil }
-        return bitmap.representation(using: .jpeg, properties: [.compressionFactor: compression])
-        #else
-        return nil
-        #endif
     }
 }

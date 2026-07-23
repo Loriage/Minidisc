@@ -13,10 +13,8 @@ struct ServerFormView: View {
             Section("Server") {
                 TextField("https://music.example.com", text: $viewModel.serverURL)
                     .autocorrectionDisabled()
-                    #if os(iOS)
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
-                    #endif
                 invalidURLHint
                 httpWarning
             }
@@ -24,9 +22,7 @@ struct ServerFormView: View {
             Section("Credentials") {
                 TextField("Username", text: $viewModel.username)
                     .autocorrectionDisabled()
-                    #if os(iOS)
                     .textInputAutocapitalization(.never)
-                    #endif
                 SecureField("Password", text: $viewModel.password)
             }
 
@@ -53,9 +49,7 @@ struct ServerFormView: View {
             }
         }
         .navigationTitle("Add Server")
-        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
-        #endif
     }
 
     // MARK: - Error / warning helpers
@@ -129,9 +123,7 @@ struct CustomHeaderRowView: View {
             TextField("e.g. CF-Access-Client-Id", text: $key)
                 .textFieldStyle(.roundedBorder)
                 .autocorrectionDisabled()
-                #if os(iOS)
                 .textInputAutocapitalization(.never)
-                #endif
 
             Text("Value")
                 .font(.caption)
@@ -200,9 +192,7 @@ struct CustomHeaderRowView: View {
     private var valueField: some View {
         if isRevealed {
             TextField("Value", text: $value)
-                #if os(iOS)
                 .textInputAutocapitalization(.never)
-                #endif
         } else {
             SecureField("Value", text: $value)
         }

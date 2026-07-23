@@ -4,13 +4,10 @@
 // See LICENSE file in the project root for full license information.
 
 import Foundation
-import AudioStreaming
 import SwiftSonic
 import OSLog
 
-#if os(iOS)
 import AVFAudio
-#endif
 
 nonisolated enum CrossfadePhase: Sendable {
     case fadeOut
@@ -37,10 +34,10 @@ actor PlayerService: PlayerServiceProtocol {
     private let statsService: StatsService
     private let listenBrainzService: ListenBrainzService
 
-    // AudioStreaming — single instance for the session lifetime.
-    // nonisolated(unsafe): constant references; AudioPlayer has its own internal queue.
-    private nonisolated(unsafe) let audioPlayer: AudioPlayer
-    private let audioDelegate: AudioStreamingDelegate
+    // The low-level audio engine (AudioStreaming by default, injected by AppContainer). It has its own
+    // internal queue and is Sendable, so it's reachable from nonisolated contexts (e.g. termination).
+    private let engine: AudioEngine
+    private let engineBridge: AudioEngineBridge
     private var progressTask: Task<Void, Never>?
     /// Pending seek + optional pause applied once the player first reaches `.playing`.
     /// Used for session restoration and end-of-queue rewind.
@@ -50,7 +47,6 @@ actor PlayerService: PlayerServiceProtocol {
     private var liveStreamStallTask: Task<Void, Never>?
 
     private var audioSessionConfigured = false
-    #if os(iOS)
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
     /// Stored so pause()/stop() can cancel it before calling setActive(false),
@@ -60,7 +56,6 @@ actor PlayerService: PlayerServiceProtocol {
     /// (AirPods in case). Per Apple guidance, never auto-resume after such an interruption
     /// — resuming would route playback to the built-in speaker.
     private var interruptionWasRouteDisconnect = false
-    #endif
 
     private var isHandlingEndOfTrack = false
     /// True when playback stopped cleanly at the END of the queue (repeat off). `resume()` reads this to restart
@@ -131,7 +126,8 @@ actor PlayerService: PlayerServiceProtocol {
         crossfadeSettings: CrossfadeSettings,
         toastService: ToastService,
         statsService: StatsService,
-        listenBrainzService: ListenBrainzService
+        listenBrainzService: ListenBrainzService,
+        engine: AudioEngine
     ) {
         self.state = state
         self.mediaResolver = mediaResolver
@@ -158,21 +154,12 @@ actor PlayerService: PlayerServiceProtocol {
         prefetchConfig.networkServiceType = .background
         self.prefetchSession = URLSession(configuration: prefetchConfig)
 
-        let playerConfig = AudioPlayerConfiguration(
-            flushQueueOnSeek: true,
-            bufferSizeInSeconds: 20,
-            secondsRequiredToStartPlaying: 1,
-            gracePeriodAfterSeekInSeconds: 0.5,
-            secondsRequiredToStartPlayingAfterBufferUnderrun: 1,
-            enableLogs: false
-        )
-        let player = AudioPlayer(configuration: playerConfig)
-        let delegate = AudioStreamingDelegate()
-        self.audioPlayer = player
-        self.audioDelegate = delegate
+        self.engine = engine
+        let bridge = AudioEngineBridge()
+        self.engineBridge = bridge
         // Wire delegate after all stored properties are initialised.
-        delegate.service = self
-        player.delegate = delegate
+        bridge.service = self
+        engine.delegate = bridge
     }
 
     /// Call from AppContainer after both PlayerService and NowPlayingService are created.
@@ -182,7 +169,11 @@ actor PlayerService: PlayerServiceProtocol {
 
     func setReplayGainService(_ service: ReplayGainService) async {
         replayGainService = service
-        await service.attach(to: audioPlayer)
+        // ReplayGain hooks AudioStreaming's EQ frame filter, so it only attaches to that engine.
+        // The AVAudioEngine backend applies gain with its own node.
+        if let asEngine = engine as? AudioStreamingEngine {
+            await service.attach(to: asEngine.player)
+        }
     }
 
     // MARK: - Play
@@ -255,6 +246,7 @@ actor PlayerService: PlayerServiceProtocol {
 
         let config = await MainActor.run { replayGainSettings.config }
         await replayGainService?.apply(track: song, config: config)
+        engine.applyReplayGain(dB: ReplayGainService.gainDB(track: song, config: config))
 
         let songId = song.id
         Task { [libraryService] in
@@ -328,27 +320,21 @@ actor PlayerService: PlayerServiceProtocol {
         restorePauseTask?.cancel()
         restorePauseTask = nil
         if isMutedForRestore {
-            audioPlayer.volume = restoredVolume
+            engine.volume = restoredVolume
             isMutedForRestore = false
         }
 
-        #if os(iOS)
         configureAudioSessionIfNeeded()
-        #endif
 
         let fadingInAllowed: Bool
-        #if os(iOS)
         fadingInAllowed = shouldFadeIn && !PlayerService.isProblematicRoute(
             portTypes: AVAudioSession.sharedInstance().currentRoute.outputs.map { $0.portType }
         )
-        #else
-        fadingInAllowed = shouldFadeIn
-        #endif
 
         if fadingInAllowed {
-            audioPlayer.volume = 0
+            engine.volume = 0
         }
-        audioPlayer.play(url: source.url, headers: source.customHeaders)
+        engine.play(url: source.url, headers: source.customHeaders)
         if fadingInAllowed {
             performFadeIn(duration: crossfadeConfig.duration)
         }
@@ -361,6 +347,9 @@ actor PlayerService: PlayerServiceProtocol {
             state.playbackState = .playing
             state.isPlaybackAvailable = true
         }
+        // Give the engine the authoritative length — its own estimate drifts on transcoded streams,
+        // which would arm the crossfade window at the wrong moment.
+        engine.setTrackDuration(Double(duration))
 
         startProgressTimer()
 
@@ -425,13 +414,11 @@ actor PlayerService: PlayerServiceProtocol {
         restorePauseTask?.cancel()
         restorePauseTask = nil
         if isMutedForRestore {
-            audioPlayer.volume = restoredVolume
+            engine.volume = restoredVolume
             isMutedForRestore = false
         }
 
-        #if os(iOS)
         configureAudioSessionIfNeeded()
-        #endif
 
         await MainActor.run {
             state.currentTrack = nil
@@ -443,7 +430,7 @@ actor PlayerService: PlayerServiceProtocol {
             state.duration = 0
         }
 
-        audioPlayer.play(url: source.url, headers: source.customHeaders)
+        engine.play(url: source.url, headers: source.customHeaders)
 
         await MainActor.run {
             state.playbackState = .playing
@@ -533,7 +520,7 @@ actor PlayerService: PlayerServiceProtocol {
         Logger.player.error("[RADIO-FAILSAFE] live stream '\(stationName, privacy: .public)' failed: \(error?.localizedDescription ?? "stall timeout", privacy: .public)")
 
         stopProgressTimer()
-        audioPlayer.stop()
+        engine.stop()
 
         await MainActor.run {
             state.currentRadio = nil
@@ -671,7 +658,7 @@ actor PlayerService: PlayerServiceProtocol {
 
     func setVolume(_ volume: Float) async {
         let clamped = max(0, min(1, volume))
-        audioPlayer.volume = clamped
+        engine.volume = clamped
         // Don't persist 0 — muting should not overwrite the saved restore volume.
         if clamped > 0 {
             UserDefaults.standard.set(clamped, forKey: "minidisc.lastVolume")
@@ -681,6 +668,7 @@ actor PlayerService: PlayerServiceProtocol {
     func replayGainSettingsDidChange() async {
         let (track, config) = await MainActor.run { (state.currentTrack, replayGainSettings.config) }
         await replayGainService?.apply(currentTrack: track, config: config)
+        engine.applyReplayGain(dB: track.map { ReplayGainService.gainDB(track: $0, config: config) } ?? 0)
     }
 
     func crossfadeSettingsDidChange() async {
@@ -801,13 +789,13 @@ actor PlayerService: PlayerServiceProtocol {
     func pause() async {
         cancelFadeTasks()
         finalizePlaySegment()
-        audioPlayer.pause()
-        #if os(iOS)
+        engine.pause()
+        // Flip the UI state BEFORE deactivating the audio session — setActive(false) routinely takes
+        // hundreds of ms and used to hold the play/pause icon hostage behind it.
+        await MainActor.run { state.playbackState = .paused }
         sessionActivationRetryTask?.cancel()
         sessionActivationRetryTask = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        #endif
-        await MainActor.run { state.playbackState = .paused }
         await pushPositionSnapshot(rate: 0.0)
         stopProgressTimer()
         stopPositionSaveTimer()
@@ -819,13 +807,14 @@ actor PlayerService: PlayerServiceProtocol {
         restorePauseTask?.cancel()
         restorePauseTask = nil
         if isMutedForRestore {
-            audioPlayer.volume = restoredVolume
+            engine.volume = restoredVolume
             isMutedForRestore = false
         }
         isRestoringSession = false
-        #if os(iOS)
+        // Flip the UI state first — session activation (and the cold-restore re-resolve below) can
+        // take hundreds of ms, and the play/pause icon must not wait on them.
+        await MainActor.run { state.playbackState = .playing }
         configureAudioSessionIfNeeded()
-        #endif
         // Lazily start the accumulator for session-restored tracks that resume for the first time.
         if trackPlayStartDate == nil { trackPlayStartDate = Date() }
         if currentPlaySegmentStart == nil { currentPlaySegmentStart = Date() }
@@ -845,7 +834,7 @@ actor PlayerService: PlayerServiceProtocol {
 
         // Cold-restore path: session activation was deferred at launch, so the player was never
         // started. Start fresh now that the user has explicitly triggered playback.
-        if audioPlayer.state == .ready, let source = currentSource {
+        if engine.isReady, let source = currentSource {
             if let info = pendingRestoreInfo, info.pause {
                 pendingRestoreInfo = (seekTime: info.seekTime, pause: false)
             }
@@ -854,11 +843,10 @@ actor PlayerService: PlayerServiceProtocol {
             // mirrors the always-re-resolve invariant every other playback start holds.
             let freshSource = await refreshedColdStartSource() ?? source
             currentSource = freshSource
-            audioPlayer.play(url: freshSource.url, headers: freshSource.customHeaders)
+            engine.play(url: freshSource.url, headers: freshSource.customHeaders)
         } else {
-            audioPlayer.resume()
+            engine.resume()
         }
-        await MainActor.run { state.playbackState = .playing }
         await pushPositionSnapshot(rate: 1.0)
         startProgressTimer()
         startPositionSaveTimer()
@@ -895,21 +883,20 @@ actor PlayerService: PlayerServiceProtocol {
         restorePauseTask?.cancel()
         restorePauseTask = nil
         if isMutedForRestore {
-            audioPlayer.volume = restoredVolume
+            engine.volume = restoredVolume
             isMutedForRestore = false
         }
         liveStreamStallTask?.cancel()
         liveStreamStallTask = nil
-        audioPlayer.stop()
-        #if os(iOS)
+        engine.stop()
         sessionActivationRetryTask?.cancel()
         sessionActivationRetryTask = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        #endif
         accumulatedPlayedSeconds = 0
         currentPlaySegmentStart = nil
         trackPlayStartDate = nil
         await replayGainService?.resetGain()
+        engine.applyReplayGain(dB: 0)
         currentSource = nil
         pendingRestoreInfo = nil
         isRestoringSession = false
@@ -948,7 +935,7 @@ actor PlayerService: PlayerServiceProtocol {
             finalizePlaySegment()
             currentPlaySegmentStart = Date()
         }
-        audioPlayer.seek(to: position)
+        engine.seek(to: position)
         await MainActor.run { state.position = position }
         await pushPositionSnapshot()
     }
@@ -1174,7 +1161,7 @@ actor PlayerService: PlayerServiceProtocol {
     /// Lightweight position-only flush — called from scenePhase .inactive on iOS
     /// to protect the current position against a fast process kill.
     func saveCurrentPosition() async {
-        let pos = audioPlayer.progress
+        let pos = engine.progress
         guard pos > 0 else { return }
         await sessionService.savePosition(pos)
     }
@@ -1256,6 +1243,7 @@ actor PlayerService: PlayerServiceProtocol {
         // and takes effect when audio flows, so applying while paused is correct.
         let config = await MainActor.run { replayGainSettings.config }
         await replayGainService?.apply(track: track, config: config)
+        engine.applyReplayGain(dB: ReplayGainService.gainDB(track: track, config: config))
         Logger.player.debug("[RESTORE] ReplayGain applied for '\(track.title, privacy: .public)'")
 
         // Session activation is intentionally deferred to the first user-triggered play.
@@ -1321,7 +1309,7 @@ actor PlayerService: PlayerServiceProtocol {
                 // Position-only update — queue/track/mode already saved at each state change. Check the
                 // actor-local seekability first (no MainActor hop): a non-seekable stream can't restore a
                 // position, so skip the hop entirely rather than reading state only to discard it.
-                guard audioPlayer.isSeekable else { continue }
+                guard engine.isSeekable else { continue }
                 let (isPlaying, pos) = await MainActor.run {
                     (state.playbackState == .playing, state.position)
                 }
@@ -1344,8 +1332,8 @@ actor PlayerService: PlayerServiceProtocol {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(500))
                 guard !Task.isCancelled, let self else { break }
-                let progress = self.audioPlayer.progress
-                let audioDuration = self.audioPlayer.duration
+                let progress = self.engine.progress
+                let audioDuration = self.engine.duration
                 await MainActor.run {
                     let cur = self.state.duration
                     let clamped = cur > 0 ? min(progress, cur) : progress
@@ -1452,10 +1440,12 @@ actor PlayerService: PlayerServiceProtocol {
 
         if await audioStreamCache.cachedURL(forSongId: songId, serverId: serverId) != nil {
             Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' already cached — skip")
+            await preloadNextForGapless(songId: songId, serverId: serverId)
             return
         }
         if await downloadService.isDownloaded(songId: songId, serverId: serverId) {
             Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' already downloaded — skip")
+            await preloadNextForGapless(songId: songId, serverId: serverId)
             return
         }
 
@@ -1464,6 +1454,8 @@ actor PlayerService: PlayerServiceProtocol {
         }
         guard PlayerService.shouldProceedWithPrefetch(isExpensive: isExpensive, allowCellular: allowCellular) else {
             Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' skipped — cellular guard")
+            // No cache write will happen, so the track will stream at advance — preload that stream.
+            await preloadNextForGapless(songId: songId, serverId: serverId)
             return
         }
 
@@ -1498,6 +1490,54 @@ actor PlayerService: PlayerServiceProtocol {
             } catch {
                 Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' prefetch failed: \(error, privacy: .public)")
             }
+            // Preload AFTER the cache write settles, so the engine warms the same source (cached file
+            // on success, live stream on failure) that resolve will return at the actual transition.
+            await self?.preloadNextForGapless(songId: songId, serverId: serverId)
+        }
+    }
+
+    /// Pre-buffers the next track in the engine for a seamless hand-off. On an overlap-capable engine
+    /// the crossfade itself is delegated here (duration > 0 = engine-blended overlap; gapless pairs
+    /// stay at 0 when the user asked crossfade to stand aside for them). On sequential-fade engines,
+    /// preloading only happens when crossfade won't drive the transition. Repeat-one always skips:
+    /// the queue's next is not what actually plays next.
+    private func preloadNextForGapless(songId: String, serverId: UUID) async {
+        let repeatMode = await MainActor.run { state.repeatMode }
+        guard repeatMode != .one else { return }
+
+        var overlap: Double = 0
+        if crossfadeConfig.duration > 0 {
+            var standsAsideForPair = false
+            if crossfadeConfig.disableForGapless {
+                standsAsideForPair = await isNextGaplessPair(songId: songId)
+            }
+            if engine.supportsOverlappedCrossfade {
+                overlap = standsAsideForPair ? 0 : crossfadeConfig.duration
+            } else {
+                guard standsAsideForPair else { return }
+            }
+        }
+
+        guard let source = try? await mediaResolver.resolve(songId: songId, serverId: serverId) else { return }
+        engine.preloadNext(url: source.url, headers: source.customHeaders, crossfadeDuration: overlap)
+        Logger.player.debug("[GAPLESS] preloaded next '\(songId, privacy: .public)' (overlap=\(overlap, format: .fixed(precision: 1))s)")
+    }
+
+    /// True when the current track and the queued `songId` form a gapless pair (same album,
+    /// consecutive tracks) — mirrors the crossfade fade-out skip.
+    private func isNextGaplessPair(songId: String) async -> Bool {
+        await MainActor.run {
+            let nextIndex = state.currentIndex + 1
+            guard let current = state.currentTrack,
+                  state.queue.indices.contains(nextIndex) else { return false }
+            let next = state.queue[nextIndex]
+            guard next.id == songId else { return false }
+            return PlayerService.isGaplessPair(
+                currentAlbumId: current.albumId,
+                currentTrackNumber: current.trackNumber,
+                nextAlbumId: next.albumId,
+                nextTrackNumber: next.trackNumber
+            )
         }
     }
 
@@ -1512,7 +1552,7 @@ actor PlayerService: PlayerServiceProtocol {
         isFadingOut = false
         if wasActive {
             let vol = restoredVolume
-            audioPlayer.volume = vol
+            engine.volume = vol
             Logger.crossfade.info("fade cancelled — volume restored to \(vol, format: .fixed(precision: 2))")
         }
     }
@@ -1551,6 +1591,9 @@ actor PlayerService: PlayerServiceProtocol {
     private func checkFadeOutThreshold() async {
         guard !isFadingOut else { return }
         guard crossfadeConfig.duration > 0 else { return }
+        // Overlap-capable engines blend the crossfade themselves (armed via preloadNext) — the
+        // sequential fade-out must not also run and fight the engine's own ramps.
+        guard !engine.supportsOverlappedCrossfade else { return }
         let (duration, position, isPlaying, currentIndex, queueCount, repeatMode, title) = await MainActor.run {
             (state.duration, state.position, state.playbackState == .playing,
              state.currentIndex, state.queue.count, state.repeatMode,
@@ -1597,13 +1640,11 @@ actor PlayerService: PlayerServiceProtocol {
             }
         }
 
-        #if os(iOS)
         let outputs = AVAudioSession.sharedInstance().currentRoute.outputs.map { $0.portType }
         guard !PlayerService.isProblematicRoute(portTypes: outputs) else {
             Logger.crossfade.debug("skip — AirPlay route (track='\(title, privacy: .public)')")
             return
         }
-        #endif
 
         isFadingOut = true
         let userVol = restoredVolume
@@ -1620,7 +1661,7 @@ actor PlayerService: PlayerServiceProtocol {
     }
 
     private func performFadeOut(duration: Double) {
-        let startVolume = audioPlayer.volume
+        let startVolume = engine.volume
         let fadeDuration = max(duration, 0.05)
         fadeOutTask = Task { [weak self] in
             guard let self else { return }
@@ -1628,7 +1669,7 @@ actor PlayerService: PlayerServiceProtocol {
             while !Task.isCancelled {
                 let elapsed = Date().timeIntervalSince(startTime)
                 let progress = min(elapsed / fadeDuration, 1.0)
-                self.audioPlayer.volume = PlayerService.crossfadeVolume(base: startVolume, progress: progress, phase: .fadeOut)
+                self.engine.volume = PlayerService.crossfadeVolume(base: startVolume, progress: progress, phase: .fadeOut)
                 if progress >= 1.0 { break }
                 try? await Task.sleep(for: .milliseconds(30))
             }
@@ -1647,19 +1688,18 @@ actor PlayerService: PlayerServiceProtocol {
                 let elapsed = Date().timeIntervalSince(startTime)
                 let progress = min(elapsed / fadeDuration, 1.0)
                 let target = self.restoredVolume
-                self.audioPlayer.volume = PlayerService.crossfadeVolume(base: target, progress: progress, phase: .fadeIn)
+                self.engine.volume = PlayerService.crossfadeVolume(base: target, progress: progress, phase: .fadeIn)
                 if progress >= 1.0 { break }
                 try? await Task.sleep(for: .milliseconds(30))
             }
             if !Task.isCancelled {
                 let final = self.restoredVolume
-                self.audioPlayer.volume = final
+                self.engine.volume = final
                 Logger.crossfade.info("fade-in DONE vol=\(final, format: .fixed(precision: 2))")
             }
         }
     }
 
-    #if os(iOS)
     /// Returns true for routes where crossfade volume ramping sounds wrong or causes artefacts.
     /// `.airPlay` is the initial entry; add `.bluetoothA2DP` or `.carAudio` here when needed.
     nonisolated static func isProblematicRoute(portTypes: [AVAudioSession.Port]) -> Bool {
@@ -1676,7 +1716,6 @@ actor PlayerService: PlayerServiceProtocol {
         ]
         return portTypes.contains(where: { personal.contains($0) })
     }
-    #endif
 
     // MARK: - Play-time accumulator
 
@@ -1765,8 +1804,8 @@ actor PlayerService: PlayerServiceProtocol {
                 fadeOutTask?.cancel(); fadeOutTask = nil
                 fadeInTask?.cancel(); fadeInTask = nil
                 isFadingOut = false
-                audioPlayer.volume = restoredVolume
-                audioPlayer.play(url: source.url, headers: source.customHeaders)
+                engine.volume = restoredVolume
+                engine.play(url: source.url, headers: source.customHeaders)
             }
         } else {
             // Signal natural completion — recordCurrentTrackPlayback() reads this in startPlayback().
@@ -1795,12 +1834,10 @@ actor PlayerService: PlayerServiceProtocol {
         stopProgressTimer()
         stopPositionSaveTimer()
         // The engine is at EOF — stop it (NO parking play) and release the session.
-        audioPlayer.stop()
-        #if os(iOS)
+        engine.stop()
         sessionActivationRetryTask?.cancel()
         sessionActivationRetryTask = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        #endif
         pendingRestoreInfo = nil
         stoppedAtEndOfQueue = true
 
@@ -1817,16 +1854,16 @@ actor PlayerService: PlayerServiceProtocol {
 
     // MARK: - Delegate callbacks
 
-    /// Called by AudioStreamingDelegate when AudioPlayer's state changes.
-    func handleAudioStateChanged(_ newState: AudioPlayerState) async {
+    /// Called by the engine bridge when the low-level playback state changes.
+    func handleEngineState(_ newState: AudioEngineState) async {
         switch newState {
         case .playing:
             guard let info = pendingRestoreInfo else { break }
             pendingRestoreInfo = nil
             // Seek while engine is running — processSource() is a no-op when paused.
             // Skip if stream is not seekable (Ogg Vorbis, live radio) or position is at start.
-            if audioPlayer.isSeekable && info.seekTime > 1 {
-                audioPlayer.seek(to: info.seekTime)
+            if engine.isSeekable && info.seekTime > 1 {
+                engine.seek(to: info.seekTime)
             }
             guard info.pause else {
                 isRestoringSession = false
@@ -1839,16 +1876,16 @@ actor PlayerService: PlayerServiceProtocol {
                 try? await Task.sleep(for: .milliseconds(150))
                 guard !Task.isCancelled else { return }
                 self.restorePauseTask = nil
-                self.audioPlayer.pause()
-                self.audioPlayer.volume = self.restoredVolume
+                self.engine.pause()
+                self.engine.volume = self.restoredVolume
                 self.isMutedForRestore = false
                 await MainActor.run { self.state.playbackState = .paused }
                 self.stopProgressTimer()
                 self.isRestoringSession = false
-                Logger.player.info("[RESTORE] seek landed — paused at \(self.audioPlayer.progress, format: .fixed(precision: 1))s")
+                Logger.player.info("[RESTORE] seek landed — paused at \(self.engine.progress, format: .fixed(precision: 1))s")
             }
         case .error:
-            Logger.player.error("[PLAYER] AudioStreaming entered error state")
+            Logger.player.error("[PLAYER] engine entered error state")
             let isLive = await MainActor.run { state.isLiveStream }
             if isLive {
                 let name = await MainActor.run { state.currentRadio?.name ?? "" }
@@ -1861,9 +1898,9 @@ actor PlayerService: PlayerServiceProtocol {
         }
     }
 
-    /// Called by AudioStreamingDelegate on unexpected errors.
-    func handleAudioError(_ error: AudioPlayerError) async {
-        Logger.player.error("[PLAYER] AudioStreaming unexpected error: \(error.localizedDescription, privacy: .public)")
+    /// Called by the engine bridge on unexpected errors.
+    func handleEngineError(_ message: String) async {
+        Logger.player.error("[PLAYER] engine unexpected error: \(message, privacy: .public)")
         let isLive = await MainActor.run { state.isLiveStream }
         if isLive {
             let name = await MainActor.run { state.currentRadio?.name ?? "" }
@@ -1986,13 +2023,12 @@ actor PlayerService: PlayerServiceProtocol {
 
     // nonisolated: safe — only called during app termination
     nonisolated func stopAudioEngineSync() {
-        audioPlayer.stop()
+        engine.stop()
     }
 }
 
 // MARK: - iOS Audio Session
 
-#if os(iOS)
 extension PlayerService {
     func configureAudioSessionIfNeeded() {
         do {
@@ -2062,7 +2098,7 @@ extension PlayerService {
             guard isPlaying else { return }
             // Cancel any active crossfade before the OS steals audio focus.
             cancelFadeTasks()
-            audioPlayer.pause()
+            engine.pause()
             await MainActor.run { state.playbackState = .paused }
             stopProgressTimer()
             await saveSession()
@@ -2118,58 +2154,33 @@ extension PlayerService {
         }
     }
 }
-#endif
 
-// MARK: - AudioStreamingDelegate
+// MARK: - AudioEngineBridge
 
-/// Bridges AudioPlayerDelegate callbacks (dispatched on main via asyncOnMain) to PlayerService (actor).
-final class AudioStreamingDelegate: AudioPlayerDelegate, @unchecked Sendable {
+/// Bridges the neutral `AudioEngineDelegate` callbacks (on the engine's callback thread) onto the
+/// `PlayerService` actor. The concrete engine (e.g. `AudioStreamingEngine`) already maps its own
+/// callbacks into the neutral events.
+nonisolated final class AudioEngineBridge: AudioEngineDelegate, @unchecked Sendable {
     weak var service: PlayerService?
 
-    func audioPlayerDidStartPlaying(player: AudioPlayer, with entryId: AudioEntryId) {}
-
-    func audioPlayerDidFinishBuffering(player: AudioPlayer, with entryId: AudioEntryId) {}
-
-    func audioPlayerStateChanged(
-        player: AudioPlayer,
-        with newState: AudioPlayerState,
-        previous: AudioPlayerState
-    ) {
-        // [DIAG] Correlate with [NET-COVER] logs: underrun while cover fetches are in flight
-        // confirms bandwidth starvation; underrun with no concurrent covers points elsewhere.
-        if newState == .bufferring && previous == .playing {
-            Logger.player.warning("[NET-AUDIO] buffer underrun — state: playing → bufferring")
-        }
+    func audioEngineDidChangeState(_ state: AudioEngineState) {
         guard let service else { return }
-        Task { await service.handleAudioStateChanged(newState) }
+        Task { await service.handleEngineState(state) }
     }
 
-    func audioPlayerDidFinishPlaying(
-        player: AudioPlayer,
-        entryId: AudioEntryId,
-        stopReason: AudioPlayerStopReason,
-        progress: Double,
-        duration: Double
-    ) {
-        // Only natural completions (eof) trigger end-of-track handling.
-        // User-initiated play() or stop() arrive with .userAction / .none.
-        guard let service, stopReason == .eof else { return }
+    func audioEngineDidReachEndOfTrack() {
+        guard let service else { return }
         Task { await service.handleEndOfTrack() }
     }
 
-    func audioPlayerUnexpectedError(player: AudioPlayer, error: AudioPlayerError) {
+    func audioEngineDidError(_ message: String) {
         guard let service else { return }
-        Task { await service.handleAudioError(error) }
+        Task { await service.handleEngineError(message) }
     }
-
-    func audioPlayerDidCancel(player: AudioPlayer, queuedItems: [AudioEntryId]) {}
-
-    func audioPlayerDidReadMetadata(player: AudioPlayer, metadata: [String: String]) {}
 }
 
 // MARK: - iOS logging helpers (file-private)
 
-#if os(iOS)
 private extension AVAudioSession.RouteChangeReason {
     nonisolated var logDescription: String {
         switch self {
@@ -2185,4 +2196,3 @@ private extension AVAudioSession.RouteChangeReason {
         }
     }
 }
-#endif

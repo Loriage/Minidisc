@@ -14,11 +14,7 @@ struct DiscoverView: View {
     @Namespace private var mostPlayedNS
     @State private var yearlyPlaylists: [WrappedYearlyPlaylist] = []
     @State private var radioStations: [InternetRadioStation] = []
-    #if os(iOS)
     @Namespace private var freshReleaseZoomNamespace
-    #else
-    @State private var selectedRelease: AlbumRecommendation?
-    #endif
     @State private var showAllFreshReleases = false
     @State private var allReleasesVM: AllFreshReleasesViewModel?
     @State private var isListenBrainzConnected: Bool = false
@@ -72,7 +68,6 @@ struct DiscoverView: View {
             await vm?.loadFreshReleases()
             radioStations = (try? await container?.radioService.listStations(forceRefresh: true)) ?? []
         }
-        #if os(iOS)
         .navigationDestination(for: AlbumRecommendation.self) { release in
             FreshReleaseDetailView(
                 release: release,
@@ -83,18 +78,6 @@ struct DiscoverView: View {
                 in: freshReleaseZoomNamespace
             )
         }
-        #else
-        .sheet(isPresented: Binding(
-            get: { selectedRelease != nil },
-            set: { if !$0 { selectedRelease = nil } }
-        )) {
-            if let release = selectedRelease {
-                NavigationStack {
-                    FreshReleaseDetailView(release: release, providers: container?.externalProvidersStore.load() ?? [])
-                }
-            }
-        }
-        #endif
         .navigationDestination(isPresented: $showAllFreshReleases) {
             if let vm = allReleasesVM {
                 AllFreshReleasesView(vm: vm)
@@ -149,7 +132,6 @@ struct DiscoverView: View {
     @ViewBuilder
     private func freshReleasesSection(vm: DiscoverViewModel) -> some View {
         if isListenBrainzConnected {
-            #if os(iOS)
             FreshReleasesCard(
                 releases: vm.freshReleases,
                 isLoading: vm.isLoadingFreshReleases,
@@ -157,36 +139,10 @@ struct DiscoverView: View {
                 onSeeAll: { showAllFreshReleases = true },
                 zoomNamespace: freshReleaseZoomNamespace
             )
-            #else
-            FreshReleasesCard(
-                releases: vm.freshReleases,
-                isLoading: vm.isLoadingFreshReleases,
-                isListenBrainzConnected: isListenBrainzConnected,
-                onSeeAll: { showAllFreshReleases = true },
-                onTap: { release in selectedRelease = release }
-            )
-            #endif
         }
     }
 
     private func recentlyPlayedSection(vm: DiscoverViewModel) -> some View {
-        #if os(macOS)
-        Group {
-            if vm.isInitialLoading {
-                section(title: "Recently Played") { skeletonScroll() }
-            } else if vm.recentlyPlayed.isEmpty {
-                section(title: "Recently Played") {
-                    emptyStateMessage("No history yet — start playing some tracks.")
-                }
-            } else {
-                CarouselSection(title: "Recently Played") {
-                    ForEach(vm.recentlyPlayed, id: \.id) { album in
-                        CarouselAlbumCard(album: album)
-                    }
-                }
-            }
-        }
-        #else
         section(title: "Recently Played") {
             if vm.isInitialLoading {
                 skeletonScroll()
@@ -196,27 +152,9 @@ struct DiscoverView: View {
                 horizontalAlbumScroll(albums: vm.recentlyPlayed, namespace: recentlyPlayedNS)
             }
         }
-        #endif
     }
 
     private func mostPlayedSection(vm: DiscoverViewModel) -> some View {
-        #if os(macOS)
-        Group {
-            if vm.isInitialLoading {
-                section(title: "Most Played") { skeletonScroll() }
-            } else if vm.mostPlayed.isEmpty {
-                section(title: "Most Played") {
-                    emptyStateMessage("No frequent plays yet — your top tracks will appear here.")
-                }
-            } else {
-                CarouselSection(title: "Most Played") {
-                    ForEach(vm.mostPlayed, id: \.id) { album in
-                        CarouselAlbumCard(album: album)
-                    }
-                }
-            }
-        }
-        #else
         section(title: "Most Played") {
             if vm.isInitialLoading {
                 skeletonScroll()
@@ -226,7 +164,6 @@ struct DiscoverView: View {
                 horizontalAlbumScroll(albums: vm.mostPlayed, namespace: mostPlayedNS)
             }
         }
-        #endif
     }
 
     private var smartShuffleSection: some View {
@@ -393,16 +330,12 @@ struct DiscoverView: View {
             LazyHStack(spacing: MinidiscSpacing.s) {
                 ForEach(albums, id: \.id) { album in
                     NavigationLink {
-                        #if os(macOS)
-                        AlbumDetailMacOS(albumId: album.id, albumName: album.name, coverArtId: album.coverArt)
-                        #else
                         AlbumDetailView(
                             album: album,
                             zoomSourceId: album.id,
                             zoomNamespace: namespace,
                             initialCoverImage: artworkImageCache.cachedImage(for: album.coverArt ?? album.id)
                         )
-                        #endif
                     } label: {
                         AlbumCard(album: album)
                             .minidiscMatchedTransitionSource(id: album.id, in: namespace)

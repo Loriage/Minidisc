@@ -19,7 +19,13 @@ actor ReplayGainService {
 
     /// Applies gain for the given track using a pre-captured settings snapshot.
     func apply(track: DisplayableSong, config: ReplayGainConfig) {
-        eqNode.globalGain = Self.computeGain(
+        eqNode.globalGain = Self.gainDB(track: track, config: config)
+    }
+
+    /// The ReplayGain adjustment in dB for a track — engine-neutral, so the AVPlayer engine can apply
+    /// the same value through its own volume path.
+    nonisolated static func gainDB(track: DisplayableSong, config: ReplayGainConfig) -> Float {
+        computeGain(
             enabled: config.enabled,
             mode: config.mode,
             preAmp: config.preAmp,

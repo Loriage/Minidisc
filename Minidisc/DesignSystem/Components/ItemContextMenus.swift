@@ -120,6 +120,7 @@ struct SongContextMenuModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content.contextMenu {
+            Group {
             Button {
                 Task {
                     do {
@@ -167,6 +168,8 @@ struct SongContextMenuModifier: ViewModifier {
                     systemImage: isFavorite ? "star.slash" : "star"
                 )
             }
+            }
+            .tint(.primary)
         } preview: {
             SongContextPreview(coverImage: coverImage, song: song)
         }
@@ -206,6 +209,7 @@ struct CollectionContextMenuModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .contextMenu {
+                Group {
                 if !songs.isEmpty {
                     Button {
                         Task {
@@ -320,6 +324,8 @@ struct CollectionContextMenuModifier: ViewModifier {
                 if let onDelete {
                     Button(role: .destructive) { onDelete() } label: { Label("Delete Playlist", systemImage: "trash") }
                 }
+                }
+                .tint(.primary)
             } preview: {
                 CollectionContextPreview(
                     coverImage: coverImage,
@@ -364,6 +370,7 @@ struct LazyCollectionContextMenuModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .contextMenu {
+                Group {
                 Button {
                     Task {
                         guard let songs = try? await songLoader(), !songs.isEmpty else { return }
@@ -471,6 +478,8 @@ struct LazyCollectionContextMenuModifier: ViewModifier {
                         )
                     }
                 }
+                }
+                .tint(.primary)
             } preview: {
                 CollectionContextPreview(
                     coverImage: coverImage,

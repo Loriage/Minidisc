@@ -20,11 +20,12 @@ final class HomeFeedViewModel {
 
     private(set) var topPicks: [Playlist] = []
     private(set) var recentlyPlayed: [AlbumID3] = []
+    private(set) var recentlyAdded: [AlbumID3] = []
     private(set) var genreShelves: [GenreShelf] = []
     var isLoading = false
     var error: UserFacingError?
 
-    var isEmpty: Bool { topPicks.isEmpty && recentlyPlayed.isEmpty && genreShelves.isEmpty }
+    var isEmpty: Bool { topPicks.isEmpty && recentlyPlayed.isEmpty && recentlyAdded.isEmpty && genreShelves.isEmpty }
 
     private let libraryService: any LibraryServiceProtocol
 
@@ -42,14 +43,16 @@ final class HomeFeedViewModel {
         do {
             async let playlistsTask = libraryService.playlists()
             async let playedTask = libraryService.recentlyPlayedAlbums(size: Self.shelfSize)
+            async let addedTask = libraryService.recentlyAddedAlbums(size: Self.shelfSize)
             async let genresTask = libraryService.genres()
-            let (playlists, played, genres) = try await (playlistsTask, playedTask, genresTask)
+            let (playlists, played, added, genres) = try await (playlistsTask, playedTask, addedTask, genresTask)
 
             topPicks = playlists
                 .sorted { ($0.changed ?? $0.created ?? .distantPast) > ($1.changed ?? $1.created ?? .distantPast) }
                 .prefix(Self.maxTopPicks)
                 .map { $0 }
             recentlyPlayed = played
+            recentlyAdded = added
 
             // Sequential on purpose: one getAlbumList2 per genre is light, and order stays stable.
             var shelves: [GenreShelf] = []

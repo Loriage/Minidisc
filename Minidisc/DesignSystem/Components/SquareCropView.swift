@@ -3,7 +3,6 @@
 // Licensed under the Mozilla Public License 2.0.
 // See LICENSE file in the project root for full license information.
 
-#if os(iOS)
 import SwiftUI
 
 /// Apple-Photos-style square cropper for playlist cover photos. The WHOLE photo stays visible — the area
@@ -156,4 +155,3 @@ struct CroppableImage: Identifiable {
     let id = UUID()
     let image: UIImage
 }
-#endif

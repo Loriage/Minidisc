@@ -16,7 +16,9 @@ struct MainTabView: View {
     @Namespace private var playerZoom
     private let fullPlayerZoomID = "full-player"
 
-    private enum AppTab: Hashable { case home, discover, library, search }
+    private enum AppTab: Hashable { case home, discover, library, lidarr, search }
+
+    private var lidarrConnected: Bool { container?.lidarrSettings.isConnected == true }
 
     private var hasTrack: Bool {
         container?.playerState.currentTrack != nil || container?.playerState.isLiveStream == true
@@ -59,6 +61,14 @@ struct MainTabView: View {
             Tab("Library", systemImage: "music.note.square.stack.fill", value: AppTab.library) {
                 NavigationStack {
                     LibraryView()
+                }
+            }
+
+            if lidarrConnected {
+                Tab("Lidarr", systemImage: "opticaldisc.fill", value: AppTab.lidarr) {
+                    NavigationStack {
+                        LidarrLibraryView()
+                    }
                 }
             }
 

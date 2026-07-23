@@ -8,9 +8,7 @@ import SwiftData
 import SwiftSonic
 import OSLog
 
-#if canImport(UIKit)
 import AVKit
-#endif
 
 private enum PlayerSurface { case player, queue }
 
@@ -47,7 +45,6 @@ struct FullPlayerView: View {
     @State private var lyricsViewModel: LyricsViewModel?
     @Namespace private var morphNS
 
-    #if os(iOS)
     // MARK: - Player layout knobs (iOS) — eyeball-tunable.
     /// Player cover cap. Bigger = larger artwork (also width-limited to screenWidth − 2·playerCoverHPadding).
     private static let playerCoverSize: CGFloat = 340
@@ -57,7 +54,6 @@ struct FullPlayerView: View {
     private static let playerCoverToTitleGap: CGFloat = MinidiscSpacing.xl
     /// Vertical breathing room between the flowing controls (scrubber ↔ transport ↔ volume). Raise to spread.
     private static let playerControlsSpacing: CGFloat = MinidiscSpacing.l
-    #endif
 
     var body: some View {
         if let playerState = container?.playerState {
@@ -109,19 +105,11 @@ struct FullPlayerView: View {
                      showingQueue: showingQueue)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .minidiscContentWidth()
-            #if os(macOS)
-            // macOS keeps the transport in a bottom-pinned safe-area footer (unchanged). On iOS the controls
-            // flow inside surfaceStack so the player cluster can sit high — see surfaceStack.
-            .safeAreaInset(edge: .bottom) {
-                sharedFooter(playerState)
-            }
-            #endif
             .environment(\.minidiscPlayingAccent, MinidiscColors.accentForeground(on: dominant))
         // Solid dominant-color page across all surfaces. The now-playing cover is full-bleed in the slot and
         // melts into this color (like the album/playlist heroes); queue + lyrics sit on the flat color for
         // legibility. A black base shows until the dominant color resolves.
         .background {
-            #if os(iOS)
             // Solid dominant body colour: the cover touches the top edge (no gap to fill), and its bottom melts
             // into this flat colour exactly like the album/playlist heroes.
             ZStack {
@@ -129,23 +117,6 @@ struct FullPlayerView: View {
                 dominant
             }
             .ignoresSafeArea()
-            #else
-            // macOS keeps its blurred cover wash (not in scope for the immersive pass).
-            ZStack {
-                Color.black
-                if let coverImage = vm.coverImage {
-                    Image(platformImage: coverImage)
-                        .resizable()
-                        .scaledToFill()
-                        .scaleEffect(1.3)
-                        .blur(radius: 80, opaque: true)
-                }
-                dominant.opacity(0.5)
-                Color.black.opacity(0.25)
-            }
-            .drawingGroup()
-            .ignoresSafeArea()
-            #endif
         }
     }
 
@@ -163,7 +134,6 @@ struct FullPlayerView: View {
     @ViewBuilder
     private func surfaceStack(_ playerState: PlayerState, coverArtId: String, isPlaying: Bool,
                               showingQueue: Bool) -> some View {
-        #if os(iOS)
         // Flowing iOS player: cover → title → scrubber → transport → volume flow and FILL the screen, with NO
         // fixed footer. Lyrics and the queue reuse ONE mechanism — their content takes the cover's slot and
         // fills it (maxHeight .infinity), pushing the flowing controls below toward the bottom. The mini→full
@@ -295,33 +265,8 @@ struct FullPlayerView: View {
         .overlay(alignment: .top) {
             topBar
         }
-        #else
-        // Morph keyed to `surface` ONLY; Reduce Motion degrades to a plain opacity crossfade. macOS-only — the
-        // iOS player↔queue uses its own .smooth reflow (below).
-        let morphAnimation: Animation = reduceMotion
-            ? .easeInOut(duration: 0.22)
-            : .spring(response: 0.45, dampingFraction: 0.82)
-        VStack(spacing: 0) {
-            topBar
-                .padding(.top, MinidiscSpacing.s)
-
-            ZStack {
-                if !playerState.isLiveStream {
-                    queueSurface(playerState, coverArtId: coverArtId)
-                        .opacity(showingQueue ? 1 : 0)
-                        .allowsHitTesting(showingQueue)
-                }
-                playerSurface(playerState, coverArtId: coverArtId, isPlaying: isPlaying)
-                    .opacity(showingQueue ? 0 : 1)
-                    .allowsHitTesting(!showingQueue)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .animation(morphAnimation, value: surface)
-        }
-        #endif
     }
 
-    #if os(iOS)
     /// A fixed-height vertical gap (`floor`) in the flowing layout. The slot above is the sole greedy element,
     /// so it absorbs the slack and pushes the controls toward the bottom; these gaps stay a constant floor.
     private func flowGap(_ floor: CGFloat) -> some View {
@@ -434,7 +379,6 @@ struct FullPlayerView: View {
                 .padding(.vertical, MinidiscSpacing.s)
         }
     }
-    #endif
 
     // MARK: - Surfaces
 
@@ -452,16 +396,9 @@ struct FullPlayerView: View {
         // under this surface (see surfaceStack), with a flexible gap there distributing the slack so the cover
         // fills the top and the controls sit in the lower-middle. macOS keeps its prior values and distributes
         // slack with the Spacers below (the cover→title gap, and the capped title→controls gap — the knob).
-        #if os(iOS)
         let coverCap = Self.playerCoverSize
         let coverHPadding = Self.playerCoverHPadding
         let coverTitleSpacing = Self.playerCoverToTitleGap
-        #else
-        let coverCap: CGFloat = 360
-        let coverHPadding = MinidiscSpacing.l
-        let coverTitleSpacing = MinidiscSpacing.s
-        let titleToControlsGap: CGFloat = 8
-        #endif
         VStack(spacing: coverTitleSpacing) {
             // Artwork starts high — just below the grabber (Apple-Music-like top alignment). The lyrics state
             // keeps its fill (see the maxHeight below), left as-is.
@@ -514,9 +451,6 @@ struct FullPlayerView: View {
             .animation(.smooth(duration: 0.3), value: showLyrics)
 
             // macOS only: distribute slack above the title (iOS packs the cluster at the top instead).
-            #if os(macOS)
-            if !showLyrics { Spacer(minLength: 0) }
-            #endif
 
             TrackInfoSection(
                 playerState: playerState,
@@ -528,9 +462,6 @@ struct FullPlayerView: View {
 
             // macOS only: cap the bottom Spacer so the title hugs the bottom-pinned footer. On iOS the
             // controls already flow right under the title (no Spacer), with the slack below them.
-            #if os(macOS)
-            if !showLyrics { Spacer(minLength: 0).frame(maxHeight: titleToControlsGap) }
-            #endif
         }
         .padding(.top, MinidiscSpacing.s)
         .padding(.bottom, MinidiscSpacing.s)
@@ -869,13 +800,9 @@ private struct TrackInfoSection: View {
             if let track = playerState.currentTrack,
                let albumId = track.albumId,
                let albumName = track.albumName {
-                #if os(macOS)
-                AlbumDetailMacOS(albumId: albumId, albumName: albumName, coverArtId: track.coverArtId)
-                #else
                 NavigationStack {
                     AlbumDetailView(albumId: albumId, albumName: albumName, coverArtId: track.coverArtId)
                 }
-                #endif
             }
         }
         .sheet(item: $songToAddToPlaylist) { song in
@@ -1210,7 +1137,6 @@ private struct BottomToolbar: View {
     }
 }
 
-#if canImport(UIKit)
 private struct AirPlayRouteButton: UIViewRepresentable {
     var tintColor: Color = Color.white.opacity(0.7)
 
@@ -1225,18 +1151,6 @@ private struct AirPlayRouteButton: UIViewRepresentable {
         uiView.tintColor = UIColor(tintColor)
     }
 }
-#else
-private struct AirPlayRouteButton: View {
-    var tintColor: Color = Color.white.opacity(0.7)
-
-    var body: some View {
-        Image(systemName: "airplay.audio")
-            .font(.title3)
-            .foregroundStyle(tintColor)
-            .frame(width: 44, height: 44)
-    }
-}
-#endif
 
 // MARK: - Volume
 
@@ -1245,7 +1159,6 @@ private struct VolumeSection: View {
     let secondaryContentColor: Color
 
     var body: some View {
-        #if os(iOS)
         HStack(spacing: MinidiscSpacing.m) {
             Image(systemName: "speaker.fill")
                 .font(.caption)
@@ -1261,6 +1174,5 @@ private struct VolumeSection: View {
                 .frame(width: 20)
                 .accessibilityHidden(true)
         }
-        #endif
     }
 }

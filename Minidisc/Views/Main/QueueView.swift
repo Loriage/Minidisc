@@ -11,43 +11,11 @@ import UniformTypeIdentifiers
 struct QueueView: View {
     @Environment(\.appContainer) private var container
     @Environment(\.minidiscPlayingAccent) private var playingAccent
-    #if os(macOS)
-    @State private var draggedQueueIndex: Int?
-    @State private var dropTargetGap: Int?
-    #endif
 
     var body: some View {
-        #if os(macOS)
-        VStack(spacing: 0) {
-            HStack {
-                Text("Queue")
-                    .font(.headline)
-                Spacer()
-                Button {
-                    Task {
-                        guard let state = container?.playerState else { return }
-                        await container?.playerService.setAutoExtendEnabled(!state.isAutoExtendEnabled)
-                    }
-                } label: {
-                    Image(systemName: "infinity")
-                        .foregroundStyle(container?.playerState.isAutoExtendEnabled == true ? playingAccent : .secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Auto-extend with Smart Shuffle")
-                .accessibilityValue(container?.playerState.isAutoExtendEnabled == true ? "Enabled" : "Disabled")
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-
-            Divider()
-
-            queueContent
-        }
-        #else
         // iOS no longer presents QueueView as a sheet — the queue is inline in FullPlayerView via
         // InlineQueueList. QueueView() is only instantiated on macOS now; this branch exists to compile.
         queueContent
-        #endif
     }
 
     @ViewBuilder
@@ -70,13 +38,11 @@ struct QueueView: View {
         let upNext = Array(queue.dropFirst(currentIndex + 1))
 
         List {
-            #if !os(macOS)
             Section {
                 queueControlsHeader(playerState)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
             }
-            #endif
 
             if let current = playerState.currentTrack {
                 Section("Now Playing") {
@@ -100,33 +66,7 @@ struct QueueView: View {
                                     }
                                 }
                             }
-                            #if os(macOS)
-                            // macOS reorders by drag-and-drop; show a between-rows insertion line at the
-                            // drop gap (top of the target row, or bottom of the last row for an end drop)
-                            // instead of a row highlight.
-                            .overlay(alignment: .top) {
-                                if dropTargetGap == absoluteIndex { queueInsertionLine }
-                            }
-                            .overlay(alignment: .bottom) {
-                                if offset == upNext.count - 1 && dropTargetGap == absoluteIndex + 1 { queueInsertionLine }
-                            }
-                            .onDrag {
-                                // Encode the row's absolute queue position; the delegate resolves the move
-                                // positionally (never by song id) so duplicate tracks reorder correctly.
-                                draggedQueueIndex = absoluteIndex
-                                return NSItemProvider(object: "\(absoluteIndex)" as NSString)
-                            }
-                            .onDrop(of: [UTType.text], delegate: QueueReorderDropDelegate(
-                                targetIndex: absoluteIndex,
-                                draggedIndex: $draggedQueueIndex,
-                                dropTargetGap: $dropTargetGap,
-                                move: { from, toOffset in
-                                    Task { await container?.playerService.moveInQueue(fromIndex: from, toIndex: toOffset) }
-                                }
-                            ))
-                            #endif
                     }
-                    #if !os(macOS)
                     .onMove { source, destination in
                         // iOS uses native List reorder — offset-based, so duplicate-safe by construction.
                         // `destination` is the Array.move toOffset that moveInQueue already replicates.
@@ -136,7 +76,6 @@ struct QueueView: View {
                         HapticFeedback.light.trigger()
                         Task { await container?.playerService.moveInQueue(fromIndex: absoluteSource, toIndex: absoluteDestination) }
                     }
-                    #endif
                     .onDelete { indices in
                         let absoluteIndices = indices.sorted(by: >).map { currentIndex + 1 + $0 }
                         HapticFeedback.light.trigger()
@@ -150,23 +89,11 @@ struct QueueView: View {
             }
         }
         .listStyle(.plain)
-        #if !os(macOS)
         // iOS List reorder only engages in edit mode (per the PlaylistDetailView precedent). Keep it
         // always-on so Up Next is reorderable via the system grips without an explicit Edit toggle;
         // this is why iOS shows edit-mode chrome and tap-to-play yields to the reorder/delete affordances.
         .environment(\.editMode, .constant(.active))
-        #endif
     }
-
-    #if os(macOS)
-    /// Thin accent line drawn between rows at the current drop gap (macOS drag-reorder feedback).
-    private var queueInsertionLine: some View {
-        Rectangle()
-            .fill(playingAccent)
-            .frame(height: 2)
-            .padding(.horizontal, MinidiscSpacing.l)
-    }
-    #endif
 
     @ViewBuilder
     private func queueControlsHeader(_ playerState: PlayerState) -> some View {
@@ -269,15 +196,11 @@ private struct QueueRow: View {
             if isCurrent {
                 NowPlayingBarsIndicator(isPlaying: isPlaying)
             } else {
-                #if os(macOS)
-                // macOS has no edit-mode grip, so keep the visual reorder hint here; on iOS the system
-                // renders its own reorder grip in edit mode, so a second one would be redundant.
-                ReorderIndicator()
-                #endif
             }
         }
         .padding(.vertical, MinidiscSpacing.xs)
         .contextMenu {
+            Group {
             Button {
                 Task {
                     do {
@@ -336,6 +259,8 @@ private struct QueueRow: View {
                     Label("Remove from Queue", systemImage: "minus.circle")
                 }
             }
+            }
+            .tint(.primary)
         }
         .sheet(isPresented: $showAddToPlaylist) {
             AddToPlaylistSheet(song: song)
@@ -401,9 +326,7 @@ struct InlineQueueList: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            #if !os(macOS)
             .environment(\.editMode, .constant(.active))
-            #endif
         }
     }
 

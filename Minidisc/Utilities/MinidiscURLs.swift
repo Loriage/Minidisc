@@ -14,6 +14,5 @@ enum MinidiscURLs {
     static let swiftSonic = URL(string: "https://github.com/CassetteLab/swiftsonic")!
     static let navidrome = URL(string: "https://www.navidrome.org")!
     static let openSubsonic = URL(string: "https://opensubsonic.netlify.app")!
-    static let audioStreaming = URL(string: "https://github.com/dimitris-c/AudioStreaming")!
     static let listenBrainz = URL(string: "https://listenbrainz.org")!
 }

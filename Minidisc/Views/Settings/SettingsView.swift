@@ -59,14 +59,29 @@ struct SettingsView: View {
     private func form(downloadsVM: DownloadsViewModel) -> some View {
         Form {
             serverSection()
-            streamingSection()
-            ReplayGainSettingsSection()
-            CrossfadeSettingsSection()
-            CacheSectionView()
-            DownloadsSectionView(vm: downloadsVM)
-            integrationsSection()
-            advancedSection()
+            // Apple Music-style hub: one untitled group, each row pushes a focused sub-page.
+            Section {
+                NavigationLink {
+                    PlaybackSettingsView()
+                } label: {
+                    Label("Playback", systemImage: "play.circle")
+                        .foregroundStyle(.primary)
+                }
+                NavigationLink {
+                    StorageSettingsView(vm: downloadsVM)
+                } label: {
+                    Label("Storage", systemImage: "internaldrive")
+                        .foregroundStyle(.primary)
+                }
+                NavigationLink {
+                    IntegrationsSettingsView()
+                } label: {
+                    Label("Integrations", systemImage: "puzzlepiece.extension")
+                        .foregroundStyle(.primary)
+                }
+            }
             aboutSection()
+            ApplicationSectionView(vm: downloadsVM)
         }
         .formStyle(.grouped)
         .refreshable {
@@ -104,98 +119,7 @@ struct SettingsView: View {
         }
     }
 
-    private func streamingSection() -> some View {
-        Section {
-            if let stream = container?.streamSettings {
-                Picker(selection: Binding(
-                    get: { stream.wifiQuality },
-                    set: { stream.wifiQuality = $0 }
-                )) {
-                    ForEach(StreamQuality.allCases) { quality in
-                        Text(quality.displayName).tag(quality)
-                    }
-                } label: {
-                    Label("Quality on Wi-Fi", systemImage: "wifi")
-                        .foregroundStyle(.primary)
-                }
-                .pickerStyle(.menu)
-                .tint(.secondary)
-
-                Picker(selection: Binding(
-                    get: { stream.cellularQuality },
-                    set: { stream.cellularQuality = $0 }
-                )) {
-                    ForEach(StreamQuality.allCases) { quality in
-                        Text(quality.displayName).tag(quality)
-                    }
-                } label: {
-                    Label("Quality on cellular", systemImage: "antenna.radiowaves.left.and.right")
-                        .foregroundStyle(.primary)
-                }
-                .pickerStyle(.menu)
-                .tint(.secondary)
-            }
-        } header: {
-            Text("Streaming")
-        } footer: {
-            Text("The server transcodes to the chosen tier for each network. Original streams your files untouched (lossless); a lighter tier saves cellular data and lowers decoding load. Applies to the next track.")
-        }
-    }
-
-    private func advancedSection() -> some View {
-        Section {
-            if let settings = container?.playbackEngineSettings {
-                Picker(selection: Binding(
-                    get: { settings.engine },
-                    set: { settings.engine = $0 }
-                )) {
-                    ForEach(PlaybackEngine.allCases) { engine in
-                        Text(engine.displayName).tag(engine)
-                    }
-                } label: {
-                    Label("Playback engine", systemImage: "waveform")
-                        .foregroundStyle(.primary)
-                }
-                .pickerStyle(.menu)
-                .tint(.secondary)
-            }
-        } header: {
-            Text("Advanced")
-        } footer: {
-            Text("AVPlayer (System) is the default: Apple's hardware decoders give bit-perfect lossless without the software-decode crackle, with native format coverage. AudioStreaming is a software-decoding fallback. Restart the app to apply.")
-        }
-    }
-
-    private func integrationsSection() -> some View {
-        Section("Integrations") {
-            NavigationLink {
-                ListenBrainzSettingsView()
-            } label: {
-                Label("ListenBrainz", systemImage: "link.circle")
-                    .foregroundStyle(.primary)
-            }
-            NavigationLink {
-                AudioMuseSettingsView()
-            } label: {
-                Label("AudioMuse", systemImage: "waveform.badge.magnifyingglass")
-                    .foregroundStyle(.primary)
-            }
-            NavigationLink {
-                LidarrSettingsView()
-            } label: {
-                Label("Lidarr", systemImage: "square.and.arrow.down.on.square")
-                    .foregroundStyle(.primary)
-            }
-            NavigationLink {
-                ExternalProvidersSettingsView()
-            } label: {
-                Label("Open Releases In", systemImage: "arrow.up.right.square")
-                    .foregroundStyle(.primary)
-            }
-        }
-    }
-
-    private static var appVersion: String {
+    fileprivate static var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
         return "\(version) (\(build))"
@@ -225,153 +149,35 @@ struct SettingsView: View {
             }
         } header: {
             Text("About")
-        } footer: {
-            Text("Version \(Self.appVersion)")
-                .frame(maxWidth: .infinity)
-                .padding(.top, 8)
         }
     }
 }
 
-// MARK: - Cache section
+// MARK: - Storage sub-page
 
-struct CacheSectionView: View {
+struct StorageSettingsView: View {
+    let vm: DownloadsViewModel
     @Environment(\.appContainer) private var container
+    @Environment(ArtworkImageCache.self) private var artworkImageCache
     @State private var usedBytes: Int64 = 0
     @State private var trackCount: Int = 0
-    @State private var isClearing: Bool = false
+    @State private var coverCount: Int = 0
+    @State private var coverBytes: Int64 = 0
+    @State private var isClearingCache = false
 
     private var cacheSettings: CacheSettings? { container?.cacheSettings }
 
     var body: some View {
         let maxTracks = cacheSettings?.maxTracks ?? 10
 
-        return Section {
+        return Form {
+            Section {
             LabeledContent {
-                Text(usageDescription(maxTracks: maxTracks))
+                Text(vm.trackCount == 1 ? "1 track · \(vm.usedBytesFormatted)" : "\(vm.trackCount) tracks · \(vm.usedBytesFormatted)")
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             } label: {
-                Label("Used", systemImage: "externaldrive")
-                    .foregroundStyle(.primary)
-            }
-
-            if let cacheSettings {
-                Stepper(
-                    value: Binding(
-                        get: { cacheSettings.maxTracks },
-                        set: { cacheSettings.maxTracks = max(1, min(10, $0)) }
-                    ),
-                    in: 1...10
-                ) {
-                    HStack {
-                        Label("Max tracks", systemImage: "tray.full")
-                            .foregroundStyle(.primary)
-                        Spacer()
-                        Text("\(maxTracks)")
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                            .font(.body.weight(.medium))
-                    }
-                }
-            }
-
-            if let cacheSettings {
-                Picker(selection: Binding<CacheFormat>(
-                    get: { cacheSettings.cacheFormat },
-                    set: { newValue in cacheSettings.cacheFormat = newValue }
-                )) {
-                    ForEach(CacheFormat.allCases) { format in
-                        Text(format.displayName).tag(format)
-                    }
-                } label: {
-                    Label("Format", systemImage: "waveform")
-                        .foregroundStyle(.primary)
-                }
-                .pickerStyle(.menu)
-                .tint(.secondary)
-            }
-
-            if let cacheSettings {
-                Toggle(isOn: Binding(
-                    get: { cacheSettings.cacheOverCellular },
-                    set: { cacheSettings.cacheOverCellular = $0 }
-                )) {
-                    Label("Use cellular data", systemImage: "antenna.radiowaves.left.and.right")
-                        .foregroundStyle(.primary)
-                }
-                .tint(Color(.systemGreen))
-            }
-
-            Button(role: .destructive) {
-                Task { await clearCache() }
-            } label: {
-                if isClearing {
-                    HStack(spacing: MinidiscSpacing.s) {
-                        ProgressView().scaleEffect(0.8)
-                        Text("Clearing…")
-                    }
-                } else {
-                    Label("Clear cache", systemImage: "trash")
-                        .foregroundStyle(.red)
-                }
-            }
-            .disabled(isClearing || (usedBytes == 0 && trackCount == 0))
-
-        } header: {
-            Text("Cache")
-        } footer: {
-            Text("Cached tracks let recently-played music load instantly without re-fetching from the server. Cache is automatic, sliding window — the oldest track is replaced when the limit is reached.")
-        }
-        .task {
-            await refreshUsage()
-        }
-        .onChange(of: cacheSettings?.maxTracks) { _, newValue in
-            guard let newValue else { return }
-            Task {
-                await container?.audioStreamCache.setMaxTracks(newValue)
-                await refreshUsage()
-            }
-        }
-    }
-
-    // MARK: - Helpers
-
-    private func usageDescription(maxTracks: Int) -> String {
-        let bytesString = ByteCountFormatter.string(fromByteCount: usedBytes, countStyle: .file)
-        return "\(bytesString) · \(trackCount)/\(maxTracks) tracks"
-    }
-
-    private func refreshUsage() async {
-        guard let container else { return }
-        let bytes = await container.audioStreamCache.usedBytes
-        let count = await container.audioStreamCache.trackCount
-        usedBytes = bytes
-        trackCount = count
-    }
-
-    private func clearCache() async {
-        guard let container else { return }
-        isClearing = true
-        defer { isClearing = false }
-        await container.audioStreamCache.clearAll()
-        container.dominantColorExtractor.clearCache()
-        await refreshUsage()
-    }
-}
-
-// MARK: - Downloads section
-
-struct DownloadsSectionView: View {
-    let vm: DownloadsViewModel
-
-    var body: some View {
-        Section {
-            LabeledContent {
-                Text(vm.usedBytesFormatted)
-                    .foregroundStyle(.secondary)
-            } label: {
-                Label("Used", systemImage: "arrow.down.circle")
+                Text("Offline downloads")
                     .foregroundStyle(.primary)
             }
 
@@ -405,7 +211,7 @@ struct DownloadsSectionView: View {
                         }
                     }
                 } label: {
-                    Label("Albums (\(vm.displayAlbums.count))", systemImage: "music.note.list")
+                    Text("Albums (\(vm.displayAlbums.count))")
                         .foregroundStyle(.primary)
                 }
             }
@@ -434,17 +240,264 @@ struct DownloadsSectionView: View {
                         }
                     }
                 } label: {
-                    Label("Playlists (\(vm.downloadedPlaylists.count))", systemImage: "list.bullet")
+                    Text("Playlists (\(vm.downloadedPlaylists.count))")
                         .foregroundStyle(.primary)
                 }
             }
-
-            if vm.displayAlbums.isEmpty && vm.downloadedPlaylists.isEmpty {
-                Text("No downloaded content.")
-                    .foregroundStyle(.secondary)
-                    .font(.footnote)
+            } header: {
+                Text("Downloads")
+            } footer: {
+                Text("Downloaded tracks are stored permanently and available offline.")
             }
 
+            Section {
+                LabeledContent {
+                    Text("\(ByteCountFormatter.string(fromByteCount: usedBytes, countStyle: .file)) · \(trackCount)/\(maxTracks) tracks")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                } label: {
+                    Text("Used")
+                        .foregroundStyle(.primary)
+                }
+
+                if let cacheSettings {
+                    Stepper(
+                        value: Binding(
+                            get: { cacheSettings.maxTracks },
+                            set: { cacheSettings.maxTracks = max(1, min(10, $0)) }
+                        ),
+                        in: 1...10
+                    ) {
+                        HStack {
+                            Text("Max tracks")
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Text("\(maxTracks)")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                                .font(.body.weight(.medium))
+                        }
+                    }
+
+                    Picker(selection: Binding<CacheFormat>(
+                        get: { cacheSettings.cacheFormat },
+                        set: { newValue in cacheSettings.cacheFormat = newValue }
+                    )) {
+                        ForEach(CacheFormat.allCases) { format in
+                            Text(format.displayName).tag(format)
+                        }
+                    } label: {
+                        Text("Format")
+                            .foregroundStyle(.primary)
+                    }
+                    .pickerStyle(.menu)
+                    .tint(.secondary)
+
+                    Toggle(isOn: Binding(
+                        get: { cacheSettings.cacheOverCellular },
+                        set: { cacheSettings.cacheOverCellular = $0 }
+                    )) {
+                        Text("Use cellular data")
+                            .foregroundStyle(.primary)
+                    }
+                    .tint(Color(.systemGreen))
+                }
+
+                Button(role: .destructive) {
+                    Task { await clearStreamCache() }
+                } label: {
+                    if isClearingCache {
+                        HStack(spacing: MinidiscSpacing.s) {
+                            ProgressView().scaleEffect(0.8)
+                            Text("Clearing…")
+                        }
+                    } else {
+                        Text("Clear stream cache")
+                            .foregroundStyle(.red)
+                    }
+                }
+                .disabled(isClearingCache)
+            } header: {
+                Text("Stream cache")
+            } footer: {
+                Text("Keeps recently-played music for instant replay — the oldest track is replaced when the limit is reached.")
+            }
+
+            Section {
+                LabeledContent {
+                    Text(coverCount == 1 ? "1 image · \(ByteCountFormatter.string(fromByteCount: coverBytes, countStyle: .file))" : "\(coverCount) images · \(ByteCountFormatter.string(fromByteCount: coverBytes, countStyle: .file))")
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                } label: {
+                    Text("Disk usage")
+                        .foregroundStyle(.primary)
+                }
+
+                if let cacheSettings {
+                    Toggle(isOn: Binding(
+                        get: { cacheSettings.cacheArtwork },
+                        set: { newValue in
+                            cacheSettings.cacheArtwork = newValue
+                            artworkImageCache.persistCoversEnabled = newValue
+                        }
+                    )) {
+                        Text("Cache artwork")
+                            .foregroundStyle(.primary)
+                    }
+                    .tint(Color(.systemGreen))
+                }
+
+                Button(role: .destructive) {
+                    Task { await clearArtwork() }
+                } label: {
+                    Text("Clear artwork cache")
+                        .foregroundStyle(.red)
+                }
+            } header: {
+                Text("Artwork")
+            } footer: {
+                Text("Covers re-download on demand. Turning caching off keeps artwork in memory only.")
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Storage")
+        .navigationBarTitleDisplayModeInline()
+        .task {
+            await vm.loadData()
+            await refreshUsage()
+        }
+        .onChange(of: cacheSettings?.maxTracks) { _, newValue in
+            guard let newValue else { return }
+            Task {
+                await container?.audioStreamCache.setMaxTracks(newValue)
+                await refreshUsage()
+            }
+        }
+    }
+
+    private func refreshUsage() async {
+        guard let container else { return }
+        usedBytes = await container.audioStreamCache.usedBytes
+        trackCount = await container.audioStreamCache.trackCount
+        let stats = await container.downloadService.coverCacheStats()
+        coverCount = stats.count
+        coverBytes = stats.bytes
+    }
+
+    private func clearStreamCache() async {
+        guard let container else { return }
+        isClearingCache = true
+        defer { isClearingCache = false }
+        await container.audioStreamCache.clearAll()
+        container.dominantColorExtractor.clearCache()
+        await refreshUsage()
+    }
+
+    private func clearArtwork() async {
+        guard let container else { return }
+        await container.downloadService.clearAllCovers()
+        artworkImageCache.clearCache()
+        artworkImageCache.clearRevalidationMetadata()
+        await refreshUsage()
+    }
+}
+
+// MARK: - Settings sub-pages
+
+private struct PlaybackSettingsView: View {
+    @Environment(\.appContainer) private var container
+
+    var body: some View {
+        Form {
+            Section {
+                if let stream = container?.streamSettings {
+                    Picker(selection: Binding(
+                        get: { stream.wifiQuality },
+                        set: { stream.wifiQuality = $0 }
+                    )) {
+                        ForEach(StreamQuality.allCases) { quality in
+                            Text(quality.displayName).tag(quality)
+                        }
+                    } label: {
+                        Text("Quality on Wi-Fi")
+                            .foregroundStyle(.primary)
+                    }
+                    .pickerStyle(.menu)
+                    .tint(.secondary)
+
+                    Picker(selection: Binding(
+                        get: { stream.cellularQuality },
+                        set: { stream.cellularQuality = $0 }
+                    )) {
+                        ForEach(StreamQuality.allCases) { quality in
+                            Text(quality.displayName).tag(quality)
+                        }
+                    } label: {
+                        Text("Quality on cellular")
+                            .foregroundStyle(.primary)
+                    }
+                    .pickerStyle(.menu)
+                    .tint(.secondary)
+                }
+            } header: {
+                Text("Streaming")
+            } footer: {
+                Text("The server transcodes to the chosen tier for each network. Original streams your files untouched (lossless); a lighter tier saves cellular data and lowers decoding load. Applies to the next track.")
+            }
+            ReplayGainSettingsSection()
+            CrossfadeSettingsSection()
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Playback")
+        .navigationBarTitleDisplayModeInline()
+    }
+}
+
+private struct IntegrationsSettingsView: View {
+    var body: some View {
+        Form {
+            Section {
+                NavigationLink {
+                    ListenBrainzSettingsView()
+                } label: {
+                    Text("ListenBrainz")
+                        .foregroundStyle(.primary)
+                }
+                NavigationLink {
+                    AudioMuseSettingsView()
+                } label: {
+                    Text("AudioMuse")
+                        .foregroundStyle(.primary)
+                }
+                NavigationLink {
+                    LidarrSettingsView()
+                } label: {
+                    Text("Lidarr")
+                        .foregroundStyle(.primary)
+                }
+                NavigationLink {
+                    ExternalProvidersSettingsView()
+                } label: {
+                    Text("Open Releases In")
+                        .foregroundStyle(.primary)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Integrations")
+        .navigationBarTitleDisplayModeInline()
+    }
+}
+
+// MARK: - Application section (destructive actions)
+
+/// Beszel-style bottom section: every destructive "clear" action in one place, plain red rows, with
+/// the app version underneath.
+struct ApplicationSectionView: View {
+    let vm: DownloadsViewModel
+
+    var body: some View {
+        Section {
             Button(role: .destructive) {
                 Task { await vm.clearAll() }
             } label: {
@@ -454,16 +507,18 @@ struct DownloadsSectionView: View {
                         Text("Clearing…")
                     }
                 } else {
-                    Label("Clear all downloads", systemImage: "trash")
+                    Text("Clear all downloads")
                         .foregroundStyle(.red)
                 }
             }
-            .disabled(vm.isClearingAll || (vm.displayAlbums.isEmpty && vm.downloadedPlaylists.isEmpty))
-
+            .disabled(vm.isClearingAll)
         } header: {
-            Text("Downloads")
+            Text("Application")
         } footer: {
-            Text("Downloaded tracks are stored permanently and available offline.")
+            Text("Version \(SettingsView.appVersion)")
+                .frame(maxWidth: .infinity)
+                .padding(.top, 8)
         }
     }
 }
+

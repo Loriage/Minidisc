@@ -24,14 +24,6 @@ struct AcknowledgementsView: View {
                     }
                 }
                 .foregroundStyle(.primary)
-                Button {
-                    ExternalLinkOpener.open(MinidiscURLs.audioStreaming)
-                } label: {
-                    LabeledContent("AudioStreaming") {
-                        Text("MIT License")
-                    }
-                }
-                .foregroundStyle(.primary)
             }
 
             Section {

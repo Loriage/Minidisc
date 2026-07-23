@@ -19,7 +19,7 @@ struct ReplayGainSettingsSection: View {
                     Task { await container?.playerService.replayGainSettingsDidChange() }
                 }
             )) {
-                Label("ReplayGain", systemImage: "speaker.wave.3")
+                Text("ReplayGain")
                     .foregroundStyle(.primary)
             }
             .tint(Color(.systemGreen))
@@ -35,7 +35,7 @@ struct ReplayGainSettingsSection: View {
                     Text("Track").tag(ReplayGainMode.track)
                     Text("Album").tag(ReplayGainMode.album)
                 } label: {
-                    Label("Mode", systemImage: "music.note")
+                    Text("Mode")
                         .foregroundStyle(.primary)
                 }
                 .pickerStyle(.menu)
@@ -53,7 +53,7 @@ struct ReplayGainSettingsSection: View {
                     step: 0.5
                 ) {
                     HStack {
-                        Label("Pre-amp", systemImage: "slider.horizontal.3")
+                        Text("Pre-amp")
                             .foregroundStyle(.primary)
                         Spacer()
                         Text(preAmpLabel(rg?.preAmp ?? 0))
@@ -70,7 +70,7 @@ struct ReplayGainSettingsSection: View {
                         Task { await container?.playerService.replayGainSettingsDidChange() }
                     }
                 )) {
-                    Label("Prevent clipping", systemImage: "waveform.path.ecg")
+                    Text("Prevent clipping")
                         .foregroundStyle(.primary)
                 }
                 .tint(Color(.systemGreen))

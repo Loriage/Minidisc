@@ -283,6 +283,16 @@
         }
       }
     },
+    "%@ · %lld/%lld tracks" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$lld/%3$lld tracks"
+          }
+        }
+      }
+    },
     "%@ (%@)" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -818,6 +828,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已聆聽 %lld 小時"
+          }
+        }
+      }
+    },
+    "%lld images · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld images · %2$@"
           }
         }
       }
@@ -1472,6 +1492,16 @@
         }
       }
     },
+    "%lld tracks · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld tracks · %2$@"
+          }
+        }
+      }
+    },
     "%lld tracks%@" : {
       "localizations" : {
         "de" : {
@@ -1771,7 +1801,13 @@
     "1 file will be imported." : {
 
     },
+    "1 image · %@" : {
+
+    },
     "1 track" : {
+
+    },
+    "1 track · %@" : {
 
     },
     "A client configuration error prevented connecting." : {
@@ -2994,9 +3030,6 @@
     "Added to Lidarr" : {
 
     },
-    "Advanced" : {
-
-    },
     "album" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3739,6 +3772,9 @@
         }
       }
     },
+    "Application" : {
+
+    },
     "Approved only" : {
 
     },
@@ -4059,6 +4095,9 @@
         }
       }
     },
+    "Artwork" : {
+
+    },
     "Assign to Album" : {
 
     },
@@ -4271,6 +4310,7 @@
       }
     },
     "AudioStreaming" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4529,9 +4569,6 @@
           }
         }
       }
-    },
-    "AVPlayer (System) is the default: Apple's hardware decoders give bit-perfect lossless without the software-decode crackle, with native format coverage. AudioStreaming is a software-decoding fallback. Restart the app to apply." : {
-
     },
     "Awards" : {
       "extractionState" : "stale",
@@ -4796,6 +4833,7 @@
       }
     },
     "Cache" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4846,6 +4884,9 @@
           }
         }
       }
+    },
+    "Cache artwork" : {
+
     },
     "Cache format" : {
       "extractionState" : "stale",
@@ -4953,6 +4994,7 @@
       }
     },
     "Cached tracks let recently-played music load instantly without re-fetching from the server. Cache is automatic, sliding window — the oldest track is replaced when the limit is reached." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5632,7 +5674,11 @@
         }
       }
     },
+    "Clear artwork cache" : {
+
+    },
     "Clear cache" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5738,6 +5784,9 @@
           }
         }
       }
+    },
+    "Clear stream cache" : {
+
     },
     "Clearing…" : {
       "localizations" : {
@@ -7442,6 +7491,9 @@
         }
       }
     },
+    "Covers re-download on demand. Turning caching off keeps artwork in memory only." : {
+
+    },
     "Create" : {
       "localizations" : {
         "de" : {
@@ -9062,6 +9114,9 @@
           }
         }
       }
+    },
+    "Disk usage" : {
+
     },
     "DNS resolution failed or local network access denied." : {
       "localizations" : {
@@ -13251,6 +13306,9 @@
         }
       }
     },
+    "Keeps recently-played music for instant replay — the oldest track is replaced when the limit is reached." : {
+
+    },
     "Last refresh" : {
       "localizations" : {
         "de" : {
@@ -16494,6 +16552,7 @@
       }
     },
     "No downloaded content." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18909,6 +18968,9 @@
         }
       }
     },
+    "Offline downloads" : {
+
+    },
     "OK" : {
       "localizations" : {
         "de" : {
@@ -20124,9 +20186,6 @@
           }
         }
       }
-    },
-    "Playback engine" : {
-
     },
     "Playback failed. Please try again." : {
       "extractionState" : "manual",
@@ -24975,6 +25034,12 @@
       }
     },
     "Stop monitoring" : {
+
+    },
+    "Storage" : {
+
+    },
+    "Stream cache" : {
 
     },
     "Stream your library from your own server.\nNo subscriptions. No big tech." : {

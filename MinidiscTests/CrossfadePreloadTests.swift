@@ -6,45 +6,6 @@
 import Testing
 @testable import Minidisc
 
-// MARK: - crossfadeVolume (equal-power curve)
-
-@Suite("PlayerService.crossfadeVolume")
-struct CrossfadeVolumeTests {
-
-    @Test func fadeOutStartsAtBase() {
-        #expect(PlayerService.crossfadeVolume(base: 1.0, progress: 0, phase: .fadeOut) == 1.0)
-    }
-
-    @Test func fadeOutEndsAtZero() {
-        #expect(PlayerService.crossfadeVolume(base: 1.0, progress: 1, phase: .fadeOut) < 0.001)
-    }
-
-    @Test func fadeInStartsAtZero() {
-        #expect(PlayerService.crossfadeVolume(base: 1.0, progress: 0, phase: .fadeIn) < 0.001)
-    }
-
-    @Test func fadeInEndsAtBase() {
-        #expect(PlayerService.crossfadeVolume(base: 1.0, progress: 1, phase: .fadeIn) > 0.999)
-    }
-
-    @Test func midpointSumGreaterThanLinear() {
-        // Equal-power: cos²(45°) + sin²(45°) = 1, each ≈ 0.707 vs 0.5 linear
-        let out = PlayerService.crossfadeVolume(base: 1.0, progress: 0.5, phase: .fadeOut)
-        let inV = PlayerService.crossfadeVolume(base: 1.0, progress: 0.5, phase: .fadeIn)
-        #expect(Double(out) > 0.7 && Double(inV) > 0.7)
-    }
-
-    @Test func progressClampedBelow() {
-        let v = PlayerService.crossfadeVolume(base: 0.8, progress: -1.0, phase: .fadeOut)
-        #expect(v == PlayerService.crossfadeVolume(base: 0.8, progress: 0, phase: .fadeOut))
-    }
-
-    @Test func progressClampedAbove() {
-        let v = PlayerService.crossfadeVolume(base: 0.8, progress: 2.0, phase: .fadeIn)
-        #expect(v == PlayerService.crossfadeVolume(base: 0.8, progress: 1, phase: .fadeIn))
-    }
-}
-
 // MARK: - shouldSchedulePrefetch
 
 @Suite("PlayerService.shouldSchedulePrefetch")
@@ -74,57 +35,6 @@ struct ShouldSchedulePrefetchTests {
 
     @Test func firesNearEndOfTrack() {
         #expect(PlayerService.shouldSchedulePrefetch(crossfadeDuration: 3, remaining: 2) == true)
-    }
-}
-
-// MARK: - shouldStartFadeOut
-
-@Suite("PlayerService.shouldStartFadeOut")
-struct ShouldStartFadeOutTests {
-
-    // 120 s: never hits the short-track guard (2 * 5 = 10)
-    @Test func dormantWhenDurationIsZero() {
-        #expect(PlayerService.shouldStartFadeOut(crossfadeDuration: 0, remaining: 0.5, hasNext: true, trackDuration: 120) == false)
-    }
-
-    @Test func dormantWhenNoNextTrack() {
-        #expect(PlayerService.shouldStartFadeOut(crossfadeDuration: 5, remaining: 3, hasNext: false, trackDuration: 120) == false)
-    }
-
-    @Test func dormantWhenRemainingIsZero() {
-        #expect(PlayerService.shouldStartFadeOut(crossfadeDuration: 5, remaining: 0, hasNext: true, trackDuration: 120) == false)
-    }
-
-    @Test func firesWhenWithinWindow() {
-        #expect(PlayerService.shouldStartFadeOut(crossfadeDuration: 5, remaining: 4, hasNext: true, trackDuration: 120) == true)
-    }
-
-    @Test func firesAtExactBoundary() {
-        #expect(PlayerService.shouldStartFadeOut(crossfadeDuration: 5, remaining: 5, hasNext: true, trackDuration: 120) == true)
-    }
-
-    @Test func doesNotFireBeyondWindow() {
-        #expect(PlayerService.shouldStartFadeOut(crossfadeDuration: 5, remaining: 5.1, hasNext: true, trackDuration: 120) == false)
-    }
-
-    @Test func shortTrackSkipsFade() {
-        // trackDuration=8 <= 2*5=10 → skip regardless of remaining
-        #expect(PlayerService.shouldStartFadeOut(crossfadeDuration: 5, remaining: 3, hasNext: true, trackDuration: 8) == false)
-    }
-
-    @Test func exactlyDoubleSkipsFade() {
-        // trackDuration == 2*duration is still "not long enough"
-        #expect(PlayerService.shouldStartFadeOut(crossfadeDuration: 5, remaining: 3, hasNext: true, trackDuration: 10) == false)
-    }
-
-    @Test func justOverDoubleAllowsFade() {
-        // trackDuration=10.1 > 10 → allow
-        #expect(PlayerService.shouldStartFadeOut(crossfadeDuration: 5, remaining: 3, hasNext: true, trackDuration: 10.1) == true)
-    }
-
-    @Test func repeatOneSkipsFade() {
-        // repeat-one loops the same track on the same player — no second source to mix into.
-        #expect(PlayerService.shouldStartFadeOut(crossfadeDuration: 5, remaining: 3, hasNext: true, trackDuration: 120, repeatOne: true) == false)
     }
 }
 

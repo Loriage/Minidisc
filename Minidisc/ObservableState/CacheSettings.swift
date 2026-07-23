@@ -17,6 +17,7 @@ final class CacheSettings {
     @ObservationIgnored private var _maxTracks: Int
     @ObservationIgnored private var _cacheFormat: CacheFormat
     @ObservationIgnored private var _cacheOverCellular: Bool
+    @ObservationIgnored private var _cacheArtwork: Bool
 
     // MARK: - Visible properties (manual observation hooks)
 
@@ -60,6 +61,20 @@ final class CacheSettings {
         }
     }
 
+    /// Whether cover art fetched from the server is persisted to disk (memory caching always runs).
+    var cacheArtwork: Bool {
+        get {
+            access(keyPath: \.cacheArtwork)
+            return _cacheArtwork
+        }
+        set {
+            withMutation(keyPath: \.cacheArtwork) {
+                _cacheArtwork = newValue
+            }
+            UserDefaults.standard.set(newValue, forKey: Self.cacheArtworkKey)
+        }
+    }
+
     // MARK: - Defaults & keys
 
     static let defaultMaxTracks: Int = 10
@@ -67,10 +82,12 @@ final class CacheSettings {
     static let maxMaxTracks: Int = 10
     static let defaultFormat: CacheFormat = .matchStream
     static let defaultCacheOverCellular: Bool = false
+    static let defaultCacheArtwork: Bool = true
 
     private static let maxTracksKey = "minidisc.cache.maxTracks"
     private static let cacheFormatKey = "minidisc.cache.format"
     private static let cacheOverCellularKey = "minidisc.cache.cellular"
+    private static let cacheArtworkKey = "minidisc.cache.artwork"
 
     // MARK: - Init
 
@@ -84,5 +101,7 @@ final class CacheSettings {
         self._cacheFormat = CacheFormat(rawValue: loadedFormatRaw ?? "") ?? Self.defaultFormat
 
         self._cacheOverCellular = UserDefaults.standard.bool(forKey: Self.cacheOverCellularKey)
+        // object(forKey:) so the default is true — bool(forKey:) would silently default to false.
+        self._cacheArtwork = UserDefaults.standard.object(forKey: Self.cacheArtworkKey) as? Bool ?? Self.defaultCacheArtwork
     }
 }

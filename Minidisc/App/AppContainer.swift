@@ -50,11 +50,9 @@ final class AppContainer {
     let externalArtworkCache = ExternalArtworkCache()
     let externalArtistImageResolver = ExternalArtistImageResolver()
     let searchHistoryService: SearchHistoryService
-    let replayGainService = ReplayGainService()
     let replayGainSettings = ReplayGainSettings()
     let crossfadeSettings = CrossfadeSettings()
     let streamSettings = StreamSettings()
-    let playbackEngineSettings = PlaybackEngineSettings()
     let lidarrSettings: LidarrSettings
 
     init(inMemory: Bool = false) throws {
@@ -84,6 +82,7 @@ final class AppContainer {
         libraryService = library
 
         artworkImageCache = ArtworkImageCache(downloadService: download, libraryService: library)
+        artworkImageCache.persistCoversEnabled = cacheSettings.cacheArtwork
         // The cover applier is a closure because PlaylistCoverManager is MainActor-bound while
         // MoodPlaylistService is an actor; this keeps the hop at the boundary instead of inside it.
         let moodState = serverState
@@ -116,12 +115,8 @@ final class AppContainer {
         let lb = ListenBrainzService(client: lbClient, keychain: keychain)
         listenBrainzService = lb
 
-        // Pick the low-level engine from the user's setting (default AudioStreaming). Changing it
-        // takes effect on the next launch, since the engine is fixed for the PlayerService lifetime.
-        let audioEngine: AudioEngine = switch playbackEngineSettings.engine {
-        case .audioStreaming: AudioStreamingEngine()
-        case .avPlayer:       AVPlayerEngine()
-        }
+        // AVPlayer is the one and only engine: Apple's hardware decoders, two-deck crossfade/gapless.
+        let audioEngine: AudioEngine = AVPlayerEngine()
         let player = PlayerService(state: playerState, mediaResolver: resolver, serverService: server, sessionService: sessionService, artworkImageCache: artworkImageCache, libraryService: library, audioStreamCache: cache, downloadService: download, cacheSettings: cacheSettings, replayGainSettings: replayGainSettings, crossfadeSettings: crossfadeSettings, toastService: toastService, statsService: stats, listenBrainzService: lb, engine: audioEngine)
         _player = player
         playerService = player
@@ -154,7 +149,6 @@ final class AppContainer {
     func setup() async {
         await _player.setNowPlayingService(nowPlayingService)
         await nowPlayingService.setFavoritesService(favoritesService)
-        await _player.setReplayGainService(replayGainService)
         await _player.crossfadeSettingsDidChange()
     }
 }
@@ -360,8 +354,8 @@ extension AppContainer {
     private static let m4aFaststartAttemptsKey = "minidisc.m4aFaststartMigration_v3_attempts"
     private static let m4aFaststartMaxAttempts = 3
 
-    /// Migration that faststart-remuxes already-downloaded m4a tracks so they play offline through
-    /// AudioStreaming (which cannot open non-faststart M4A). Fire-and-forget at boot.
+    /// Migration that faststart-remuxes already-downloaded m4a tracks so their moov atom leads the
+    /// file (kept for cleanliness of the download store). Fire-and-forget at boot.
     ///
     /// Retry-safe (unlike v1): the done-flag is set ONLY on a clean pass — save succeeded AND no
     /// track failed to remux. Failed tracks (e.g. a transient export failure at boot) are retried

@@ -22,6 +22,7 @@ final class DownloadsViewModel {
     var displayAlbums: [DownloadedAlbumDisplay] = []
     var downloadedPlaylists: [DownloadedPlaylistDTO] = []
     var usedBytesFormatted: String = "—"
+    var trackCount: Int = 0
     var isClearingAll = false
 
     private let modelContainer: ModelContainer
@@ -59,6 +60,7 @@ final class DownloadsViewModel {
 
         let totalBytes = tracks.map(\.fileSize).reduce(0, +)
         usedBytesFormatted = ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file)
+        trackCount = tracks.count
     }
 
     func removeAlbum(_ display: DownloadedAlbumDisplay) async {

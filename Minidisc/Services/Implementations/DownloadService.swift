@@ -110,6 +110,22 @@ actor DownloadService: DownloadServiceProtocol {
     }
 
     @discardableResult
+    func coverCacheStats() -> (count: Int, bytes: Int64) {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: coverArtsDirectory,
+            includingPropertiesForKeys: [.fileSizeKey]
+        ) else { return (0, 0) }
+        var bytes: Int64 = 0
+        for file in files {
+            bytes += Int64((try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+        }
+        return (files.count, bytes)
+    }
+
+    func clearAllCovers() {
+        try? FileManager.default.removeItem(at: coverArtsDirectory)
+    }
+
     func garbageCollectOrphanedCovers(referencedIds: Set<String>) async -> Int {
         let fm = FileManager.default
         guard let entries = try? fm.contentsOfDirectory(at: coverArtsDirectory, includingPropertiesForKeys: nil) else {
@@ -320,7 +336,7 @@ actor DownloadService: DownloadServiceProtocol {
         }
         try FileManager.default.moveItem(at: tempURL, to: fileURL)
 
-        // Faststart-remux non-faststart m4a in place so AudioStreaming can play it offline
+        // Faststart-remux non-faststart m4a in place so it keeps a streamable faststart layout
         // (lossless passthrough; no-op for every other format). MUST run before the fileSize
         // read below so DownloadedTrack.fileSize matches the on-disk (remuxed) file — otherwise
         // downloadedURL's size-validity guard would reject the remuxed file as a mismatch.

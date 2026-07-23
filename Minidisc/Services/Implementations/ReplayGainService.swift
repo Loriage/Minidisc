@@ -3,28 +3,13 @@
 // Licensed under the Mozilla Public License 2.0.
 // See LICENSE file in the project root for full license information.
 
-import AVFoundation
-import AudioStreaming
-import OSLog
+import Foundation
 
-actor ReplayGainService {
-    private let eqNode = AVAudioUnitEQ()
-    private var isAttached = false
-
-    func attach(to player: AudioPlayer) {
-        guard !isAttached else { return }
-        player.attach(node: eqNode)
-        isAttached = true
-    }
-
-    /// Applies gain for the given track using a pre-captured settings snapshot.
-    func apply(track: DisplayableSong, config: ReplayGainConfig) {
-        eqNode.globalGain = Self.gainDB(track: track, config: config)
-    }
-
-    /// The ReplayGain adjustment in dB for a track — engine-neutral, so the AVPlayer engine can apply
-    /// the same value through its own volume path.
-    nonisolated static func gainDB(track: DisplayableSong, config: ReplayGainConfig) -> Float {
+/// Pure ReplayGain math: the dB adjustment computed from settings and a track's gain tags.
+/// The engine applies the value on its own audio path (AVPlayer: a per-sample audio tap).
+nonisolated enum ReplayGainService {
+    /// The ReplayGain adjustment in dB for a track.
+    static func gainDB(track: DisplayableSong, config: ReplayGainConfig) -> Float {
         computeGain(
             enabled: config.enabled,
             mode: config.mode,
@@ -37,20 +22,6 @@ actor ReplayGainService {
             baseGain: track.replayGainBaseGain,
             fallbackGain: track.replayGainFallbackGain
         )
-    }
-
-    /// Re-applies gain to the current track (nil track resets to 0 dB).
-    func apply(currentTrack: DisplayableSong?, config: ReplayGainConfig) {
-        guard let track = currentTrack else {
-            eqNode.globalGain = 0
-            return
-        }
-        apply(track: track, config: config)
-    }
-
-    /// Resets the EQ gain to 0 dB (no effect). Called when playback stops.
-    func resetGain() {
-        eqNode.globalGain = 0
     }
 
     // MARK: - Gain computation (pure, static, testable)

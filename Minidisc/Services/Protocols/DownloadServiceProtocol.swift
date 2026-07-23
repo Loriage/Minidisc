@@ -61,6 +61,12 @@ protocol DownloadServiceProtocol: AnyObject, Sendable {
     @discardableResult
     func garbageCollectOrphanedCovers(referencedIds: Set<String>) async -> Int
 
+    /// Number of files and total bytes in the persisted-cover store.
+    func coverCacheStats() async -> (count: Int, bytes: Int64)
+
+    /// Deletes every persisted cover. Downloaded audio is untouched; covers re-download on demand.
+    func clearAllCovers() async
+
     /// Returns offline-playable album data assembled from persisted tracks, or nil if not downloaded.
     func localAlbumData(albumId: String, serverId: UUID) async -> LocalAlbumData?
     /// Returns offline-playable playlist data assembled from persisted tracks, or nil if not downloaded.

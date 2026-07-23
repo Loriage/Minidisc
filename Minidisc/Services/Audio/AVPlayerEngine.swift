@@ -20,8 +20,6 @@ import MediaToolbox
 nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     weak var delegate: AudioEngineDelegate?
 
-    var supportsOverlappedCrossfade: Bool { true }
-
     private let lock = NSRecursiveLock()
 
     private let deckA = AVPlayer()

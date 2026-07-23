@@ -13,10 +13,8 @@ import Foundation
 /// decoding is CPU-heavy and can miss its real-time deadline during a system spike (e.g. taking a
 /// screenshot), producing an audible crackle.
 ///
-/// Only MP3 transcodes are offered: MP3 is a raw byte stream that AudioStreaming can always play
-/// progressively. AAC/Opus are transcoded into MP4/Ogg containers whose moov/header layout the
-/// streaming engine can't open on the fly (the same non-faststart-M4A limitation the download
-/// path remuxes around) — they download but never start, so they're deliberately excluded.
+/// Only MP3 transcodes are offered: a raw byte stream that streams progressively through any
+/// engine and proxy chain without container quirks.
 nonisolated enum StreamQuality: String, CaseIterable, Identifiable, Sendable {
     case original
     case mp3_320

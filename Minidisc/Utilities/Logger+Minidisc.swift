@@ -38,8 +38,6 @@ extension Logger {
     nonisolated static let artistArtwork      = Logger(subsystem: "app.minidisc.artistartwork",      category: "ExternalArtistImageResolver")
     nonisolated static let httpTransport      = Logger(subsystem: "app.minidisc.transport",          category: "CustomHeadersTransport")
     nonisolated static let artworkCache       = Logger(subsystem: "app.minidisc.artworkcache",       category: "ArtworkCache")
-    nonisolated static let settings           = Logger(subsystem: "app.minidisc.settings",           category: "Settings")
     nonisolated static let boot               = Logger(subsystem: "app.minidisc.boot",               category: "Boot")
     nonisolated static let migration          = Logger(subsystem: "app.minidisc.migration",          category: "Migration")
-    nonisolated static let crossfade          = Logger(subsystem: "app.minidisc.crossfade",          category: "Crossfade")
 }

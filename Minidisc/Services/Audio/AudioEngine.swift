@@ -5,10 +5,10 @@
 
 import Foundation
 
-/// The low-level playback state an `AudioEngine` reports, independent of any concrete backend so a
-/// second engine (AVAudioEngine) can drive the same `PlayerService` orchestration.
+/// The low-level playback state an `AudioEngine` reports, independent of any concrete backend so
+/// another engine could drive the same `PlayerService` orchestration.
 nonisolated enum AudioEngineState: Equatable, Sendable {
-    /// Idle and ready to start a source (AudioStreaming `.ready`).
+    /// Idle and ready to start a source.
     case ready
     case buffering
     case playing
@@ -28,12 +28,11 @@ nonisolated protocol AudioEngineDelegate: AnyObject, Sendable {
     func audioEngineDidError(_ message: String)
 }
 
-/// The low-level audio player `PlayerService` drives. Each engine (AudioStreaming, and the beta
-/// AVAudioEngine pipeline) provides one implementation; all the queue, now-playing, crossfade, and
-/// session-restore orchestration stays in `PlayerService` and is shared across engines.
+/// The low-level audio player `PlayerService` drives. All the queue, now-playing, crossfade, and
+/// session-restore orchestration stays in `PlayerService`; the engine only decodes and renders.
 ///
-/// The engine has its own internal queue and is safe to call from any isolation, so requirements are
-/// synchronous. `volume` is read/written by the crossfade fades.
+/// The engine has its own internal locking and is safe to call from any isolation, so requirements
+/// are synchronous. `volume` is the user-facing volume (ReplayGain runs on a separate path).
 nonisolated protocol AudioEngine: AnyObject, Sendable {
     var delegate: AudioEngineDelegate? { get set }
 
@@ -50,30 +49,16 @@ nonisolated protocol AudioEngine: AnyObject, Sendable {
     /// True when idle and ready to start a source (the cold-restore path checks this).
     var isReady: Bool { get }
 
-    /// Applies a ReplayGain loudness adjustment in dB for the current track (0 = no change). Engines
-    /// that normalise loudness through their own graph (AudioStreaming's EQ node) ignore it.
+    /// Applies a ReplayGain loudness adjustment in dB for the current track (0 = no change).
     func applyReplayGain(dB: Float)
 
-    /// True when the engine runs two decks and blends transitions itself. PlayerService then hands the
-    /// crossfade to the engine (through `preloadNext`'s duration) instead of running its sequential
-    /// volume fades.
-    var supportsOverlappedCrossfade: Bool { get }
-
     /// Hints that `url` will very likely be the next `play` target, so the engine can pre-buffer it
-    /// for a seamless hand-off. `crossfadeDuration` == 0 asks for a gapless butt-splice; > 0 asks an
-    /// overlap-capable engine to blend the two tracks over that window. A later `play` with the same
-    /// URL adopts the pre-buffered source; any other URL discards it. Engines without preloading
-    /// ignore the hint.
+    /// for a seamless hand-off. `crossfadeDuration` == 0 asks for a gapless butt-splice; > 0 asks the
+    /// engine to blend the two tracks over that window. A later `play` with the same URL adopts the
+    /// pre-buffered source; any other URL discards it.
     func preloadNext(url: URL, headers: [String: String], crossfadeDuration: Double)
 
     /// The authoritative length of the current track from library metadata, for engines whose own
     /// duration estimate drifts (transcoded/VBR streams) and would mistime transitions.
     func setTrackDuration(_ seconds: Double)
-}
-
-extension AudioEngine {
-    nonisolated var supportsOverlappedCrossfade: Bool { false }
-    nonisolated func applyReplayGain(dB: Float) {}
-    nonisolated func preloadNext(url: URL, headers: [String: String], crossfadeDuration: Double) {}
-    nonisolated func setTrackDuration(_ seconds: Double) {}
 }

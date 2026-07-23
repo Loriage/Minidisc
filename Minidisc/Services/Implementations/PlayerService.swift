@@ -9,11 +9,6 @@ import OSLog
 
 import AVFAudio
 
-nonisolated enum CrossfadePhase: Sendable {
-    case fadeOut
-    case fadeIn
-}
-
 actor PlayerService: PlayerServiceProtocol {
     nonisolated let state: PlayerState
 
@@ -29,12 +24,11 @@ actor PlayerService: PlayerServiceProtocol {
     private let crossfadeSettings: CrossfadeSettings
     private var crossfadeConfig = CrossfadeConfig(duration: 0, disableForGapless: true)
     private var nowPlayingService: (any NowPlayingServiceProtocol)?
-    private var replayGainService: ReplayGainService?
     private let toastService: ToastService
     private let statsService: StatsService
     private let listenBrainzService: ListenBrainzService
 
-    // The low-level audio engine (AudioStreaming by default, injected by AppContainer). It has its own
+    // The low-level audio engine (AVPlayer, injected by AppContainer). It has its own
     // internal queue and is Sendable, so it's reachable from nonisolated contexts (e.g. termination).
     private let engine: AudioEngine
     private let engineBridge: AudioEngineBridge
@@ -91,12 +85,6 @@ actor PlayerService: PlayerServiceProtocol {
     private var prefetchTask: Task<Void, Never>?
     private var prefetchScheduled = false
     private let prefetchSession: URLSession
-    /// Fade-out task running during the crossfade window at the end of the current track.
-    private var fadeOutTask: Task<Void, Never>?
-    /// Fade-in task running at the start of the next track after a crossfade.
-    private var fadeInTask: Task<Void, Never>?
-    /// True while a crossfade fade-out is in progress; guards checkFadeOutThreshold against re-entry.
-    private var isFadingOut = false
     // Saved before a shuffle activation; nil when shuffle is off.
     private var originalQueueOrder: [DisplayableSong]?
     /// Single-slot guard preventing concurrent auto-extend fetches.
@@ -167,14 +155,6 @@ actor PlayerService: PlayerServiceProtocol {
         nowPlayingService = service
     }
 
-    func setReplayGainService(_ service: ReplayGainService) async {
-        replayGainService = service
-        // ReplayGain hooks AudioStreaming's EQ frame filter, so it only attaches to that engine.
-        // The AVAudioEngine backend applies gain with its own node.
-        if let asEngine = engine as? AudioStreamingEngine {
-            await service.attach(to: asEngine.player)
-        }
-    }
 
     // MARK: - Play
 
@@ -237,15 +217,8 @@ actor PlayerService: PlayerServiceProtocol {
         cancelPendingScrobble()
         cancelPendingCacheDownload()
         cancelPendingPrefetch()
-        // Capture crossfade intent before cancelling fade tasks.
-        // Manual cancel here (without volume restore) — volume is set explicitly below.
-        let shouldFadeIn = isFadingOut && crossfadeConfig.duration > 0
-        fadeOutTask?.cancel(); fadeOutTask = nil
-        fadeInTask?.cancel(); fadeInTask = nil
-        isFadingOut = false
 
         let config = await MainActor.run { replayGainSettings.config }
-        await replayGainService?.apply(track: song, config: config)
         engine.applyReplayGain(dB: ReplayGainService.gainDB(track: song, config: config))
 
         let songId = song.id
@@ -307,7 +280,7 @@ actor PlayerService: PlayerServiceProtocol {
             }
         }
 
-        Logger.player.info("[TRANSITION] advancing to '\(song.title, privacy: .public)' (id=\(song.id, privacy: .public)) — starting AudioStreaming")
+        Logger.player.info("[TRANSITION] advancing to '\(song.title, privacy: .public)' (id=\(song.id, privacy: .public)) — starting playback")
 
         stopProgressTimer()
         liveStreamStallTask?.cancel()
@@ -326,18 +299,7 @@ actor PlayerService: PlayerServiceProtocol {
 
         configureAudioSessionIfNeeded()
 
-        let fadingInAllowed: Bool
-        fadingInAllowed = shouldFadeIn && !PlayerService.isProblematicRoute(
-            portTypes: AVAudioSession.sharedInstance().currentRoute.outputs.map { $0.portType }
-        )
-
-        if fadingInAllowed {
-            engine.volume = 0
-        }
         engine.play(url: source.url, headers: source.customHeaders)
-        if fadingInAllowed {
-            performFadeIn(duration: crossfadeConfig.duration)
-        }
 
         let duration = song.duration
         await MainActor.run {
@@ -388,7 +350,6 @@ actor PlayerService: PlayerServiceProtocol {
     func playRadio(_ station: InternetRadioStation) async throws {
         cancelPendingScrobble()
         cancelPendingCacheDownload()
-        cancelFadeTasks()
         let source = try await mediaResolver.resolveRadio(station)
 
         let codecResult = await checkCodecSupport(url: source.url, headers: source.customHeaders)
@@ -667,7 +628,6 @@ actor PlayerService: PlayerServiceProtocol {
 
     func replayGainSettingsDidChange() async {
         let (track, config) = await MainActor.run { (state.currentTrack, replayGainSettings.config) }
-        await replayGainService?.apply(currentTrack: track, config: config)
         engine.applyReplayGain(dB: track.map { ReplayGainService.gainDB(track: $0, config: config) } ?? 0)
     }
 
@@ -789,7 +749,6 @@ actor PlayerService: PlayerServiceProtocol {
     // MARK: - Pause / Resume
 
     func pause() async {
-        cancelFadeTasks()
         finalizePlaySegment()
         engine.pause()
         // Flip the UI state BEFORE deactivating the audio session — setActive(false) routinely takes
@@ -879,7 +838,6 @@ actor PlayerService: PlayerServiceProtocol {
         cancelPendingScrobble()
         cancelPendingCacheDownload()
         cancelPendingPrefetch()
-        cancelFadeTasks()
         stopProgressTimer()
         stopPositionSaveTimer()
         restorePauseTask?.cancel()
@@ -897,7 +855,6 @@ actor PlayerService: PlayerServiceProtocol {
         accumulatedPlayedSeconds = 0
         currentPlaySegmentStart = nil
         trackPlayStartDate = nil
-        await replayGainService?.resetGain()
         engine.applyReplayGain(dB: 0)
         currentSource = nil
         pendingRestoreInfo = nil
@@ -918,7 +875,7 @@ actor PlayerService: PlayerServiceProtocol {
 
     func seek(to position: TimeInterval) async {
         // Reject malformed targets (NaN/inf). A scrubber drag against a zero-width track produces NaN, which
-        // would trap in the AudioStreaming engine's Int64(time / duration). The single chokepoint for every
+        // would corrupt the engine's seek math. The single chokepoint for every
         // seek caller (UI, lyrics, lock screen). A malformed seek is a silent no-op — NOT a jump to zero.
         guard position.isFinite else {
             Logger.player.warning("seek ignored — non-finite target")
@@ -928,9 +885,6 @@ actor PlayerService: PlayerServiceProtocol {
             Logger.player.debug("seek ignored — live stream mode")
             return
         }
-        // Cancel any active fade and restore volume — repositioning during a fade
-        // would otherwise leave the player stuck at a low volume.
-        cancelFadeTasks()
         // Finalize the current segment and start a fresh one so that only
         // audio actually heard after the seek point is counted in played time.
         if currentPlaySegmentStart != nil {
@@ -1244,7 +1198,6 @@ actor PlayerService: PlayerServiceProtocol {
         // currentSource and pendingRestoreInfo above). globalGain is set on the EQ node
         // and takes effect when audio flows, so applying while paused is correct.
         let config = await MainActor.run { replayGainSettings.config }
-        await replayGainService?.apply(track: track, config: config)
         engine.applyReplayGain(dB: ReplayGainService.gainDB(track: track, config: config))
         Logger.player.debug("[RESTORE] ReplayGain applied for '\(track.title, privacy: .public)'")
 
@@ -1340,7 +1293,7 @@ actor PlayerService: PlayerServiceProtocol {
                     let cur = self.state.duration
                     let clamped = cur > 0 ? min(progress, cur) : progress
                     self.state.position = clamped
-                    // Refine duration when AudioStreaming parses the real value from the stream.
+                    // Refine duration when the engine reports the real value from the stream.
                     if audioDuration > 0, abs(audioDuration - cur) > 0.5 {
                         self.state.duration = audioDuration
                     }
@@ -1348,7 +1301,6 @@ actor PlayerService: PlayerServiceProtocol {
                 await self.periodicNowPlayingPush(elapsed: progress)
                 await self.checkScrobbleThreshold()
                 await self.checkPrefetchThreshold()
-                await self.checkFadeOutThreshold()
             }
         }
     }
@@ -1498,11 +1450,10 @@ actor PlayerService: PlayerServiceProtocol {
         }
     }
 
-    /// Pre-buffers the next track in the engine for a seamless hand-off. On an overlap-capable engine
-    /// the crossfade itself is delegated here (duration > 0 = engine-blended overlap; gapless pairs
-    /// stay at 0 when the user asked crossfade to stand aside for them). On sequential-fade engines,
-    /// preloading only happens when crossfade won't drive the transition. Repeat-one always skips:
-    /// the queue's next is not what actually plays next.
+    /// Pre-buffers the next track in the engine for a seamless hand-off. The crossfade itself is
+    /// delegated here (duration > 0 = engine-blended overlap; gapless pairs stay at 0 when the user
+    /// asked crossfade to stand aside for them). Repeat-one always skips: the queue's next is not
+    /// what actually plays next.
     private func preloadNextForGapless(songId: String, serverId: UUID) async {
         let repeatMode = await MainActor.run { state.repeatMode }
         guard repeatMode != .one else { return }
@@ -1513,11 +1464,7 @@ actor PlayerService: PlayerServiceProtocol {
             if crossfadeConfig.disableForGapless {
                 standsAsideForPair = await isNextGaplessPair(songId: songId)
             }
-            if engine.supportsOverlappedCrossfade {
-                overlap = standsAsideForPair ? 0 : crossfadeConfig.duration
-            } else {
-                guard standsAsideForPair else { return }
-            }
+            overlap = standsAsideForPair ? 0 : crossfadeConfig.duration
         }
 
         guard let source = try? await mediaResolver.resolve(songId: songId, serverId: serverId) else { return }
@@ -1543,21 +1490,7 @@ actor PlayerService: PlayerServiceProtocol {
         }
     }
 
-    // MARK: - Crossfade fade engine
-
-    private func cancelFadeTasks() {
-        let wasActive = fadeOutTask != nil || fadeInTask != nil || isFadingOut
-        fadeOutTask?.cancel()
-        fadeOutTask = nil
-        fadeInTask?.cancel()
-        fadeInTask = nil
-        isFadingOut = false
-        if wasActive {
-            let vol = restoredVolume
-            engine.volume = vol
-            Logger.crossfade.info("fade cancelled — volume restored to \(vol, format: .fixed(precision: 2))")
-        }
-    }
+    // MARK: - Gapless pairing
 
     /// Returns true when the current and next track form a gapless pair (same album, consecutive track numbers).
     /// Nil albumId or track number → not a pair, so crossfade proceeds.
@@ -1572,141 +1505,6 @@ actor PlayerService: PlayerServiceProtocol {
               let cTrack = currentTrackNumber,
               let nTrack = nextTrackNumber else { return false }
         return cAlbum == nAlbum && nTrack == cTrack + 1
-    }
-
-    nonisolated static func shouldStartFadeOut(
-        crossfadeDuration: Double,
-        remaining: Double,
-        hasNext: Bool,
-        trackDuration: Double,
-        repeatOne: Bool = false
-    ) -> Bool {
-        guard crossfadeDuration > 0, hasNext else { return false }
-        // Repeat-one loops the same track on the same player; there's no second source
-        // to mix into, so a fade-out would just produce a silent gap.
-        guard !repeatOne else { return false }
-        // Skip on short tracks to avoid starting a fade immediately after playback begins.
-        guard trackDuration > 2 * crossfadeDuration else { return false }
-        return remaining > 0 && remaining <= crossfadeDuration
-    }
-
-    private func checkFadeOutThreshold() async {
-        guard !isFadingOut else { return }
-        guard crossfadeConfig.duration > 0 else { return }
-        // Overlap-capable engines blend the crossfade themselves (armed via preloadNext) — the
-        // sequential fade-out must not also run and fight the engine's own ramps.
-        guard !engine.supportsOverlappedCrossfade else { return }
-        let (duration, position, isPlaying, currentIndex, queueCount, repeatMode, title) = await MainActor.run {
-            (state.duration, state.position, state.playbackState == .playing,
-             state.currentIndex, state.queue.count, state.repeatMode,
-             state.currentTrack?.title ?? "?")
-        }
-        guard isPlaying, duration > 0 else { return }
-        let remaining = duration - position
-        let D = crossfadeConfig.duration
-        let hasNext = currentIndex + 1 < queueCount || repeatMode != .off
-
-        // Log skip reasons only while inside the crossfade window (avoids per-tick spam).
-        if remaining > 0 && remaining <= D {
-            if !hasNext {
-                Logger.crossfade.debug("skip — no-next track (remaining=\(String(format:"%.2f",remaining))s)")
-            } else if repeatMode == .one {
-                Logger.crossfade.debug("skip — repeat-one (track='\(title, privacy: .public)')")
-            } else if duration <= 2 * D {
-                Logger.crossfade.debug("skip — short track (duration=\(String(format:"%.1f",duration))s, 2D=\(String(format:"%.1f",2*D))s)")
-            }
-        }
-
-        guard PlayerService.shouldStartFadeOut(
-            crossfadeDuration: D,
-            remaining: remaining,
-            hasNext: hasNext,
-            trackDuration: duration,
-            repeatOne: repeatMode == .one
-        ) else { return }
-
-        if crossfadeConfig.disableForGapless {
-            let (currentSong, nextSong): (DisplayableSong?, DisplayableSong?) = await MainActor.run {
-                let nextIndex = state.currentIndex + 1
-                return (state.currentTrack, state.queue.indices.contains(nextIndex) ? state.queue[nextIndex] : nil)
-            }
-            if let current = currentSong, let next = nextSong,
-               PlayerService.isGaplessPair(
-                   currentAlbumId: current.albumId,
-                   currentTrackNumber: current.trackNumber,
-                   nextAlbumId: next.albumId,
-                   nextTrackNumber: next.trackNumber
-               ) {
-                Logger.crossfade.debug("skip — gapless pair (track='\(title, privacy: .public)')")
-                return
-            }
-        }
-
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs.map { $0.portType }
-        guard !PlayerService.isProblematicRoute(portTypes: outputs) else {
-            Logger.crossfade.debug("skip — AirPlay route (track='\(title, privacy: .public)')")
-            return
-        }
-
-        isFadingOut = true
-        let userVol = restoredVolume
-        Logger.crossfade.info("fade-out START — track='\(title, privacy: .public)' remaining=\(String(format:"%.2f",remaining))s D=\(String(format:"%.1f",D))s targetVol=\(String(format:"%.2f",userVol))->0")
-        performFadeOut(duration: remaining)
-    }
-
-    nonisolated static func crossfadeVolume(base: Float, progress: Double, phase: CrossfadePhase) -> Float {
-        let p = max(0.0, min(1.0, progress))
-        switch phase {
-        case .fadeOut: return base * Float(cos(p * .pi / 2))
-        case .fadeIn:  return base * Float(sin(p * .pi / 2))
-        }
-    }
-
-    private func performFadeOut(duration: Double) {
-        let startVolume = engine.volume
-        let fadeDuration = max(duration, 0.05)
-        fadeOutTask = Task { [weak self] in
-            guard let self else { return }
-            let startTime = Date()
-            while !Task.isCancelled {
-                let elapsed = Date().timeIntervalSince(startTime)
-                let progress = min(elapsed / fadeDuration, 1.0)
-                self.engine.volume = PlayerService.crossfadeVolume(base: startVolume, progress: progress, phase: .fadeOut)
-                if progress >= 1.0 { break }
-                try? await Task.sleep(for: .milliseconds(30))
-            }
-        }
-    }
-
-    /// Fades the player volume in over `duration` seconds.
-    /// Re-reads `restoredVolume` each tick so a mid-fade slider drag is tracked immediately.
-    private func performFadeIn(duration: Double) {
-        let fadeDuration = max(duration, 0.05)
-        fadeInTask = Task { [weak self] in
-            guard let self else { return }
-            Logger.crossfade.info("fade-in START vol=0->target=\(self.restoredVolume, format: .fixed(precision: 2))")
-            let startTime = Date()
-            while !Task.isCancelled {
-                let elapsed = Date().timeIntervalSince(startTime)
-                let progress = min(elapsed / fadeDuration, 1.0)
-                let target = self.restoredVolume
-                self.engine.volume = PlayerService.crossfadeVolume(base: target, progress: progress, phase: .fadeIn)
-                if progress >= 1.0 { break }
-                try? await Task.sleep(for: .milliseconds(30))
-            }
-            if !Task.isCancelled {
-                let final = self.restoredVolume
-                self.engine.volume = final
-                Logger.crossfade.info("fade-in DONE vol=\(final, format: .fixed(precision: 2))")
-            }
-        }
-    }
-
-    /// Returns true for routes where crossfade volume ramping sounds wrong or causes artefacts.
-    /// `.airPlay` is the initial entry; add `.bluetoothA2DP` or `.carAudio` here when needed.
-    nonisolated static func isProblematicRoute(portTypes: [AVAudioSession.Port]) -> Bool {
-        let problematic: Set<AVAudioSession.Port> = [.airPlay]
-        return portTypes.contains(where: { problematic.contains($0) })
     }
 
     /// Returns true when the route outputs represent a personal listening device whose
@@ -1799,14 +1597,6 @@ actor PlayerService: PlayerServiceProtocol {
             wasTrackCompletedNaturally = false
             resetTrackAccumulator(isPlaying: true)
             if let source = currentSource {
-                // Defensive: repeat-one was likely toggled on after fade-out had already started.
-                // Stop any in-flight fade tasks and restore volume on the same audioPlayer before
-                // restarting, so the looped track isn't silent. Inline cancel (not cancelFadeTasks)
-                // to skip the redundant restore log path.
-                fadeOutTask?.cancel(); fadeOutTask = nil
-                fadeInTask?.cancel(); fadeInTask = nil
-                isFadingOut = false
-                engine.volume = restoredVolume
                 engine.play(url: source.url, headers: source.customHeaders)
             }
         } else {
@@ -1832,7 +1622,6 @@ actor PlayerService: PlayerServiceProtocol {
         currentPlaySegmentStart = nil
         trackPlayStartDate = nil
 
-        cancelFadeTasks()
         stopProgressTimer()
         stopPositionSaveTimer()
         // The engine is at EOF — stop it (NO parking play) and release the session.
@@ -2098,8 +1887,6 @@ extension PlayerService {
                 .flatMap(AVAudioSession.InterruptionReason.init(rawValue:)) == .routeDisconnected
             let isPlaying = await MainActor.run { state.playbackState == .playing }
             guard isPlaying else { return }
-            // Cancel any active crossfade before the OS steals audio focus.
-            cancelFadeTasks()
             engine.pause()
             await MainActor.run { state.playbackState = .paused }
             stopProgressTimer()
@@ -2160,7 +1947,7 @@ extension PlayerService {
 // MARK: - AudioEngineBridge
 
 /// Bridges the neutral `AudioEngineDelegate` callbacks (on the engine's callback thread) onto the
-/// `PlayerService` actor. The concrete engine (e.g. `AudioStreamingEngine`) already maps its own
+/// `PlayerService` actor. The concrete engine already maps its own
 /// callbacks into the neutral events.
 nonisolated final class AudioEngineBridge: AudioEngineDelegate, @unchecked Sendable {
     weak var service: PlayerService?

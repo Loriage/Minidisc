@@ -76,6 +76,10 @@ private actor CoverFetchGate {
 @MainActor
 @Observable
 final class ArtworkImageCache {
+    /// Mirrors `CacheSettings.cacheArtwork`: when false, fetched covers stay memory-only and are not
+    /// written to the persisted cover store. Set by AppContainer at launch and by the Settings toggle.
+    var persistCoversEnabled = true
+
     private var cache: [String: PlatformImage] = [:]
     private var accessOrder: [String] = []
     private let maxEntries = 110
@@ -208,8 +212,11 @@ final class ArtworkImageCache {
         }
         Logger.artworkCache.debug("[NET-COVER] done id=\(coverArtId, privacy: .public) tier=\(tier.rawValue, privacy: .public) duration=\(Int(Date().timeIntervalSince(t0) * 1000))ms bytes=\(data.count, privacy: .public)")
         store(image: image, forKey: key)
-        // Persist using the tier-suffixed filename so each tier has its own disk file.
-        await downloadService.persistCover(data, forId: "\(coverArtId)@\(tier.rawValue)")
+        // Persist using the tier-suffixed filename so each tier has its own disk file — unless the
+        // user turned artwork caching off (memory-only mode).
+        if persistCoversEnabled {
+            await downloadService.persistCover(data, forId: "\(coverArtId)@\(tier.rawValue)")
+        }
         // A fresh fetch already carries the current Last-Modified — record it as the baseline so we
         // don't waste a HEAD re-checking a cover we just downloaded.
         if let http = response as? HTTPURLResponse {

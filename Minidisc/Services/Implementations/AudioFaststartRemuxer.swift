@@ -7,9 +7,8 @@ import Foundation
 import AVFoundation
 import OSLog
 
-/// Remuxes non-faststart MP4/M4A audio to faststart (the `moov` atom ahead of `mdat`) so the
-/// AudioStreaming engine — which cannot open non-faststart M4A (an AudioFileStream limitation) —
-/// can play downloaded m4a offline. Lossless: AVAssetExportSession with the PASSTHROUGH preset
+/// Remuxes non-faststart MP4/M4A audio to faststart (the `moov` atom ahead of `mdat`) so
+/// downloaded m4a files keep a clean, streamable layout. Lossless: AVAssetExportSession with the PASSTHROUGH preset
 /// copies the elementary streams without re-encoding, for both AAC and ALAC. No-op for every
 /// non-m4a container and for files already in faststart layout.
 nonisolated struct AudioFaststartRemuxer: Sendable {

@@ -25,7 +25,7 @@ struct CrossfadeSettingsSection: View {
                 step: 0.5
             ) {
                 HStack {
-                    Label("Duration", systemImage: "timer")
+                    Text("Duration")
                         .foregroundStyle(.primary)
                     Spacer()
                     Text(crossfadeDurationLabel(duration))
@@ -43,7 +43,7 @@ struct CrossfadeSettingsSection: View {
                         Task { await container?.playerService.crossfadeSettingsDidChange() }
                     }
                 )) {
-                    Label("Disable for gapless albums", systemImage: "music.note.list")
+                    Text("Disable for gapless albums")
                         .foregroundStyle(.primary)
                 }
                 .tint(Color(.systemGreen))

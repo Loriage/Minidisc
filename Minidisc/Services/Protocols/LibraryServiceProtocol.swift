@@ -124,10 +124,38 @@ protocol LibraryServiceProtocol: AnyObject, Sendable {
     /// Returns an empty array when the server has no similarity data — callers surface `instantMixEmpty`.
     /// Not gated on a capability: it simply calls the endpoint and lets an empty/failed result degrade.
     func instantMix(from seed: InstantMixSeed, count: Int) async throws -> [DisplayableSong]
+
+    /// Builds the endless-play queue extension, seeded on the track playing now: a sonic Instant Mix
+    /// of `seedTrackId`, topped up from the `similarBackfillQueue` heuristic when the similar set is
+    /// short so the queue keeps growing. With no seed (or no similarity data), it falls back entirely
+    /// to that same heuristic. `excludedIds` (the current queue) is never returned.
+    func endlessExtension(seedTrackId: String?, targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong]
 }
 
 // Defaults so existing test doubles keep compiling without stubbing the Home genre shelves.
 extension LibraryServiceProtocol {
     func genres() async throws -> [Genre] { [] }
     func albumsByGenre(_ genre: String, size: Int) async throws -> [AlbumID3] { [] }
+
+    /// Default composition of `instantMix` + `similarBackfillQueue` — conformers get the endless
+    /// behaviour without changes, mirroring how Instant Mix itself degrades without a similarity
+    /// service.
+    func endlessExtension(seedTrackId: String?, targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong] {
+        guard let seedTrackId else {
+            return try await similarBackfillQueue(targetSize: targetSize, excludedIds: excludedIds)
+        }
+        var picked: [DisplayableSong] = []
+        var seen = excludedIds
+        let mix = (try? await instantMix(from: .song(id: seedTrackId), count: targetSize)) ?? []
+        for song in mix where !seen.contains(song.id) {
+            picked.append(song)
+            seen.insert(song.id)
+        }
+        // A short (or empty) similar set is topped up from the library heuristic.
+        if picked.count < targetSize {
+            let backfill = (try? await similarBackfillQueue(targetSize: targetSize - picked.count, excludedIds: seen)) ?? []
+            picked.append(contentsOf: backfill.filter { !seen.contains($0.id) })
+        }
+        return picked
+    }
 }

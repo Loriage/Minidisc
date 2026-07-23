@@ -30,9 +30,6 @@ struct SongRow: View {
     @Environment(ArtworkImageCache.self) private var artworkImageCache
     @Environment(\.minidiscPlayingAccent) private var playingAccent
     @State private var coverImage: PlatformImage?
-    #if os(macOS)
-    @State private var isHovered = false
-    #endif
 
     init(song: DisplayableSong, index: Int, showCoverArt: Bool = false, showArtist: Bool = true, isFavorite: Bool = false, titleColor: Color = .primary, secondaryColor: Color = .secondary, onDownload: (() -> Void)? = nil, onRemoveDownload: (() -> Void)? = nil, isDownloading: Bool = false, onRemoveFromPlaylist: (() -> Void)? = nil, onAddToPlaylist: ((DisplayableSong) -> Void)? = nil) {
         self.song = song
@@ -82,13 +79,8 @@ struct SongRow: View {
                         NowPlayingBarsIndicator(isPlaying: isPlaying)
                     } else {
                         Text("\(song.trackNumber ?? index)")
-                            #if os(macOS)
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                            #else
                             .font(.minidiscCaption)
                             .foregroundStyle(secondaryColor.opacity(0.6))
-                            #endif
                             .opacity(isFavorite ? 0 : 1)
                         if isFavorite {
                             Image(systemName: "star.fill")
@@ -104,22 +96,13 @@ struct SongRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(song.title)
-                    #if os(macOS)
-                    .font(.system(size: 14, weight: .regular))
-                    #else
                     .font(.minidiscCellTitle)
-                    #endif
                     .foregroundStyle(isCurrentTrack ? playingAccent : titleColor)
                     .lineLimit(1)
                 if showArtist, let artist = song.artist {
                     Text(artist)
-                        #if os(macOS)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        #else
                         .font(.minidiscCaption)
                         .foregroundStyle(secondaryColor)
-                        #endif
                         .lineLimit(1)
                 }
             }
@@ -138,31 +121,19 @@ struct SongRow: View {
                 }
                 if song.duration > 0 {
                     Text(Duration.seconds(song.duration).formatted(.time(pattern: .minuteSecond)))
-                        #if os(macOS)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        #else
                         .font(.minidiscCaption)
                         .foregroundStyle(secondaryColor.opacity(0.6))
-                        #endif
                         .monospacedDigit()
                 }
             }
         }
         .padding(.vertical, MinidiscSpacing.s)
-        #if os(macOS)
-        .padding(.trailing, MinidiscSpacing.s)
-        #endif
         .contentShape(Rectangle())
-        #if os(macOS)
-        .background(isHovered ? Color.primary.opacity(0.06) : Color.clear, in: RoundedRectangle(cornerRadius: 4))
-        .animation(.easeOut(duration: 0.12), value: isHovered)
-        .onHover { isHovered = $0 }
-        #endif
         .task(id: song.id) {
             coverImage = await artworkImageCache.load(coverArtId: song.coverArtId ?? song.id)
         }
         .contextMenu {
+            Group {
             Button {
                 Task {
                     do {
@@ -243,6 +214,8 @@ struct SongRow: View {
             // TODO(v1.5.x): Add "Show in Album" and "Show in Artist". Requires:
             // (1) albumId + artistId fields on DisplayableSong, (2) NavigationPath
             // lifted into RootViewMacOS and threaded through all section views.
+            }
+            .tint(.primary)
         } preview: {
             SongContextPreview(coverImage: coverImage, song: song)
         }

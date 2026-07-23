@@ -9,10 +9,8 @@ struct AlphabetJumpBar: View {
     let availableLetters: Set<String>
     let onLetterTap: (String) -> Void
 
-    #if os(iOS)
     @State private var lastLetterReported: String?
     @State private var lastHapticTime: Date = .distantPast
-    #endif
 
     private static let letters = [
         "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
@@ -20,14 +18,9 @@ struct AlphabetJumpBar: View {
     ]
 
     var body: some View {
-        #if os(iOS)
         iOSBody
-        #else
-        macOSBody
-        #endif
     }
 
-    #if os(iOS)
     private var iOSBody: some View {
         VStack(spacing: 2) {
             ForEach(Self.letters, id: \.self) { letter in
@@ -63,32 +56,6 @@ struct AlphabetJumpBar: View {
                 }
         )
     }
-    #else
-    private var macOSBody: some View {
-        VStack(spacing: 2) {
-            ForEach(Self.letters, id: \.self) { letter in
-                Button {
-                    if availableLetters.contains(letter) {
-                        onLetterTap(letter)
-                    }
-                } label: {
-                    Text(letter)
-                        .font(.system(size: 10, weight: .semibold))
-                        .frame(width: 14, height: 14)
-                        .foregroundStyle(
-                            availableLetters.contains(letter)
-                                ? Color.minidiscAccent
-                                : Color.secondary.opacity(0.3)
-                        )
-                }
-                .buttonStyle(.plain)
-                .disabled(!availableLetters.contains(letter))
-            }
-        }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 4)
-    }
-    #endif
 }
 
 // MARK: - Helpers

@@ -7,11 +7,7 @@ import SwiftUI
 
 extension Color {
     nonisolated static var minidiscSystemBackground: Color {
-        #if os(iOS)
         Color(.systemBackground)
-        #else
-        Color(.windowBackgroundColor)
-        #endif
     }
 
     /// White — text/icons placed on an accent-filled surface (play button label, picker selection).

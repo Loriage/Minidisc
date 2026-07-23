@@ -8,9 +8,7 @@ import AudioStreaming
 import SwiftSonic
 import OSLog
 
-#if os(iOS)
 import AVFAudio
-#endif
 
 nonisolated enum CrossfadePhase: Sendable {
     case fadeOut
@@ -50,7 +48,6 @@ actor PlayerService: PlayerServiceProtocol {
     private var liveStreamStallTask: Task<Void, Never>?
 
     private var audioSessionConfigured = false
-    #if os(iOS)
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
     /// Stored so pause()/stop() can cancel it before calling setActive(false),
@@ -60,7 +57,6 @@ actor PlayerService: PlayerServiceProtocol {
     /// (AirPods in case). Per Apple guidance, never auto-resume after such an interruption
     /// — resuming would route playback to the built-in speaker.
     private var interruptionWasRouteDisconnect = false
-    #endif
 
     private var isHandlingEndOfTrack = false
     /// True when playback stopped cleanly at the END of the queue (repeat off). `resume()` reads this to restart
@@ -332,18 +328,12 @@ actor PlayerService: PlayerServiceProtocol {
             isMutedForRestore = false
         }
 
-        #if os(iOS)
         configureAudioSessionIfNeeded()
-        #endif
 
         let fadingInAllowed: Bool
-        #if os(iOS)
         fadingInAllowed = shouldFadeIn && !PlayerService.isProblematicRoute(
             portTypes: AVAudioSession.sharedInstance().currentRoute.outputs.map { $0.portType }
         )
-        #else
-        fadingInAllowed = shouldFadeIn
-        #endif
 
         if fadingInAllowed {
             audioPlayer.volume = 0
@@ -429,9 +419,7 @@ actor PlayerService: PlayerServiceProtocol {
             isMutedForRestore = false
         }
 
-        #if os(iOS)
         configureAudioSessionIfNeeded()
-        #endif
 
         await MainActor.run {
             state.currentTrack = nil
@@ -802,11 +790,9 @@ actor PlayerService: PlayerServiceProtocol {
         cancelFadeTasks()
         finalizePlaySegment()
         audioPlayer.pause()
-        #if os(iOS)
         sessionActivationRetryTask?.cancel()
         sessionActivationRetryTask = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        #endif
         await MainActor.run { state.playbackState = .paused }
         await pushPositionSnapshot(rate: 0.0)
         stopProgressTimer()
@@ -823,9 +809,7 @@ actor PlayerService: PlayerServiceProtocol {
             isMutedForRestore = false
         }
         isRestoringSession = false
-        #if os(iOS)
         configureAudioSessionIfNeeded()
-        #endif
         // Lazily start the accumulator for session-restored tracks that resume for the first time.
         if trackPlayStartDate == nil { trackPlayStartDate = Date() }
         if currentPlaySegmentStart == nil { currentPlaySegmentStart = Date() }
@@ -901,11 +885,9 @@ actor PlayerService: PlayerServiceProtocol {
         liveStreamStallTask?.cancel()
         liveStreamStallTask = nil
         audioPlayer.stop()
-        #if os(iOS)
         sessionActivationRetryTask?.cancel()
         sessionActivationRetryTask = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        #endif
         accumulatedPlayedSeconds = 0
         currentPlaySegmentStart = nil
         trackPlayStartDate = nil
@@ -1597,13 +1579,11 @@ actor PlayerService: PlayerServiceProtocol {
             }
         }
 
-        #if os(iOS)
         let outputs = AVAudioSession.sharedInstance().currentRoute.outputs.map { $0.portType }
         guard !PlayerService.isProblematicRoute(portTypes: outputs) else {
             Logger.crossfade.debug("skip — AirPlay route (track='\(title, privacy: .public)')")
             return
         }
-        #endif
 
         isFadingOut = true
         let userVol = restoredVolume
@@ -1659,7 +1639,6 @@ actor PlayerService: PlayerServiceProtocol {
         }
     }
 
-    #if os(iOS)
     /// Returns true for routes where crossfade volume ramping sounds wrong or causes artefacts.
     /// `.airPlay` is the initial entry; add `.bluetoothA2DP` or `.carAudio` here when needed.
     nonisolated static func isProblematicRoute(portTypes: [AVAudioSession.Port]) -> Bool {
@@ -1676,7 +1655,6 @@ actor PlayerService: PlayerServiceProtocol {
         ]
         return portTypes.contains(where: { personal.contains($0) })
     }
-    #endif
 
     // MARK: - Play-time accumulator
 
@@ -1796,11 +1774,9 @@ actor PlayerService: PlayerServiceProtocol {
         stopPositionSaveTimer()
         // The engine is at EOF — stop it (NO parking play) and release the session.
         audioPlayer.stop()
-        #if os(iOS)
         sessionActivationRetryTask?.cancel()
         sessionActivationRetryTask = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        #endif
         pendingRestoreInfo = nil
         stoppedAtEndOfQueue = true
 
@@ -1992,7 +1968,6 @@ actor PlayerService: PlayerServiceProtocol {
 
 // MARK: - iOS Audio Session
 
-#if os(iOS)
 extension PlayerService {
     func configureAudioSessionIfNeeded() {
         do {
@@ -2118,7 +2093,6 @@ extension PlayerService {
         }
     }
 }
-#endif
 
 // MARK: - AudioStreamingDelegate
 
@@ -2169,7 +2143,6 @@ final class AudioStreamingDelegate: AudioPlayerDelegate, @unchecked Sendable {
 
 // MARK: - iOS logging helpers (file-private)
 
-#if os(iOS)
 private extension AVAudioSession.RouteChangeReason {
     nonisolated var logDescription: String {
         switch self {
@@ -2185,4 +2158,3 @@ private extension AVAudioSession.RouteChangeReason {
         }
     }
 }
-#endif

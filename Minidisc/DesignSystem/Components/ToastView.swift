@@ -75,11 +75,7 @@ struct ToastOverlay: ViewModifier {
     /// Bottom inset so the toast floats just above the mini player when it is shown, otherwise just
     /// above the tab bar / home indicator. Tunable if the gap needs nudging on device.
     private var bottomInset: CGFloat {
-        #if os(iOS)
         miniPlayerVisible ? MinidiscSpacing.miniPlayerBottomMargin + MinidiscSpacing.s : MinidiscSpacing.l
-        #else
-        miniPlayerVisible ? MinidiscMacOSLayout.playerBarReservedHeight + MinidiscSpacing.s : MinidiscSpacing.l
-        #endif
     }
 
     func body(content: Content) -> some View {

@@ -64,11 +64,7 @@ struct PlaylistCoverPicker: View {
     }
 
     private func platformImage(_ image: PlatformImage) -> Image {
-        #if canImport(UIKit)
         Image(uiImage: image)
-        #else
-        Image(nsImage: image)
-        #endif
     }
 }
 

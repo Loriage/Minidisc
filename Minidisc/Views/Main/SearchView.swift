@@ -133,11 +133,7 @@ struct SearchView: View {
                     serverId: serverId
                 )
             } content: {
-                #if os(macOS)
-                ArtistDetailMacOS(artistId: artist.id, artistName: artist.name, coverArtId: artist.coverArt)
-                #else
                 ArtistDetailView(artist: artist)
-                #endif
             }
         }
         .navigationDestination(for: AlbumID3.self) { album in
@@ -148,30 +144,19 @@ struct SearchView: View {
                     serverId: serverId
                 )
             } content: {
-                #if os(macOS)
-                AlbumDetailMacOS(albumId: album.id, albumName: album.name, coverArtId: album.coverArt)
-                #else
                 AlbumDetailView(album: album)
-                #endif
             }
         }
         .navigationDestination(for: HomeDestination.self) { destination in
             switch destination {
             case .album(let album):
-                #if os(macOS)
-                AlbumDetailMacOS(albumId: album.id, albumName: album.name, coverArtId: album.coverArt)
-                #else
                 AlbumDetailView(
                     album: album,
                     zoomSourceId: album.id,
                     zoomNamespace: albumZoomNamespace,
                     coverArtId: album.coverArt
                 )
-                #endif
             case .albumById(let id, let name, _, let coverArtId):
-                #if os(macOS)
-                AlbumDetailMacOS(albumId: id, albumName: name, coverArtId: coverArtId)
-                #else
                 AlbumDetailView(
                     albumId: id,
                     albumName: name,
@@ -179,19 +164,10 @@ struct SearchView: View {
                     zoomNamespace: albumZoomNamespace,
                     coverArtId: coverArtId
                 )
-                #endif
             case .artist(let artist):
-                #if os(macOS)
-                ArtistDetailMacOS(artistId: artist.id, artistName: artist.name, coverArtId: artist.coverArt)
-                #else
                 ArtistDetailView(artist: artist)
-                #endif
             case .artistById(let id, let name, let coverArtId):
-                #if os(macOS)
-                ArtistDetailMacOS(artistId: id, artistName: name, coverArtId: coverArtId)
-                #else
                 ArtistDetailView(artistId: id, artistName: name, coverArtId: coverArtId)
-                #endif
             case .artistBestOf(let id, let name, let coverArtId):
                 ArtistBestOfView(artistId: id, artistName: name, coverArtId: coverArtId)
             default:
@@ -201,17 +177,9 @@ struct SearchView: View {
         .navigationDestination(for: SearchHistoryNavTarget.self) { entry in
             switch entry.itemType {
             case "artist":
-                #if os(macOS)
-                ArtistDetailMacOS(artistId: entry.itemId, artistName: entry.displayName, coverArtId: entry.coverArtId)
-                #else
                 ArtistDetailView(artistId: entry.itemId, artistName: entry.displayName, coverArtId: entry.coverArtId)
-                #endif
             default:
-                #if os(macOS)
-                AlbumDetailMacOS(albumId: entry.itemId, albumName: entry.displayName, coverArtId: entry.coverArtId)
-                #else
                 AlbumDetailView(albumId: entry.itemId, albumName: entry.displayName, coverArtId: entry.coverArtId)
-                #endif
             }
         }
         .onAppear {

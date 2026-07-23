@@ -6,7 +6,6 @@
 import SwiftUI
 
 /// Reusable mesh gradient background derived from a 3-color palette.
-/// Falls back to LinearGradient on macOS 14 where MeshGradient is unavailable.
 struct MeshGradientBackground: View {
     /// 3 colors from WrappedYearPalette.
     let palette: [Color]

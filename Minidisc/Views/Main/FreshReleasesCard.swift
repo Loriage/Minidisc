@@ -40,17 +40,12 @@ struct FreshReleasesCard: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: MinidiscSpacing.s) {
                         ForEach(Array(releases.enumerated()), id: \.offset) { _, release in
-                            #if os(iOS)
                             FreshReleaseAlbumCell(
                                 release: release,
                                 zoomSourceId: release.id ?? "\(release.artistName)-\(release.title)",
                                 zoomNamespace: zoomNamespace
                             )
                             .frame(width: 140)
-                            #else
-                            FreshReleaseAlbumCell(release: release, onTap: { onTap?(release) })
-                                .frame(width: 140)
-                            #endif
                         }
                         seeAllCell
                     }
@@ -149,18 +144,11 @@ struct FreshReleaseAlbumCell: View {
     }()
 
     var body: some View {
-        #if os(iOS)
         NavigationLink(value: release) {
             cellContent
         }
         .buttonStyle(.plain)
         .minidiscMatchedTransitionSource(id: zoomSourceId, in: zoomNamespace)
-        #else
-        Button(action: { onTap?() }) {
-            cellContent
-        }
-        .buttonStyle(.plain)
-        #endif
     }
 
     private var cellContent: some View {

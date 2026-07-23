@@ -60,73 +60,9 @@ private struct DownloadedContent: View {
                 subtitle: "Albums and playlists you download will be available here, even offline."
             )
         } else {
-            #if os(macOS)
-            downloadedListMacOS
-            #else
             downloadedListiOS
-            #endif
         }
     }
-
-    #if os(macOS)
-    private var downloadedListMacOS: some View {
-        ScrollViewReader { proxy in
-            List {
-                if !displayAlbums.isEmpty {
-                    Section("Albums") {
-                        ForEach(displayAlbums) { display in
-                            NavigationLink(value: HomeDestination.downloadedAlbum(display)) {
-                                HStack(spacing: MinidiscSpacing.m) {
-                                    CoverArtCard(id: display.coverArtId ?? display.albumId, size: 56)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(display.name)
-                                            .font(.minidiscCellTitle)
-                                            .lineLimit(1)
-                                        if let artist = display.artist {
-                                            Text(artist)
-                                                .font(.minidiscCellSubtitle)
-                                                .foregroundStyle(.secondary)
-                                                .lineLimit(1)
-                                        }
-                                        Text("\(display.downloadedTracksCount) tracks")
-                                            .font(.minidiscCaption)
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                    Spacer(minLength: 0)
-                                }
-                                .padding(.vertical, MinidiscSpacing.xs)
-                            }
-                            .id(display.id)
-                        }
-                    }
-                }
-
-                if !playlists.isEmpty {
-                    Section("Playlists") {
-                        ForEach(playlists) { playlist in
-                            NavigationLink(value: HomeDestination.playlistById(id: playlist.playlistId, name: playlist.name, coverArtId: playlist.coverArtId)) {
-                                HStack(spacing: MinidiscSpacing.m) {
-                                    CoverArtCard(id: playlist.coverArtId ?? playlist.playlistId, size: 56)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(playlist.name)
-                                            .font(.minidiscCellTitle)
-                                            .lineLimit(1)
-                                        Text("\(playlist.tracksCount) tracks\(playlist.isComplete ? "" : " (incomplete)")")
-                                            .font(.minidiscCaption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer(minLength: 0)
-                                }
-                                .padding(.vertical, MinidiscSpacing.xs)
-                            }
-                        }
-                    }
-                }
-            }
-            .listStyle(.plain)
-        }
-    }
-    #endif
 
     private var downloadedListiOS: some View {
         ScrollViewReader { proxy in

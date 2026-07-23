@@ -15,15 +15,8 @@ enum WrappedCoverRenderer {
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2.0
 
-        #if os(iOS)
         guard let uiImage = renderer.uiImage else { return nil }
         return uiImage.jpegData(compressionQuality: 0.85)
-        #elseif os(macOS)
-        guard let nsImage = renderer.nsImage else { return nil }
-        guard let tiff = nsImage.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff) else { return nil }
-        return bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.85])
-        #endif
     }
 }
 

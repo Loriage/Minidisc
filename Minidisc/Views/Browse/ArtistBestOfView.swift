@@ -34,11 +34,7 @@ struct ArtistBestOfView: View {
     private var headerSecondaryColor: Color { theme.secondaryContentColor }
     private var bodyColor: Color {
         if theme.isThemed { return theme.dominantColor }
-        #if canImport(UIKit)
         return Color(UIColor.systemBackground)
-        #else
-        return Color(NSColor.windowBackgroundColor)
-        #endif
     }
 
     private var effectiveCoverArtId: String { coverArtId ?? artistId }
@@ -73,10 +69,8 @@ struct ArtistBestOfView: View {
         }
         .navigationTitle("")
         .navigationBarTitleDisplayModeInline()
-        #if os(iOS)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(theme.isThemed ? (theme.isLight ? .light : .dark) : nil, for: .navigationBar)
-        #endif
         .task {
             guard let c = container else { return }
             if viewModel == nil {

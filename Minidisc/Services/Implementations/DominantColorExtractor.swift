@@ -7,11 +7,7 @@ import SwiftUI
 import CoreImage
 import OSLog
 
-#if canImport(UIKit)
 import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
 
 /// Extracts the dominant (average) color from a cover art image using CIAreaAverage.
 /// Results are cached in memory keyed by coverArtId and persisted to UserDefaults as packed
@@ -119,13 +115,8 @@ final class DominantColorExtractor {
 
     /// Resolves a SwiftUI Color to a packed 0xRRGGBB int (sRGB) for persistence; nil if it can't be resolved.
     private static func pack(_ color: Color) -> Int? {
-        #if canImport(UIKit)
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         guard UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a) else { return nil }
-        #elseif canImport(AppKit)
-        guard let rgb = NSColor(color).usingColorSpace(.sRGB) else { return nil }
-        let r = rgb.redComponent, g = rgb.greenComponent, b = rgb.blueComponent
-        #endif
         return (Int(max(0, min(1, r)) * 255) << 16) | (Int(max(0, min(1, g)) * 255) << 8) | Int(max(0, min(1, b)) * 255)
     }
 
@@ -144,12 +135,7 @@ final class DominantColorExtractor {
     /// keeping the CoreImage decode/average off the main actor. Mirrors `extract(from:)` but uses a local
     /// CIContext (cheap next to the image decode it follows) instead of the MainActor-isolated instance one.
     nonisolated static func packedAverageColor(from image: PlatformImage) -> Int? {
-        #if canImport(UIKit)
         guard let cgImage = image.cgImage else { return nil }
-        #elseif canImport(AppKit)
-        var proposedRect = NSRect(origin: .zero, size: image.size)
-        guard let cgImage = image.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil) else { return nil }
-        #endif
 
         let ciImage = CIImage(cgImage: cgImage)
         let extent = ciImage.extent
@@ -213,12 +199,7 @@ final class DominantColorExtractor {
     }
 
     private func extract(from image: PlatformImage, bottomStrip: Bool = false) -> (color: Color, packed: Int)? {
-        #if canImport(UIKit)
         guard let cgImage = image.cgImage else { return nil }
-        #elseif canImport(AppKit)
-        var proposedRect = NSRect(origin: .zero, size: image.size)
-        guard let cgImage = image.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil) else { return nil }
-        #endif
 
         let ciImage = CIImage(cgImage: cgImage)
         let extent = ciImage.extent

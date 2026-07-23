@@ -5,7 +5,6 @@
 
 import SwiftUI
 
-#if os(iOS)
 private struct TrackSkipSwipeModifier: ViewModifier {
     @Environment(\.appContainer) private var container
     @State private var dragOffset: CGFloat = 0
@@ -69,14 +68,9 @@ private struct TrackSkipSwipeModifier: ViewModifier {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { dragOffset = 0 }
     }
 }
-#endif
 
 extension View {
     func trackSkipSwipe(playerState: PlayerState) -> some View {
-        #if os(iOS)
         modifier(TrackSkipSwipeModifier(playerState: playerState))
-        #else
-        self
-        #endif
     }
 }

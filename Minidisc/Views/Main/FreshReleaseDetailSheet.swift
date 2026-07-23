@@ -51,9 +51,7 @@ struct FreshReleaseDetailView: View {
             .padding(MinidiscSpacing.l)
         }
         .navigationTitle(release.title)
-        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
-        #endif
         .task {
             for provider in providers {
                 if provider.buildURL(artistName: release.artistName, albumTitle: release.title) == nil {

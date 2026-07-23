@@ -24,13 +24,12 @@ struct SongsListView: View {
                 LoadingStateView()
             }
         }
-        #if os(iOS)
         .minidiscContentWidth()
-        #endif
         .navigationTitle("Songs")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 SongSortMenu(sort: $songSort)
+                    .tint(.primary)
             }
         }
         .task(id: container?.serverState.isOnline) {
@@ -127,17 +126,23 @@ struct SongsListView: View {
 
     @ViewBuilder
     private func playShuffleHeader(_ songs: [DisplayableSong]) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: MinidiscSpacing.m) {
             Button {
-                Task { try? await container?.playerService.play(tracks: songs, startIndex: 0) }
+                HapticFeedback.medium.trigger()
+                Task {
+                    guard !songs.isEmpty else { return }
+                    try? await container?.playerService.play(tracks: songs, startIndex: 0)
+                }
             } label: {
-                Label("Play", systemImage: "play.fill").frame(maxWidth: .infinity)
+                Label("Play", systemImage: "play.fill")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, MinidiscSpacing.s)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Color.minidiscAccent)
 
             Button {
+                HapticFeedback.medium.trigger()
                 Task {
+                    guard !songs.isEmpty else { return }
                     let idx = Int.random(in: 0..<songs.count)
                     try? await container?.playerService.play(tracks: songs, startIndex: idx)
                     if container?.playerState.isShuffled != true {
@@ -145,11 +150,14 @@ struct SongsListView: View {
                     }
                 }
             } label: {
-                Label("Shuffle", systemImage: "shuffle").frame(maxWidth: .infinity)
+                Label("Shuffle", systemImage: "shuffle")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, MinidiscSpacing.s)
             }
-            .buttonStyle(.bordered)
-            .tint(Color.minidiscAccent)
         }
+        .buttonStyle(.bordered)
+        .tint(.minidiscAccent)
+        .disabled(songs.isEmpty)
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
         .padding(.vertical, 4)

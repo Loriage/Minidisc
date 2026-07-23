@@ -9,7 +9,7 @@ import SwiftUI
 /// peek (real paging, not enlarged swatches), the live playlist title rendered INTO the gradient card (the
 /// `WrappedCoverRenderer` look — title over the gradient), a leading None/Current card, a Photo card, and the
 /// six gradient forms. A pagination-dot row + a camera shortcut sit below. Pure render + callbacks — the caller
-/// owns selection state. Cross-platform; the snap/scroll-position APIs are iOS 17 / macOS 14+ (the app targets
+/// owns selection state. Cross-platform; the snap/scroll-position APIs are iOS 17+ (the app targets
 /// well beyond that).
 struct PlaylistCoverCarousel: View {
     /// Live title rendered over the gradient cards (empty → a muted placeholder).
@@ -188,10 +188,6 @@ struct PlaylistCoverCarousel: View {
     }
 
     private func platformImage(_ image: PlatformImage) -> Image {
-        #if canImport(UIKit)
         Image(uiImage: image)
-        #else
-        Image(nsImage: image)
-        #endif
     }
 }

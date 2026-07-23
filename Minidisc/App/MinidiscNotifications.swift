@@ -60,4 +60,8 @@ extension Notification.Name {
     static let minidiscNavigateToArtist   = Notification.Name("minidiscNavigateToArtist")
     static let minidiscNavigateToPlaylist = Notification.Name("minidiscNavigateToPlaylist")
     static let minidiscPlaylistDeleted    = Notification.Name("minidisc.playlistDeleted")
+    /// The Lidarr library changed (an artist was added or removed) — the Lidarr tab reloads.
+    static let lidarrLibraryDidChange     = Notification.Name("minidisc.lidarrLibraryDidChange")
+    /// The Lidarr queue changed (an item was imported or removed) — the queue view reloads.
+    static let lidarrQueueDidChange       = Notification.Name("minidisc.lidarrQueueDidChange")
 }

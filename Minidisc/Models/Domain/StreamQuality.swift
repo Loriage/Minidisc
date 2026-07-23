@@ -27,7 +27,7 @@ nonisolated enum StreamQuality: String, CaseIterable, Identifiable, Sendable {
     /// Display label for the Settings picker.
     var displayName: String {
         switch self {
-        case .original: return "Original (lossless)"
+        case .original: return "Original"
         case .mp3_320:  return "MP3 320 kbps"
         case .mp3_192:  return "MP3 192 kbps"
         }

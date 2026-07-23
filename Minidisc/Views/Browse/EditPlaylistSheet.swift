@@ -5,9 +5,7 @@
 
 import SwiftUI
 import OSLog
-#if os(iOS)
 import UniformTypeIdentifiers
-#endif
 
 /// Apple-Music-style modal playlist editor: X (cancel) / ✓ (commit), a cover-picker carousel
 /// (`PlaylistCoverPicker`, pre-selected from the stored gradient choice), title, description (↔ playlist
@@ -46,14 +44,12 @@ struct EditPlaylistSheet: View {
     @State private var showAddMusic = false
     @State private var loaded = false
 
-    #if os(iOS)
     @State private var pendingImage: UIImage?
     @State private var showImageOptions = false
     @State private var showImagePicker = false
     @State private var showCamera = false
     @State private var showFilePicker = false
     @State private var imageToCrop: CroppableImage?
-    #endif
 
     var body: some View {
         NavigationStack {
@@ -92,9 +88,7 @@ struct EditPlaylistSheet: View {
             // Always-on edit mode so the Songs rows show drag-reorder handles (and, in B2, selection circles).
             // iOS-only: `editMode` is unavailable on macOS, and EditPlaylistSheet is never presented there
             // (macOS uses its own PlaylistEditSheet) — gate so the file still compiles for the macOS target.
-            #if os(iOS)
             .environment(\.editMode, .constant(.active))
-            #endif
             .toolbar { toolbar }
             .sheet(isPresented: $showAddMusic) {
                 if let c = container {
@@ -118,7 +112,6 @@ struct EditPlaylistSheet: View {
             } message: {
                 Text("This removes the playlist everywhere, including any downloaded copy.")
             }
-            #if os(iOS)
             .confirmationDialog("Cover Art", isPresented: $showImageOptions, titleVisibility: .visible) {
                 Button("Choose from Library") {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { showImagePicker = true }
@@ -150,7 +143,6 @@ struct EditPlaylistSheet: View {
                 defer { if accessed { url.stopAccessingSecurityScopedResource() } }
                 if let data = try? Data(contentsOf: url), let img = UIImage(data: data) { presentCrop(img) }
             }
-            #endif
             .task {
                 guard !loaded else { return }
                 loaded = true
@@ -179,7 +171,6 @@ struct EditPlaylistSheet: View {
                     .disabled(!canSave)
             }
         }
-        #if os(iOS)
         ToolbarItemGroup(placement: .bottomBar) {
             Button(role: .destructive) { showDeleteConfirm = true } label: {
                 Image(systemName: "trash")
@@ -199,9 +190,7 @@ struct EditPlaylistSheet: View {
                 .disabled(isSaving)
             }
         }
-        #endif
     }
-
 
     private func trackRow(_ song: DisplayableSong) -> some View {
         HStack(spacing: MinidiscSpacing.m) {
@@ -249,9 +238,7 @@ struct EditPlaylistSheet: View {
                 selectedGradient = nil
                 photoIsCover = true
                 coverDirty = true
-                #if os(iOS)
                 showImageOptions = true
-                #endif
             },
             onSelectGradient: { shape in
                 selectedGradient = shape
@@ -264,35 +251,21 @@ struct EditPlaylistSheet: View {
     // MARK: - State
 
     private var hasPhoto: Bool {
-        #if os(iOS)
         return pendingImage != nil
-        #else
-        return false
-        #endif
     }
     private var showsPhotoOption: Bool {
-        #if os(iOS)
         return true
-        #else
-        return false
-        #endif
     }
     private var photoPreviewImage: PlatformImage? {
-        #if os(iOS)
         return pendingImage
-        #else
-        return nil
-        #endif
     }
 
-    #if os(iOS)
     /// Defer presenting the crop screen so the picker fully dismisses first (sequential full-screen covers).
     private func presentCrop(_ image: UIImage) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             imageToCrop = CroppableImage(image: image)
         }
     }
-    #endif
 
     private func loadCurrentChoice() {
         guard let c = container else { return }
@@ -371,13 +344,11 @@ struct EditPlaylistSheet: View {
             store.save(spec, playlistId: playlistId, serverId: serverId, isUserPicked: true)
             return
         }
-        #if os(iOS)
         if photoIsCover, let image = pendingImage, let data = image.jpegData(compressionQuality: 0.85) {
             await manager.applyImageCover(data, playlistId: playlistId)
             // A photo supersedes any gradient choice → drop the stored gradient.
             store.remove(playlistId: playlistId, serverId: serverId)
         }
-        #endif
         // Leading "Current" with no photo → no cover change (no cover-delete API exists).
     }
 

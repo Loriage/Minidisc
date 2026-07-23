@@ -15,35 +15,22 @@ import SwiftUI
 /// derivation refreshes the thumbnail without pulling a reactive `@Query`/`@Model` into the cell's view tree
 /// (which the codebase avoids for scroll perf). The live gradient is animation-free (static GPU shader), so N
 /// cells do not hitch.
-///
-/// macOS keeps the OLD raster card (Phase 5) — the live-gradient treatment is iOS-only; the macOS branch is a
-/// plain raster `CoverArtView` so the macOS rendering is unchanged.
 struct PlaylistCoverThumbnail: View {
     let playlistId: String
     let serverId: UUID?
-    /// Cover id for the RASTER (photo / server) path — used when there is no user-picked gradient (and on macOS).
+    /// Cover id for the RASTER (photo / server) path — used when there is no user-picked gradient.
     let coverArtId: String
     let title: String
     let size: CGFloat
 
-    #if os(iOS)
     @Environment(\.appContainer) private var container
     @AppStorage("coverArtUploadVersion") private var coverArtUploadVersion = 0
     @State private var spec: PlaylistGradientSpec?
-    #endif
 
     var body: some View {
-        #if os(iOS)
         iosBody
-        #else
-        // macOS keeps the old raster card (Phase 5) — no live gradient, no rebrand corners.
-        CoverArtView(id: coverArtId, size: Int(size * 2))
-            .frame(width: size, height: size)
-            .minidiscCoverStyle(cornerRadius: MinidiscCornerRadius.standard)
-        #endif
     }
 
-    #if os(iOS)
     private var iosBody: some View {
         ZStack {
             if let spec {
@@ -87,5 +74,4 @@ struct PlaylistCoverThumbnail: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(size * 0.09)
     }
-    #endif
 }

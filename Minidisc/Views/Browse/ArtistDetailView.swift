@@ -61,11 +61,7 @@ struct ArtistDetailView: View {
     private var headerTextColor: Color { theme.contentColor }
     private var headerSecondaryColor: Color { theme.secondaryContentColor }
     private var systemBackgroundColor: Color {
-        #if canImport(UIKit)
         Color(UIColor.systemBackground)
-        #else
-        Color(NSColor.windowBackgroundColor)
-        #endif
     }
     /// The artist photo (server artist cover) drives the hero; falls back to the latest release's cover, then
     /// the artist id (placeholder glyph).
@@ -168,10 +164,8 @@ struct ArtistDetailView: View {
         }
         .navigationTitle("")
         .navigationBarTitleDisplayModeInline()
-        #if os(iOS)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(theme.isThemed ? (theme.isLight ? .light : .dark) : nil, for: .navigationBar)
-        #endif
         // Keyed on connectivity so going offline (or coming back) re-resolves the artist against the
         // right source, as the album and playlist screens already do.
         .task(id: container?.serverState.isOnline) {
@@ -853,9 +847,7 @@ struct OutOfLibraryArtistSheet: View {
                 .padding(MinidiscSpacing.l)
             }
             .navigationTitle(artist.name)
-            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
-            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }

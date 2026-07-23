@@ -4,10 +4,8 @@
 // See LICENSE file in the project root for full license information.
 
 import SwiftUI
-#if os(iOS)
 import AVFoundation
 import MediaPlayer
-#endif
 
 /// Custom volume slider visually identical to the scrubber in FullPlayerView. The slider DISPLAYS the system
 /// volume (`AVAudioSession.outputVolume`, observed via KVO). The system volume is WRITTEN — through a hidden
@@ -17,7 +15,6 @@ import MediaPlayer
 struct SystemVolumeView: View {
     var contentColor: Color = .white
 
-    #if os(iOS)
     @State private var observer = SystemVolumeObserver()
 
     var body: some View {
@@ -52,14 +49,8 @@ struct SystemVolumeView: View {
             observer.refreshFromSystem()
         }
     }
-    #else
-    var body: some View {
-        EmptyView()
-    }
-    #endif
 }
 
-#if os(iOS)
 // MARK: - Volume observer
 
 /// Mirrors `AVAudioSession.outputVolume` into `displayVolume` (KVO) so physical buttons / Control Center move
@@ -131,4 +122,3 @@ private struct HiddenVolumeWriter: UIViewRepresentable {
         }
     }
 }
-#endif

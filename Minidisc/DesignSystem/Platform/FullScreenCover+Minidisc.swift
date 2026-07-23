@@ -6,17 +6,13 @@
 import SwiftUI
 
 extension View {
-    /// Presents a full-screen modal on iOS; falls back to a sheet on macOS where `fullScreenCover` is unavailable.
+    /// Presents a full-screen modal.
     @ViewBuilder
     func minidiscFullScreenCover<Content: View>(
         isPresented: Binding<Bool>,
         onDismiss: (() -> Void)? = nil,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        #if os(iOS)
         self.fullScreenCover(isPresented: isPresented, onDismiss: onDismiss, content: content)
-        #else
-        self.sheet(isPresented: isPresented, onDismiss: onDismiss, content: content)
-        #endif
     }
 }

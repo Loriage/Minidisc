@@ -78,10 +78,8 @@ struct AudioMuseSettingsView: View {
             TextField("", text: $urlInput, prompt: Text(verbatim: "http://nas.local:8000"))
                 .textContentType(.URL)
                 .autocorrectionDisabled()
-                #if os(iOS)
                 .textInputAutocapitalization(.never)
                 .keyboardType(.URL)
-                #endif
             SecureField("API token (optional)", text: $tokenInput)
                 .textContentType(.password)
                 .autocorrectionDisabled()

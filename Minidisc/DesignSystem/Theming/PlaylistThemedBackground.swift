@@ -104,10 +104,6 @@ struct PlaylistThemedBackground: View {
     }
 
     private var systemBackground: Color {
-        #if canImport(UIKit)
         Color(UIColor.systemBackground)
-        #else
-        Color(NSColor.windowBackgroundColor)
-        #endif
     }
 }

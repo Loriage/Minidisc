@@ -6,11 +6,7 @@
 import Foundation
 import MediaPlayer
 import OSLog
-#if canImport(UIKit)
 import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
 
 /// Loads and caches artwork images for MPNowPlayingInfoCenter.
 /// Isolated actor so concurrent artwork fetches don't race on the cache dictionary.

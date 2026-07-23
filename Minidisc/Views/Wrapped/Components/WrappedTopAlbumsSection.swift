@@ -8,18 +8,10 @@ import SwiftUI
 struct WrappedTopAlbumsSection: View {
     let albums: [TopAlbumEntry]
 
-    #if os(macOS)
-    private let columns = [
-        GridItem(.flexible(), spacing: MinidiscSpacing.m),
-        GridItem(.flexible(), spacing: MinidiscSpacing.m),
-        GridItem(.flexible(), spacing: MinidiscSpacing.m)
-    ]
-    #else
     private let columns = [
         GridItem(.flexible(), spacing: MinidiscSpacing.m),
         GridItem(.flexible(), spacing: MinidiscSpacing.m)
     ]
-    #endif
 
     var body: some View {
         VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
@@ -31,11 +23,7 @@ struct WrappedTopAlbumsSection: View {
                 LazyVGrid(columns: columns, spacing: MinidiscSpacing.m) {
                     ForEach(albums.prefix(6)) { album in
                         NavigationLink {
-                            #if os(macOS)
-                            AlbumDetailMacOS(albumId: album.albumId, albumName: album.title, coverArtId: album.albumId)
-                            #else
                             AlbumDetailView(albumId: album.albumId, albumName: album.title, coverArtId: album.albumId)
-                            #endif
                         } label: {
                             albumCard(album)
                         }

@@ -54,6 +54,7 @@ final class AppContainer {
     let replayGainSettings = ReplayGainSettings()
     let crossfadeSettings = CrossfadeSettings()
     let streamSettings = StreamSettings()
+    let lidarrSettings: LidarrSettings
 
     init(inMemory: Bool = false) throws {
         modelContainer = try ModelContainer.minidisc(inMemory: inMemory)
@@ -61,6 +62,7 @@ final class AppContainer {
 
         let keychain = KeychainService()
         keychainService = keychain
+        lidarrSettings = LidarrSettings(keychain: keychain)
 
         let cache = AudioStreamCache(modelContainer: modelContainer, maxTracks: cacheSettings.maxTracks)
         audioStreamCache = cache
@@ -135,6 +137,7 @@ final class AppContainer {
         searchHistoryService = SearchHistoryService(container: modelContainer)
 
         Task { await listenBrainzService.loadPersistedState() }
+        Task { await lidarrSettings.loadPersistedState() }
         Task { await externalArtworkCache.runGarbageCollection() }
     }
 

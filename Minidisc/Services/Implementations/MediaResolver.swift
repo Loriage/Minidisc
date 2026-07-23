@@ -58,8 +58,9 @@ actor MediaResolver: MediaResolverProtocol {
         let client = try await serverService.makeSwiftSonicClient()
         // Live-stream quality: `.original` (default) streams the untouched file; a transcoded
         // option asks the server to re-encode to a lighter codec so on-device decode can't starve
-        // the audio thread under a CPU spike (the crackle fix).
-        let quality = await MainActor.run { streamSettings.quality }
+        // the audio thread under a CPU spike (the crackle fix). The tier follows the current
+        // network (Wi-Fi vs cellular).
+        let quality = await MainActor.run { streamSettings.currentQuality }
         guard let streamURL = client.streamURL(
             id: songId,
             maxBitRate: quality.subsonicMaxBitRate,

@@ -12,7 +12,7 @@ struct CrossfadeSettingsSection: View {
         let cf = container?.crossfadeSettings
         let duration = cf?.duration ?? 0
 
-        Section("Crossfade") {
+        Section {
             Stepper(
                 value: Binding(
                     get: { cf?.duration ?? 0 },
@@ -48,6 +48,10 @@ struct CrossfadeSettingsSection: View {
                 }
                 .tint(Color(.systemGreen))
             }
+        } header: {
+            Text("Crossfade")
+        } footer: {
+            Text("Fades one track into the next over the set time. Set Off for no fade. The toggle keeps gapless albums and live mixes seamless.")
         }
     }
 

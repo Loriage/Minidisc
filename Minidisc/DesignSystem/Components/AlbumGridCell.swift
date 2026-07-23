@@ -25,11 +25,6 @@ struct AlbumGridCell: View {
             }
             .aspectRatio(1, contentMode: .fit)
             .minidiscMatchedTransitionSource(id: zoomSourceId, in: zoomNamespace)
-            #if os(macOS)
-            .scaleEffect(isHovered ? 1.03 : 1.0)
-            .animation(.easeInOut(duration: 0.15), value: isHovered)
-            .onHover { isHovered = $0 }
-            #endif
 
             Text(album.name)
                 .font(.minidiscCellTitle)

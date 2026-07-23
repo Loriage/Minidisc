@@ -4,11 +4,7 @@
 // See LICENSE file in the project root for full license information.
 
 import SwiftUI
-#if canImport(UIKit)
 import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
 
 /// Multiline text with **justified** alignment (both edges flush) — which SwiftUI's `Text` cannot do
 /// natively (it only offers leading/center/trailing). Wraps a platform label and reports its height via
@@ -24,7 +20,6 @@ struct JustifiedText: View {
     }
 }
 
-#if canImport(UIKit)
 private struct Backing: UIViewRepresentable {
     let text: String
     let lineLimit: Int
@@ -54,37 +49,3 @@ private struct Backing: UIViewRepresentable {
         return CGSize(width: width, height: ceil(fit.height))
     }
 }
-#elseif canImport(AppKit)
-private struct Backing: NSViewRepresentable {
-    let text: String
-    let lineLimit: Int
-    let color: Color
-
-    func makeNSView(context: Context) -> NSTextField {
-        let field = NSTextField(labelWithString: "")
-        field.lineBreakMode = .byWordWrapping
-        field.cell?.wraps = true
-        field.cell?.isScrollable = false
-        return field
-    }
-
-    func updateNSView(_ field: NSTextField, context: Context) {
-        field.maximumNumberOfLines = lineLimit
-        let para = NSMutableParagraphStyle()
-        para.alignment = .justified
-        para.lineBreakMode = .byWordWrapping
-        field.attributedStringValue = NSAttributedString(string: text, attributes: [
-            .paragraphStyle: para,
-            .font: NSFont.preferredFont(forTextStyle: .body),
-            .foregroundColor: NSColor(color)
-        ])
-    }
-
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView field: NSTextField, context: Context) -> CGSize? {
-        let width = proposal.width ?? 0
-        guard width > 0 else { return nil }
-        field.preferredMaxLayoutWidth = width
-        return CGSize(width: width, height: ceil(field.intrinsicContentSize.height))
-    }
-}
-#endif

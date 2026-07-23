@@ -27,15 +27,17 @@ struct ArtistListView: View {
         .navigationTitle("Artists")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 2) {
-                    ArtistSortMenu(sort: $artistSort)
-                    Button {
-                        gridLayout.toggle()
-                    } label: {
-                        Image(systemName: gridLayout ? "list.bullet" : "square.grid.2x2")
-                    }
-                    .accessibilityLabel(gridLayout ? "List view" : "Grid view")
+                ArtistSortMenu(sort: $artistSort)
+                    .tint(.primary)
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    gridLayout.toggle()
+                } label: {
+                    Image(systemName: gridLayout ? "list.bullet" : "square.grid.2x2")
                 }
+                .tint(.primary)
+                .accessibilityLabel(gridLayout ? "List view" : "Grid view")
             }
         }
         .task(id: container?.serverState.isOnline) {
@@ -99,7 +101,6 @@ struct ArtistListView: View {
             }
             .listStyle(.plain)
             .refreshable { await vm.load() }
-            #if os(iOS)
             .safeAreaInset(edge: .trailing, spacing: 0) {
                 if vm.indexes.count >= 5 {
                     AlphabetJumpBar(
@@ -113,7 +114,6 @@ struct ArtistListView: View {
                     .padding(.trailing, 4)
                 }
             }
-            #endif
         }
     }
 

@@ -90,6 +90,13 @@ struct HomeView: View {
                             }
                         }
                     }
+                    if !vm.recentlyAdded.isEmpty {
+                        HomeShelf(title: "Recently Added") {
+                            ForEach(vm.recentlyAdded) { album in
+                                HomeShelfAlbumCard(album: album)
+                            }
+                        }
+                    }
                     ForEach(vm.genreShelves) { shelf in
                         HomeShelf(title: LocalizedStringKey(stringLiteral: shelf.name)) {
                             ForEach(shelf.albums) { album in

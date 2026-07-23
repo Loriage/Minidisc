@@ -5,7 +5,6 @@
 
 import SwiftUI
 
-#if os(iOS)
 /// Reserves bottom scroll-content space for the floating tabViewBottomAccessory
 /// mini player, which overlays tab content without extending the safe area.
 /// Mirrors MainTabView.hasTrack so the margin only exists while the bar is shown.
@@ -21,16 +20,11 @@ private struct MiniPlayerBottomMargin: ViewModifier {
             .contentMargins(.bottom, isMiniPlayerVisible ? MinidiscSpacing.miniPlayerBottomMargin : 0, for: .scrollContent)
     }
 }
-#endif
 
 extension View {
-    /// Adds bottom scroll margin matching the mini player accessory (iOS only; no-op on macOS).
+    /// Adds bottom scroll margin matching the mini player accessory.
     @ViewBuilder
     func miniPlayerBottomMargin() -> some View {
-        #if os(iOS)
         modifier(MiniPlayerBottomMargin())
-        #else
-        self
-        #endif
     }
 }

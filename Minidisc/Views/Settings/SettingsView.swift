@@ -107,14 +107,28 @@ struct SettingsView: View {
         Section {
             if let stream = container?.streamSettings {
                 Picker(selection: Binding(
-                    get: { stream.quality },
-                    set: { stream.quality = $0 }
+                    get: { stream.wifiQuality },
+                    set: { stream.wifiQuality = $0 }
                 )) {
                     ForEach(StreamQuality.allCases) { quality in
                         Text(quality.displayName).tag(quality)
                     }
                 } label: {
-                    Label("Streaming Quality", systemImage: "dot.radiowaves.up.forward")
+                    Label("Quality on Wi-Fi", systemImage: "wifi")
+                        .foregroundStyle(.primary)
+                }
+                .pickerStyle(.menu)
+                .tint(.secondary)
+
+                Picker(selection: Binding(
+                    get: { stream.cellularQuality },
+                    set: { stream.cellularQuality = $0 }
+                )) {
+                    ForEach(StreamQuality.allCases) { quality in
+                        Text(quality.displayName).tag(quality)
+                    }
+                } label: {
+                    Label("Quality on cellular", systemImage: "antenna.radiowaves.left.and.right")
                         .foregroundStyle(.primary)
                 }
                 .pickerStyle(.menu)
@@ -123,7 +137,7 @@ struct SettingsView: View {
         } header: {
             Text("Streaming")
         } footer: {
-            Text("Original streams your files untouched — lossless when the source is. A transcoded option lowers on-device decoding cost, which helps if playback occasionally crackles under load. Applies to the next track.")
+            Text("The server transcodes to the chosen tier for each network. Original streams your files untouched (lossless); a lighter tier saves cellular data and lowers decoding load. Applies to the next track.")
         }
     }
 
@@ -139,6 +153,12 @@ struct SettingsView: View {
                 AudioMuseSettingsView()
             } label: {
                 Label("AudioMuse", systemImage: "waveform.badge.magnifyingglass")
+                    .foregroundStyle(.primary)
+            }
+            NavigationLink {
+                LidarrSettingsView()
+            } label: {
+                Label("Lidarr", systemImage: "square.and.arrow.down.on.square")
                     .foregroundStyle(.primary)
             }
             NavigationLink {

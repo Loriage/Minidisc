@@ -9,6 +9,7 @@ import SwiftUI
 struct PlayButton: View {
     let action: () -> Void
     var label: LocalizedStringKey = "Play"
+    var systemImage: String = "play.fill"
     var isDisabled: Bool = false
     var accentColor: Color = MinidiscColors.accent
     /// Label/glyph color. Default white (`minidiscAccentText`) preserves existing callers; the hero passes the
@@ -32,7 +33,7 @@ struct PlayButton: View {
 
     @ViewBuilder
     private var sizedLabel: some View {
-        let base = Label(label, systemImage: "play.fill")
+        let base = Label(label, systemImage: systemImage)
             .font(.minidiscCellTitle)
             .foregroundStyle(labelColor)
             .frame(maxWidth: .infinity)

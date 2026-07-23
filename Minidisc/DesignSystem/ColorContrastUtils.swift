@@ -75,16 +75,9 @@ extension MinidiscColors {
     // MARK: - Platform bridge
 
     private static func sRGBComponents(of color: Color) -> (Double, Double, Double)? {
-        #if canImport(UIKit)
         let ui = UIColor(color)
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         guard ui.getRed(&r, green: &g, blue: &b, alpha: &a) else { return nil }
         return (Double(r), Double(g), Double(b))
-        #elseif canImport(AppKit)
-        guard let ns = NSColor(color).usingColorSpace(.deviceRGB) else { return nil }
-        return (Double(ns.redComponent), Double(ns.greenComponent), Double(ns.blueComponent))
-        #else
-        return nil
-        #endif
     }
 }

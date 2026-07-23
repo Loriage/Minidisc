@@ -3,28 +3,19 @@
 // Licensed under the Mozilla Public License 2.0.
 // See LICENSE file in the project root for full license information.
 
-#if os(iOS)
 import SafariServices
 import UIKit
-#elseif os(macOS)
-import AppKit
-#endif
 
 enum ExternalLinkOpener {
     /// Opens a URL in SFSafariViewController on iOS, or the system browser on macOS.
     @MainActor
     static func open(_ url: URL) {
-        #if os(iOS)
         guard let presenter = topmostViewController() else { return }
         let safari = SFSafariViewController(url: url)
         safari.modalPresentationStyle = .pageSheet
         presenter.present(safari, animated: true)
-        #elseif os(macOS)
-        NSWorkspace.shared.open(url)
-        #endif
     }
 
-    #if os(iOS)
     @MainActor
     private static func topmostViewController() -> UIViewController? {
         guard
@@ -49,5 +40,4 @@ enum ExternalLinkOpener {
         }
         return vc
     }
-    #endif
 }

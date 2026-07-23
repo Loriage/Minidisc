@@ -11,7 +11,7 @@ struct ReplayGainSettingsSection: View {
     var body: some View {
         let rg = container?.replayGainSettings
 
-        Section("Playback") {
+        Section {
             Toggle(isOn: Binding(
                 get: { rg?.enabled ?? false },
                 set: { newVal in
@@ -75,6 +75,10 @@ struct ReplayGainSettingsSection: View {
                 }
                 .tint(Color(.systemGreen))
             }
+        } header: {
+            Text("Playback")
+        } footer: {
+            Text("Evens out the volume between tracks. Track mode levels each song on its own, and Album mode keeps an album's dynamics.")
         }
     }
 

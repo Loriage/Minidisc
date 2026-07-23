@@ -3,7 +3,6 @@
 // Licensed under the Mozilla Public License 2.0.
 // See LICENSE file in the project root for full license information.
 
-#if os(iOS)
 import SwiftUI
 import UIKit
 
@@ -69,4 +68,3 @@ struct ImagePickerController: UIViewControllerRepresentable {
         }
     }
 }
-#endif

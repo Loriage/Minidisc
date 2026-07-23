@@ -20,8 +20,8 @@ struct SettingsSheet: View {
                         Button { dismiss() } label: {
                             Image(systemName: "xmark")
                                 .font(.body.weight(.semibold))
-                                .foregroundStyle(.secondary)
                         }
+                        .tint(.primary)
                     }
                 }
         }

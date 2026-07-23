@@ -75,7 +75,10 @@ struct HomeView: View {
             )
         } else {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
+                // A plain VStack (not LazyVStack): the feed is a handful of shelves, so a deterministic
+                // content height is cheap — and a LazyVStack's estimated height confuses the
+                // pull-to-refresh inset math, stranding the ScrollView with a blank gap at the top.
+                VStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
                     if !vm.topPicks.isEmpty {
                         HomeShelf(title: "Top Picks for You") {
                             ForEach(vm.topPicks) { playlist in

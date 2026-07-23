@@ -47,12 +47,10 @@ final class HomeFeedViewModel {
             async let genresTask = libraryService.genres()
             let (playlists, played, added, genres) = try await (playlistsTask, playedTask, addedTask, genresTask)
 
-            topPicks = playlists
+            let picks = playlists
                 .sorted { ($0.changed ?? $0.created ?? .distantPast) > ($1.changed ?? $1.created ?? .distantPast) }
                 .prefix(Self.maxTopPicks)
                 .map { $0 }
-            recentlyPlayed = played
-            recentlyAdded = added
 
             // Sequential on purpose: one getAlbumList2 per genre is light, and order stays stable.
             var shelves: [GenreShelf] = []
@@ -61,6 +59,13 @@ final class HomeFeedViewModel {
                     shelves.append(GenreShelf(name: genre.value, albums: albums))
                 }
             }
+
+            // Apply the whole feed at once. A staged assignment (top shelves first, genres after the
+            // per-genre fetches) changes the scroll content height twice mid-refresh, which can strand
+            // the pull-to-refresh inset and leave a blank gap at the top until the user scrolls.
+            topPicks = picks
+            recentlyPlayed = played
+            recentlyAdded = added
             genreShelves = shelves
         } catch {
             self.error = UserFacingError.from(error)

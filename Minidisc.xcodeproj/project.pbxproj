@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		8785D13D3012A3A500208269 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8785D13C3012A3A500208269 /* AppIcon.icon */; };
 		DBA4A77D2F9BE3C8008BC5A9 /* SwiftSonic in Frameworks */ = {isa = PBXBuildFile; productRef = DBA4A77C2F9BE3C8008BC5A9 /* SwiftSonic */; };
 /* End PBXBuildFile section */
 
@@ -28,6 +29,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		8785D13C3012A3A500208269 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		DBA4A7512F9BBFCB008BC5A9 /* Minidisc.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Minidisc.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		DBA4A75E2F9BBFCC008BC5A9 /* MinidiscTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MinidiscTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DBA4A7682F9BBFCC008BC5A9 /* MinidiscUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MinidiscUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -97,6 +99,7 @@
 				DBA4A7612F9BBFCC008BC5A9 /* MinidiscTests */,
 				DBA4A76B2F9BBFCC008BC5A9 /* MinidiscUITests */,
 				DBA4A7522F9BBFCB008BC5A9 /* Products */,
+				8785D13C3012A3A500208269 /* AppIcon.icon */,
 			);
 			sourceTree = "<group>";
 		};
@@ -242,6 +245,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8785D13D3012A3A500208269 /* AppIcon.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

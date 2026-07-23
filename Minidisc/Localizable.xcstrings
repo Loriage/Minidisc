@@ -2994,6 +2994,9 @@
     "Added to Lidarr" : {
 
     },
+    "Advanced" : {
+
+    },
     "album" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4526,6 +4529,9 @@
           }
         }
       }
+    },
+    "AVPlayer (System) is the default: Apple's hardware decoders give bit-perfect lossless without the software-decode crackle, with native format coverage. AudioStreaming is a software-decoding fallback. Restart the app to apply." : {
+
     },
     "Awards" : {
       "extractionState" : "stale",
@@ -20118,6 +20124,9 @@
           }
         }
       }
+    },
+    "Playback engine" : {
+
     },
     "Playback failed. Please try again." : {
       "extractionState" : "manual",

@@ -65,6 +65,7 @@ struct SettingsView: View {
             CacheSectionView()
             DownloadsSectionView(vm: downloadsVM)
             integrationsSection()
+            advancedSection()
             aboutSection()
         }
         .formStyle(.grouped)
@@ -138,6 +139,30 @@ struct SettingsView: View {
             Text("Streaming")
         } footer: {
             Text("The server transcodes to the chosen tier for each network. Original streams your files untouched (lossless); a lighter tier saves cellular data and lowers decoding load. Applies to the next track.")
+        }
+    }
+
+    private func advancedSection() -> some View {
+        Section {
+            if let settings = container?.playbackEngineSettings {
+                Picker(selection: Binding(
+                    get: { settings.engine },
+                    set: { settings.engine = $0 }
+                )) {
+                    ForEach(PlaybackEngine.allCases) { engine in
+                        Text(engine.displayName).tag(engine)
+                    }
+                } label: {
+                    Label("Playback engine", systemImage: "waveform")
+                        .foregroundStyle(.primary)
+                }
+                .pickerStyle(.menu)
+                .tint(.secondary)
+            }
+        } header: {
+            Text("Advanced")
+        } footer: {
+            Text("AVPlayer (System) is the default: Apple's hardware decoders give bit-perfect lossless without the software-decode crackle, with native format coverage. AudioStreaming is a software-decoding fallback. Restart the app to apply.")
         }
     }
 

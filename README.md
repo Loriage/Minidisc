@@ -3,7 +3,6 @@
 > Minidisc is an opinionated music player for iOS that plays the music from your own server, and it gives you an experience that is close to Apple Music.
 
 [![License: MPL 2.0](https://img.shields.io/badge/license-MPL--2.0-brightgreen.svg)](LICENSE)
-[![Release](https://github.com/Loriage/Minidisc/actions/workflows/release.yml/badge.svg)](https://github.com/Loriage/Minidisc/actions/workflows/release.yml)
 [![Platform](https://img.shields.io/badge/platform-iOS%2026%2B-blue.svg)](#requirements)
 [![Swift](https://img.shields.io/badge/Swift-6-orange.svg)](https://swift.org)
 

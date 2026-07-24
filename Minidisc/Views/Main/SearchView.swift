@@ -532,7 +532,7 @@ struct SearchView: View {
                 // Clearing search history is destructive with no undo, so gate it behind a confirmation.
                 // A centered .alert (popin) is used here — intentionally diverging from the playlist
                 // delete's bottom action-sheet. The clear runs ONLY on confirm; Cancel leaves the history
-                // intact. .alert is a centered modal on both iOS and macOS.
+                // intact. .alert is a centered modal.
                 .alert("Clear search history?", isPresented: $showClearConfirm) {
                     Button("Clear", role: .destructive) {
                         Task { await container?.searchHistoryService.clear(serverId: serverId) }

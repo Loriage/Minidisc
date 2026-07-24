@@ -46,7 +46,6 @@ final class PlayerState {
 
     /// SF Symbol name and active-mode flag for the queue button, in priority order:
     /// Loop One > Loop All > Shuffle > Smart Shuffle > default queue list.
-    /// Used by macOS "Up Next" header icon swap.
     var queueIcon: (symbolName: String, isActiveMode: Bool) {
         if repeatMode == .one    { return ("repeat.1", true) }
         if repeatMode == .all    { return ("repeat",   true) }

@@ -128,9 +128,6 @@ struct FullPlayerView: View {
     /// collecting in a trailing Spacer at the bottom. On the queue surface the queue fills, dropping the same
     /// controls to the bottom. The whole layout (cover fly + crossfade + the controls gliding to their new
     /// spot) animates on one spring keyed to `surface`.
-    ///
-    /// macOS: unchanged — only the two surfaces live here; the controls stay in the bottom safe-area inset
-    /// applied in `content`.
     @ViewBuilder
     private func surfaceStack(_ playerState: PlayerState, coverArtId: String, isPlaying: Bool,
                               showingQueue: Bool) -> some View {
@@ -394,8 +391,7 @@ struct FullPlayerView: View {
     private func playerSurface(_ playerState: PlayerState, coverArtId: String, isPlaying: Bool) -> some View {
         // iOS: cover + title sized/spaced by the layout knobs at the top of the struct; the controls FLOW
         // under this surface (see surfaceStack), with a flexible gap there distributing the slack so the cover
-        // fills the top and the controls sit in the lower-middle. macOS keeps its prior values and distributes
-        // slack with the Spacers below (the cover→title gap, and the capped title→controls gap — the knob).
+        // fills the top and the controls sit in the lower-middle.
         let coverCap = Self.playerCoverSize
         let coverHPadding = Self.playerCoverHPadding
         let coverTitleSpacing = Self.playerCoverToTitleGap
@@ -424,7 +420,7 @@ struct FullPlayerView: View {
                 } else {
                     Color.clear
                         .aspectRatio(1, contentMode: .fit)
-                        // Cover cap — sized by the iOS layout knobs (playerCoverSize); macOS keeps 360.
+                        // Cover cap — sized by the layout knobs (playerCoverSize).
                         .frame(maxWidth: coverCap)
                         .overlay {
                             CoverArtView(id: coverArtId, size: 600)
@@ -450,8 +446,6 @@ struct FullPlayerView: View {
             .frame(maxWidth: .infinity, maxHeight: showLyrics ? CGFloat.infinity : nil)
             .animation(.smooth(duration: 0.3), value: showLyrics)
 
-            // macOS only: distribute slack above the title (iOS packs the cluster at the top instead).
-
             TrackInfoSection(
                 playerState: playerState,
                 container: container,
@@ -459,9 +453,6 @@ struct FullPlayerView: View {
                 secondaryContentColor: vm.secondaryContentColor
             )
             .padding(.horizontal, MinidiscSpacing.l)
-
-            // macOS only: cap the bottom Spacer so the title hugs the bottom-pinned footer. On iOS the
-            // controls already flow right under the title (no Spacer), with the slack below them.
         }
         .padding(.top, MinidiscSpacing.s)
         .padding(.bottom, MinidiscSpacing.s)
@@ -812,7 +803,7 @@ private struct TrackInfoSection: View {
     }
 
     /// Navigates to the current track's artist by routing through the Home stack (via
-    /// `.minidiscNavigateToArtist`), mirroring macOS. Prefers the track's own `artistId`;
+    /// `.minidiscNavigateToArtist`). Prefers the track's own `artistId`;
     /// falls back to a name search only when the track has no artistId (incomplete metadata).
     private func goToArtist() {
         guard let track = playerState.currentTrack else { return }
@@ -876,7 +867,7 @@ private struct ScrubberView: View {
         // Core Animation committing continuously while the player was visible + playing. isAdvancing is gone,
         // so ProgressSlider's fill advances in discrete steps with NO implicit animation (stepped). At a 2 Hz
         // tick over a song-length bar each step is sub-pixel, so it still reads as smooth. ProgressSlider is a
-        // shared component (volume + macOS), so a playback-aware single-span animation can't live there; the
+        // shared component (volume), so a playback-aware single-span animation can't live there; the
         // stepped fill is the cooler, lower-risk option. The per-tick position read is isolated to the
         // ScrubberTimeLabels leaf so this container and the slider's drag state don't re-evaluate each tick.
         VStack(spacing: MinidiscSpacing.xs) {

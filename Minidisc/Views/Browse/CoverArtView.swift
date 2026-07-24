@@ -30,7 +30,7 @@ import SwiftUI
 ///           Tier is auto-detected: `size >= 480` → `.hero` (1200 px decode);
 ///           `size < 480` → `.thumb` (240 px decode).
 ///   - tier: Optional explicit tier override. Pass `.hero` for detail-view hero images
-///           whose pixel size is below 480 (e.g. macOS DetailHeroView at 280 px).
+///           whose pixel size is below 480 (e.g. a 280 px detail hero).
 struct CoverArtView: View {
     let id: String
     let size: Int?

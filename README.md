@@ -49,7 +49,8 @@ If you want the largest set of functions on Mac and iPhone, use Cassette. If you
 - **Wrapped** gives you a summary of your year of listening.
 - **ListenBrainz** scrobbles your plays and gets recommendations for you.
 - **AudioMuse-AI** builds weekly mood playlists from the sound of your music.
-- **Streaming quality** is lossless by default, but you can select a lighter format.
+- **Lidarr** manages your music collection from the app: add artists, monitor and search for missing albums, pick releases with an interactive search, and follow the download queue with manual import.
+- **Streaming quality** is lossless by default, but you can pick a lighter format per network (Wi-Fi and cellular).
 
 **Privacy**
 
@@ -80,7 +81,7 @@ Do these steps:
    cd Minidisc
    open Minidisc.xcodeproj
    ```
-   Swift Package Manager gets the dependencies (SwiftSonic and AudioStreaming), so you do not have to do more setup.
+   Swift Package Manager gets the dependencies (SwiftSonic), so you do not have to do more setup.
 2. Select your team in **Signing & Capabilities**.
 3. Select an iOS 26 device or simulator.
 4. Build and run the app when you press Command-R.
@@ -101,11 +102,12 @@ This information is for developers:
 
 - **UI.** SwiftUI views with `@Observable @MainActor` view models, and the views have no business logic.
 - **Services.** Swift actors, for example `PlayerService` and `LibraryService`, that do not import SwiftUI or UIKit.
-- **Playback.** The [AudioStreaming](https://github.com/dimitris-c/AudioStreaming) engine, which connects to `MPNowPlayingInfoCenter` and `MPRemoteCommandCenter`.
+- **Playback.** A two-deck `AVPlayer` engine (`AVPlayerEngine`) for gapless playback, real crossfades, and ReplayGain, which connects to `MPNowPlayingInfoCenter` and `MPRemoteCommandCenter`.
 - **Subsonic API.** [SwiftSonic](https://github.com/CassetteLab/swiftsonic) does all server communication.
+- **Integrations.** ListenBrainz, AudioMuse-AI, and Lidarr each have their own client and settings.
 - **Persistence.** SwiftData for the app data, and Keychain for the credentials.
 - **Concurrency.** Swift 6 strict concurrency.
-- **Dependencies.** SwiftSonic and AudioStreaming, and there are no other dependencies.
+- **Dependencies.** SwiftSonic, and there are no other dependencies.
 
 ## Contributing
 
@@ -123,7 +125,7 @@ Minidisc uses the [MPL-2.0](LICENSE) license.
 - You can use, study, change, and share the source.
 - Changed files stay under MPL-2.0, but you can combine them with proprietary code in a larger work.
 
-Dependencies: [SwiftSonic](https://github.com/CassetteLab/swiftsonic) (MIT) and [AudioStreaming](https://github.com/dimitris-c/AudioStreaming) by Dimitris C. (MIT). Both are compatible with MPL-2.0.
+Dependencies: [SwiftSonic](https://github.com/CassetteLab/swiftsonic) (MIT), which is compatible with MPL-2.0.
 
 > Code before commit 21f9227 used the GPL-3.0-or-later license.
 

@@ -9,7 +9,7 @@ import SwiftSonic
 /// Registered via .navigationDestination(for: HomeDestination.self) on HomeView.
 nonisolated enum HomeDestination: Hashable {
 
-    // MARK: - Library sections (iOS only — macOS uses NavigationSplitView sidebar)
+    // MARK: - Library sections
     case libraryAlbums
     case libraryArtists
     case librarySongs
@@ -17,7 +17,7 @@ nonisolated enum HomeDestination: Hashable {
     case libraryFavorites
     case libraryDownloads
 
-    // MARK: - Content destinations (iOS + macOS)
+    // MARK: - Content destinations
     /// Full AlbumID3 object — used from Recently Added, Recently Played carousels
     case album(AlbumID3)
     /// Full ArtistID3 object

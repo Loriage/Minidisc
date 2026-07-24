@@ -13,7 +13,7 @@ struct AlbumsListView: View {
     @State private var viewModel: AlbumListViewModel?
     /// Shared album ordering, persisted and reused by the artist discography too.
     @AppStorage("minidisc.albumSort") private var albumSort: AlbumSort = .recentlyAdded
-    /// List vs grid layout. Defaults preserve each platform's current look (macOS grid, iOS list).
+    /// List vs grid layout. Defaults to list.
     @AppStorage("minidisc.albumListGrid") private var gridLayout = false
 
     /// Albums in the user's chosen order (client-side, so switching sort never re-fetches).
@@ -131,7 +131,7 @@ struct AlbumsListView: View {
         }
     }
 
-    /// Grid of AlbumGridCell — responsive column count on macOS, adaptive on iOS.
+    /// Grid of AlbumGridCell — adaptive column count.
     @ViewBuilder
     private func albumsGrid(_ vm: AlbumListViewModel) -> some View {
         ScrollView {

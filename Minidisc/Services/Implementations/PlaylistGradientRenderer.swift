@@ -7,7 +7,7 @@ import SwiftUI
 
 /// Renders a `PlaylistGradientSpec` to a square JPEG to become a real playlist cover. Mirrors the proven
 /// `WrappedCoverRenderer` path: `ImageRenderer` (cross-platform) + a platform JPEG-encode bridge (the only
-/// `#if os`). Built cross-platform from day one so the Phase 5 macOS pass is wiring, not a rewrite.
+/// `#if os`).
 @MainActor
 enum PlaylistGradientRenderer {
     static func jpegData(for spec: PlaylistGradientSpec, side: CGFloat = 1024, compression: Double = 0.85) -> Data? {

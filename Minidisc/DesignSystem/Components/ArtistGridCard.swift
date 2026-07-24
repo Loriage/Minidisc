@@ -6,7 +6,7 @@
 import SwiftUI
 import SwiftSonic
 
-/// An artist avatar card (circular cover + name + album count) for the artists grid, on iOS and macOS.
+/// An artist avatar card (circular cover + name + album count) for the artists grid.
 /// The circle fills the cell width up to a cap, so it adapts to different column counts.
 struct ArtistGridCard: View {
     let artist: ArtistID3

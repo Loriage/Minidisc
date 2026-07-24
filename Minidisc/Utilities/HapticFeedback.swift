@@ -12,7 +12,7 @@ import UIKit
 ///
 /// Catalog:
 /// - `.light`     — navigation, skip prev/next, toggle shuffle/repeat, secondary toggles
-/// - `.medium`    — play/pause, swipe MiniPlayer, play album/playlist, QueueView skip
+/// - `.medium`    — play/pause, swipe MiniPlayer, play album/playlist, queue skip
 /// - `.heavy`     — destructive confirmations (trash download, remove all)
 /// - `.selection` — continuous selection change (alphabet jump bar drag, pickers)
 /// - `.success`   — download complete, pin to home

@@ -743,8 +743,7 @@ struct ArtistDetailView: View {
 // MARK: - Artist biography
 
 /// The server biography, clamped to a few lines with a "Show more" toggle. Its own
-/// view so the expand state never re-renders the whole artist screen. Shared by the
-/// iOS and macOS artist screens.
+/// view so the expand state never re-renders the whole artist screen.
 struct ArtistBioView: View {
     let bio: String
     let lastFmURL: URL?

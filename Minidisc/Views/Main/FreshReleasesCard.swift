@@ -12,9 +12,7 @@ struct FreshReleasesCard: View {
     let isLoading: Bool
     let isListenBrainzConnected: Bool
     let onSeeAll: () -> Void
-    /// macOS only — tapped release to present in a sheet.
-    var onTap: ((AlbumRecommendation) -> Void)? = nil
-    /// iOS only — namespace for zoom matched-transition source on each cell.
+    /// Namespace for zoom matched-transition source on each cell.
     var zoomNamespace: Namespace.ID? = nil
 
     var body: some View {
@@ -130,11 +128,9 @@ struct FreshReleasesCard: View {
 
 struct FreshReleaseAlbumCell: View {
     let release: AlbumRecommendation
-    /// macOS only — called when the cell is tapped.
-    var onTap: (() -> Void)? = nil
-    /// iOS only — zoom matched-transition source ID.
+    /// Zoom matched-transition source ID.
     var zoomSourceId: String? = nil
-    /// iOS only — zoom matched-transition namespace.
+    /// Zoom matched-transition namespace.
     var zoomNamespace: Namespace.ID? = nil
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {

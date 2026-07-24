@@ -72,7 +72,7 @@ struct PlaylistDetailView: View {
 
     @State private var coverRefreshID = UUID()
 
-    // MARK: In-place edit mode (iOS only — macOS keeps EditPlaylistSheet). The detail view becomes the editor:
+    // MARK: In-place edit mode. The detail view becomes the editor:
     // hero → editable cover carousel, title/description → fields, track list (Gate 2) → reorder + multi-select.
     // Reuses the validated PlaylistCoverCarousel + the mutation committer — only the CONTAINER changes.
     @State private var isEditing = false
@@ -1010,7 +1010,7 @@ struct PlaylistSongRows: View {
     let onContextRemove: ((Int) -> Void)?
     let onAddToPlaylist: ((DisplayableSong) -> Void)?
     /// Solid backing applied to EACH row so the rows occlude a fixed full-bleed cover behind the List on
-    /// scroll. `nil` = default List row background (the macOS detail has no fixed cover, so it passes nil).
+    /// scroll. `nil` = default List row background.
     let rowBackground: Color?
 
     @Query private var downloadedTracks: [DownloadedTrack]

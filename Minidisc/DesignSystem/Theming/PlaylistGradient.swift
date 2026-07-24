@@ -7,7 +7,7 @@ import SwiftUI
 
 /// The gradient "forms" a user can pick for a generated playlist cover (Apple-Music direction). A form is a
 /// geometry/treatment only — the COLOR follows the playlist's content (the first track's dominant color), so
-/// every playlist's gradient is unique to its music. Cross-platform (Phase 5 macOS reuses these as-is).
+/// every playlist's gradient is unique to its music.
 enum PlaylistGradientShape: String, CaseIterable, Codable, Sendable, Identifiable {
     case verticalFade
     case diagonalSheen

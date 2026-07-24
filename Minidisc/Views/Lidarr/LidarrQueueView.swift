@@ -30,14 +30,18 @@ struct LidarrQueueView: View {
             if isLoading {
                 LoadingStateView()
             } else if let errorMessage {
-                EmptyStateView(
-                    systemImage: "exclamationmark.triangle",
-                    title: "Couldn't Load Queue",
-                    subtitle: LocalizedStringKey(errorMessage),
-                    action: .init(label: "Retry") { Task { await load() } }
-                )
+                pullableState {
+                    EmptyStateView(
+                        systemImage: "exclamationmark.triangle",
+                        title: "Couldn't Load Queue",
+                        subtitle: LocalizedStringKey(errorMessage),
+                        action: .init(label: "Retry") { Task { await load() } }
+                    )
+                }
             } else if items.isEmpty {
-                EmptyStateView(systemImage: "checkmark.circle", title: "Queue Empty", subtitle: "No downloads are in progress.")
+                pullableState {
+                    EmptyStateView(systemImage: "checkmark.circle", title: "Queue Empty", subtitle: "No downloads are in progress.")
+                }
             } else {
                 queueList
             }
@@ -52,6 +56,18 @@ struct LidarrQueueView: View {
         .onReceive(NotificationCenter.default.publisher(for: .lidarrQueueDidChange)) { _ in
             Task { await load() }
         }
+    }
+
+    /// Wraps a non-scrolling placeholder in a full-height, always-bouncing ScrollView so the outer
+    /// `.refreshable` still gets a pull gesture when the queue is empty or errored — otherwise the user
+    /// can't pull to check whether Lidarr has pushed new downloads.
+    private func pullableState<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        ScrollView {
+            content()
+                .frame(maxWidth: .infinity)
+                .containerRelativeFrame(.vertical)
+        }
+        .scrollBounceBehavior(.always)
     }
 
     private var queueList: some View {

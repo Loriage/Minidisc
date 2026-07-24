@@ -248,5 +248,6 @@ private struct LidarrReleaseRow: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(.vertical, MinidiscSpacing.xs)
+        .contentShape(Rectangle())
     }
 }

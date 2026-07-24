@@ -7,6 +7,16 @@
 [![Platform](https://img.shields.io/badge/platform-iOS%2026%2B-blue.svg)](#requirements)
 [![Swift](https://img.shields.io/badge/Swift-6-orange.svg)](https://swift.org)
 
+## Screenshots
+
+| Home | Discover | Player |
+|------|----------|--------|
+| ![Home](docs/screenshots/home.jpeg) | ![Discover](docs/screenshots/discover.jpeg) | ![Player](docs/screenshots/player.jpeg) |
+
+| Album | Lidarr — Artists | Lidarr — Album |
+|-------|------------------|----------------|
+| ![Album](docs/screenshots/album.jpeg) | ![Lidarr artists](docs/screenshots/lidarr-artists.jpeg) | ![Lidarr album](docs/screenshots/lidarr-album.jpeg) |
+
 ## What is Minidisc?
 
 Minidisc is a music player for iOS, written in Swift and SwiftUI, that plays the music from your own server. It uses the Subsonic and OpenSubsonic API, so it works with [Navidrome](https://www.navidrome.org) and with other servers that follow these standards.

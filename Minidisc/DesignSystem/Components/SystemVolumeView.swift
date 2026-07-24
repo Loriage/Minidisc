@@ -42,7 +42,9 @@ struct SystemVolumeView: View {
             .accessibilityHidden(true)
         }
         .accessibilityLabel("Volume")
-        .accessibilityValue("\(Int(observer.displayVolume * 100))%")
+        // Format the percent with a locale-aware FormatStyle (.percent multiplies by 100) rather than a
+        // hand-built "\(x)%" string — the percent symbol and its placement differ per locale.
+        .accessibilityValue(Double(observer.displayVolume).formatted(.percent.precision(.fractionLength(0))))
         .task {
             // Initialize from the REAL current volume on appear — covers a cold-start init that read a stale
             // outputVolume before the session was configured. Display-only, so it can't clobber the system.

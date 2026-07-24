@@ -164,6 +164,8 @@ struct StorageSettingsView: View {
     @State private var coverCount: Int = 0
     @State private var coverBytes: Int64 = 0
     @State private var isClearingCache = false
+    @State private var showClearCacheConfirm = false
+    @State private var showClearArtworkConfirm = false
 
     private var cacheSettings: CacheSettings? { container?.cacheSettings }
 
@@ -304,7 +306,7 @@ struct StorageSettingsView: View {
                 }
 
                 Button(role: .destructive) {
-                    Task { await clearStreamCache() }
+                    showClearCacheConfirm = true
                 } label: {
                     if isClearingCache {
                         HStack(spacing: MinidiscSpacing.s) {
@@ -348,7 +350,7 @@ struct StorageSettingsView: View {
                 }
 
                 Button(role: .destructive) {
-                    Task { await clearArtwork() }
+                    showClearArtworkConfirm = true
                 } label: {
                     Text("Clear artwork cache")
                         .foregroundStyle(.red)
@@ -362,6 +364,22 @@ struct StorageSettingsView: View {
         .formStyle(.grouped)
         .navigationTitle("Storage")
         .navigationBarTitleDisplayModeInline()
+        .background {
+            Color.clear
+                .alert("Clear stream cache?", isPresented: $showClearCacheConfirm) {
+                    Button("Clear", role: .destructive) { Task { await clearStreamCache() } }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Recently-played music is removed from the cache. It re-downloads on demand.")
+                }
+                .alert("Clear artwork cache?", isPresented: $showClearArtworkConfirm) {
+                    Button("Clear", role: .destructive) { Task { await clearArtwork() } }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Cached covers are deleted. They re-download on demand.")
+                }
+                .tint(.primary)
+        }
         .task {
             await vm.loadData()
             await refreshUsage()
@@ -495,11 +513,12 @@ private struct IntegrationsSettingsView: View {
 /// the app version underneath.
 struct ApplicationSectionView: View {
     let vm: DownloadsViewModel
+    @State private var showClearAllConfirm = false
 
     var body: some View {
         Section {
             Button(role: .destructive) {
-                Task { await vm.clearAll() }
+                showClearAllConfirm = true
             } label: {
                 if vm.isClearingAll {
                     HStack(spacing: MinidiscSpacing.s) {
@@ -519,6 +538,13 @@ struct ApplicationSectionView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.top, 8)
         }
+        .alert("Clear all downloads?", isPresented: $showClearAllConfirm) {
+            Button("Clear", role: .destructive) { Task { await vm.clearAll() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Every downloaded album and playlist is deleted. This can't be undone.")
+        }
+        .tint(.primary)
     }
 }
 

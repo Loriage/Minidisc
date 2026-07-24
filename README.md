@@ -109,15 +109,6 @@ This information is for developers:
 - **Concurrency.** Swift 6 strict concurrency.
 - **Dependencies.** SwiftSonic, and there are no other dependencies.
 
-## Contributing
-
-Contributions are welcome, but remember the philosophy. Minidisc is lean and opinionated, so a new setting is difficult to accept. Polish and bug fixes are always welcome, and a change that makes the app more like Apple Music is also welcome.
-
-- **Discuss before you write code.** Open an issue first, especially for a new function or a new setting.
-- **Match the existing style.** Use Swift 6 strict concurrency, do not import UIKit in the service layer, and use design tokens instead of raw numbers.
-- **Test on a real device**, because audio and Liquid Glass are different in the Simulator.
-- **Use conventional commits**, for example `feat`, `fix`, `refactor`, `docs`, or `chore`.
-
 ## License
 
 Minidisc uses the [MPL-2.0](LICENSE) license.

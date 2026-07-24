@@ -9,13 +9,9 @@
 
 ## Screenshots
 
-| Home | Discover | Player |
-|------|----------|--------|
-| ![Home](docs/screenshots/home.jpeg) | ![Discover](docs/screenshots/discover.jpeg) | ![Player](docs/screenshots/player.jpeg) |
-
-| Album | Lidarr — Artists | Lidarr — Album |
-|-------|------------------|----------------|
-| ![Album](docs/screenshots/album.jpeg) | ![Lidarr artists](docs/screenshots/lidarr-artists.jpeg) | ![Lidarr album](docs/screenshots/lidarr-album.jpeg) |
+| Home | Discover | Player | Album | Lidarr |
+|:----:|:--------:|:------:|:-----:|:------:|
+| <img src="docs/screenshots/home.jpeg" width="150"> | <img src="docs/screenshots/discover.jpeg" width="150"> | <img src="docs/screenshots/player.jpeg" width="150"> | <img src="docs/screenshots/album.jpeg" width="150"> | <img src="docs/screenshots/lidarr-album.jpeg" width="150"> |
 
 ## What is Minidisc?
 

@@ -24,7 +24,11 @@ struct DiscoverView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: MinidiscSpacing.l) {
+            LazyVStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
+                Text("Discover")
+                    .font(.largeTitle.bold())
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, MinidiscSpacing.l)
                 if let vm {
                     if vm.isErrorState {
                         errorBanner(vm: vm)
@@ -41,8 +45,8 @@ struct DiscoverView: View {
             }
             .padding(.vertical, MinidiscSpacing.m)
         }
+        .scrollEdgeEffectHidden(for: .top)
         .minidiscContentWidth()
-        .navigationTitle("Discover")
         .task {
             guard let container else { return }
             if vm == nil {
@@ -93,7 +97,7 @@ struct DiscoverView: View {
             VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
                 Text("Moods")
                     .font(.minidiscShelfTitle)
-                    .padding(.horizontal, MinidiscSpacing.m)
+                    .padding(.horizontal, MinidiscSpacing.l)
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: MinidiscSpacing.s) {
@@ -101,7 +105,7 @@ struct DiscoverView: View {
                             MoodCard(mood: entry.mood, playlistId: entry.playlistId)
                         }
                     }
-                    .padding(.horizontal, MinidiscSpacing.m)
+                    .padding(.horizontal, MinidiscSpacing.l)
                 }
             }
         }
@@ -186,14 +190,14 @@ struct DiscoverView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                .padding(MinidiscSpacing.m)
+                .padding(MinidiscSpacing.l)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.minidiscAccent.opacity(0.1))
                 .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard, style: .continuous))
                 .foregroundStyle(.primary)
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, MinidiscSpacing.m)
+            .padding(.horizontal, MinidiscSpacing.l)
         }
     }
 
@@ -228,7 +232,7 @@ struct DiscoverView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, MinidiscSpacing.m)
+            .padding(.horizontal, MinidiscSpacing.l)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: MinidiscSpacing.s) {
@@ -242,7 +246,7 @@ struct DiscoverView: View {
                         WrappedRecapMonthCard(period: .month(year: item.year, month: item.month))
                     }
                 }
-                .padding(.horizontal, MinidiscSpacing.m)
+                .padding(.horizontal, MinidiscSpacing.l)
             }
         }
     }
@@ -276,7 +280,7 @@ struct DiscoverView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, MinidiscSpacing.m)
+            .padding(.horizontal, MinidiscSpacing.l)
 
             if radioStations.isEmpty {
                 NavigationLink {
@@ -294,13 +298,13 @@ struct DiscoverView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    .padding(MinidiscSpacing.m)
+                    .padding(MinidiscSpacing.l)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.minidiscAccent.opacity(0.08))
                     .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard, style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .padding(.horizontal, MinidiscSpacing.m)
+                .padding(.horizontal, MinidiscSpacing.l)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: MinidiscSpacing.s) {
@@ -308,7 +312,7 @@ struct DiscoverView: View {
                             RadioCard(station: station)
                         }
                     }
-                    .padding(.horizontal, MinidiscSpacing.m)
+                    .padding(.horizontal, MinidiscSpacing.l)
                 }
             }
         }
@@ -320,7 +324,7 @@ struct DiscoverView: View {
         VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
             Text(title)
                 .font(.minidiscShelfTitle)
-                .padding(.horizontal, MinidiscSpacing.m)
+                .padding(.horizontal, MinidiscSpacing.l)
             content()
         }
     }
@@ -346,7 +350,7 @@ struct DiscoverView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, MinidiscSpacing.m)
+            .padding(.horizontal, MinidiscSpacing.l)
         }
     }
 
@@ -369,7 +373,7 @@ struct DiscoverView: View {
             } label: {
                 Text("Retry")
                     .font(.minidiscCellTitle)
-                    .padding(.horizontal, MinidiscSpacing.m)
+                    .padding(.horizontal, MinidiscSpacing.l)
                     .padding(.vertical, MinidiscSpacing.s)
                     .background(Color.minidiscAccent)
                     .foregroundStyle(.white)
@@ -377,11 +381,11 @@ struct DiscoverView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(MinidiscSpacing.m)
+        .padding(MinidiscSpacing.l)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.yellow.opacity(0.12)) // warning state — not brand accent
         .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard, style: .continuous))
-        .padding(.horizontal, MinidiscSpacing.m)
+        .padding(.horizontal, MinidiscSpacing.l)
     }
 
     private func skeletonScroll() -> some View {
@@ -396,7 +400,7 @@ struct DiscoverView: View {
                     .frame(width: 140)
                 }
             }
-            .padding(.horizontal, MinidiscSpacing.m)
+            .padding(.horizontal, MinidiscSpacing.l)
         }
         .allowsHitTesting(false)
     }
@@ -408,6 +412,6 @@ struct DiscoverView: View {
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
             .padding(.vertical, MinidiscSpacing.l)
-            .padding(.horizontal, MinidiscSpacing.m)
+            .padding(.horizontal, MinidiscSpacing.l)
     }
 }

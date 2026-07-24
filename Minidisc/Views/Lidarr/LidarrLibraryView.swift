@@ -14,6 +14,7 @@ struct LidarrLibraryView: View {
     @State private var errorMessage: String?
     @State private var client: LidarrClient?
     @State private var showSearch = false
+    @Namespace private var toolbarGlass
 
     private let columns = [GridItem(.adaptive(minimum: 140, maximum: 180), spacing: MinidiscSpacing.m)]
 
@@ -38,20 +39,33 @@ struct LidarrLibraryView: View {
                 grid
             }
         }
-        .navigationTitle("Lidarr")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                NavigationLink(value: LidarrQueueRoute()) {
-                    Image(systemName: "waveform.path.ecg")
-                }
-                .tint(.primary)
-                .accessibilityLabel("Activity")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button { showSearch = true } label: { Image(systemName: "plus") }
-                    .tint(.primary)
+        .toolbar(.hidden, for: .navigationBar)
+        .overlay(alignment: .topTrailing) {
+            GlassEffectContainer(spacing: MinidiscSpacing.m) {
+                HStack {
+                    NavigationLink(value: LidarrQueueRoute()) {
+                        Image(systemName: "waveform.path.ecg")
+                            .font(.title2)
+                            .foregroundStyle(.primary)
+                            .frame(width: 44, height: 44)
+                            .glassEffect()
+                            .glassEffectUnion(id: "lidarr-actions", namespace: toolbarGlass)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Activity")
+                    Button { showSearch = true } label: {
+                        Image(systemName: "plus")
+                            .font(.title2)
+                            .foregroundStyle(.primary)
+                            .frame(width: 44, height: 44)
+                            .glassEffect()
+                            .glassEffectUnion(id: "lidarr-actions", namespace: toolbarGlass)
+                    }
+                    .buttonStyle(.plain)
                     .accessibilityLabel("Add Artist")
+                }
             }
+            .padding(.trailing, MinidiscSpacing.l)
         }
         .sheet(isPresented: $showSearch, onDismiss: { Task { await load() } }) {
             LidarrArtistSearchView()
@@ -84,6 +98,12 @@ struct LidarrLibraryView: View {
     private var grid: some View {
         ScrollViewReader { proxy in
             ScrollView {
+                Text("Lidarr")
+                    .font(.largeTitle.bold())
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, MinidiscSpacing.l)
+                    .padding(.top, MinidiscSpacing.m)
+
                 LazyVGrid(columns: columns, spacing: MinidiscSpacing.l) {
                     ForEach(artists) { artist in
                         NavigationLink(value: artist) {
@@ -113,6 +133,7 @@ struct LidarrLibraryView: View {
                     .padding(.trailing, 4)
                 }
             }
+            .scrollEdgeEffectHidden(for: .top)
         }
     }
 

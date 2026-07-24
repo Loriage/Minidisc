@@ -31,16 +31,16 @@ struct HomeView: View {
                 LoadingStateView()
             }
         }
-        .navigationTitle("Home")
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Button { showSettings = true } label: {
-                    Image(systemName: "gearshape.fill")
-                        .font(.title3)
-                        .frame(width: 36, height: 36)
-                }
-                .buttonStyle(.plain)
+        .toolbar(.hidden, for: .navigationBar)
+        .overlay(alignment: .topTrailing) {
+            Button { showSettings = true } label: {
+                Image(systemName: "gearshape.fill")
+                    .font(.title2)
+                    .foregroundStyle(.primary)
+                    .minidiscGlassButton(size: 44)
             }
+            .buttonStyle(.plain)
+            .padding(.trailing, MinidiscSpacing.l)
         }
         .sheet(isPresented: $showSettings) { SettingsSheet() }
         .navigationDestination(for: HomeDestination.self) { destination in
@@ -79,6 +79,10 @@ struct HomeView: View {
                 // content height is cheap — and a LazyVStack's estimated height confuses the
                 // pull-to-refresh inset math, stranding the ScrollView with a blank gap at the top.
                 VStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
+                    Text("Home")
+                        .font(.largeTitle.bold())
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, MinidiscSpacing.l)
                     if !vm.topPicks.isEmpty {
                         HomeShelf(title: "Top Picks for You") {
                             ForEach(vm.topPicks) { playlist in
@@ -112,6 +116,7 @@ struct HomeView: View {
                 .padding(.bottom, MinidiscSpacing.xl)
             }
             .refreshable { await vm.load() }
+            .scrollEdgeEffectHidden(for: .top)
         }
     }
 

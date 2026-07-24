@@ -5557,6 +5557,58 @@
         }
       }
     },
+    "Cached covers are deleted. They re-download on demand." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwischengespeicherte Cover werden gelöscht. Sie werden bei Bedarf erneut geladen."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Τα προσωρινά αποθηκευμένα εξώφυλλα διαγράφονται. Λαμβάνονται ξανά όταν χρειάζεται."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las carátulas en caché se eliminan. Se vuelven a descargar cuando se necesitan."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les pochettes en cache sont supprimées. Elles se retéléchargent à la demande."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le copertine memorizzate nella cache vengono eliminate. Vengono riscaricate all'occorrenza."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キャッシュされたカバーが削除されます。必要に応じて再ダウンロードされます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "缓存的封面将被删除，会按需重新下载。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "快取的封面將被刪除，會依需求重新下載。"
+          }
+        }
+      }
+    },
     "Cancel" : {
       "localizations" : {
         "de" : {
@@ -6181,6 +6233,58 @@
         }
       }
     },
+    "Clear all downloads?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Downloads löschen?"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Διαγραφή όλων των λήψεων;"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Eliminar todas las descargas?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer tous les téléchargements ?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminare tutti i download?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべてのダウンロードを削除しますか？"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除所有下载？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除所有下載？"
+          }
+        }
+      }
+    },
     "Clear artwork cache" : {
       "localizations" : {
         "de" : {
@@ -6229,6 +6333,58 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "清除封面快取"
+          }
+        }
+      }
+    },
+    "Clear artwork cache?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cover-Cache leeren?"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Εκκαθάριση προσωρινής μνήμης εξωφύλλων;"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Vaciar caché de carátulas?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vider le cache des pochettes ?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Svuotare la cache delle copertine?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アートワークキャッシュを消去しますか？"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除封面缓存？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除封面快取？"
           }
         }
       }
@@ -6385,6 +6541,58 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "清除串流快取"
+          }
+        }
+      }
+    },
+    "Clear stream cache?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stream-Cache leeren?"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Εκκαθάριση προσωρινής μνήμης ροής;"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Vaciar caché de streaming?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vider le cache de streaming ?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Svuotare la cache di streaming?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ストリームキャッシュを消去しますか？"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除流媒体缓存？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除串流快取？"
           }
         }
       }
@@ -9514,6 +9722,7 @@
       }
     },
     "Disabled" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11028,6 +11237,7 @@
       }
     },
     "Enabled" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11335,6 +11545,58 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "平衡不同曲目之間的音量。曲目模式單獨調整每首歌，專輯模式則保留專輯的動態。"
+          }
+        }
+      }
+    },
+    "Every downloaded album and playlist is deleted. This can't be undone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle heruntergeladenen Alben und Playlists werden gelöscht. Das kann nicht rückgängig gemacht werden."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Κάθε ληφθέν άλμπουμ και λίστα αναπαραγωγής διαγράφεται. Αυτό δεν μπορεί να αναιρεθεί."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se eliminan todos los álbumes y listas descargados. Esta acción no se puede deshacer."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tous les albums et listes de lecture téléchargés sont supprimés. Cette action est irréversible."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tutti gli album e le playlist scaricati vengono eliminati. L'operazione non può essere annullata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロード済みのすべてのアルバムとプレイリストが削除されます。この操作は取り消せません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有已下载的专辑和播放列表都将被删除。此操作无法撤销。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有已下載的專輯和播放列表都將被刪除。此操作無法復原。"
           }
         }
       }
@@ -21019,6 +21281,7 @@
       }
     },
     "Now Playing" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -23415,6 +23678,7 @@
       }
     },
     "Queue is empty" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -23774,6 +24038,58 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "最近播放"
+          }
+        }
+      }
+    },
+    "Recently-played music is removed from the cache. It re-downloads on demand." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kürzlich gespielte Musik wird aus dem Cache entfernt. Sie wird bei Bedarf erneut geladen."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Η μουσική που αναπαράχθηκε πρόσφατα αφαιρείται από την προσωρινή μνήμη. Λαμβάνεται ξανά όταν χρειάζεται."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La música reproducida recientemente se elimina de la caché. Se vuelve a descargar cuando se necesita."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La musique récemment écoutée est retirée du cache. Elle se retélécharge à la demande."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La musica riprodotta di recente viene rimossa dalla cache. Viene riscaricata all'occorrenza."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近再生した曲がキャッシュから削除されます。必要に応じて再ダウンロードされます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近播放的音乐将从缓存中移除，会按需重新下载。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最近播放的音樂將從快取中移除，會依需求重新下載。"
           }
         }
       }
@@ -25001,6 +25317,7 @@
       }
     },
     "Repeat: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -27809,6 +28126,7 @@
       }
     },
     "Start playing music to see your queue here." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -35568,318 +35886,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的年度以 %@ 揭開序幕"
-          }
-        }
-      }
-    },
-    "Clear stream cache?" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stream-Cache leeren?"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Εκκαθάριση προσωρινής μνήμης ροής;"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "¿Vaciar caché de streaming?"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vider le cache de streaming ?"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Svuotare la cache di streaming?"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ストリームキャッシュを消去しますか？"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "清除流媒体缓存？"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "清除串流快取？"
-          }
-        }
-      }
-    },
-    "Clear artwork cache?" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cover-Cache leeren?"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Εκκαθάριση προσωρινής μνήμης εξωφύλλων;"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "¿Vaciar caché de carátulas?"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vider le cache des pochettes ?"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Svuotare la cache delle copertine?"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "アートワークキャッシュを消去しますか？"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "清除封面缓存？"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "清除封面快取？"
-          }
-        }
-      }
-    },
-    "Clear all downloads?" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alle Downloads löschen?"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Διαγραφή όλων των λήψεων;"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "¿Eliminar todas las descargas?"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Supprimer tous les téléchargements ?"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Eliminare tutti i download?"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "すべてのダウンロードを削除しますか？"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "清除所有下载？"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "清除所有下載？"
-          }
-        }
-      }
-    },
-    "Recently-played music is removed from the cache. It re-downloads on demand." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kürzlich gespielte Musik wird aus dem Cache entfernt. Sie wird bei Bedarf erneut geladen."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Η μουσική που αναπαράχθηκε πρόσφατα αφαιρείται από την προσωρινή μνήμη. Λαμβάνεται ξανά όταν χρειάζεται."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La música reproducida recientemente se elimina de la caché. Se vuelve a descargar cuando se necesita."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La musique récemment écoutée est retirée du cache. Elle se retélécharge à la demande."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La musica riprodotta di recente viene rimossa dalla cache. Viene riscaricata all'occorrenza."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "最近再生した曲がキャッシュから削除されます。必要に応じて再ダウンロードされます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "最近播放的音乐将从缓存中移除，会按需重新下载。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "最近播放的音樂將從快取中移除，會依需求重新下載。"
-          }
-        }
-      }
-    },
-    "Cached covers are deleted. They re-download on demand." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zwischengespeicherte Cover werden gelöscht. Sie werden bei Bedarf erneut geladen."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Τα προσωρινά αποθηκευμένα εξώφυλλα διαγράφονται. Λαμβάνονται ξανά όταν χρειάζεται."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Las carátulas en caché se eliminan. Se vuelven a descargar cuando se necesitan."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les pochettes en cache sont supprimées. Elles se retéléchargent à la demande."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le copertine memorizzate nella cache vengono eliminate. Vengono riscaricate all'occorrenza."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "キャッシュされたカバーが削除されます。必要に応じて再ダウンロードされます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "缓存的封面将被删除，会按需重新下载。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "快取的封面將被刪除，會依需求重新下載。"
-          }
-        }
-      }
-    },
-    "Every downloaded album and playlist is deleted. This can't be undone." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alle heruntergeladenen Alben und Playlists werden gelöscht. Das kann nicht rückgängig gemacht werden."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Κάθε ληφθέν άλμπουμ και λίστα αναπαραγωγής διαγράφεται. Αυτό δεν μπορεί να αναιρεθεί."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Se eliminan todos los álbumes y listas descargados. Esta acción no se puede deshacer."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tous les albums et listes de lecture téléchargés sont supprimés. Cette action est irréversible."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tutti gli album e le playlist scaricati vengono eliminati. L'operazione non può essere annullata."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ダウンロード済みのすべてのアルバムとプレイリストが削除されます。この操作は取り消せません。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所有已下载的专辑和播放列表都将被删除。此操作无法撤销。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所有已下載的專輯和播放列表都將被刪除。此操作無法復原。"
           }
         }
       }

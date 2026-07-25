@@ -1808,8 +1808,12 @@ actor PlayerService: PlayerServiceProtocol {
             (state.playbackState, state.duration, state.isLiveStream, state.currentTrack != nil)
         }
         guard case .playing = playbackState, !isLiveStream, hasTrack else { return }
-        guard elapsed >= 0, duration > 0, elapsed <= duration else { return }
-        await nowPlayingService?.pushPosition(elapsed: elapsed, rate: 1.0, duration: duration)
+        guard elapsed >= 0, duration > 0 else { return }
+        // The decoder clock runs a fraction past `duration` at the end of most tracks — the server
+        // reports whole seconds, the file is not whole seconds long. Dropping those pushes (the old
+        // `elapsed <= duration` guard) froze the lock screen and Dynamic Island at the last accepted
+        // position for the rest of the track, so clamp instead.
+        await nowPlayingService?.pushPosition(elapsed: min(elapsed, duration), rate: 1.0, duration: duration)
     }
 
     // nonisolated: safe — only called during app termination

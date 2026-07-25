@@ -7,6 +7,7 @@ import Accelerate
 import AVFoundation
 import Foundation
 import MediaToolbox
+import OSLog
 
 /// The system engine: two AVFoundation `AVPlayer` decks with role swapping, so decoding runs on
 /// Apple's hardware path (bit-perfect lossless without the software-decode crackle) AND transitions
@@ -53,6 +54,22 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     /// estimate that drifts on transcoded/VBR streams, which would arm the overlap at the wrong time.
     private var metadataDuration: Double = 0
 
+    /// Orchestration intent: true between a play/resume and the next pause/stop. What separates
+    /// "AVPlayer stopped on its own" (end of file, stall) from "the user pressed pause".
+    private var shouldBePlaying = false
+    /// Set once per item when the end has been reported, so the end-of-item notification and the
+    /// watchdog below can never both advance the queue.
+    private var didSignalEnd = false
+    private var watchdogTimer: DispatchSourceTimer?
+    /// Last playhead reading the watchdog saw, and when it last moved.
+    private var lastWatchdogTime: Double = -1
+    private var lastWatchdogAdvance = Date()
+    private static let watchdogInterval = 500
+    /// How close to the track length counts as "the file is over" once the playhead stops moving.
+    private static let endOfFileTolerance: Double = 1.5
+    /// How long the playhead must stay frozen before the watchdog treats it as final rather than a hitch.
+    private static let frozenClockGrace: Double = 1.0
+
     private var timeControlObservers: [NSKeyValueObservation] = []
     private var statusObserver: NSKeyValueObservation?
     private var endObserver: NSObjectProtocol?
@@ -86,6 +103,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
 
     deinit {
         overlapTimer?.cancel()
+        watchdogTimer?.cancel()
         clearItemObservers()
         standbyStatusObserver?.invalidate()
         timeControlObservers.forEach { $0.invalidate() }
@@ -103,7 +121,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         // Adopt a hand-off the engine already performed at the natural end of the previous track.
         if url == handedOffURL, currentItem != nil {
             handedOffURL = nil
-            activePlayer.play()
+            beginPlaying()
             return
         }
 
@@ -121,7 +139,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         attachItemObservers(item)
         currentItem = item
         activePlayer.replaceCurrentItem(with: item)
-        activePlayer.play()
+        beginPlaying()
         installReplayGainTap(on: item, asset: asset, context: activeContext)
         installPeriodicObserver(on: activePlayer)
     }
@@ -162,13 +180,15 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         cancelOverlap()
+        shouldBePlaying = false
+        stopWatchdog()
         activePlayer.pause()
     }
 
     func resume() {
         lock.lock()
         defer { lock.unlock() }
-        activePlayer.play()
+        beginPlaying()
     }
 
     func stop() {
@@ -181,6 +201,10 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         cancelOverlap()
+        // A seek moves the playhead on its own; without a fresh baseline the watchdog would read the
+        // jump as a frozen clock (or, seeking backwards, as one that never advanced).
+        resetWatchdogBaseline()
+        didSignalEnd = false
         activePlayer.seek(
             to: CMTime(seconds: seconds, preferredTimescale: 600),
             toleranceBefore: .zero,
@@ -323,10 +347,90 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         applyDeckVolumes()
     }
 
+    // MARK: - End-of-track watchdog
+
+    /// Starts the active deck and arms the watchdog. Every path that puts audio back in motion goes
+    /// through here so playback intent and the watchdog can never drift apart.
+    private func beginPlaying() {
+        shouldBePlaying = true
+        activePlayer.play()
+        startWatchdog()
+    }
+
+    private func startWatchdog() {
+        watchdogTimer?.cancel()
+        resetWatchdogBaseline()
+        let timer = DispatchSource.makeTimerSource(queue: rampQueue)
+        timer.schedule(
+            deadline: .now() + .milliseconds(Self.watchdogInterval),
+            repeating: .milliseconds(Self.watchdogInterval)
+        )
+        timer.setEventHandler { [weak self] in
+            self?.watchdogTick()
+        }
+        watchdogTimer = timer
+        timer.resume()
+    }
+
+    private func stopWatchdog() {
+        watchdogTimer?.cancel()
+        watchdogTimer = nil
+    }
+
+    private func resetWatchdogBaseline() {
+        lastWatchdogTime = -1
+        lastWatchdogAdvance = Date()
+    }
+
+    /// `didPlayToEndTimeNotification` is the only end-of-file signal AVPlayer gives us, and a streamed
+    /// item that stalls on its last packets — routine once the app is backgrounded and the network is
+    /// throttled — can simply never post it. Nothing downstream notices: the engine reports `.paused`,
+    /// which PlayerService does not act on, so the queue stops for good with the UI still on "playing".
+    ///
+    /// So the end is re-derived from the clock instead of trusted to a single notification. The rule is
+    /// deliberately narrow: act only when playback is *meant* to be running, the playhead has stopped
+    /// moving for longer than a hitch, AND it stopped within a whisker of the track length. A mid-track
+    /// buffer stall leaves the playhead far from the end and is left alone for AVPlayer to recover from;
+    /// a user pause clears `shouldBePlaying` and stops the timer outright.
+    private func watchdogTick() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard shouldBePlaying, !didSignalEnd, let item = currentItem else { return }
+
+        let itemDuration = item.duration.isNumeric ? CMTimeGetSeconds(item.duration) : 0
+        let trackDuration = metadataDuration > 0 ? metadataDuration : itemDuration
+        // A live stream has no length to compare against, so it is never "finished".
+        guard trackDuration > 0 else { return }
+
+        let time = activePlayer.currentTime()
+        let position = time.isNumeric ? CMTimeGetSeconds(time) : 0
+
+        if position > lastWatchdogTime + 0.05 {
+            lastWatchdogTime = position
+            lastWatchdogAdvance = Date()
+            return
+        }
+        // `position > 0` keeps a track that never started (still opening the stream, failed to load)
+        // out of this path — that is an error for PlayerService to handle, not a finished track.
+        guard position > 0,
+              Date().timeIntervalSince(lastWatchdogAdvance) >= Self.frozenClockGrace,
+              trackDuration - position <= Self.endOfFileTolerance else { return }
+
+        let reading = String(format: "%.2fs of %.2fs", position, trackDuration)
+        Logger.player.warning(
+            "[ENGINE] end-of-track watchdog fired — AVPlayer never reported EOF (\(reading, privacy: .public))"
+        )
+        finalizeAdvance()
+    }
+
     /// The current item played to its end. With a preloaded next: retire the finished deck, promote
     /// the standby (already blending in a crossfade, or started now for gapless), then tell
     /// PlayerService — whose confirming `play` adopts the promoted deck via `handedOffURL`.
     private func finalizeAdvance() {
+        // The notification, the crossfade ramp and the watchdog all land here, and any two of them can
+        // fire for the same track — one advance per item.
+        guard !didSignalEnd else { return }
+        didSignalEnd = true
         guard preloadedItem != nil, let url = preloadedURL else {
             delegate?.audioEngineDidReachEndOfTrack()
             return
@@ -359,9 +463,14 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         if let item = currentItem {
             attachItemObservers(item)
         }
+        // The promoted deck carries on playing: either it was started here, or it has been audible
+        // since the crossfade began. Either way the new item starts its own end-detection cycle.
+        didSignalEnd = false
+        shouldBePlaying = true
         if startPlaying {
             activePlayer.play()
         }
+        startWatchdog()
         installPeriodicObserver(on: activePlayer)
     }
 
@@ -369,6 +478,9 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         overlapTimer?.cancel()
         overlapTimer = nil
         isOverlapping = false
+        shouldBePlaying = false
+        didSignalEnd = false
+        stopWatchdog()
         clearItemObservers()
         standbyStatusObserver?.invalidate()
         standbyStatusObserver = nil
@@ -404,10 +516,16 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
             forName: AVPlayerItem.didPlayToEndTimeNotification,
             object: item,
             queue: .main
-        ) { [weak self] _ in
+        ) { [weak self, weak item] _ in
             guard let self else { return }
             self.lock.lock()
-            self.finalizeAdvance()
+            // A crossfade hand-off retires the outgoing deck before its item reports EOF, and removing
+            // a block observer does not cancel a notification already queued on the main queue. Without
+            // this identity check that late arrival would advance the queue a second time, skipping the
+            // track that just took over.
+            if let item, item === self.currentItem {
+                self.finalizeAdvance()
+            }
             self.lock.unlock()
         }
         // A mid-stream network failure (connection drop, server hiccup) — surface it so PlayerService

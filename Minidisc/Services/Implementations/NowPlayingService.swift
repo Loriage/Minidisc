@@ -223,7 +223,10 @@ actor NowPlayingService: NowPlayingServiceProtocol {
     // MARK: - Periodic position push
 
     func pushPosition(elapsed: TimeInterval, rate: Float, duration: TimeInterval) async {
-        guard elapsed >= 0, duration > 0, elapsed <= duration else { return }
+        guard elapsed >= 0, duration > 0 else { return }
+        // Clamp rather than reject: an elapsed slightly past the reported duration is the normal
+        // end-of-track reading, and dropping it leaves the lock screen stuck on a stale position.
+        let elapsed = min(elapsed, duration)
         await MainActor.run {
             var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
             info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsed

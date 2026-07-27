@@ -42,7 +42,7 @@ struct LidarrLibraryView: View {
         .toolbar(.hidden, for: .navigationBar)
         .overlay(alignment: .topTrailing) {
             GlassEffectContainer(spacing: MinidiscSpacing.m) {
-                HStack {
+                HStack(spacing: 8) {
                     NavigationLink(value: LidarrQueueRoute()) {
                         Image(systemName: "waveform.path.ecg")
                             .font(.title2)
@@ -50,6 +50,7 @@ struct LidarrLibraryView: View {
                             .frame(width: 44, height: 44)
                             .glassEffect()
                             .glassEffectUnion(id: "lidarr-actions", namespace: toolbarGlass)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Activity")
@@ -60,6 +61,7 @@ struct LidarrLibraryView: View {
                             .frame(width: 44, height: 44)
                             .glassEffect()
                             .glassEffectUnion(id: "lidarr-actions", namespace: toolbarGlass)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Add Artist")
@@ -175,14 +177,21 @@ private struct LidarrArtistCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
-            LidarrCoverImage(path: artist.posterPath, client: client) {
-                RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard)
-                    .fill(Color.secondary.opacity(0.15))
-                    .overlay { Image(systemName: "music.mic").font(.title).foregroundStyle(.secondary) }
-            }
-            .frame(maxWidth: .infinity)
-            .aspectRatio(1, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard))
+            // The square is driven by an inert Color, and the cover rides in an overlay: overlay
+            // content never contributes to its parent's size. Lidarr falls back to a banner when an
+            // artist has no poster, and `scaledToFill` reports a size WIDER than proposed for such a
+            // cover — through a flexible maxWidth frame that width reached the grid, which then
+            // centred the oversized cell over its neighbour. Here it can only overflow the clip.
+            Color.clear
+                .aspectRatio(1, contentMode: .fit)
+                .overlay {
+                    LidarrCoverImage(path: artist.posterPath, client: client) {
+                        RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard)
+                            .fill(Color.secondary.opacity(0.15))
+                            .overlay { Image(systemName: "music.mic").font(.title).foregroundStyle(.secondary) }
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard))
             .overlay(alignment: .topTrailing) {
                 if !artist.monitored {
                     Image(systemName: "bookmark.slash.fill")

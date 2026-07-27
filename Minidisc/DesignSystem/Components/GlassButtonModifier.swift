@@ -17,6 +17,9 @@ extension View {
         return self
             .frame(width: size, height: size)
             .glassEffect(glass, in: .circle)
+            // The glass is a render effect, not a backing view: without an explicit content shape
+            // only the glyph is hit-testable and taps in the rest of the frame fall through.
+            .contentShape(Rectangle())
     }
 
     /// Solid dark circular button for the detail-header action row (shuffle / download). A semi-opaque

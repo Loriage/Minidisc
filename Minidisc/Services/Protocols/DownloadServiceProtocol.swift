@@ -92,6 +92,7 @@ protocol DownloadServiceProtocol: AnyObject, Sendable {
     func isDownloadingAlbum(_ albumId: String) async -> Bool
     func isDownloadingPlaylist(_ playlistId: String) async -> Bool
     func cancelDownload(songId: String, serverId: UUID) async
+    /// Commits offline metadata first; audio-file cleanup then runs best-effort.
     func remove(songId: String, serverId: UUID) async throws
     func remove(albumId: String, serverId: UUID) async throws
     func remove(playlistId: String, serverId: UUID) async throws

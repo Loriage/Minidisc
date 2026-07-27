@@ -15,6 +15,7 @@ actor DownloadService: DownloadServiceProtocol {
     private let modelContainer: ModelContainer
     private let downloadsDirectory: URL
     private let coverArtsDirectory: URL
+    private let offlineRemovalCoordinator: OfflineLibraryRemovalCoordinator
     private var progressContinuation: AsyncStream<[DownloadProgress]>.Continuation?
     /// Keyed by "songId::serverId" to allow per-track cancellation.
     private var inFlightTasks: [String: Task<Void, Error>] = [:]
@@ -41,8 +42,13 @@ actor DownloadService: DownloadServiceProtocol {
 
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let base = docs.appendingPathComponent("app.minidisc", isDirectory: true)
-        self.downloadsDirectory = base.appendingPathComponent("downloads", isDirectory: true)
+        let downloadsDirectory = base.appendingPathComponent("downloads", isDirectory: true)
+        self.downloadsDirectory = downloadsDirectory
         self.coverArtsDirectory = base.appendingPathComponent("coverarts", isDirectory: true)
+        self.offlineRemovalCoordinator = OfflineLibraryRemovalCoordinator(
+            modelContainer: modelContainer,
+            downloadsDirectory: downloadsDirectory
+        )
 
         // AsyncStream.init closure is called synchronously — cont is guaranteed set before init returns.
         var cont: AsyncStream<[DownloadProgress]>.Continuation!
@@ -650,101 +656,15 @@ actor DownloadService: DownloadServiceProtocol {
     // MARK: - Remove
 
     func remove(songId: String, serverId: UUID) async throws {
-        let plan = OfflineLibraryRemovalPlanner.plan(
-            for: .track(songId: songId),
-            snapshot: .empty
-        )
-        try await purgeTracks(in: plan, serverId: serverId)
+        try await offlineRemovalCoordinator.remove(.track(songId: songId), serverId: serverId)
     }
 
     func remove(albumId: String, serverId: UUID) async throws {
-        let plan = try await MainActor.run {
-            let context = ModelContext(modelContainer)
-            let snapshot = offlineLibraryRemovalSnapshot(context: context, serverId: serverId)
-            let plan = OfflineLibraryRemovalPlanner.plan(
-                for: .album(albumId: albumId),
-                snapshot: snapshot
-            )
-            let albums = (try? context.fetch(FetchDescriptor<DownloadedAlbum>())) ?? []
-            albums
-                .filter { $0.albumId == albumId && $0.serverId == serverId }
-                .forEach { context.delete($0) }
-            try context.save()
-            return plan
-        }
-        try await purgeTracks(in: plan, serverId: serverId)
+        try await offlineRemovalCoordinator.remove(.album(albumId: albumId), serverId: serverId)
     }
 
     func remove(playlistId: String, serverId: UUID) async throws {
-        let plan = try await MainActor.run {
-            let context = ModelContext(modelContainer)
-            let snapshot = offlineLibraryRemovalSnapshot(context: context, serverId: serverId)
-            let plan = OfflineLibraryRemovalPlanner.plan(
-                for: .playlist(playlistId: playlistId),
-                snapshot: snapshot
-            )
-            let playlists = (try? context.fetch(FetchDescriptor<DownloadedPlaylist>())) ?? []
-            playlists
-                .filter { $0.playlistId == playlistId && $0.serverId == serverId }
-                .forEach { context.delete($0) }
-            try context.save()
-            return plan
-        }
-        try await purgeTracks(in: plan, serverId: serverId)
-    }
-
-    private func purgeTracks(
-        in plan: OfflineLibraryRemovalPlanner.Plan,
-        serverId: UUID
-    ) async throws {
-        for songId in plan.trackIdsToPurge.sorted() {
-            try await purgeTrack(songId: songId, serverId: serverId)
-        }
-    }
-
-    private func purgeTrack(songId: String, serverId: UUID) async throws {
-        let filePath: String? = await MainActor.run {
-            let context = ModelContext(modelContainer)
-            let predicate = #Predicate<DownloadedTrack> { $0.songId == songId }
-            let tracks = (try? context.fetch(FetchDescriptor(predicate: predicate))) ?? []
-            return tracks.first(where: { $0.serverId == serverId })?.filePath
-        }
-        if let filePath {
-            let fileURL = downloadsDirectory.appendingPathComponent(filePath)
-            if FileManager.default.fileExists(atPath: fileURL.path) {
-                try FileManager.default.removeItem(at: fileURL)
-            }
-        }
-        try await MainActor.run {
-            let context = ModelContext(modelContainer)
-            let predicate = #Predicate<DownloadedTrack> { $0.songId == songId }
-            let tracks = (try? context.fetch(FetchDescriptor(predicate: predicate))) ?? []
-            let removing = tracks.filter { $0.serverId == serverId }
-            let removingIds = Set(removing.map(\.id))
-            let affectedAlbumIds = Set(removing.compactMap(\.albumId))
-            removing.forEach { context.delete($0) }
-
-            let remainingTracks = ((try? context.fetch(FetchDescriptor<DownloadedTrack>())) ?? [])
-                .filter { $0.serverId == serverId && !removingIds.contains($0.id) }
-            if !affectedAlbumIds.isEmpty {
-                let albums = (try? context.fetch(FetchDescriptor<DownloadedAlbum>())) ?? []
-                for album in albums where album.serverId == serverId && affectedAlbumIds.contains(album.albumId) {
-                    album.tracksCount = remainingTracks.filter { $0.albumId == album.albumId }.count
-                }
-            }
-
-            // Sync DownloadedPlaylist.songIds — remove this songId from any playlist that
-            // contains it. Without this, the cold-start retry would re-download it silently.
-            let sid = serverId
-            let playlists = (try? context.fetch(
-                FetchDescriptor<DownloadedPlaylist>(predicate: #Predicate { $0.serverId == sid })
-            )) ?? []
-            for playlist in playlists where playlist.songIds.contains(songId) {
-                playlist.songIds.removeAll { $0 == songId }
-                playlist.tracksCount = playlist.songIds.count
-            }
-            try context.save()
-        }
+        try await offlineRemovalCoordinator.remove(.playlist(playlistId: playlistId), serverId: serverId)
     }
 
     // MARK: - Helpers
@@ -786,32 +706,4 @@ actor DownloadService: DownloadServiceProtocol {
         try data.write(to: fileURL, options: .atomic)
         Logger.download.info("Cover art '\(id, privacy: .public)' downloaded (\(data.count) bytes)")
     }
-}
-
-@MainActor
-private func offlineLibraryRemovalSnapshot(
-    context: ModelContext,
-    serverId: UUID
-) -> OfflineLibraryRemovalPlanner.Snapshot {
-    let tracks = ((try? context.fetch(FetchDescriptor<DownloadedTrack>())) ?? [])
-        .filter { $0.serverId == serverId }
-        .map { OfflineLibraryRemovalPlanner.Track(songId: $0.songId, albumId: $0.albumId) }
-    let downloadedAlbumIds = Set(
-        ((try? context.fetch(FetchDescriptor<DownloadedAlbum>())) ?? [])
-            .filter { $0.serverId == serverId }
-            .map(\.albumId)
-    )
-    let playlists = ((try? context.fetch(FetchDescriptor<DownloadedPlaylist>())) ?? [])
-        .filter { $0.serverId == serverId }
-        .map {
-            OfflineLibraryRemovalPlanner.Playlist(
-                playlistId: $0.playlistId,
-                songIds: Set($0.songIds)
-            )
-        }
-    return OfflineLibraryRemovalPlanner.Snapshot(
-        tracks: tracks,
-        downloadedAlbumIds: downloadedAlbumIds,
-        playlists: playlists
-    )
 }

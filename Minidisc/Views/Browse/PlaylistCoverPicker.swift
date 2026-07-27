@@ -1,7 +1,3 @@
-// Minidisc — Music client for Subsonic/OpenSubsonic servers
-// Licensed under the Mozilla Public License 2.0.
-// See LICENSE file in the project root for full license information.
-
 import SwiftUI
 
 /// The Apple-Music-style cover-picker carousel shared by the create and edit flows: a leading option

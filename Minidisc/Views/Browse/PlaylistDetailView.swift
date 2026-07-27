@@ -1,7 +1,3 @@
-// Minidisc — Music client for Subsonic/OpenSubsonic servers
-// Licensed under the Mozilla Public License 2.0.
-// See LICENSE file in the project root for full license information.
-
 import SwiftUI
 import SwiftSonic
 import SwiftData
@@ -62,8 +58,6 @@ struct PlaylistDetailView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var viewModel: PlaylistDetailViewModel?
     @State private var dominantColor: Color = .clear
-    /// A user-picked gradient spec (if any) -> the hero renders CRISP from it instead of the JPEG. Resolved
-    /// from PlaylistCoverStore on appear + after an edit (coverRefreshID). Nil for photo / server cover.
     @State private var gradientSpec: PlaylistGradientSpec?
     @State private var showDeleteAlert = false
     @State private var showAddMusic = false
@@ -71,14 +65,11 @@ struct PlaylistDetailView: View {
 
     @State private var coverRefreshID = UUID()
 
-    // MARK: In-place edit mode. The detail view becomes the editor:
-    // hero → editable cover carousel, title/description → fields, track list (Gate 2) → reorder + multi-select.
-    // Reuses the validated PlaylistCoverCarousel + the mutation committer — only the CONTAINER changes.
+    // MARK: - In-place edit mode
+
     @State private var isEditing = false
     @State private var editName: String = ""
     @State private var editComment: String = ""
-    /// Local mutable working copy of the track list — reorder (drag) + multi-select remove both mutate this;
-    /// the commit does ONE atomic full-list replace (Gate 3) if it differs from the loaded songs.
     @State private var editSongs: [DisplayableSong] = []
     @State private var selectedSongIds: Set<String> = []
     @State private var selectedGradient: PlaylistGradientShape?
@@ -94,38 +85,23 @@ struct PlaylistDetailView: View {
     @State private var showFilePicker = false
     @State private var imageToCrop: CroppableImage?
 
-    // Immersive hero geometry (captured from the view; tunable). `heroHeight` = the cover region height; the
-    // cover lives in the first SCROLLING row and bleeds under the nav bar via ignoresSafeArea.
     @State private var heroHeight: CGFloat = 680
 
-    // View-level offline backstop: sources the song list straight from SwiftData when the
-    // view model produced nothing (empty-success or error). Mirrors AlbumDetailView's
-    // downloaded fallback so a downloaded playlist stays readable independent of the
-    // network, the VM, and connectivity detection. Keyed on playlistId here; serverId is
-    // applied at read time since it isn't known at init.
+    // SwiftData remains the fallback when the online view model has no songs.
     @Query private var downloadedPlaylistMatches: [DownloadedPlaylist]
     @Query private var allDownloadedTracks: [DownloadedTrack]
 
-    /// The cover id actually displayed: the server cover, else the playlist id — under which a generated
-    /// gradient cover is cached (`{playlistId}@{tier}`). Drives BOTH the cover and the theme derivation, so a
-    /// gradient playlist (which has no server `coverArt`) is themed from its gradient, not left unthemed.
     private var effectiveCoverArtId: String { viewModel?.coverArtId ?? coverArtId ?? playlistId }
 
-    /// The reusable theming engine, fed by this view's cover-derived `dominantColor` (the Phase-1 color
-    /// source). Drives both the blended background and the adaptive foreground colors below.
     private var theme: PlaylistTheme { PlaylistTheme(dominantColor: dominantColor) }
     private var headerTextColor: Color { theme.contentColor }
     private var headerSecondaryColor: Color { theme.secondaryContentColor }
 
-    /// Solid body color the cover melts into (the themed dominant color, or the system background until it
-    /// resolves). Used by the immersive background and by the track-list row backgrounds, so the rows
-    /// occlude the fixed full-bleed cover as they scroll up over it.
     private var bodyColor: Color {
         if theme.isThemed { return theme.dominantColor }
         return Color(UIColor.systemBackground)
     }
 
-    /// Header metadata line, Apple-Music style: "N songs · Updated <relative date>".
     private func metadataLine(count: Int, updated: Date?) -> String {
         var parts = [String(localized: "\(count) songs")]
         if let updated {
@@ -140,8 +116,6 @@ struct PlaylistDetailView: View {
         viewModel == nil || (viewModel?.isLoading == true && viewModel?.songs.isEmpty == true)
     }
 
-    /// Downloaded tracks reconstructed from SwiftData in playlist order, independent of the
-    /// view model. Used as the offline backstop when `viewModel.songs` is empty.
     private var downloadedFallbackSongs: [DisplayableSong] {
         guard let serverId = container?.serverState.activeServer?.id,
               let record = downloadedPlaylistMatches.first(where: { $0.serverId == serverId })
@@ -153,15 +127,13 @@ struct PlaylistDetailView: View {
         return record.songIds.compactMap { bySongId[$0] }.map { DisplayableSong(from: $0) }
     }
 
-    /// Prefer the view model's list; fall back to the downloaded copy when it is empty.
     private func resolvedSongs(_ vm: PlaylistDetailViewModel?) -> [DisplayableSong] {
         if let songs = vm?.songs, !songs.isEmpty { return songs }
         return downloadedFallbackSongs
     }
 
     var body: some View {
-        // Kept as List to preserve PlaylistSongRows' .onDelete (swipe-to-remove).
-        // ScrollView + LazyVStack refactor is deferred until that interaction is re-implemented outside List.
+        // List is required for swipe-to-remove.
         List(selection: $selectedSongIds) {
             Group {
                 if isEditing {
@@ -201,8 +173,6 @@ struct PlaylistDetailView: View {
                     .listRowBackground(bodyColor)
                 } else {
                     let serverId = container?.serverState.activeServer?.id ?? UUID()
-                    // One closure shared by the swipe-delete (onRemove) and the context menu (onContextRemove) so
-                    // the two paths can't drift; nil offline (no edits).
                     let removeTrack: ((Int) -> Void)? = vm.isOffline ? nil : { index in
                         Task { await vm.removeTrack(at: index) }
                     }
@@ -230,7 +200,6 @@ struct PlaylistDetailView: View {
                         onRemove: removeTrack,
                         onContextRemove: removeTrack,
                         onAddToPlaylist: { song in songToAddToPlaylist = song },
-                        // Solid backing per row so the rows occlude the fixed full-bleed cover on scroll.
                         rowBackground: bodyColor
                     )
 
@@ -245,14 +214,10 @@ struct PlaylistDetailView: View {
             }
         }
         .listStyle(.plain)
-        // Edit mode ONLY while editing — nil otherwise. Forcing an editMode binding (even .inactive) in view
-        // mode broke the List's scrolling; nil restores the default (normal scroll) for the read-only view.
+        // Supplying an inactive edit binding prevents normal List scrolling.
         .environment(\.editMode, isEditing ? Binding.constant(EditMode.active) : nil)
         .scrollContentBackground(.hidden)
-        // Extend the scroll content under the transparent nav bar so the first row's cover reaches the
-        // screen top (and scrolls up under the bar). The bottom safe area / mini-player margin is preserved.
         .ignoresSafeArea(.container, edges: .top)
-        // No soft blur under the nav bar (the cover scrolls under it; the system effect would flicker).
         .minidiscHideTopScrollEdgeEffect()
         .miniPlayerBottomMargin()
         .refreshable { await viewModel?.load() }
@@ -265,7 +230,6 @@ struct PlaylistDetailView: View {
         .sheet(item: $songToAddToPlaylist) { song in
             AddToPlaylistSheet(song: song)
         }
-        // In-place edit cover photo flow (mirrors the create/edit sheets: pick → Apple-Photos crop).
         .confirmationDialog("Cover Art", isPresented: $showImageOptions, titleVisibility: .visible) {
             Button("Choose from Library") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { showImagePicker = true }
@@ -333,35 +297,23 @@ struct PlaylistDetailView: View {
                 .environment(\.appContainer, c)
             }
         }
-        // Solid page color the track list always sits on. The cover itself now lives in the (scrolling)
-        // header row, so it scrolls up with the content instead of staying fixed behind it.
         .background(bodyColor.ignoresSafeArea())
-        // Capture the hero region height (the cover lives in the first scrolling row, sized to this).
         .background {
             GeometryReader { proxy in
                 Color.clear
-                    // Square hero = the cover's own ratio, so the (square) artwork fits ENTIRELY without
-                    // overflowing/cropping. The immersive melt + floating content stay.
                     .onAppear { heroHeight = proxy.size.width }
                     .onChange(of: proxy.size.width) { _, w in heroHeight = w }
             }
         }
         .minidiscContentWidth()
-        // Drive the now-playing indicator from the SAME color as the hero buttons (heroIconColor), not raw
-        // accentForeground — heroIconColor adds the dark-mode branch (minidiscAccentSecondary), so the bars
-        // now match the buttons on every background instead of diverging in dark mode.
         .environment(\.minidiscPlayingAccent, heroIconColor)
         .navigationTitle("")
         .navigationBarTitleDisplayModeInline()
         .navigationBarBackButtonHidden(true)
         .enableSwipeBack()
         .toolbar { toolbarContent }
-        // Transparent nav bar so the cover floats under it; adapt the status-bar style to the cover
-        // lightness (dark text on a light cover, light text on a dark cover).
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(theme.isThemed ? (theme.isLight ? .light : .dark) : nil, for: .navigationBar)
-        // Keyed on connectivity so the list re-loads from the right source when
-        // NWPathMonitor flips isOnline — same pattern as PlaylistDetailMacOS.
         .task(id: container?.serverState.isOnline) {
             guard let c = container else { return }
             if viewModel == nil {
@@ -377,8 +329,6 @@ struct PlaylistDetailView: View {
             await viewModel?.load()
         }
         .task(id: effectiveCoverArtId) {
-            // Photo / server cover -> extract the dominant. Gradient playlists are themed from the spec base
-            // color (cover-refresh task), not the JPEG, so gradient + body stay coherent.
             guard gradientSpec == nil else { return }
             let artId = effectiveCoverArtId
             let cached = colorExtractor.dominantColor(for: artId, image: nil)
@@ -389,10 +339,6 @@ struct PlaylistDetailView: View {
             await loadDominantColor(coverArtId: artId)
         }
         .task(id: coverRefreshID) {
-            // A user-picked gradient -> render the hero CRISP from the spec (the JPEG stays the
-            // cards/cross-device truth), AND theme the body straight from the (vibrance-boosted) spec base
-            // color so gradient + background + body stay coherent, no JPEG re-extraction. Re-resolves after an
-            // edit (coverRefreshID bumps). Nil -> JPEG/photo path keeps the extractor.
             guard let container, let serverId = container.serverState.activeServer?.id else { gradientSpec = nil; return }
             let choice = PlaylistCoverStore(modelContainer: container.modelContainer).choice(playlistId: playlistId, serverId: serverId)
             let spec = choice?.isUserPicked == true ? choice?.spec : nil
@@ -409,16 +355,12 @@ struct PlaylistDetailView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         if isEditing {
-            // Same themed hero-button surface as view mode (navBarIcon: opaque circle + headerTextColor) so the
-            // edit CTAs match the non-edit ones — NOT system glass capsules, which read the wrong colour here.
             ToolbarItem(placement: .cancellationAction) {
                 Button { cancelEdit() } label: { navBarIcon("xmark") }
                     .buttonStyle(.plain)
                     .disabled(isSaving)
             }
             ToolbarItem(placement: .primaryAction) {
-                // Trash: multi-remove the selected tracks; with nothing selected, delete the whole playlist
-                // (confirmed via dialog). Both mutate only the local working list until Done persists.
                 Button(role: .destructive) {
                     if selectedSongIds.isEmpty { showDeletePlaylistConfirm = true } else { showRemoveSongsConfirm = true }
                 } label: {
@@ -585,7 +527,6 @@ struct PlaylistDetailView: View {
         return pendingImage
     }
 
-    /// Enter in-place edit: snapshot the current metadata + cover choice into the working edit state, animate in.
     private func enterEdit() {
         editName = viewModel?.name ?? initialName
         editComment = viewModel?.playlistDetail?.comment ?? ""
@@ -599,14 +540,10 @@ struct PlaylistDetailView: View {
         withAnimation(.smooth) { isEditing = true }
     }
 
-    /// Cancel in-place edit: discard the working state without mutating anything.
     private func cancelEdit() {
         withAnimation(.smooth) { isEditing = false }
     }
 
-    /// Commit in-place edit: the SAME mutation sequence as EditPlaylistSheet.commit() — rename, the atomic
-    /// full-list replace (reorder + multi-remove), the R1 comment re-assert, the cover apply, and the
-    /// first-track color derivation — then refresh the detail view and animate back to view mode.
     private func commitEdit() async {
         guard let c = container, let serverId = c.serverState.activeServer?.id else {
             withAnimation(.smooth) { isEditing = false }
@@ -623,20 +560,16 @@ struct PlaylistDetailView: View {
         if !trimmedName.isEmpty && trimmedName != currentName.trimmingCharacters(in: .whitespacesAndNewlines) {
             try? await c.playlistService.renamePlaylist(id: playlistId, newName: trimmedName)
         }
-        // Atomic full-list replace — the single track-mutation path (reorder + multi-select remove).
         if songsChanged {
             try? await c.playlistService.reorderTracks(playlistId: playlistId, orderedSongIds: editSongs.map(\.id))
         }
-        // R1 guard: re-assert a non-empty comment after the replace (it doesn't survive createPlaylist); always
-        // write a changed comment. One write covers the guard + a description edit. NO name re-assert.
+        // Reordering drops the server-side description, so restore it after the replace.
         if (songsChanged && !trimmedComment.isEmpty) || commentChanged {
             try? await c.playlistService.updateDescription(id: playlistId, description: trimmedComment)
         }
         if coverDirty {
             await applyCoverInPlace(container: c, serverId: serverId, originalSongs: originalSongs)
         }
-        // First-track derivation: empty→first-track fills the gradient color (frozen after). Runs after
-        // applyCover so a simultaneous re-pick (resolved from the OLD empty first track) is corrected.
         await AddMusicCommitter.deriveFirstTrackCoverIfNeeded(
             wasEmpty: originalSongs.isEmpty,
             firstSong: editSongs.first,
@@ -659,7 +592,6 @@ struct PlaylistDetailView: View {
         )
         let store = PlaylistCoverStore(modelContainer: c.modelContainer)
         if let shape = selectedGradient {
-            // Re-pick → resolve the color from the CURRENT first track (neutral if the playlist is empty).
             let spec = await PlaylistGradientResolver.resolve(
                 form: shape,
                 firstTrackCoverArtId: originalSongs.first?.coverArtId,
@@ -672,12 +604,11 @@ struct PlaylistDetailView: View {
         }
         if photoIsCover, let image = pendingImage, let data = image.jpegData(compressionQuality: 0.85) {
             await manager.applyImageCover(data, playlistId: playlistId)
-            // A photo supersedes any gradient choice → drop the stored gradient.
             store.remove(playlistId: playlistId, serverId: serverId)
         }
     }
 
-    // MARK: - In-place editable track list (Gate 2 — mirrors the edit sheet's reorder + multi-select remove)
+    // MARK: - Editable track list
 
     @ViewBuilder
     private var editableSongRows: some View {
@@ -692,9 +623,6 @@ struct PlaylistDetailView: View {
         }
     }
 
-    /// Force the editable rows' color scheme to the theme's luminance so the SYSTEM reorder handles (≡) and
-    /// selection circles contrast the themed row background — they render system-grey (low contrast) otherwise.
-    /// The rows' own text uses explicit theme colors, so it is unaffected.
     private var dragHandleScheme: ColorScheme {
         theme.isThemed ? (theme.isLight ? .light : .dark) : colorScheme
     }
@@ -718,9 +646,6 @@ struct PlaylistDetailView: View {
         }
     }
 
-    /// Multi-select remove: drop the selected tracks from the local working list. NO per-index server delete —
-    /// the commit (Gate 3) replaces the whole list atomically (final list = editSongs − selection), so it's
-    /// immune to index drift. Mirrors the edit sheet's removeSelectedTracks (Gate B).
     private func removeSelectedTracks() {
         editSongs.removeAll { selectedSongIds.contains($0.id) }
         selectedSongIds.removeAll()
@@ -757,11 +682,7 @@ struct PlaylistDetailView: View {
 
     private func playlistHeader(vm: PlaylistDetailViewModel?) -> some View {
         VStack(spacing: 0) {
-            // The cover + blurred melt live HERE, in the scroll content (the first row), so they scroll up
-            // with the list. ignoresSafeArea(.container, .top) bleeds the cover under the transparent nav bar.
             GeometryReader { geo in
-                // Stretchy header: on over-scroll at the top, grow the cover UPWARD to fill the bounce
-                // instead of revealing the solid page color behind it.
                 let stretch = max(0, geo.frame(in: .global).minY)
                 PlaylistThemedBackground(
                     coverArtId: effectiveCoverArtId,

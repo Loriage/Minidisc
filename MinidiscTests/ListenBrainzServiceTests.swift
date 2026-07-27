@@ -1,7 +1,3 @@
-// Minidisc — Music client for Subsonic/OpenSubsonic servers
-// Licensed under the Mozilla Public License 2.0.
-// See LICENSE file in the project root for full license information.
-
 import Testing
 import Foundation
 @testable import Minidisc
@@ -100,7 +96,6 @@ struct ListenBrainzServiceEnableTests {
             try await service.enable(username: "ghostuser")
             Issue.record("Expected throw")
         } catch ListenBrainzError.userNotFound {
-            // correct
         } catch {
             Issue.record("Unexpected error: \(error)")
         }
@@ -205,7 +200,6 @@ struct ListenBrainzServiceRevalidateTests {
             try await service.revalidate()
             Issue.record("Expected throw")
         } catch ListenBrainzError.userNotFound {
-            // correct
         }
 
         let snap = await service.currentSnapshot()

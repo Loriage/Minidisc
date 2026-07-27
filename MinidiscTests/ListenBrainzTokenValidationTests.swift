@@ -1,7 +1,3 @@
-// Minidisc — Music client for Subsonic/OpenSubsonic servers
-// Licensed under the Mozilla Public License 2.0.
-// See LICENSE file in the project root for full license information.
-
 import Testing
 import Foundation
 @testable import Minidisc
@@ -96,7 +92,6 @@ struct ListenBrainzTokenValidationTests {
             _ = try await client.validateToken("tok", rootURL: defaultRoot)
             Issue.record("Expected throw")
         } catch ListenBrainzError.network {
-            // correct
         } catch {
             Issue.record("Expected .network, got \(error)")
         }
@@ -109,7 +104,6 @@ struct ListenBrainzTokenValidationTests {
             _ = try await client.validateToken("tok", rootURL: defaultRoot)
             Issue.record("Expected throw")
         } catch ListenBrainzError.decoding {
-            // correct
         } catch {
             Issue.record("Expected .decoding, got \(error)")
         }

@@ -1,7 +1,3 @@
-// Minidisc — Music client for Subsonic/OpenSubsonic servers
-// Licensed under the Mozilla Public License 2.0.
-// See LICENSE file in the project root for full license information.
-
 import SwiftUI
 
 /// Discover carousel card for the current Wrapped year when no playlist exists yet.

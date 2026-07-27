@@ -1,20 +1,8 @@
-// Minidisc — Music client for Subsonic/OpenSubsonic servers
-// Licensed under the Mozilla Public License 2.0.
-// See LICENSE file in the project root for full license information.
-
 import Foundation
 import SwiftSonic
 import OSLog
 
-/// Applies a playlist cover (a generated gradient or a photo) consistently across servers:
-/// 1. encode/render a square JPEG,
-/// 2. cache it on-device under the tier keys `CoverArtView` reads, so EVERY on-device surface (detail +
-///    cards) shows it — Navidrome or not, and
-/// 3. best-effort upload it to Navidrome for the real cross-device server cover.
-///
-/// On a non-Navidrome server (or offline) the upload simply fails and is swallowed — the local cache stands
-/// (on-device cohesion; cross-device shows the placeholder, which is expected and unavoidable without an
-/// upload endpoint). Cross-platform — the only platform-specific code is the renderer's JPEG bridge.
+/// Stores playlist covers locally and uploads them to Navidrome when available.
 @MainActor
 struct PlaylistCoverManager {
     private let serverState: ServerState
@@ -34,7 +22,6 @@ struct PlaylistCoverManager {
         self.artworkImageCache = artworkImageCache
     }
 
-    /// Render a gradient spec → JPEG, cache it on-device, best-effort upload. Returns the JPEG bytes.
     @discardableResult
     func applyGradientCover(_ spec: PlaylistGradientSpec, playlistId: String) async -> Data? {
         guard let data = PlaylistGradientRenderer.jpegData(for: spec) else {
@@ -45,23 +32,17 @@ struct PlaylistCoverManager {
         return data
     }
 
-    /// Cache a (photo or rendered) JPEG on-device + best-effort upload to Navidrome.
     func applyImageCover(_ jpegData: Data, playlistId: String) async {
         await cacheLocally(jpegData, playlistId: playlistId)
         await uploadIfPossible(jpegData, playlistId: playlistId)
     }
 
     private func cacheLocally(_ data: Data, playlistId: String) async {
-        // Invalidate FIRST — it deletes the tier disk files and clears RAM; persisting first would let the
-        // invalidate wipe what we just wrote. Then persist under BOTH tier keys, because load() reads only
-        // `{id}@{tier}` (never the untagged `{id}`, which is swept on launch).
+        // Invalidate before persisting so the new tier files survive.
         await artworkImageCache.invalidate(for: playlistId)
         for tier in [ArtworkTier.thumb, .hero] {
             await downloadService.persistCover(data, forId: "\(playlistId)@\(tier.rawValue)")
         }
-        // The SINGLE cross-surface refresh signal — a UserDefaults-backed global counter every CoverArtView
-        // observes via @AppStorage (reliable; the @Environment @Observable didn't re-fire). Bumping here (the
-        // shared apply path) means all three change paths and both platforms emit it consistently.
         let key = "coverArtUploadVersion"
         UserDefaults.standard.set(UserDefaults.standard.integer(forKey: key) + 1, forKey: key)
     }
@@ -86,7 +67,6 @@ struct PlaylistCoverManager {
             )
             Logger.playlist.debug("PlaylistCoverManager: uploaded cover for \(playlistId, privacy: .public)")
         } catch {
-            // Non-Navidrome server or offline — upload is impossible; the on-device cache already stands.
             Logger.playlist.warning("PlaylistCoverManager: cover upload skipped (local cache stands): \(error)")
         }
     }

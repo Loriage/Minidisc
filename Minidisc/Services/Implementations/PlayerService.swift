@@ -1,7 +1,3 @@
-// Minidisc — Music client for Subsonic/OpenSubsonic servers
-// Licensed under the Mozilla Public License 2.0.
-// See LICENSE file in the project root for full license information.
-
 import Foundation
 import SwiftSonic
 import OSLog
@@ -27,76 +23,46 @@ actor PlayerService: PlayerServiceProtocol {
     private let statsService: StatsService
     private let listenBrainzService: ListenBrainzService
 
-    // The low-level audio engine (AVPlayer, injected by AppContainer). It has its own
-    // internal queue and is Sendable, so it's reachable from nonisolated contexts (e.g. termination).
     private let engine: AudioEngine
     private let engineBridge: AudioEngineBridge
     private var progressTask: Task<Void, Never>?
-    /// Pending seek + optional pause applied once the player first reaches `.playing`.
-    /// Used for session restoration and end-of-queue rewind.
     private var pendingRestoreInfo: (seekTime: Double, pause: Bool)?
-    /// Source of the currently playing track; kept for repeat-one replay.
     private var currentSource: MediaSource?
     private var liveStreamStallTask: Task<Void, Never>?
 
     private var audioSessionConfigured = false
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
-    /// Stored so pause()/stop() can cancel it before calling setActive(false),
-    /// preventing a stale retry from reactivating the session after the user stops.
     private var sessionActivationRetryTask: Task<Void, Never>?
-    /// True when the current interruption began because the output route was disconnected
-    /// (AirPods in case). Per Apple guidance, never auto-resume after such an interruption
-    /// — resuming would route playback to the built-in speaker.
+    /// Prevents automatic resume on the built-in speaker after a route disconnect.
     private var interruptionWasRouteDisconnect = false
 
     private var isHandlingEndOfTrack = false
-    /// True when playback stopped cleanly at the END of the queue (repeat off). `resume()` reads this to restart
-    /// from track 0 instead of replaying the last track (which would hit EOF and re-stop — the mini-loop).
-    /// Cleared by any real playback start (`play`).
+    /// Makes resume restart at track zero after the queue completed.
     private var stoppedAtEndOfQueue = false
-    /// True during the URL-resolution phase of session restore (prepareCurrentTrackForRestoration).
-    /// Blocks handleEndOfTrack() and handleNetworkRestored() during that window.
     private var isRestoringSession = false
-    /// Stored handle for the 150 ms deferred-pause task during session restore.
-    /// Cancelled by resume() if the user taps play before the pause fires.
     private var restorePauseTask: Task<Void, Never>?
-    /// True while the player is muted for the restore seek window (150 ms).
-    /// Ensures volume is restored whether the pause fires or the user taps play first.
     private var isMutedForRestore = false
-    /// Last saved volume from UserDefaults, defaulting to 0.7 when the key was never written.
-    /// setVolume() never persists 0, so a missing key and an intentional-0 are indistinguishable
-    /// here — using 0.7 as the initial default is correct.
+    /// Uses 0.7 when no volume has ever been persisted.
     nonisolated var restoredVolume: Float {
         guard UserDefaults.standard.object(forKey: "minidisc.lastVolume") != nil else { return 0.7 }
         return Float(UserDefaults.standard.double(forKey: "minidisc.lastVolume"))
     }
     private var positionSaveTask: Task<Void, Never>?
-    /// Task reserved for the playing-now notification. Cancelled on track change.
     private var playingNowTask: Task<Void, Never>?
-    /// Task scheduled to download and cache the current track at +30s of playback.
-    /// Cancelled when track changes via cancelPendingCacheDownload().
     private var cacheDownloadTask: Task<Void, Never>?
     private let cacheSession: URLSession
-    /// Task that prefetches the next queued track into cache ahead of the crossfade window.
-    /// Cancelled on every track transition via cancelPendingPrefetch().
     private var prefetchTask: Task<Void, Never>?
     private var prefetchScheduled = false
-    /// Invalidates any asynchronous resolve/prefetch work that belongs to an older playback intent.
     private var playbackGeneration: UInt64 = 0
-    /// Orders overlapping scrubber/Control Center seeks; only the newest completion may update UI state.
     private var seekGeneration: UInt64 = 0
-    /// Prevents a bad server/asset duration from spamming one diagnostic every progress tick.
     private var durationMismatchLoggedTrackID: String?
     private let prefetchSession: URLSession
-    // Saved before a shuffle activation; nil when shuffle is off.
     private var originalQueueOrder: [DisplayableSong]?
-    /// Single-slot guard preventing concurrent auto-extend fetches.
     private var autoExtendFetchTask: Task<Void, Never>?
     private nonisolated static let autoExtendUserDefaultsKey = "minidisc.player.autoExtendEnabled"
 
     private var playbackProgressTracker = PlaybackProgressTracker()
-    /// Set to true by handleEndOfTrack before a natural completion transition; reset after recording.
     private var wasTrackCompletedNaturally: Bool = false
 
     init(
@@ -146,12 +112,10 @@ actor PlayerService: PlayerServiceProtocol {
         self.engine = engine
         let bridge = AudioEngineBridge()
         self.engineBridge = bridge
-        // Wire delegate after all stored properties are initialised.
         bridge.service = self
         engine.delegate = bridge
     }
 
-    /// Call from AppContainer after both PlayerService and NowPlayingService are created.
     func setNowPlayingService(_ service: any NowPlayingServiceProtocol) {
         nowPlayingService = service
     }
@@ -225,12 +189,10 @@ actor PlayerService: PlayerServiceProtocol {
     }
 
     private func startPlayback(song: DisplayableSong, source: MediaSource, serverId: UUID) async {
-        // Record the previous track before transitioning (state.currentTrack still holds it here).
         await recordCurrentTrackPlayback(trigger: wasTrackCompletedNaturally ? "track_completed" : "user_skipped")
         wasTrackCompletedNaturally = false
         playbackProgressTracker.startTrack()
 
-        // Cancel any pending +30s scrobble, cache download, and prefetch from the previous track.
         cancelPendingScrobble()
         cancelPendingCacheDownload()
         cancelPendingPrefetch()
@@ -252,9 +214,7 @@ actor PlayerService: PlayerServiceProtocol {
             guard stillActive else { return }
             await listenBrainzService.notifyTrackStarted(song: song)
         }
-        // Schedule cache download for stream sources only. Same +30s threshold as scrobble.
         if case .stream(let streamURL, let customHeaders) = source {
-            // Capture settings at task-creation time — in-flight tasks use values from when they were scheduled.
             let (allowCellular, cacheFormat) = await MainActor.run {
                 (cacheSettings.cacheOverCellular, cacheSettings.cacheFormat)
             }
@@ -542,13 +502,7 @@ actor PlayerService: PlayerServiceProtocol {
 
     // MARK: - Instant Mix
 
-    /// Starts an Instant Mix. When the caller can supply the seed TRACK (song seeds — every menu that
-    /// offers "Instant Mix" on a song already holds it), that track starts immediately and the mix is
-    /// built behind it. Album and artist seeds have no track in hand and keep the blocking path.
-    ///
-    /// This removes the wait rather than shortening it. Measured against a real AudioMuse server, the
-    /// blocking path costs 36 s of silence — 12.8 s for the seed query, then 23 s for the fan-out —
-    /// and the fan-out calls slow each other down by ~70% while they run.
+    /// Starts the seed immediately when available and builds the rest in the background.
     func playInstantMix(from seed: InstantMixSeed, startingWith seedTrack: DisplayableSong?) async throws {
         // `??` cannot host an async right-hand side (autoclosures are not concurrency-aware).
         let resolved: DisplayableSong?
@@ -563,25 +517,13 @@ actor PlayerService: PlayerServiceProtocol {
         }
         try await play(tracks: [starter], startIndex: 0)
         Logger.player.info("[MIX-TIMING] seed '\(starter.id, privacy: .public)' playing immediately — mix building behind it")
-        // Auto-extend deliberately stays OFF until the mix lands. Turning it on now re-evaluates at
-        // once, and with a one-track queue it would fill the gap with generic similar tracks — racing,
-        // and partly duplicating, the mix we are about to append.
-        // The seed is already playing, so the audio background mode covers this on its own — the
-        // assertion is the safety net for the user who hits pause while the mix is still building.
+        // Auto-extend stays off until the mix lands to avoid a competing background fill.
         Task { await BackgroundActivity.run("instant-mix") { await self.appendInstantMix(from: seed, behind: starter) } }
     }
 
-    /// A track to start on when the caller had none. Album and artist mixes are offered from menus and
-    /// headers that hold no song, so resolving one here — rather than at each call site — is what makes
-    /// the instant start universal instead of song-only.
-    ///
-    /// Costs one or two catalogue calls, ~100 ms each measured, against a mix build of 30 s and more.
-    /// Returning nil falls back to the blocking path, so a failure here is never worse than before.
     private func starterTrack(for seed: InstantMixSeed) async -> DisplayableSong? {
         switch seed {
         case .song:
-            // Every song entry point already passes the track it was invoked on, and LibraryService
-            // has no single-song fetch to fall back on.
             return nil
         case .album(let id):
             guard let song = (try? await libraryService.album(id: id))?.song?.first else { return nil }
@@ -594,22 +536,15 @@ actor PlayerService: PlayerServiceProtocol {
         }
     }
 
-    /// Builds the mix off the critical path and grafts it behind the already-playing seed.
     private func appendInstantMix(from seed: InstantMixSeed, behind seedTrack: DisplayableSong) async {
         do {
             let tracks = try await libraryService.instantMix(from: seed, count: 100)
-            // The build takes tens of seconds. If the user moved on in the meantime, appending would
-            // graft the mix onto an unrelated queue.
             guard await MainActor.run(body: { state.currentTrack?.id == seedTrack.id }) else {
                 Logger.player.info("[INSTANT-MIX] built mix discarded — playback moved on during the build")
                 return
             }
             let fresh = tracks.filter { $0.id != seedTrack.id }
             guard !fresh.isEmpty else {
-                // A server with no similarity data (no AudioMuse, no Navidrome agent) answers empty.
-                // Endless play still works there — it is built on listening history, discographies and
-                // genres, not on the similarity endpoints — so fall through to it rather than leaving
-                // the seed to play alone and stop.
                 Logger.player.info("[INSTANT-MIX] no similarity data for seed — continuing with the library-based endless queue")
                 await setAutoExtendEnabled(true)
                 await MainActor.run {
@@ -626,11 +561,8 @@ actor PlayerService: PlayerServiceProtocol {
         }
     }
 
-    /// The original blocking path: nothing plays until the whole mix is built. Still used for album and
-    /// artist seeds, where there is no track to start from.
+    /// Blocking fallback for seeds that do not provide a starter track.
     private func buildThenPlayInstantMix(from seed: InstantMixSeed) async throws {
-        // End-to-end latency, which is what the user waits through: the whole mix is built before a
-        // single note plays. Split into build vs start so the two are attributable separately.
         let tStart = Date()
         let tracks = try await libraryService.instantMix(from: seed, count: 100)
         let buildMs = Int(Date().timeIntervalSince(tStart) * 1000)
@@ -641,8 +573,6 @@ actor PlayerService: PlayerServiceProtocol {
         let tPlay = Date()
         try await play(tracks: tracks, startIndex: 0)
         Logger.player.info("[MIX-TIMING] end-to-end=\(Int(Date().timeIntervalSince(tStart) * 1000), privacy: .public)ms (build=\(buildMs, privacy: .public)ms, start=\(Int(Date().timeIntervalSince(tPlay) * 1000), privacy: .public)ms)")
-        // An Instant Mix is meant to be endless — turn on auto-extend so the queue keeps growing with
-        // similar tracks (same mechanism as the automix) instead of running in circles on a short seed set.
         await setAutoExtendEnabled(true)
         Logger.player.info("Started Instant Mix with \(tracks.count) tracks (auto-extend on)")
     }
@@ -650,7 +580,6 @@ actor PlayerService: PlayerServiceProtocol {
     func setVolume(_ volume: Float) async {
         let clamped = max(0, min(1, volume))
         engine.volume = clamped
-        // Don't persist 0 — muting should not overwrite the saved restore volume.
         if clamped > 0 {
             UserDefaults.standard.set(clamped, forKey: "minidisc.lastVolume")
         }
@@ -697,12 +626,7 @@ actor PlayerService: PlayerServiceProtocol {
 
     func setAutoExtendEnabled(_ enabled: Bool) async {
         if enabled {
-            // Endless play owns the queue order, so loop and shuffle are turned off rather than left
-            // to conflict with it. Repeat especially: evaluateAutoExtend refuses to run while a loop
-            // mode is active, which used to leave the infinity toggle lit and doing nothing. Clearing
-            // them here makes the exclusivity visible in the UI instead of silent.
-            // Done BEFORE the flag is set so setRepeatMode's own re-evaluation still sees it disabled
-            // and cannot fire a fetch early.
+            // Clear conflicting modes before enabling auto-extend to avoid an early fetch.
             if await MainActor.run(body: { state.repeatMode != .off }) {
                 await setRepeatMode(.off)
             }
@@ -713,7 +637,6 @@ actor PlayerService: PlayerServiceProtocol {
         await MainActor.run { state.isAutoExtendEnabled = enabled }
         UserDefaults.standard.set(enabled, forKey: Self.autoExtendUserDefaultsKey)
         if enabled {
-            // State is updated before re-evaluation so the guards inside read fresh values.
             await evaluateAutoExtend()
         } else {
             autoExtendFetchTask?.cancel()
@@ -725,10 +648,6 @@ actor PlayerService: PlayerServiceProtocol {
 
     // MARK: - Auto-extend
 
-    /// Reads queue position and fires a background fetch + append when ≤15 tracks remain.
-    /// Called at the end of every startPlayback(). Guarded by a single-slot task to prevent
-    /// parallel fetches when tracks advance rapidly. Errors are swallowed — natural queue
-    /// end is the graceful fallback.
     private func evaluateAutoExtend() async {
         let (isEnabled, repeatMode, currentRadio, remaining, queueIds, seedTrackId) = await MainActor.run {
             let remaining = state.queue.count - state.currentIndex - 1
@@ -738,8 +657,6 @@ actor PlayerService: PlayerServiceProtocol {
         guard repeatMode == .off else { return }
         guard currentRadio == nil else { return }
         guard autoExtendFetchTask == nil else { return }
-        // Trigger threshold : 15 or fewer tracks remaining (including zero — covers singles
-        // and starting from the last track of an album).
         guard remaining <= 15 else { return }
 
         Logger.player.info("Auto-extend triggered: \(remaining) tracks remaining, fetching 50 seeded on '\(seedTrackId ?? "none", privacy: .public)'")
@@ -748,8 +665,6 @@ actor PlayerService: PlayerServiceProtocol {
         autoExtendFetchTask = Task { [libraryService, weak self] in
             defer { Task { await self?.clearAutoExtendFetchTask() } }
             do {
-                // Seeded on the track playing now — a sonic Instant Mix — with the library heuristic
-                // as top-up and fallback (the upstream "endless" behaviour).
                 let tracks = try await libraryService.endlessExtension(seedTrackId: seedTrackId, targetSize: 50, excludedIds: queueIds)
                 guard !tracks.isEmpty else {
                     Logger.player.debug("Auto-extend fetch returned empty — library exhausted or offline without downloads")
@@ -786,8 +701,6 @@ actor PlayerService: PlayerServiceProtocol {
         await saveSession()
     }
 
-    /// Records the current queue count as the boundary between user-intentional and
-    /// auto-extended tracks. No-op if the boundary is already set (first extend wins).
     private func anchorOriginalQueueBoundaryIfNeeded() async {
         let alreadySet = await MainActor.run { state.originalQueueEndIndex != nil }
         guard !alreadySet else { return }

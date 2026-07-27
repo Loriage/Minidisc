@@ -1,7 +1,3 @@
-// Minidisc — Music client for Subsonic/OpenSubsonic servers
-// Licensed under the Mozilla Public License 2.0.
-// See LICENSE file in the project root for full license information.
-
 import SwiftUI
 
 /// The sort control for the All Songs list: a menu listing the `SongSort` options with a checkmark on the

@@ -1,6 +1,3 @@
-// Minidisc — Music client for Subsonic/OpenSubsonic servers
-// Licensed under the Mozilla Public License 2.0.
-
 import Foundation
 import Testing
 @testable import Minidisc

@@ -1,19 +1,11 @@
-// Minidisc — Music client for Subsonic/OpenSubsonic servers
-// Licensed under the Mozilla Public License 2.0.
-// See LICENSE file in the project root for full license information.
-
 import Foundation
 import OSLog
 import SwiftUI
 import SwiftData
 
-/// DI root. Creates and wires all services in dependency order.
-/// Passed into the SwiftUI environment via \.appContainer.
-/// All stored service references are protocol existentials — fully mockable in tests.
+/// Creates and wires the application's services.
 @MainActor
 final class AppContainer {
-    // Observable state objects — created here so they exist on the MainActor
-    // before actors are initialized (actors receive them via init injection).
     let playerState = PlayerState()
     let serverState = ServerState()
     let cacheSettings = CacheSettings()
@@ -39,8 +31,6 @@ final class AppContainer {
     let statsService: StatsService
     private let _player: PlayerService
     let wrappedPlaylistService: WrappedPlaylistService
-    /// Weekly mood playlists. Always available: AudioMuse powers them when configured, the
-    /// server's own tags when not.
     let moodPlaylistService: MoodPlaylistService
     let lyricsService: LyricsService
     let recommendationService: RecommendationService
@@ -82,8 +72,6 @@ final class AppContainer {
 
         artworkImageCache = ArtworkImageCache(downloadService: download, libraryService: library)
         artworkImageCache.persistCoversEnabled = cacheSettings.cacheArtwork
-        // The cover applier is a closure because PlaylistCoverManager is MainActor-bound while
-        // MoodPlaylistService is an actor; this keeps the hop at the boundary instead of inside it.
         let moodState = serverState
         let moodCovers: @Sendable (PlaylistGradientSpec, String) async -> Void = { [artworkImageCache] spec, playlistId in
             let manager = await PlaylistCoverManager(
@@ -114,7 +102,6 @@ final class AppContainer {
         let lb = ListenBrainzService(client: lbClient, keychain: keychain)
         listenBrainzService = lb
 
-        // AVPlayer is the one and only engine: Apple's hardware decoders, two-deck crossfade/gapless.
         let audioEngine: AudioEngine = AVPlayerEngine()
         let player = PlayerService(
             state: playerState,
@@ -195,18 +182,8 @@ extension ModelContainer {
         return try ModelContainer(for: schema, configurations: config)
     }
 
-    /// Isolated container for playback session data.
-    ///
-    /// Separating PlaybackSession from the main container means
-    /// PlaybackSessionService.savePosition() (every 5 s during playback) no longer
-    /// posts change notifications to the main store coordinator. The main context's
-    /// @Query<SearchHistoryEntry> never sees these saves, eliminating the continuous
-    /// 5-second render cascade that previously fired during all active playback.
-    ///
-    /// PlaybackSession.self is retained in minidisc() purely to avoid a schema-mismatch
-    /// migration error when opening existing stores from app versions where it lived
-    /// in the main container. That table remains in the main store file but is never
-    /// written to after this change.
+    /// Keeps frequent position saves out of the main SwiftData observation graph.
+    /// The legacy main-store model remains registered for migration compatibility.
     /// - Parameter inMemory: Pass `true` in tests.
     static func session(inMemory: Bool = false) throws -> ModelContainer {
         let schema = Schema([PlaybackSession.self])

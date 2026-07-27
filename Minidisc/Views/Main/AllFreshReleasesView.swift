@@ -1,16 +1,6 @@
-// Minidisc — Music client for Subsonic/OpenSubsonic servers
-// Licensed under the Mozilla Public License 2.0.
-// See LICENSE file in the project root for full license information.
-
-// Architecture note — navigation regression guard:
-// iOS uses NavigationLink(value:) + .navigationDestination(for: AlbumRecommendation.self)
-// registered on this view. Do NOT switch to .navigationDestination(item:) or .sheet(item:) —
-// state-driven item presentation produces duplicate-push bugs inside a pushed NavigationStack
-// context. Do NOT pass a SwiftData @Model as the NavigationLink value; AlbumRecommendation
-// is a plain struct and must remain so.
-
 import SwiftUI
 
+// Keep value-based NavigationPath routing here; item presentation duplicates nested pushes.
 struct AllFreshReleasesView: View {
     @Environment(\.appContainer) private var container
     let vm: AllFreshReleasesViewModel

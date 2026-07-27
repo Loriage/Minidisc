@@ -1,7 +1,3 @@
-// Minidisc — Music client for Subsonic/OpenSubsonic servers
-// Licensed under the Mozilla Public License 2.0.
-// See LICENSE file in the project root for full license information.
-
 import SwiftUI
 import SwiftSonic
 import SwiftData
@@ -14,31 +10,19 @@ struct ArtistDetailView: View {
     @State private var viewModel: ArtistDetailViewModel?
     @State private var selectedOutOfLibraryArtist: SimilarArtistRecommendation?
     @Query private var artistFavoriteMatches: [FavoriteRecord]
-    /// Every starred song (ids only). Filtering the fetched liked list through this makes the section
-    /// react instantly when a track is unstarred from its context menu, with no refetch.
+    /// Keeps fetched liked songs reactive to local favorite changes.
     @Query(filter: #Predicate<FavoriteRecord> { $0.itemType == "song" })
     private var songFavorites: [FavoriteRecord]
     @Environment(DominantColorExtractor.self) private var colorExtractor
     @Environment(\.colorScheme) private var colorScheme
     @State private var dominantColor: Color = .clear
-    /// Shared album ordering, persisted and reused by the global album list too.
     @AppStorage("minidisc.albumSort") private var albumSort: AlbumSort = .recentlyAdded
-    /// Discography layout: false = 2-row horizontal scroll (default), true = vertical grid (nicer for big
-    /// catalogues where horizontal scrolling gets tedious).
     @AppStorage("minidisc.artistAlbumsGrid") private var artistAlbumsGrid = false
-    /// Fixed cover height — the artist photo NEVER resizes when the content below it grows.
     private let heroCoverHeight: CGFloat = 680
-    /// Height of the collapsed content, measured while collapsed (also catches the async bio arriving).
-    /// The hero grows DOWNWARD by the delta so expanding the bio pushes the page down while the cover
-    /// stays put; collapsed artists (no/short bio) keep the transport at the cover's foot.
+    /// Frozen while expanded so the biography grows without moving its title.
     @State private var heroCollapsedContentHeight: CGFloat = 336
     @State private var bioExpanded = false
-    /// Shows a spinner in place of the Instant Mix button while a mix is being generated (anti-spam).
     @State private var isGeneratingMix = false
-    /// Offset that bottom-aligns the COLLAPSED content to the cover's foot. Because it depends only on the
-    /// collapsed height (frozen while expanded), the name stays put when the bio expands — the extra lines
-    /// reveal downward from a fixed top instead of the whole block jumping. The hero itself has NO fixed
-    /// height: the ZStack grows to fit the content, so the text is never height-constrained (no deadlock).
     private var heroContentTopInset: CGFloat { max(0, heroCoverHeight - heroCollapsedContentHeight) }
 
     init(artist: ArtistID3) {
@@ -54,7 +38,8 @@ struct ArtistDetailView: View {
     private var isArtistFavorite: Bool { !artistFavoriteMatches.isEmpty }
     private var isOnline: Bool { container?.serverState.isOnline == true }
 
-    // MARK: Theming — reuses the playlist/album dominant-color theme + ColorContrastUtils (no reimplementation).
+    // MARK: - Theming
+
     private var theme: PlaylistTheme { PlaylistTheme(dominantColor: dominantColor) }
     private var bodyColor: Color { theme.isThemed ? theme.dominantColor : systemBackgroundColor }
     private var headerTextColor: Color { theme.contentColor }
@@ -62,14 +47,11 @@ struct ArtistDetailView: View {
     private var systemBackgroundColor: Color {
         Color(UIColor.systemBackground)
     }
-    /// The artist photo (server artist cover) drives the hero; falls back to the latest release's cover, then
-    /// the artist id (placeholder glyph).
     private var heroCoverArtId: String {
         if let cover = viewModel?.artist?.coverArt, !cover.isEmpty { return cover }
         if let latest = latestReleaseCoverArtId { return latest }
         return artist.id
     }
-    /// Cover of the most recent release (max year) — hero fallback + the featured release (Gate 2).
     private var latestReleaseCoverArtId: String? {
         viewModel.flatMap { latestRelease($0) }?.coverArt
     }
@@ -197,17 +179,12 @@ struct ArtistDetailView: View {
 
     // MARK: - Hero
 
-    /// Immersive artist hero: a FIXED-height artist photo (server cover, else latest-release cover) with the
-    /// name + Play(=shuffle) + Favorite floating over its lower part. Unlike `ImmersiveCoverHero`, the cover
-    /// height is decoupled from the hero height — expanding the bio grows the hero DOWNWARD (pushing the page
-    /// down) while the photo stays exactly the same size.
+    /// Keeps the cover fixed while expanded biography content grows below it.
     private func artistHero(vm: ArtistDetailViewModel) -> some View {
         let albums = vm.artist?.album ?? []
         let count = albums.count
         return ZStack(alignment: .top) {
-            // Fixed cover pinned to the top; it never resizes when the content below grows.
             GeometryReader { geo in
-                // Stretchy header: grow the cover UPWARD on over-scroll instead of revealing the page color.
                 let stretch = max(0, geo.frame(in: .global).minY)
                 PlaylistThemedBackground(
                     coverArtId: heroCoverArtId,
@@ -220,17 +197,12 @@ struct ArtistDetailView: View {
             }
             .frame(height: heroCoverHeight)
 
-            // Content offset so its collapsed form bottom-aligns to the cover's foot. Expanding reveals the
-            // extra lines DOWNWARD from this fixed top (the name doesn't move); the ZStack (no fixed height)
-            // grows to fit, pushing the page down while the cover stays put.
             VStack(spacing: 0) {
                 Color.clear.frame(height: heroContentTopInset)
                 heroContent(vm: vm, count: count, albums: albums)
                     .padding(.horizontal, MinidiscSpacing.l)
                     .padding(.bottom, MinidiscSpacing.l)
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                        // Only track the collapsed baseline (drives the top inset). While expanded the
-                        // baseline is frozen, so the name/top of the bio never move.
                         if !bioExpanded { heroCollapsedContentHeight = height }
                     }
             }
@@ -238,7 +210,6 @@ struct ArtistDetailView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// The floating name / album count / biography / transport block that sits over the cover's lower part.
     private func heroContent(vm: ArtistDetailViewModel, count: Int, albums: [AlbumID3]) -> some View {
         VStack(spacing: MinidiscSpacing.s) {
             Text(artist.name)
@@ -250,8 +221,6 @@ struct ArtistDetailView: View {
                 .foregroundStyle(headerSecondaryColor)
                 .padding(.bottom, MinidiscSpacing.xs)
 
-            // Biography sits between the name and the Play disc, over the cover — a 3-line skeleton while
-            // it loads, then the justified bio fades in (or the area collapses if there is none).
             if vm.isLoadingArtistInfo {
                 ArtistBioSkeleton(centered: true)
                     .frame(maxWidth: 440)
@@ -272,8 +241,6 @@ struct ArtistDetailView: View {
             }
 
             HStack(spacing: MinidiscSpacing.l) {
-                // Instant Mix — mirrors the favorite button on the right so the Play disc stays centred.
-                // Shows a spinner while generating so a slow mix can't be spam-tapped.
                 Button {
                     guard !isGeneratingMix else { return }
                     Task {
@@ -297,7 +264,6 @@ struct ArtistDetailView: View {
                 .buttonStyle(.plain)
                 .disabled(!isOnline || albums.isEmpty || isGeneratingMix)
 
-                // Big white round Play (= shuffle) — just the play glyph.
                 Button {
                     Task { await playAll() }
                 } label: {
@@ -305,8 +271,6 @@ struct ArtistDetailView: View {
                         .fill(.white)
                         .frame(width: 66, height: 66)
                         .overlay {
-                            // The play glyph is KNOCKED OUT of the white disc (transparent — the hero shows
-                            // through it), centred.
                             Image(systemName: "play.fill")
                                 .font(.system(size: 26, weight: .bold))
                                 .blendMode(.destinationOut)
@@ -317,7 +281,6 @@ struct ArtistDetailView: View {
                 .buttonStyle(.plain)
                 .disabled(vm.isPlayLoading || albums.isEmpty)
 
-                // Smaller favorite star.
                 Button {
                     HapticFeedback.light.trigger()
                     Task {
@@ -338,7 +301,6 @@ struct ArtistDetailView: View {
                 .disabled(!isOnline)
             }
         }
-        // Cross-fade the skeleton into the bio (and grow the hero) smoothly when it resolves.
         .animation(.easeInOut(duration: 0.35), value: vm.isLoadingArtistInfo)
     }
 
@@ -350,7 +312,7 @@ struct ArtistDetailView: View {
         }
     }
 
-    // MARK: - Body sections (Gate 2)
+    // MARK: - Body sections
 
     /// The most recent release (max year) — featured + the hero fallback cover.
     private func latestRelease(_ vm: ArtistDetailViewModel) -> AlbumID3? {

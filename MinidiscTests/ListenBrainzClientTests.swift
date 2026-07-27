@@ -1,7 +1,3 @@
-// Minidisc — Music client for Subsonic/OpenSubsonic servers
-// Licensed under the Mozilla Public License 2.0.
-// See LICENSE file in the project root for full license information.
-
 import Testing
 import Foundation
 @testable import Minidisc
@@ -67,7 +63,6 @@ struct ListenBrainzClientTests {
             _ = try await client.validateUsername("testuser")
             Issue.record("Expected throw")
         } catch ListenBrainzError.decoding {
-            // correct
         } catch {
             Issue.record("Expected .decoding, got \(error)")
         }
@@ -80,7 +75,6 @@ struct ListenBrainzClientTests {
             _ = try await client.validateUsername("ghostuser")
             Issue.record("Expected throw")
         } catch ListenBrainzError.userNotFound {
-            // correct
         } catch {
             Issue.record("Unexpected error: \(error)")
         }
@@ -132,7 +126,6 @@ struct ListenBrainzClientTests {
             _ = try await client.validateUsername("someuser")
             Issue.record("Expected throw")
         } catch ListenBrainzError.network {
-            // correct
         } catch {
             Issue.record("Unexpected error: \(error)")
         }
@@ -147,7 +140,6 @@ struct ListenBrainzClientTests {
             _ = try await client.validateUsername("invalid user@#!")
             Issue.record("Expected throw")
         } catch ListenBrainzError.invalidUsername {
-            // correct: local rejection
         } catch {
             Issue.record("Expected .invalidUsername, got \(type(of: error))")
         }
@@ -160,7 +152,6 @@ struct ListenBrainzClientTests {
             _ = try await client.validateUsername("")
             Issue.record("Expected throw")
         } catch ListenBrainzError.invalidUsername {
-            // correct
         } catch {
             Issue.record("Expected .invalidUsername, got \(type(of: error))")
         }
@@ -174,7 +165,6 @@ struct ListenBrainzClientTests {
             _ = try await client.validateUsername(long)
             Issue.record("Expected throw")
         } catch ListenBrainzError.invalidUsername {
-            // correct
         } catch {
             Issue.record("Expected .invalidUsername, got \(type(of: error))")
         }

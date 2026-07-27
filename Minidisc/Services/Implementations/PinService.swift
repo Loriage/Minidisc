@@ -1,7 +1,3 @@
-// Minidisc — Music client for Subsonic/OpenSubsonic servers
-// Licensed under the Mozilla Public License 2.0.
-// See LICENSE file in the project root for full license information.
-
 import Foundation
 import SwiftData
 import OSLog
@@ -12,13 +8,7 @@ final class PinService: PinServiceProtocol {
     private static let maxPinnedItems = 6
 
     init(modelContainer: ModelContainer) {
-        // Isolated background context — NOT mainContext. Using mainContext here
-        // caused every pin/unpin to call mainContext.save(), which triggered
-        // @Query<SearchHistoryEntry> to re-evaluate and re-apply all @Model
-        // property setters, producing a cascade of 40+ observation fires per
-        // pin action. Background context saves notify the store coordinator
-        // but do not directly flush the main context, decoupling pin writes
-        // from the search history @Query.
+        // Keep pin writes out of the main SwiftData observation graph.
         let ctx = ModelContext(modelContainer)
         ctx.autosaveEnabled = false
         self.modelContext = ctx

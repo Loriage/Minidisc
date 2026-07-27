@@ -102,9 +102,6 @@ struct LibraryView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: MinidiscSpacing.xl) {
-                Text("Library")
-                    .font(.largeTitle.bold())
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 if !visiblePinnedItems.isEmpty {
                     pinnedSection
                 }
@@ -115,7 +112,7 @@ struct LibraryView: View {
             .padding(.top, MinidiscSpacing.m)
             .padding(.bottom, MinidiscSpacing.xl)
         }
-        .scrollEdgeEffectHidden(for: .top)
+        .navigationTitle("Library")
         .navigationDestination(for: HomeDestination.self) { destination in
             switch destination {
             case .libraryAlbums:

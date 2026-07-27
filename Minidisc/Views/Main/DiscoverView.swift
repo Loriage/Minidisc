@@ -25,10 +25,6 @@ struct DiscoverView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
-                Text("Discover")
-                    .font(.largeTitle.bold())
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, MinidiscSpacing.l)
                 if let vm {
                     if vm.isErrorState {
                         errorBanner(vm: vm)
@@ -45,7 +41,7 @@ struct DiscoverView: View {
             }
             .padding(.vertical, MinidiscSpacing.m)
         }
-        .scrollEdgeEffectHidden(for: .top)
+        .navigationTitle("Discover")
         .minidiscContentWidth()
         .task {
             guard let container else { return }

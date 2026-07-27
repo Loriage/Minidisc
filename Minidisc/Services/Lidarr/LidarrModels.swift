@@ -42,11 +42,18 @@ nonisolated struct LidarrImage: Decodable, Sendable, Hashable {
     let url: String?
 }
 
+/// Cover types that crop acceptably into a square tile, best first. Consulted when the requested type
+/// is missing, so that an artist without a poster does not fall straight through to the wide formats
+/// Lidarr also returns (`fanart`, `banner`, `screenshot`, `logo`).
+private nonisolated let lidarrSquarishCoverTypes = ["poster", "cover", "headshot", "disc"]
+
 /// The best image path for a cover type: an absolute external URL when Lidarr has one, otherwise the
 /// instance-local path (e.g. `/MediaCover/…`) that `LidarrClient.imageData(forPath:)` resolves with auth.
 nonisolated func lidarrImagePath(from images: [LidarrImage]?, coverType: String = "poster") -> String? {
     guard let images else { return nil }
-    let img = images.first { $0.coverType == coverType } ?? images.first
+    let preferred = [coverType] + lidarrSquarishCoverTypes.filter { $0 != coverType }
+    let img = preferred.lazy.compactMap { type in images.first { $0.coverType == type } }.first
+        ?? images.first
     guard let img else { return nil }
     if let remote = img.remoteUrl, remote.hasPrefix("http") { return remote }
     if let local = img.url, !local.isEmpty { return local }

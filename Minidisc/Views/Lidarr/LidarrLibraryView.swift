@@ -14,9 +14,15 @@ struct LidarrLibraryView: View {
     @State private var errorMessage: String?
     @State private var client: LidarrClient?
     @State private var showSearch = false
-    @Namespace private var toolbarGlass
+    // Keyed separately from `minidisc.artistSort`: this is a different library, and re-sorting the
+    // Subsonic artists list from the Lidarr tab would be a surprise.
+    @AppStorage("minidisc.lidarrArtistSort") private var artistSort: ArtistSort = .name
+    @AppStorage("minidisc.lidarrLibraryGrid") private var gridLayout = true
 
     private let columns = [GridItem(.adaptive(minimum: 140, maximum: 180), spacing: MinidiscSpacing.m)]
+
+    /// Server order is alphabetical; this applies the user's choice on top.
+    private var sortedArtists: [LidarrArtist] { artistSort.sortedLidarr(artists) }
 
     var body: some View {
         Group {
@@ -39,35 +45,42 @@ struct LidarrLibraryView: View {
                 grid
             }
         }
-        .toolbar(.hidden, for: .navigationBar)
-        .overlay(alignment: .topTrailing) {
-            GlassEffectContainer(spacing: MinidiscSpacing.m) {
-                HStack(spacing: 8) {
-                    NavigationLink(value: LidarrQueueRoute()) {
-                        Image(systemName: "waveform.path.ecg")
-                            .font(.title2)
-                            .foregroundStyle(.primary)
-                            .frame(width: 44, height: 44)
-                            .glassEffect()
-                            .glassEffectUnion(id: "lidarr-actions", namespace: toolbarGlass)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Activity")
-                    Button { showSearch = true } label: {
-                        Image(systemName: "plus")
-                            .font(.title2)
-                            .foregroundStyle(.primary)
-                            .frame(width: 44, height: 44)
-                            .glassEffect()
-                            .glassEffectUnion(id: "lidarr-actions", namespace: toolbarGlass)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Add Artist")
+        .navigationTitle("Lidarr")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                NavigationLink(value: LidarrQueueRoute()) {
+                    Image(systemName: "waveform.path.ecg")
                 }
+                .tint(.primary)
+                .accessibilityLabel("Activity")
             }
-            .padding(.trailing, MinidiscSpacing.l)
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Picker("Sort By", selection: $artistSort) {
+                        ForEach(ArtistSort.allCases, id: \.self) { option in
+                            Label(option.label, systemImage: option.systemImage).tag(option)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down")
+                }
+                .tint(.primary)
+                .accessibilityLabel("Sort")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button { gridLayout.toggle() } label: {
+                    Image(systemName: gridLayout ? "list.bullet" : "square.grid.2x2")
+                }
+                .tint(.primary)
+                .accessibilityLabel(gridLayout ? "List view" : "Grid view")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button { showSearch = true } label: {
+                    Image(systemName: "plus")
+                }
+                .tint(.primary)
+                .accessibilityLabel("Add Artist")
+            }
         }
         .sheet(isPresented: $showSearch, onDismiss: { Task { await load() } }) {
             LidarrArtistSearchView()
@@ -100,32 +113,46 @@ struct LidarrLibraryView: View {
     private var grid: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                Text("Lidarr")
-                    .font(.largeTitle.bold())
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, MinidiscSpacing.l)
-                    .padding(.top, MinidiscSpacing.m)
-
-                LazyVGrid(columns: columns, spacing: MinidiscSpacing.l) {
-                    ForEach(artists) { artist in
-                        NavigationLink(value: artist) {
-                            if let client {
-                                LidarrArtistCell(artist: artist, client: client)
+                if gridLayout {
+                    LazyVGrid(columns: columns, spacing: MinidiscSpacing.l) {
+                        ForEach(sortedArtists) { artist in
+                            NavigationLink(value: artist) {
+                                if let client {
+                                    LidarrArtistCell(artist: artist, client: client)
+                                }
                             }
+                            .buttonStyle(.plain)
+                            .id(artist.id)
                         }
-                        .buttonStyle(.plain)
-                        .id(artist.id)
                     }
+                    .padding(MinidiscSpacing.l)
+                } else {
+                    LazyVStack(spacing: 0) {
+                        ForEach(sortedArtists) { artist in
+                            NavigationLink(value: artist) {
+                                if let client {
+                                    LidarrArtistRow(artist: artist, client: client)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .id(artist.id)
+                        }
+                    }
+                    .padding(.horizontal, MinidiscSpacing.l)
+                    .padding(.vertical, MinidiscSpacing.s)
                 }
-                .padding(MinidiscSpacing.l)
             }
             .safeAreaInset(edge: .trailing, spacing: 0) {
-                let letters = artists.availableAlphabetLetters(keyPath: \.artistName)
+                // Only meaningful while the order is alphabetical — under Album Count the letters
+                // are scattered through the list and jumping to one lands somewhere arbitrary.
+                let letters = artistSort == .name
+                    ? artists.availableAlphabetLetters(keyPath: \.artistName)
+                    : []
                 if letters.count >= 5 {
                     AlphabetJumpBar(
                         availableLetters: letters,
                         onLetterTap: { letter in
-                            if let id = firstAlphabetItemID(forLetter: letter, in: artists, keyPath: \.artistName) {
+                            if let id = firstAlphabetItemID(forLetter: letter, in: sortedArtists, keyPath: \.artistName) {
                                 withAnimation(.easeInOut(duration: 0.2)) {
                                     proxy.scrollTo(id, anchor: .top)
                                 }
@@ -135,7 +162,6 @@ struct LidarrLibraryView: View {
                     .padding(.trailing, 4)
                 }
             }
-            .scrollEdgeEffectHidden(for: .top)
         }
     }
 
@@ -211,6 +237,66 @@ private struct LidarrArtistCell: View {
                 .font(.minidiscCaption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+        }
+    }
+}
+
+// MARK: - Artist row
+
+/// List-mode counterpart of `LidarrArtistCell`, laid out like `ArtistRow` on the Subsonic side.
+private struct LidarrArtistRow: View {
+    let artist: LidarrArtist
+    let client: LidarrClient
+
+    var body: some View {
+        HStack(spacing: MinidiscSpacing.m) {
+            Color.clear
+                .frame(width: 44, height: 44)
+                .overlay {
+                    LidarrCoverImage(path: artist.posterPath, client: client) {
+                        RoundedRectangle(cornerRadius: MinidiscCornerRadius.s)
+                            .fill(Color.secondary.opacity(0.15))
+                            .overlay { Image(systemName: "music.mic").foregroundStyle(.secondary) }
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.s))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(artist.artistName)
+                    .font(.minidiscCellTitle)
+                    .lineLimit(1)
+                Text(artist.statistics?.albumCount == 1 ? "1 album" : "\(artist.statistics?.albumCount ?? 0) albums")
+                    .font(.minidiscCaption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if !artist.monitored {
+                Image(systemName: "bookmark.slash.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, MinidiscSpacing.s)
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Sorting
+
+private extension ArtistSort {
+    /// `ArtistSort.sorted` is typed to SwiftSonic's `ArtistID3`; Lidarr has its own model, so the same
+    /// two orderings are applied here rather than coupling the domain enum to the Lidarr layer.
+    func sortedLidarr(_ artists: [LidarrArtist]) -> [LidarrArtist] {
+        switch self {
+        case .name:
+            return artists.sorted { $0.artistName.localizedStandardCompare($1.artistName) == .orderedAscending }
+        case .albumCount:
+            return artists.sorted {
+                let a = $0.statistics?.albumCount ?? 0, b = $1.statistics?.albumCount ?? 0
+                if a != b { return a > b } // most albums first
+                return $0.artistName.localizedStandardCompare($1.artistName) == .orderedAscending
+            }
         }
     }
 }

@@ -6,22 +6,6 @@
 import SwiftUI
 
 extension View {
-    /// Applies a circular Liquid Glass effect to a button label.
-    /// Apply this to the *label* of a Button (not the Button itself)
-    /// so that the parent .buttonStyle(.borderless) gesture fix is preserved.
-    func minidiscGlassButton(size: CGFloat = 44, tint: Color? = nil) -> some View {
-        // .interactive() removed — causes infinite StyleModifier recursion during
-        // NavigationStack transitions (54k-frame stack overflow).
-        // Re-evaluate when Apple fixes Glass StyleModifier composition (rdar://TODO).
-        let glass: Glass = tint.map { Glass.regular.tint($0) } ?? Glass.regular
-        return self
-            .frame(width: size, height: size)
-            .glassEffect(glass, in: .circle)
-            // The glass is a render effect, not a backing view: without an explicit content shape
-            // only the glyph is hit-testable and taps in the rest of the frame fall through.
-            .contentShape(Rectangle())
-    }
-
     /// Solid dark circular button for the detail-header action row (shuffle / download). A semi-opaque
     /// dark disc reads consistently over any themed melt background — unlike Liquid Glass, which washes
     /// out on light covers. Pair the glyph with `.foregroundStyle(.white)`.
@@ -29,13 +13,6 @@ extension View {
         self
             .frame(width: size, height: size)
             .background(Color.black.opacity(0.3), in: Circle())
-    }
-
-    /// Applies a capsule Liquid Glass effect (for wider controls).
-    func minidiscGlassCapsule(tint: Color? = nil) -> some View {
-        // .interactive() removed — same crash risk as minidiscGlassButton.
-        let glass: Glass = tint.map { Glass.regular.tint($0) } ?? Glass.regular
-        return self.glassEffect(glass, in: .capsule)
     }
 
     /// Over-cover HERO round button: TRANSPARENT — no surface/fill. Just the tap area + a soft shadow so the

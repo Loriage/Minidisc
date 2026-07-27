@@ -68,6 +68,8 @@ private final class PDDownloadStub: DownloadServiceProtocol {
     func persistCover(_ data: Data, forId coverArtId: String) async {}
     func removeCover(forId coverArtId: String) async {}
     func garbageCollectOrphanedCovers(referencedIds: Set<String>) async -> Int { 0 }
+    func coverCacheStats() async -> (count: Int, bytes: Int64) { (0, 0) }
+    func clearAllCovers() async {}
     func download(song: Song, serverId: UUID) async throws { throw URLError(.unknown) }
     func download(album: AlbumID3, serverId: UUID) async throws { throw URLError(.unknown) }
     func download(playlist: PlaylistWithSongs, serverId: UUID) async throws { throw URLError(.unknown) }

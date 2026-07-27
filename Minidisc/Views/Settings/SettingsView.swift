@@ -79,6 +79,12 @@ struct SettingsView: View {
                     Label("Integrations", systemImage: "puzzlepiece.extension")
                         .foregroundStyle(.primary)
                 }
+                NavigationLink {
+                    ApplicationSettingsView()
+                } label: {
+                    Label("Application", systemImage: "paintbrush")
+                        .foregroundStyle(.primary)
+                }
             }
             aboutSection()
             ApplicationSectionView(vm: downloadsVM)
@@ -503,6 +509,34 @@ private struct IntegrationsSettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Integrations")
+        .navigationBarTitleDisplayModeInline()
+    }
+}
+
+// MARK: - Application
+
+/// Appearance and display preferences. Everything here is a pure UI preference, so it lives in
+/// `@AppStorage` rather than the container — the same keys are read directly by `MainTabView`.
+private struct ApplicationSettingsView: View {
+    @AppStorage("minidisc.appTheme") private var theme: AppTheme = .system
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Theme", selection: $theme) {
+                    ForEach(AppTheme.allCases, id: \.self) { option in
+                        Text(option.label).tag(option)
+                    }
+                }
+                .tint(.primary)
+            } header: {
+                Text("Appearance")
+            } footer: {
+                Text("System follows your device's light or dark setting.")
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Application")
         .navigationBarTitleDisplayModeInline()
     }
 }

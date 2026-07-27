@@ -868,17 +868,20 @@ actor PlayerService: PlayerServiceProtocol {
         if trackPlayStartDate == nil { trackPlayStartDate = Date() }
         lastCountedEngineProgress = engine.progress
 
-        // Resuming after the queue ended (stopped cleanly at the end, repeat off): restart from track 0, NOT
-        // the last track — replaying it would hit EOF immediately and re-stop (the mini-loop). A normal mid-track
-        // pause leaves this flag false and falls through to the regular resume below.
-        if stoppedAtEndOfQueue {
+        // Resuming after the queue ended restarts at track 0. A normal mid-track pause keeps the
+        // current source. The planner owns that distinction so every resume entry point shares it.
+        let wasStoppedAtEndOfQueue = stoppedAtEndOfQueue
+        let transition = await queueTransitionSnapshot()
+        let resumePlan = PlaybackTransitionPlanner.plan(
+            for: .resumeRequested(stoppedAtEndOfQueue: wasStoppedAtEndOfQueue),
+            snapshot: transition.planner
+        )
+        if wasStoppedAtEndOfQueue {
             stoppedAtEndOfQueue = false
-            pendingRestoreInfo = nil
-            let queue = await MainActor.run { state.queue }
-            if !queue.isEmpty {
-                try? await play(tracks: queue, startIndex: 0)
-                return
-            }
+        }
+        if resumePlan == .restartQueue {
+            try? await executeTransitionPlan(resumePlan, queue: transition.queue)
+            return
         }
 
         // Cold-restore path: session activation was deferred at launch, so the player was never
@@ -1048,22 +1051,14 @@ actor PlayerService: PlayerServiceProtocol {
             Logger.player.debug("skipToNext ignored — live stream mode")
             return
         }
-        let (queue, currentIndex, repeatMode) = await MainActor.run {
-            (state.queue, state.currentIndex, state.repeatMode)
-        }
-        let nextIndex = currentIndex + 1
-        Logger.player.info("[TRANSITION] skipToNext: currentIndex=\(currentIndex) nextIndex=\(nextIndex) queueCount=\(queue.count)")
-
-        if nextIndex < queue.count {
-            let next = queue[nextIndex]
-            Logger.player.info("[TRANSITION] skipToNext → track id=\(next.id, privacy: .public) title=\(next.title, privacy: .public)")
-            try await play(tracks: queue, startIndex: nextIndex)
-        } else if repeatMode == .all {
-            Logger.player.info("[TRANSITION] skipToNext → wrap-around (repeatAll), restarting queue from index 0")
-            try await play(tracks: queue, startIndex: 0)
-        } else {
-            await pauseAtEndOfQueue()
-        }
+        let transition = await queueTransitionSnapshot()
+        let nextIndex = transition.planner.currentIndex + 1
+        Logger.player.info("[TRANSITION] skipToNext: currentIndex=\(transition.planner.currentIndex) nextIndex=\(nextIndex) queueCount=\(transition.queue.count)")
+        let plan = PlaybackTransitionPlanner.plan(
+            for: .nextRequested,
+            snapshot: transition.planner
+        )
+        try await executeTransitionPlan(plan, queue: transition.queue)
     }
 
     func skipToPrevious() async throws {
@@ -1071,15 +1066,72 @@ actor PlayerService: PlayerServiceProtocol {
             Logger.player.debug("skipToPrevious ignored — live stream mode")
             return
         }
-        let (queue, currentIndex, position) = await MainActor.run {
-            (state.queue, state.currentIndex, state.position)
-        }
+        let transition = await queueTransitionSnapshot()
+        let plan = PlaybackTransitionPlanner.plan(
+            for: .previousRequested(position: transition.position),
+            snapshot: transition.planner
+        )
+        try await executeTransitionPlan(plan, queue: transition.queue)
+    }
 
-        // < 3 s into the track: go back; at track 0 or after 3 s: restart current.
-        if position >= 3 || currentIndex == 0 {
+    private func queueTransitionSnapshot() async -> (
+        queue: [DisplayableSong],
+        planner: PlaybackTransitionPlanner.Snapshot,
+        position: TimeInterval
+    ) {
+        await MainActor.run {
+            (
+                state.queue,
+                .init(
+                    queueCount: state.queue.count,
+                    currentIndex: state.currentIndex,
+                    repeatMode: state.repeatMode
+                ),
+                state.position
+            )
+        }
+    }
+
+    /// Executes a pure transition plan. All I/O and actor hops stay here; the planner contains only
+    /// the queue policy and completion attribution.
+    private func executeTransitionPlan(
+        _ plan: PlaybackTransitionPlanner.Plan,
+        queue: [DisplayableSong]
+    ) async throws {
+        switch plan {
+        case .playQueueItem(let index, let currentTrackOutcome):
+            guard queue.indices.contains(index) else { return }
+            wasTrackCompletedNaturally = currentTrackOutcome == .completed
+            let next = queue[index]
+            Logger.player.info(
+                "[TRANSITION] queue item \(index) → id=\(next.id, privacy: .public) title=\(next.title, privacy: .public) outcome=\(String(describing: currentTrackOutcome), privacy: .public)"
+            )
+            try await play(tracks: queue, startIndex: index)
+
+        case .restartCurrent:
             await seek(to: 0)
-        } else {
-            try await play(tracks: queue, startIndex: currentIndex - 1)
+
+        case .repeatCurrent:
+            wasTrackCompletedNaturally = true
+            await recordCurrentTrackPlayback(trigger: "repeat_one")
+            wasTrackCompletedNaturally = false
+            resetTrackAccumulator()
+            if let source = currentSource {
+                let trackID = await MainActor.run { state.currentTrack?.id ?? "repeat" }
+                engine.play(trackID: trackID, url: source.url, headers: source.customHeaders)
+            }
+
+        case .stopAtEnd(let currentTrackOutcome):
+            wasTrackCompletedNaturally = currentTrackOutcome == .completed
+            await pauseAtEndOfQueue()
+
+        case .restartQueue:
+            guard !queue.isEmpty else { return }
+            pendingRestoreInfo = nil
+            try await play(tracks: queue, startIndex: 0)
+
+        case .resumeCurrent:
+            break
         }
     }
 
@@ -1903,6 +1955,10 @@ actor PlayerService: PlayerServiceProtocol {
     // MARK: - End of track
 
     func handleEndOfTrack() async {
+        guard await MainActor.run(body: { !state.isLiveStream }) else {
+            Logger.player.debug("[END-OF-TRACK] ignored — live stream mode")
+            return
+        }
         guard !isRestoringSession else {
             Logger.player.warning("[END-OF-TRACK] suppressed — session restore in progress")
             return
@@ -1913,34 +1969,23 @@ actor PlayerService: PlayerServiceProtocol {
         }
         isHandlingEndOfTrack = true
         defer { isHandlingEndOfTrack = false }
-        let repeatMode = await MainActor.run { state.repeatMode }
-        if repeatMode == .one {
-            // Record this completed listen, then restart the same track.
-            wasTrackCompletedNaturally = true
-            await recordCurrentTrackPlayback(trigger: "repeat_one")
-            wasTrackCompletedNaturally = false
-            resetTrackAccumulator()
-            if let source = currentSource {
-                let trackID = await MainActor.run { state.currentTrack?.id ?? "repeat" }
-                engine.play(trackID: trackID, url: source.url, headers: source.customHeaders)
-            }
-        } else {
-            // Signal natural completion — recordCurrentTrackPlayback() reads this in startPlayback().
-            wasTrackCompletedNaturally = true
-            do {
-                try await skipToNext()
-            } catch {
-                Logger.player.error("[TRANSITION] handleEndOfTrack: skipToNext() failed: \(error, privacy: .public)")
-            }
+        let transition = await queueTransitionSnapshot()
+        let plan = PlaybackTransitionPlanner.plan(
+            for: .trackEnded,
+            snapshot: transition.planner
+        )
+        do {
+            try await executeTransitionPlan(plan, queue: transition.queue)
+        } catch {
+            Logger.player.error("[TRANSITION] handleEndOfTrack failed: \(error, privacy: .public)")
         }
     }
 
-    /// The last track of the queue ended naturally with repeat off. Stop cleanly AT THE END — no wrap, and no
-    /// muted "parking" play of track 1 (that muted play, plus its mute→pause race, was the phantom: a leaked
-    /// audio fragment / RCC churn). The queue + current index/track are kept and the position is parked at the
-    /// end; `stoppedAtEndOfQueue` makes `resume()` restart the queue from track 0 (option a).
+    /// The queue reached its end with repeat off. Stop cleanly with no muted "parking" play of track 1.
+    /// The queue + current index/track are kept and the position is parked at the end; the transition planner
+    /// makes `resume()` restart the queue from track 0.
     private func pauseAtEndOfQueue() async {
-        // Record the last track's completion (it ended naturally), then reset the accumulators.
+        // The transition plan set the completion attribution before entering this method.
         await recordCurrentTrackPlayback(trigger: "end_of_queue")
         wasTrackCompletedNaturally = false
         accumulatedPlayedSeconds = 0

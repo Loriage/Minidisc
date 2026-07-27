@@ -1826,30 +1826,49 @@ actor PlayerService: PlayerServiceProtocol {
 // MARK: - iOS Audio Session
 
 extension PlayerService {
+    /// Sets the category (once) and activates the session.
+    ///
+    /// No category options, deliberately. `.allowAirPlay` and `.allowBluetoothHFP` are both documented
+    /// as settable only on `.playAndRecord` (HFP also on `.record`); pairing either with `.playback`
+    /// made `setCategory` fail with -50 (paramErr) on every call. Because the failure threw before
+    /// `audioSessionConfigured = true`, the flag never latched, the category was never applied, and
+    /// `setActive` below was never reached — playback only started once the retry fired 0.5 s later,
+    /// which is the delay felt on every Play. Neither option is needed: `.playback` already routes to
+    /// AirPlay and to Bluetooth A2DP.
+    private func activateAudioSession() throws {
+        let session = AVAudioSession.sharedInstance()
+        if !audioSessionConfigured {
+            try session.setCategory(.playback)
+            audioSessionConfigured = true
+        }
+        // Always re-activate — iOS may have deactivated the session during a background interruption
+        // (phone call, Siri, other audio app) even after a successful initial setup. Without this,
+        // resume() silently fails on the lock screen.
+        try session.setActive(true)
+    }
+
+    private func retryAudioSessionActivation() {
+        do {
+            try activateAudioSession()
+        } catch {
+            Logger.player.error("AVAudioSession retry failed: \(error, privacy: .public)")
+        }
+    }
+
     func configureAudioSessionIfNeeded() {
         do {
-            let session = AVAudioSession.sharedInstance()
-            if !audioSessionConfigured {
-                // .playback disables the silent switch and allows background audio.
-                // AirPlay + Bluetooth options enable wireless output without extra entitlements.
-                try session.setCategory(.playback, options: [.allowAirPlay, .allowBluetoothHFP])
-                audioSessionConfigured = true
-            }
-            // Always call setActive(true) — iOS may have deactivated the session during a
-            // background interruption (phone call, Siri, other audio app) even after a
-            // successful initial setup. Without this, resume() silently fails on the lock screen.
-            try session.setActive(true)
+            try activateAudioSession()
         } catch let error as NSError {
-            if error.code == -50 {
-                // Code=-50: another app holds the session — retry after short delay.
-                Logger.player.warning("AVAudioSession setActive Code=-50, retrying in 0.5s")
-                sessionActivationRetryTask = Task {
-                    try? await Task.sleep(for: .seconds(0.5))
-                    guard !Task.isCancelled else { return }
-                    try? AVAudioSession.sharedInstance().setActive(true)
-                }
-            } else {
-                Logger.player.error("Failed to configure AVAudioSession: \(error, privacy: .public)")
+            // The retry re-runs the CATEGORY too. The old one re-tried activation alone, so a failed
+            // setCategory left the app on the default category for the whole session — no guaranteed
+            // background audio, silenced by the ring switch. `configured` says which call failed.
+            Logger.player.warning(
+                "AVAudioSession configuration failed (code \(error.code, privacy: .public), configured=\(self.audioSessionConfigured, privacy: .public)) — retrying in 0.5s"
+            )
+            sessionActivationRetryTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(0.5))
+                guard !Task.isCancelled else { return }
+                await self?.retryAudioSessionActivation()
             }
         }
         if interruptionObserver == nil {

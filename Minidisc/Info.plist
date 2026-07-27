@@ -4,7 +4,7 @@
 <dict>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>app.cassette.wrapped.monthly-update</string>
+		<string>app.minidisc.wrapped.monthly-update</string>
 	</array>
 	<key>CFBundleGetInfoString</key>
 	<string></string>

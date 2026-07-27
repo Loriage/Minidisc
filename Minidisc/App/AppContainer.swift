@@ -117,7 +117,24 @@ final class AppContainer {
 
         // AVPlayer is the one and only engine: Apple's hardware decoders, two-deck crossfade/gapless.
         let audioEngine: AudioEngine = AVPlayerEngine()
-        let player = PlayerService(state: playerState, mediaResolver: resolver, serverService: server, sessionService: sessionService, artworkImageCache: artworkImageCache, libraryService: library, audioStreamCache: cache, downloadService: download, cacheSettings: cacheSettings, replayGainSettings: replayGainSettings, crossfadeSettings: crossfadeSettings, toastService: toastService, statsService: stats, listenBrainzService: lb, engine: audioEngine)
+        let player = PlayerService(
+            state: playerState,
+            mediaResolver: resolver,
+            serverService: server,
+            sessionService: sessionService,
+            artworkImageCache: artworkImageCache,
+            libraryService: library,
+            audioStreamCache: cache,
+            downloadService: download,
+            cacheSettings: cacheSettings,
+            replayGainSettings: replayGainSettings,
+            crossfadeSettings: crossfadeSettings,
+            initialCrossfadeConfig: crossfadeSettings.config,
+            toastService: toastService,
+            statsService: stats,
+            listenBrainzService: lb,
+            engine: audioEngine
+        )
         _player = player
         playerService = player
 

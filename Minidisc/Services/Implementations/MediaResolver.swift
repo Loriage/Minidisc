@@ -90,8 +90,31 @@ actor MediaResolver: MediaResolverProtocol {
             throw MinidiscError.offlineUnavailable(songId: station.id)
         }
 
-        let creds = try await serverService.activeCredentials()
+        let activeServerURL = await MainActor.run {
+            serverState.activeServer.flatMap { URL(string: $0.baseURL) }
+        }
+        let customHeaders: [String: String]
+        if let activeServerURL, Self.isSameOrigin(url, activeServerURL) {
+            customHeaders = try await serverService.activeCredentials().customHeaders
+        } else {
+            // Internet-radio URLs commonly point at a third-party host. Cloudflare/access headers
+            // belong to the Subsonic origin and must never be forwarded across origins.
+            customHeaders = [:]
+        }
         Logger.resolver.debug("Resolved radio '\(station.id, privacy: .public)' as live stream.")
-        return .liveStream(url, customHeaders: creds.customHeaders, stationId: station.id)
+        return .liveStream(url, customHeaders: customHeaders, stationId: station.id)
+    }
+
+    nonisolated static func isSameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
+        guard let lhsScheme = lhs.scheme?.lowercased(),
+              let rhsScheme = rhs.scheme?.lowercased(),
+              let lhsHost = lhs.host?.lowercased(),
+              let rhsHost = rhs.host?.lowercased() else { return false }
+        func effectivePort(_ url: URL, scheme: String) -> Int? {
+            url.port ?? (scheme == "https" ? 443 : scheme == "http" ? 80 : nil)
+        }
+        return lhsScheme == rhsScheme
+            && lhsHost == rhsHost
+            && effectivePort(lhs, scheme: lhsScheme) == effectivePort(rhs, scheme: rhsScheme)
     }
 }

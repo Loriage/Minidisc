@@ -121,7 +121,11 @@ actor ServerService: ServerServiceProtocol {
         guard let existing = try await keychain.retrieve(ServerCredentials.self, forKey: credKey) else {
             throw MinidiscError.serverNotFound(id: id)
         }
-        let updated = ServerCredentials(password: existing.password, customHeaders: headers)
+        let updated = ServerCredentials(
+            password: existing.password,
+            customHeaders: headers,
+            audioMuseToken: existing.audioMuseToken
+        )
         try await keychain.store(updated, forKey: credKey)
     }
 
@@ -136,7 +140,12 @@ actor ServerService: ServerServiceProtocol {
         try validateHeaders(customHeaders)
 
         let credKey = ServerCredentials.keychainKey(for: id)
-        let creds = ServerCredentials(password: password, customHeaders: customHeaders)
+        let previousCredentials = try await keychain.retrieve(ServerCredentials.self, forKey: credKey)
+        let creds = ServerCredentials(
+            password: password,
+            customHeaders: customHeaders,
+            audioMuseToken: previousCredentials?.audioMuseToken
+        )
 
         // Keychain first — mirrors addServer rollback strategy.
         try await keychain.store(creds, forKey: credKey)
@@ -161,6 +170,13 @@ actor ServerService: ServerServiceProtocol {
                 }
             }
         } catch {
+            // Restore the exact prior credential state. Besides avoiding a metadata/secret
+            // split-brain, this removes the orphan Keychain item created for an unknown id.
+            if let previousCredentials {
+                try? await keychain.store(previousCredentials, forKey: credKey)
+            } else {
+                try? await keychain.delete(forKey: credKey)
+            }
             throw error
         }
     }
@@ -297,21 +313,28 @@ actor ServerService: ServerServiceProtocol {
             forKey: credKey
         )
 
-        try await MainActor.run {
-            let context = ModelContext(modelContainer)
-            let descriptor = FetchDescriptor<ServerConfig>(predicate: #Predicate { $0.id == serverId })
-            guard let config = try context.fetch(descriptor).first else {
-                throw MinidiscError.serverNotFound(id: serverId)
+        do {
+            try await MainActor.run {
+                let context = ModelContext(modelContainer)
+                let descriptor = FetchDescriptor<ServerConfig>(predicate: #Predicate { $0.id == serverId })
+                guard let config = try context.fetch(descriptor).first else {
+                    throw MinidiscError.serverNotFound(id: serverId)
+                }
+                config.audioMuseURL = resolvedURL
+                try context.save()
+                let snapshot = ServerSnapshot(from: config)
+                if let idx = state.servers.firstIndex(where: { $0.id == serverId }) {
+                    state.servers[idx] = snapshot
+                }
+                if state.activeServer?.id == serverId {
+                    state.activeServer = snapshot
+                }
             }
-            config.audioMuseURL = resolvedURL
-            try context.save()
-            let snapshot = ServerSnapshot(from: config)
-            if let idx = state.servers.firstIndex(where: { $0.id == serverId }) {
-                state.servers[idx] = snapshot
-            }
-            if state.activeServer?.id == serverId {
-                state.activeServer = snapshot
-            }
+        } catch {
+            // The URL and its token are one logical setting. If SwiftData rejects the URL
+            // update, put the previous token back so the two stores cannot disagree.
+            try? await keychain.store(existing, forKey: credKey)
+            throw error
         }
         Logger.server.info("AudioMuse endpoint \(resolvedURL == nil ? "cleared" : "set", privacy: .public) for server \(serverId.uuidString, privacy: .public)")
     }

@@ -151,9 +151,8 @@ final class PlaylistDetailViewModel {
 
     func deleteDownload() async {
         guard let serverId = serverState.activeServer?.id else { return }
-        for song in songs {
-            try? await downloadService.remove(songId: song.id, serverId: serverId)
-        }
+        // DownloadService owns reference counting. Removing every song first bypassed it
+        // and deleted files still needed by downloaded albums or other playlists.
         try? await downloadService.remove(playlistId: playlistId, serverId: serverId)
         songs = songs.map { $0.withDownloaded(false) }
     }

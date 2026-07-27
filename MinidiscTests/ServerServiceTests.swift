@@ -38,7 +38,7 @@ final class MockAudioStreamCache: AudioStreamCacheProtocol {
     var trackCount: Int = 0
     func cachedURL(forSongId songId: String, serverId: UUID) async -> URL? { nil }
     func touch(songId: String, serverId: UUID) async {}
-    func store(data: Data, forSongId songId: String, serverId: UUID, mimeType: String) async throws -> URL {
+    func store(fileAt sourceURL: URL, forSongId songId: String, serverId: UUID, mimeType: String) async throws -> URL {
         struct MockError: Error {}; throw MockError()
     }
     func setMaxTracks(_ value: Int) async {}
@@ -172,6 +172,89 @@ struct ServerServiceTests {
         await #expect(throws: MinidiscError.self) {
             try await service.setActiveServer(id: UUID())
         }
+    }
+
+    // MARK: credential updates
+
+    @Test func credentialUpdates_preserveAudioMuseToken() async throws {
+        let (service, state) = try makeService()
+        try await service.addServer(
+            displayName: "S", baseURL: "https://s.example.com",
+            username: "u", password: "old-password", customHeaders: ["X-Old": "1"]
+        )
+        let id = try #require(state.activeServer?.id)
+        try await service.setAudioMuseConfig(
+            serverId: id,
+            urlString: "https://audiomuse.example.com",
+            token: "audiomuse-token"
+        )
+
+        try await service.updateCustomHeaders(["X-New": "2"], forServer: id)
+        var credentials = try await service.activeCredentials()
+        #expect(credentials.audioMuseToken == "audiomuse-token")
+        #expect(credentials.customHeaders == ["X-New": "2"])
+
+        try await service.updateServer(
+            id: id,
+            displayName: "Renamed",
+            baseURL: "https://new.example.com",
+            username: "new-user",
+            password: "new-password",
+            customHeaders: ["X-Final": "3"]
+        )
+        credentials = try await service.activeCredentials()
+        #expect(credentials.audioMuseToken == "audiomuse-token")
+        #expect(credentials.password == "new-password")
+        #expect(credentials.customHeaders == ["X-Final": "3"])
+    }
+
+    @Test func updateUnknownServer_rollsBackOrphanedCredentials() async throws {
+        let keychain = MockKeychain()
+        let (service, _) = try makeService(keychain: keychain)
+        let unknownId = UUID()
+
+        await #expect(throws: MinidiscError.self) {
+            try await service.updateServer(
+                id: unknownId,
+                displayName: "Missing",
+                baseURL: "https://missing.example.com",
+                username: "u",
+                password: "must-not-survive",
+                customHeaders: [:]
+            )
+        }
+
+        let stored = try await keychain.retrieve(
+            ServerCredentials.self,
+            forKey: ServerCredentials.keychainKey(for: unknownId)
+        )
+        #expect(stored == nil)
+    }
+
+    @Test func audioMuseUpdateForMissingServer_restoresPreviousCredentials() async throws {
+        let keychain = MockKeychain()
+        let (service, _) = try makeService(keychain: keychain)
+        let unknownId = UUID()
+        let original = ServerCredentials(
+            password: "existing-password",
+            customHeaders: ["X-Existing": "1"],
+            audioMuseToken: "existing-token"
+        )
+        let key = ServerCredentials.keychainKey(for: unknownId)
+        try await keychain.store(original, forKey: key)
+
+        await #expect(throws: MinidiscError.self) {
+            try await service.setAudioMuseConfig(
+                serverId: unknownId,
+                urlString: "https://new.example.com",
+                token: "new-token"
+            )
+        }
+
+        let restored = try #require(try await keychain.retrieve(ServerCredentials.self, forKey: key))
+        #expect(restored.password == original.password)
+        #expect(restored.customHeaders == original.customHeaders)
+        #expect(restored.audioMuseToken == original.audioMuseToken)
     }
 
     // MARK: loadPersistedState

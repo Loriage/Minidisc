@@ -64,19 +64,10 @@ final class DownloadsViewModel {
     }
 
     func removeAlbum(_ display: DownloadedAlbumDisplay) async {
-        if display.hasFullDownloadIntent {
-            try? await downloadService.remove(albumId: display.albumId, serverId: display.serverId)
-        } else {
-            let context = ModelContext(modelContainer)
-            let aid = display.albumId
-            let sid = display.serverId
-            let tracks = (try? context.fetch(
-                FetchDescriptor<DownloadedTrack>(predicate: #Predicate { $0.albumId == aid && $0.serverId == sid })
-            )) ?? []
-            for track in tracks {
-                try? await downloadService.remove(songId: track.songId, serverId: track.serverId)
-            }
-        }
+        // DownloadService applies the same reference-counting rules whether or not a
+        // DownloadedAlbum intent record exists. Deleting inferred tracks one by one
+        // bypassed those rules and could break a downloaded playlist sharing them.
+        try? await downloadService.remove(albumId: display.albumId, serverId: display.serverId)
         await loadData()
     }
 
@@ -87,17 +78,30 @@ final class DownloadsViewModel {
 
     func clearAll() async {
         isClearingAll = true
-        let context = ModelContext(modelContainer)
-        let albums = (try? context.fetch(FetchDescriptor<DownloadedAlbum>())) ?? []
-        for album in albums {
-            try? await downloadService.remove(albumId: album.albumId, serverId: album.serverId)
+        defer { isClearingAll = false }
+
+        // Work from value snapshots: each removal uses its own ModelContext, so keeping
+        // model instances from one context across awaits can leave this loop with stale data.
+        let albumTargets = ((try? ModelContext(modelContainer).fetch(FetchDescriptor<DownloadedAlbum>())) ?? [])
+            .map { (albumId: $0.albumId, serverId: $0.serverId) }
+        for target in albumTargets {
+            try? await downloadService.remove(albumId: target.albumId, serverId: target.serverId)
         }
-        // Remove any tracks not associated with an album record.
-        let remaining = (try? context.fetch(FetchDescriptor<DownloadedTrack>())) ?? []
-        for track in remaining {
-            try? await downloadService.remove(songId: track.songId, serverId: track.serverId)
+
+        // Albums deliberately preserve tracks still owned by playlists. Remove those
+        // intents next; otherwise "Clear all" leaves empty playlist rows behind.
+        let playlistTargets = ((try? ModelContext(modelContainer).fetch(FetchDescriptor<DownloadedPlaylist>())) ?? [])
+            .map { (playlistId: $0.playlistId, serverId: $0.serverId) }
+        for target in playlistTargets {
+            try? await downloadService.remove(playlistId: target.playlistId, serverId: target.serverId)
+        }
+
+        // Finally purge standalone tracks that belonged to neither kind of intent.
+        let remainingTargets = ((try? ModelContext(modelContainer).fetch(FetchDescriptor<DownloadedTrack>())) ?? [])
+            .map { (songId: $0.songId, serverId: $0.serverId) }
+        for target in remainingTargets {
+            try? await downloadService.remove(songId: target.songId, serverId: target.serverId)
         }
         await loadData()
-        isClearingAll = false
     }
 }

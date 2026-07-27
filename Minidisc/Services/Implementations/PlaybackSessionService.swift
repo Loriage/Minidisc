@@ -61,13 +61,17 @@ actor PlaybackSessionService {
             Logger.session.info("Persisted session has empty queue — skipping restore")
             return nil
         }
-        let safeIndex = min(session.currentIndex, queue.count - 1)
-        Logger.session.info("Session loaded: '\(session.currentTrackTitle ?? "nil", privacy: .private)', pos=\(session.currentPosition, format: .fixed(precision: 1), privacy: .public)s, \(queue.count, privacy: .public) tracks")
+        let safeIndex = max(0, min(session.currentIndex, queue.count - 1))
+        let rawPosition = session.currentPosition
+        let safePosition = rawPosition.isFinite ? max(0, rawPosition) : 0
+        let rawDuration = session.currentTrackDuration
+        let safeDuration = rawDuration.isFinite ? max(0, rawDuration) : 0
+        Logger.session.info("Session loaded: '\(session.currentTrackTitle ?? "nil", privacy: .private)', pos=\(safePosition, format: .fixed(precision: 1), privacy: .public)s, \(queue.count, privacy: .public) tracks")
         return RestoredSession(
             queue: queue,
             currentIndex: safeIndex,
-            currentPosition: session.currentPosition,
-            currentTrackDuration: session.currentTrackDuration,
+            currentPosition: safePosition,
+            currentTrackDuration: safeDuration,
             repeatMode: session.decodedRepeatMode()
         )
     }

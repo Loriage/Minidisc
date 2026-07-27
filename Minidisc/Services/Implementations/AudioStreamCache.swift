@@ -81,38 +81,56 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
 
     // MARK: - Storage
 
-    /// Stores audio data in the cache. Upserts the SwiftData record, then runs FIFO eviction.
-    func store(data: Data, forSongId songId: String, serverId: UUID, mimeType: String) async throws -> URL {
+    /// Moves a completed download into the cache. Upserts the SwiftData record, then runs FIFO eviction.
+    func store(fileAt sourceURL: URL, forSongId songId: String, serverId: UUID, mimeType: String) async throws -> URL {
         let ext = audioExtension(mimeType: mimeType)
-        let relativePath = "\(serverId.uuidString)-\(songId).\(ext)"
+        // Song IDs are server-controlled and may contain path separators. A generated basename keeps
+        // every entry inside the flat cache directory.
+        let relativePath = "\(serverId.uuidString)-\(UUID().uuidString).\(ext)"
         let fileURL = cacheDirectory.appendingPathComponent(relativePath)
 
-        try data.write(to: fileURL, options: .atomic)
-        let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int64) ?? Int64(data.count)
+        do {
+            try FileManager.default.moveItem(at: sourceURL, to: fileURL)
+        } catch {
+            // A temporary URL can live on another volume, where rename is unavailable.
+            try FileManager.default.copyItem(at: sourceURL, to: fileURL)
+        }
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size] as? Int64) ?? 0
+        guard fileSize > 0 else {
+            try? FileManager.default.removeItem(at: fileURL)
+            throw CocoaError(.fileReadCorruptFile)
+        }
 
-        await MainActor.run {
-            let context = ModelContext(modelContainer)
-            let existing = (try? context.fetch(FetchDescriptor<CachedTrack>(predicate: #Predicate { $0.songId == songId })))?
-                .first { $0.serverId == serverId }
-            if let existing {
-                existing.filePath = relativePath
-                existing.fileSize = fileSize
-                existing.mimeType = mimeType
-                existing.cachedAt = Date()
-            } else {
-                context.insert(CachedTrack(
-                    songId: songId,
-                    serverId: serverId,
-                    filePath: relativePath,
-                    fileSize: fileSize,
-                    mimeType: mimeType
-                ))
-            }
-            do {
+        let previousPath: String?
+        do {
+            previousPath = try await MainActor.run {
+                let context = ModelContext(modelContainer)
+                let existing = try context.fetch(FetchDescriptor<CachedTrack>(predicate: #Predicate { $0.songId == songId }))
+                    .first { $0.serverId == serverId }
+                let previousPath = existing?.filePath
+                if let existing {
+                    existing.filePath = relativePath
+                    existing.fileSize = fileSize
+                    existing.mimeType = mimeType
+                    existing.cachedAt = Date()
+                } else {
+                    context.insert(CachedTrack(
+                        songId: songId,
+                        serverId: serverId,
+                        filePath: relativePath,
+                        fileSize: fileSize,
+                        mimeType: mimeType
+                    ))
+                }
                 try context.save()
-            } catch {
-                Logger.cache.debug("AudioStreamCache: store save failed — \(error)")
+                return previousPath
             }
+        } catch {
+            try? FileManager.default.removeItem(at: fileURL)
+            throw error
+        }
+        if let previousPath, previousPath != relativePath {
+            try? FileManager.default.removeItem(at: cacheDirectory.appendingPathComponent(previousPath))
         }
 
         await evictToFitLimit()
@@ -226,16 +244,6 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
                 Logger.cache.debug("AudioStreamCache: clearAll tracks save failed — \(error)")
             }
         }
-        await MainActor.run {
-            let context = ModelContext(modelContainer)
-            let lyrics = (try? context.fetch(FetchDescriptor<CachedLyrics>())) ?? []
-            lyrics.forEach { context.delete($0) }
-            do {
-                try context.save()
-            } catch {
-                Logger.cache.debug("AudioStreamCache: clearAll lyrics save failed — \(error)")
-            }
-        }
         Logger.cache.info("Cleared all cache entries")
     }
 
@@ -261,16 +269,6 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
                 try context.save()
             } catch {
                 Logger.cache.debug("AudioStreamCache: clearAllForServer tracks save failed — \(error)")
-            }
-        }
-        await MainActor.run {
-            let context = ModelContext(modelContainer)
-            let lyrics = (try? context.fetch(FetchDescriptor<CachedLyrics>())) ?? []
-            lyrics.filter { $0.serverId == serverId }.forEach { context.delete($0) }
-            do {
-                try context.save()
-            } catch {
-                Logger.cache.debug("AudioStreamCache: clearAllForServer lyrics save failed — \(error)")
             }
         }
         Logger.cache.info("Cleared cache for server \(serverId.uuidString)")

@@ -62,6 +62,7 @@ private let defaultRoot = URL(string: "https://api.listenbrainz.org")!
 // Returns a JSON body that makes validateToken succeed; safe to return for submit-listens too
 // since sendSubmitListens only checks the status code.
 private let validTokenBody = Data(#"{"valid":true,"user_name":"alice"}"#.utf8)
+private let validTokenWithoutUsernameBody = Data(#"{"valid":true}"#.utf8)
 
 // MARK: - LBTrackMetadata field mapping
 
@@ -254,5 +255,34 @@ struct LBSubmissionGatingTests {
         // requests[0] = validateToken, requests[1] = submitPlayingNow
         #expect(requests.count == 2)
         #expect(requests.last?.url?.path.hasSuffix("/1/submit-listens") == true)
+    }
+
+    @Test("a valid token without a username can be disabled and re-enabled")
+    func tokenWithoutUsernameCanBeReenabled() async throws {
+        let transport = RecordingTransport(status: 200, body: validTokenWithoutUsernameBody)
+        let (service, _, _) = makeService(transport: transport)
+        try await service.validateAndSaveScrobblingToken("tok", rootURL: defaultRoot)
+        await service.disableScrobbling()
+        await service.enableScrobbling()
+
+        let snapshot = await service.scrobblingSnapshot()
+        #expect(snapshot.isEnabled)
+        #expect(snapshot.username == nil)
+
+        await service.notifyTrackStarted(song: makeSong())
+        #expect(transport.requests.count == 2) // validation + playing_now
+    }
+
+    @Test("clearing a token resets a custom server URL")
+    func clearingTokenResetsServerURL() async throws {
+        let transport = RecordingTransport(status: 200, body: validTokenBody)
+        let (service, _, _) = makeService(transport: transport)
+        let customRoot = URL(string: "https://listen.example.com/custom")!
+        try await service.validateAndSaveScrobblingToken("tok", rootURL: customRoot)
+
+        await service.clearScrobblingToken()
+
+        let snapshot = await service.scrobblingSnapshot()
+        #expect(snapshot.serverRootURL == ListenBrainzService.defaultScrobblingServerURL)
     }
 }

@@ -14,26 +14,31 @@ actor KeychainService: KeychainServiceProtocol {
     func store<T: Codable & Sendable>(_ value: T, forKey key: String) async throws {
         let data = try JSONEncoder().encode(value)
 
-        // Delete query omits kSecAttrAccessible so it matches any existing item
-        // regardless of its accessibility attribute (handles migration from WhenUnlocked).
-        let deleteQuery: [String: Any] = [
+        let itemQuery: [String: Any] = [
             kSecClass as String:       kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key
         ]
-        SecItemDelete(deleteQuery as CFDictionary)
-
-        let addQuery: [String: Any] = [
-            kSecClass as String:          kSecClassGenericPassword,
-            kSecAttrService as String:    service,
-            kSecAttrAccount as String:    key,
+        let attributes: [String: Any] = [
             kSecValueData as String:      data,
             // AfterFirstUnlock allows Keychain reads while the screen is locked,
             // required for auto-next playback transitions triggered in lock screen.
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         ]
 
-        let status = SecItemAdd(addQuery as CFDictionary, nil)
+        // Update in place so a failed write never destroys the previous credential.
+        // The old delete-then-add sequence left the account permanently signed out when
+        // SecItemAdd failed (locked Keychain, entitlement issue, or transient OS error).
+        let updateStatus = SecItemUpdate(itemQuery as CFDictionary, attributes as CFDictionary)
+        let status: OSStatus
+        if updateStatus == errSecItemNotFound {
+            var addQuery = itemQuery
+            attributes.forEach { addQuery[$0.key] = $0.value }
+            status = SecItemAdd(addQuery as CFDictionary, nil)
+        } else {
+            status = updateStatus
+        }
+
         guard status == errSecSuccess else {
             // Never log `data` — it may contain credentials.
             Logger.keychain.error("Keychain write failed for key '\(key, privacy: .public)' — OSStatus \(status)")

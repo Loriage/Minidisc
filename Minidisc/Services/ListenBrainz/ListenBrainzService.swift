@@ -199,6 +199,11 @@ actor ListenBrainzService {
         if let username = result.username {
             try await keychain.store(username, forKey: Self.scrobblingUsernameKeychainKey)
             scrobblingUsername = username
+        } else {
+            // A self-hosted compatible server may validate tokens without returning a username.
+            // Do not keep displaying the account name from a previously configured server.
+            try? await keychain.delete(forKey: Self.scrobblingUsernameKeychainKey)
+            scrobblingUsername = nil
         }
         let normalizedURL = Self.normalizeServerURL(rootURL.absoluteString)
         userDefaults.set(normalizedURL, forKey: Self.scrobblingServerURLDefaultsKey)
@@ -210,7 +215,7 @@ actor ListenBrainzService {
 
     /// Re-enables scrobbling without re-validating. No-op if no token has been stored.
     func enableScrobbling() async {
-        guard scrobblingUsername != nil else { return }
+        guard hasScrobblingToken else { return }
         scrobblingEnabled = true
         userDefaults.set(true, forKey: Self.scrobblingEnabledDefaultsKey)
         Logger.listenBrainz.info("Scrobbling re-enabled")
@@ -233,6 +238,7 @@ actor ListenBrainzService {
         pendingQueue = []
         try? FileManager.default.removeItem(at: queueFileURL)
         userDefaults.set(false, forKey: Self.scrobblingEnabledDefaultsKey)
+        userDefaults.removeObject(forKey: Self.scrobblingServerURLDefaultsKey)
         try? await keychain.delete(forKey: Self.scrobblingTokenKeychainKey)
         try? await keychain.delete(forKey: Self.scrobblingUsernameKeychainKey)
         Logger.listenBrainz.info("Scrobbling credentials cleared")

@@ -84,6 +84,12 @@ actor PlayerService: PlayerServiceProtocol {
     /// Cancelled on every track transition via cancelPendingPrefetch().
     private var prefetchTask: Task<Void, Never>?
     private var prefetchScheduled = false
+    /// Invalidates any asynchronous resolve/prefetch work that belongs to an older playback intent.
+    private var playbackGeneration: UInt64 = 0
+    /// Orders overlapping scrubber/Control Center seeks; only the newest completion may update UI state.
+    private var seekGeneration: UInt64 = 0
+    /// Prevents a bad server/asset duration from spamming one diagnostic every progress tick.
+    private var durationMismatchLoggedTrackID: String?
     private let prefetchSession: URLSession
     // Saved before a shuffle activation; nil when shuffle is off.
     private var originalQueueOrder: [DisplayableSong]?
@@ -93,10 +99,10 @@ actor PlayerService: PlayerServiceProtocol {
 
     /// Wall-clock time when the current track first started (used as event timestamp). Nil before first track.
     private var trackPlayStartDate: Date?
-    /// Seconds of actual (non-paused) playback accumulated for the current track.
+    /// Seconds of playhead movement accumulated for the current track.
     private var accumulatedPlayedSeconds: TimeInterval = 0
-    /// Wall-clock start of the current play segment; nil when paused or stopped.
-    private var currentPlaySegmentStart: Date?
+    /// Previous decoder-clock sample. Nil while paused/buffering and after a seek or track transition.
+    private var lastCountedEngineProgress: TimeInterval?
     /// Set to true by handleEndOfTrack before a natural completion transition; reset after recording.
     private var wasTrackCompletedNaturally: Bool = false
 
@@ -112,6 +118,7 @@ actor PlayerService: PlayerServiceProtocol {
         cacheSettings: CacheSettings,
         replayGainSettings: ReplayGainSettings,
         crossfadeSettings: CrossfadeSettings,
+        initialCrossfadeConfig: CrossfadeConfig,
         toastService: ToastService,
         statsService: StatsService,
         listenBrainzService: ListenBrainzService,
@@ -128,12 +135,13 @@ actor PlayerService: PlayerServiceProtocol {
         self.cacheSettings = cacheSettings
         self.replayGainSettings = replayGainSettings
         self.crossfadeSettings = crossfadeSettings
+        self.crossfadeConfig = initialCrossfadeConfig
         self.toastService = toastService
         self.statsService = statsService
         self.listenBrainzService = listenBrainzService
         let cacheConfig = URLSessionConfiguration.default
         cacheConfig.timeoutIntervalForRequest = 30
-        cacheConfig.timeoutIntervalForResource = 30
+        cacheConfig.timeoutIntervalForResource = 300
         self.cacheSession = URLSession(configuration: cacheConfig)
 
         let prefetchConfig = URLSessionConfiguration.default
@@ -161,20 +169,17 @@ actor PlayerService: PlayerServiceProtocol {
     func play(tracks: [DisplayableSong], startIndex: Int) async throws {
         guard tracks.indices.contains(startIndex) else { return }
         stoppedAtEndOfQueue = false
+        playbackGeneration &+= 1
+        let generation = playbackGeneration
+        cancelPendingPrefetch()
 
         // Reset shuffle only when starting a genuinely new queue, not on internal skips
         // (skipToNext/skipToPrevious pass state.queue unchanged, so IDs match).
         let currentQueueIds = await MainActor.run { state.queue.map(\.id) }
-        if tracks.map(\.id) != currentQueueIds {
-            originalQueueOrder = nil
-            await MainActor.run {
-                state.isShuffled = false
-                state.originalQueueEndIndex = nil
-                if state.isSmartShuffleActive {
-                    state.isSmartShuffleActive = false
-                    Logger.player.debug("Ending Smart Shuffle session — starting new explicit queue")
-                }
-            }
+        let isNewQueue = tracks.map(\.id) != currentQueueIds
+        if isNewQueue {
+            autoExtendFetchTask?.cancel()
+            autoExtendFetchTask = nil
         }
 
         guard let serverId = await MainActor.run(body: { serverService.state.activeServer?.id }) else {
@@ -182,6 +187,30 @@ actor PlayerService: PlayerServiceProtocol {
             throw MinidiscError.serverNotConfigured
         }
 
+        let previousPlaybackState = await MainActor.run { state.playbackState }
+        await MainActor.run { state.playbackState = .loading }
+
+        let song = tracks[startIndex]
+        let source: MediaSource
+        do {
+            source = try await mediaResolver.resolve(songId: song.id, serverId: serverId)
+        } catch let e as MinidiscError {
+            guard generation == playbackGeneration else { return }
+            await MainActor.run { state.playbackState = previousPlaybackState }
+            throw e
+        } catch {
+            guard generation == playbackGeneration else { return }
+            await MainActor.run { state.playbackState = previousPlaybackState }
+            throw error
+        }
+        guard generation == playbackGeneration else {
+            Logger.player.debug("[TRANSITION] discarded stale resolved source for '\(song.id, privacy: .public)'")
+            return
+        }
+
+        if isNewQueue {
+            originalQueueOrder = nil
+        }
         await MainActor.run {
             if state.currentRadio != nil {
                 Logger.player.debug("Ending live stream session — switching to queue playback")
@@ -190,20 +219,15 @@ actor PlayerService: PlayerServiceProtocol {
             state.currentIndex = startIndex
             state.currentRadio = nil
             state.playbackState = .loading
+            if isNewQueue {
+                state.isShuffled = false
+                state.originalQueueEndIndex = nil
+                if state.isSmartShuffleActive {
+                    state.isSmartShuffleActive = false
+                    Logger.player.debug("Ending Smart Shuffle session — starting new explicit queue")
+                }
+            }
         }
-
-        let song = tracks[startIndex]
-        let source: MediaSource
-        do {
-            source = try await mediaResolver.resolve(songId: song.id, serverId: serverId)
-        } catch let e as MinidiscError {
-            await MainActor.run { state.playbackState = .error(e) }
-            throw e
-        } catch {
-            await MainActor.run { state.playbackState = .idle }
-            throw error
-        }
-
         await startPlayback(song: song, source: source, serverId: serverId)
     }
 
@@ -219,9 +243,12 @@ actor PlayerService: PlayerServiceProtocol {
         cancelPendingPrefetch()
 
         let config = await MainActor.run { replayGainSettings.config }
-        engine.applyReplayGain(dB: ReplayGainService.gainDB(track: song, config: config))
+        let replayGainDB = ReplayGainService.gainDB(track: song, config: config)
+        engine.applyReplayGain(dB: replayGainDB)
+        logReplayGain(track: song, config: config, appliedDB: replayGainDB, context: "start")
 
         let songId = song.id
+        durationMismatchLoggedTrackID = nil
         Task { [libraryService] in
             await libraryService.scrobble(songId: songId, submission: false)
         }
@@ -263,7 +290,6 @@ actor PlayerService: PlayerServiceProtocol {
                         return
                     }
                     do {
-                        // TODO(crossfade-followup): cacheSession 30s resource timeout caps large-file caching on slow links
                         try await self?.downloadAndCache(
                             songId: songId,
                             serverId: serverId,
@@ -283,6 +309,7 @@ actor PlayerService: PlayerServiceProtocol {
         Logger.player.info("[TRANSITION] advancing to '\(song.title, privacy: .public)' (id=\(song.id, privacy: .public)) — starting playback")
 
         stopProgressTimer()
+        stopPositionSaveTimer()
         liveStreamStallTask?.cancel()
         liveStreamStallTask = nil
         currentSource = source
@@ -299,7 +326,7 @@ actor PlayerService: PlayerServiceProtocol {
 
         configureAudioSessionIfNeeded()
 
-        engine.play(url: source.url, headers: source.customHeaders)
+        engine.play(trackID: song.id, url: source.url, headers: source.customHeaders)
 
         let duration = song.duration
         await MainActor.run {
@@ -348,11 +375,13 @@ actor PlayerService: PlayerServiceProtocol {
     // MARK: - Live Stream
 
     func playRadio(_ station: InternetRadioStation) async throws {
-        cancelPendingScrobble()
-        cancelPendingCacheDownload()
+        playbackGeneration &+= 1
+        let generation = playbackGeneration
+        cancelPendingPrefetch()
         let source = try await mediaResolver.resolveRadio(station)
 
         let codecResult = await checkCodecSupport(url: source.url, headers: source.customHeaders)
+        guard generation == playbackGeneration else { return }
         if case .unsupported(let contentType) = codecResult {
             Logger.player.warning("[RADIO-CODEC] rejected stream, content-type=\(contentType, privacy: .public)")
             await MainActor.run {
@@ -365,7 +394,17 @@ actor PlayerService: PlayerServiceProtocol {
             return
         }
 
+        await recordCurrentTrackPlayback(trigger: "radio_started")
+        resetTrackAccumulator(isPlaying: false)
+        cancelPendingScrobble()
+        cancelPendingCacheDownload()
+        cancelPendingPrefetch()
+        autoExtendFetchTask?.cancel()
+        autoExtendFetchTask = nil
+        engine.cancelPreload()
+        engine.applyReplayGain(dB: 0)
         stopProgressTimer()
+        stopPositionSaveTimer()
         liveStreamStallTask?.cancel()
         liveStreamStallTask = nil
         currentSource = source
@@ -391,7 +430,7 @@ actor PlayerService: PlayerServiceProtocol {
             state.duration = 0
         }
 
-        engine.play(url: source.url, headers: source.customHeaders)
+        engine.play(trackID: "radio:\(station.id)", url: source.url, headers: source.customHeaders)
 
         await MainActor.run {
             state.playbackState = .playing
@@ -628,11 +667,41 @@ actor PlayerService: PlayerServiceProtocol {
 
     func replayGainSettingsDidChange() async {
         let (track, config) = await MainActor.run { (state.currentTrack, replayGainSettings.config) }
-        engine.applyReplayGain(dB: track.map { ReplayGainService.gainDB(track: $0, config: config) } ?? 0)
+        let replayGainDB = track.map { ReplayGainService.gainDB(track: $0, config: config) } ?? 0
+        engine.applyReplayGain(dB: replayGainDB)
+        if let track {
+            logReplayGain(track: track, config: config, appliedDB: replayGainDB, context: "settings")
+        }
+    }
+
+    private func logReplayGain(
+        track: DisplayableSong,
+        config: ReplayGainConfig,
+        appliedDB: Float,
+        context: String
+    ) {
+        let selectedGain = config.mode == .track
+            ? track.replayGainTrackGain
+            : track.replayGainAlbumGain
+        let selectedPeak = config.mode == .track
+            ? track.replayGainTrackPeak
+            : track.replayGainAlbumPeak
+        let gainDescription = selectedGain.map { String(format: "%.2f", $0) } ?? "missing"
+        let peakDescription = selectedPeak.map { String(format: "%.4f", $0) } ?? "missing"
+        let fallbackDescription = track.replayGainFallbackGain.map { String(format: "%.2f", $0) } ?? "missing"
+        Logger.player.info(
+            "[REPLAYGAIN] context=\(context, privacy: .public) track='\(track.id, privacy: .public)' enabled=\(config.enabled, privacy: .public) mode=\(config.mode.rawValue, privacy: .public) selectedGain=\(gainDescription, privacy: .public)dB selectedPeak=\(peakDescription, privacy: .public) fallback=\(fallbackDescription, privacy: .public)dB preAmp=\(config.preAmp, format: .fixed(precision: 1))dB applied=\(appliedDB, format: .fixed(precision: 2))dB"
+        )
     }
 
     func crossfadeSettingsDidChange() async {
         crossfadeConfig = await MainActor.run { crossfadeSettings.config }
+        Logger.player.info(
+            "[CROSSFADE] settings duration=\(self.crossfadeConfig.duration, format: .fixed(precision: 1))s keepAlbumTracksBackToBack=\(self.crossfadeConfig.disableForGapless, privacy: .public)"
+        )
+        playbackGeneration &+= 1
+        cancelPendingPrefetch()
+        engine.cancelPreload()
     }
 
     func setAutoExtendEnabled(_ enabled: Bool) async {
@@ -656,6 +725,8 @@ actor PlayerService: PlayerServiceProtocol {
             // State is updated before re-evaluation so the guards inside read fresh values.
             await evaluateAutoExtend()
         } else {
+            autoExtendFetchTask?.cancel()
+            autoExtendFetchTask = nil
             await truncateExtensions()
         }
         Logger.player.info("Auto-extend \(enabled ? "enabled" : "disabled", privacy: .public)")
@@ -682,6 +753,7 @@ actor PlayerService: PlayerServiceProtocol {
 
         Logger.player.info("Auto-extend triggered: \(remaining) tracks remaining, fetching 50 seeded on '\(seedTrackId ?? "none", privacy: .public)'")
 
+        let generation = playbackGeneration
         autoExtendFetchTask = Task { [libraryService, weak self] in
             defer { Task { await self?.clearAutoExtendFetchTask() } }
             do {
@@ -692,8 +764,13 @@ actor PlayerService: PlayerServiceProtocol {
                     Logger.player.debug("Auto-extend fetch returned empty — library exhausted or offline without downloads")
                     return
                 }
+                guard !Task.isCancelled,
+                      await self?.isAutoExtendContextValid(generation: generation) == true else {
+                    Logger.player.debug("Discarded stale auto-extend result")
+                    return
+                }
                 await self?.anchorOriginalQueueBoundaryIfNeeded()
-                await self?.appendToQueue(tracks)
+                await self?.appendAutoExtendedTracks(tracks)
                 Logger.player.info("Auto-extend appended \(tracks.count) tracks to queue")
             } catch {
                 Logger.player.debug("Auto-extend fetch failed: \(error, privacy: .public)")
@@ -703,6 +780,19 @@ actor PlayerService: PlayerServiceProtocol {
 
     private func clearAutoExtendFetchTask() {
         autoExtendFetchTask = nil
+    }
+
+    private func isAutoExtendContextValid(generation: UInt64) async -> Bool {
+        guard generation == playbackGeneration else { return false }
+        return await MainActor.run {
+            state.isAutoExtendEnabled && state.repeatMode == .off && !state.isLiveStream
+        }
+    }
+
+    private func appendAutoExtendedTracks(_ tracks: [DisplayableSong]) async {
+        guard !tracks.isEmpty else { return }
+        await MainActor.run { state.queue.append(contentsOf: tracks) }
+        await saveSession()
     }
 
     /// Records the current queue count as the boundary between user-intentional and
@@ -778,7 +868,7 @@ actor PlayerService: PlayerServiceProtocol {
         configureAudioSessionIfNeeded()
         // Lazily start the accumulator for session-restored tracks that resume for the first time.
         if trackPlayStartDate == nil { trackPlayStartDate = Date() }
-        if currentPlaySegmentStart == nil { currentPlaySegmentStart = Date() }
+        lastCountedEngineProgress = engine.progress
 
         // Resuming after the queue ended (stopped cleanly at the end, repeat off): restart from track 0, NOT
         // the last track — replaying it would hit EOF immediately and re-stop (the mini-loop). A normal mid-track
@@ -799,12 +889,19 @@ actor PlayerService: PlayerServiceProtocol {
             if let info = pendingRestoreInfo, info.pause {
                 pendingRestoreInfo = (seekTime: info.seekTime, pause: false)
             }
+            if let info = pendingRestoreInfo, info.seekTime > 1 {
+                engine.volume = 0
+                isMutedForRestore = true
+            }
             // Re-resolve through MediaResolver — the stored source was resolved at
             // launch and may be hours old; a stale stream URL fails silently. This
             // mirrors the always-re-resolve invariant every other playback start holds.
             let freshSource = await refreshedColdStartSource() ?? source
             currentSource = freshSource
-            engine.play(url: freshSource.url, headers: freshSource.customHeaders)
+            let trackID = await MainActor.run { state.currentTrack?.id ?? "restored" }
+            engine.play(trackID: trackID, url: freshSource.url, headers: freshSource.customHeaders)
+            let restoredDuration = await MainActor.run { state.duration }
+            engine.setTrackDuration(restoredDuration)
         } else {
             engine.resume()
         }
@@ -835,6 +932,8 @@ actor PlayerService: PlayerServiceProtocol {
     // MARK: - Stop
 
     func stop() async {
+        playbackGeneration &+= 1
+        await recordCurrentTrackPlayback(trigger: "stopped")
         cancelPendingScrobble()
         cancelPendingCacheDownload()
         cancelPendingPrefetch()
@@ -848,17 +947,21 @@ actor PlayerService: PlayerServiceProtocol {
         }
         liveStreamStallTask?.cancel()
         liveStreamStallTask = nil
+        autoExtendFetchTask?.cancel()
+        autoExtendFetchTask = nil
         engine.stop()
         sessionActivationRetryTask?.cancel()
         sessionActivationRetryTask = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         accumulatedPlayedSeconds = 0
-        currentPlaySegmentStart = nil
+        lastCountedEngineProgress = nil
         trackPlayStartDate = nil
         engine.applyReplayGain(dB: 0)
         currentSource = nil
         pendingRestoreInfo = nil
         isRestoringSession = false
+        await nowPlayingService?.stop()
+        await sessionService.clear()
         await MainActor.run {
             state.playbackState = .idle
             state.currentTrack = nil
@@ -873,11 +976,31 @@ actor PlayerService: PlayerServiceProtocol {
 
     // MARK: - Seek
 
+    nonisolated static func clampedSeekTarget(
+        requested: TimeInterval,
+        stateDuration: TimeInterval,
+        engineDuration: TimeInterval
+    ) -> TimeInterval? {
+        guard requested.isFinite else { return nil }
+        let knownDuration = max(
+            stateDuration.isFinite ? stateDuration : 0,
+            engineDuration.isFinite ? engineDuration : 0
+        )
+        let nonnegative = max(requested, 0)
+        return knownDuration > 0 ? min(nonnegative, knownDuration) : nonnegative
+    }
+
     func seek(to position: TimeInterval) async {
         // Reject malformed targets (NaN/inf). A scrubber drag against a zero-width track produces NaN, which
         // would corrupt the engine's seek math. The single chokepoint for every
         // seek caller (UI, lyrics, lock screen). A malformed seek is a silent no-op — NOT a jump to zero.
-        guard position.isFinite else {
+        let stateDuration = await MainActor.run { state.duration }
+        let engineDuration = engine.duration
+        guard let target = Self.clampedSeekTarget(
+            requested: position,
+            stateDuration: stateDuration,
+            engineDuration: engineDuration
+        ) else {
             Logger.player.warning("seek ignored — non-finite target")
             return
         }
@@ -885,14 +1008,38 @@ actor PlayerService: PlayerServiceProtocol {
             Logger.player.debug("seek ignored — live stream mode")
             return
         }
+        seekGeneration &+= 1
+        let requestedSeekGeneration = seekGeneration
+        let requestedPlaybackGeneration = playbackGeneration
+        let before = engine.progress
+        let wasSeekable = engine.isSeekable
+        Logger.player.info(
+            "[SEEK] request target=\(target, format: .fixed(precision: 3))s before=\(before, format: .fixed(precision: 3))s stateDuration=\(stateDuration, format: .fixed(precision: 3))s engineDuration=\(engineDuration, format: .fixed(precision: 3))s seekable=\(wasSeekable, privacy: .public)"
+        )
         // Finalize the current segment and start a fresh one so that only
         // audio actually heard after the seek point is counted in played time.
-        if currentPlaySegmentStart != nil {
-            finalizePlaySegment()
-            currentPlaySegmentStart = Date()
+        finalizePlaySegment()
+        let succeeded = await engine.seek(to: target)
+        let landed = engine.progress
+        guard requestedSeekGeneration == seekGeneration,
+              requestedPlaybackGeneration == playbackGeneration else {
+            Logger.player.debug("[SEEK] discarded stale completion for target=\(target, format: .fixed(precision: 3))s")
+            return
         }
-        engine.seek(to: position)
-        await MainActor.run { state.position = position }
+        guard succeeded else {
+            Logger.player.warning(
+                "[SEEK] failed target=\(target, format: .fixed(precision: 3))s landed=\(landed, format: .fixed(precision: 3))s"
+            )
+            await MainActor.run { state.position = landed.isFinite ? max(landed, 0) : before }
+            await pushPositionSnapshot()
+            return
+        }
+        let confirmedPosition = landed.isFinite ? max(landed, 0) : target
+        lastCountedEngineProgress = confirmedPosition
+        await MainActor.run { state.position = confirmedPosition }
+        Logger.player.info(
+            "[SEEK] completed target=\(target, format: .fixed(precision: 3))s landed=\(confirmedPosition, format: .fixed(precision: 3))s"
+        )
         await pushPositionSnapshot()
     }
 
@@ -945,6 +1092,9 @@ actor PlayerService: PlayerServiceProtocol {
             Logger.player.debug("setRepeatMode ignored — live stream mode")
             return
         }
+        if mode != .off, await MainActor.run(body: { state.isAutoExtendEnabled }) {
+            await setAutoExtendEnabled(false)
+        }
         let previousMode = await MainActor.run { state.repeatMode }
         await MainActor.run { state.repeatMode = mode }
         // Activating any loop mode while in the original zone truncates the auto-extended tail.
@@ -968,6 +1118,9 @@ actor PlayerService: PlayerServiceProtocol {
             await restoreOriginalQueueOrder()
             await MainActor.run { state.isShuffled = false }
         } else {
+            if await MainActor.run(body: { state.isAutoExtendEnabled }) {
+                await setAutoExtendEnabled(false)
+            }
             await shuffleUpNext()
             await MainActor.run { state.isShuffled = true }
         }
@@ -1000,7 +1153,14 @@ actor PlayerService: PlayerServiceProtocol {
             Logger.player.debug("appendToQueue ignored — live stream mode")
             return
         }
-        await MainActor.run { state.queue.append(contentsOf: tracks) }
+        await MainActor.run {
+            state.queue.append(contentsOf: tracks)
+            // Once the user edits an already extended tail, a single integer can no longer distinguish
+            // generated and intentional entries safely. Preserve everything rather than deleting user work.
+            if state.originalQueueEndIndex != nil {
+                state.originalQueueEndIndex = state.queue.count
+            }
+        }
         await saveSession()
     }
 
@@ -1018,7 +1178,12 @@ actor PlayerService: PlayerServiceProtocol {
             }
         } else {
             let insertAt = min(currentIndex + 1, queue.count)
-            await MainActor.run { state.queue.insert(contentsOf: songs, at: insertAt) }
+            await MainActor.run {
+                state.queue.insert(contentsOf: songs, at: insertAt)
+                if let boundary = state.originalQueueEndIndex, insertAt <= boundary {
+                    state.originalQueueEndIndex = boundary + songs.count
+                }
+            }
             Logger.player.info("Inserted \(songs.count) song(s) at queue position \(insertAt)")
             await saveSession()
             if !songs.isEmpty {
@@ -1074,6 +1239,9 @@ actor PlayerService: PlayerServiceProtocol {
         await MainActor.run {
             state.queue.remove(at: index)
             if index < state.currentIndex { state.currentIndex -= 1 }
+            if let boundary = state.originalQueueEndIndex, index < boundary {
+                state.originalQueueEndIndex = max(0, boundary - 1)
+            }
         }
         if isShuffled { originalQueueOrder = nil }
         let newIdx = await MainActor.run { state.currentIndex }
@@ -1105,6 +1273,9 @@ actor PlayerService: PlayerServiceProtocol {
             } else if fromIndex > currentIndex && toIndex <= currentIndex {
                 state.currentIndex += 1
             }
+            // Moving across the boundary destroys the contiguous-tail invariant. Keeping the queue is
+            // safer than allowing a later toggle to truncate an intentional track.
+            state.originalQueueEndIndex = nil
         }
         if isShuffled { originalQueueOrder = nil }
         let newIdx = await MainActor.run { state.currentIndex }
@@ -1117,6 +1288,7 @@ actor PlayerService: PlayerServiceProtocol {
     /// Lightweight position-only flush — called from scenePhase .inactive on iOS
     /// to protect the current position against a fast process kill.
     func saveCurrentPosition() async {
+        guard await MainActor.run(body: { !state.isLiveStream && state.currentTrack != nil }) else { return }
         let pos = engine.progress
         guard pos > 0 else { return }
         await sessionService.savePosition(pos)
@@ -1139,13 +1311,18 @@ actor PlayerService: PlayerServiceProtocol {
         guard let data = await sessionService.loadRestoredSession() else { return }
 
         let track = data.queue[data.currentIndex]
+        let restoredDuration = max(data.currentTrackDuration, track.duration)
+        let nonnegativePosition = max(data.currentPosition, 0)
+        let restoredPosition = restoredDuration > 0
+            ? min(nonnegativePosition, restoredDuration)
+            : nonnegativePosition
         await MainActor.run {
             state.queue = data.queue
             state.currentIndex = data.currentIndex
             state.currentTrack = track
             state.currentRadio = nil
-            state.position = data.currentPosition
-            state.duration = data.currentTrackDuration
+            state.position = restoredPosition
+            state.duration = restoredDuration
             state.repeatMode = data.repeatMode
             state.playbackState = .paused
         }
@@ -1162,8 +1339,8 @@ actor PlayerService: PlayerServiceProtocol {
             Logger.player.info("[RESTORE] session was parked at end of queue — resume will restart from track 0")
         }
 
-        await prepareCurrentTrackForRestoration(track: track, position: data.currentPosition)
-        Logger.player.info("Session restored: \(data.queue.count) tracks, index \(data.currentIndex), pos=\(data.currentPosition, format: .fixed(precision: 1))s")
+        await prepareCurrentTrackForRestoration(track: track, position: restoredPosition)
+        Logger.player.info("Session restored: \(data.queue.count) tracks, index \(data.currentIndex), pos=\(restoredPosition, format: .fixed(precision: 1))s")
     }
 
     private func prepareCurrentTrackForRestoration(track: DisplayableSong, position: TimeInterval) async {
@@ -1289,16 +1466,37 @@ actor PlayerService: PlayerServiceProtocol {
                 guard !Task.isCancelled, let self else { break }
                 let progress = self.engine.progress
                 let audioDuration = self.engine.duration
-                await MainActor.run {
+                let durationSnapshot = await MainActor.run {
                     // Refine the duration BEFORE clamping the position against it. The engine's own
                     // value lands as soon as the stream reports its length; clamping first pinned the
                     // position for a tick against a metadata length already known to be wrong.
-                    if audioDuration > 0, abs(audioDuration - self.state.duration) > 0.5 {
+                    let shouldRefineEngineDuration = audioDuration > self.state.duration + 0.5
+                    if shouldRefineEngineDuration {
                         self.state.duration = audioDuration
                     }
-                    let cur = self.state.duration
-                    self.state.position = cur > 0 ? min(progress, cur) : progress
+                    // Never turn the playhead into a fake duration. If an estimate is too short,
+                    // growing duration to `progress` leaves the player permanently at -0:00 and makes
+                    // a seek-to-end target the current position. Keep both facts independently visible.
+                    self.state.position = max(progress, 0)
+                    return (
+                        trackID: self.state.currentTrack?.id,
+                        duration: self.state.duration,
+                        shouldRefineEngineDuration: shouldRefineEngineDuration
+                    )
                 }
+                if durationSnapshot.shouldRefineEngineDuration {
+                    self.engine.setTrackDuration(audioDuration)
+                }
+                if let trackID = durationSnapshot.trackID,
+                   progress > durationSnapshot.duration + 0.5 {
+                    await self.logDurationMismatchIfNeeded(
+                        trackID: trackID,
+                        progress: progress,
+                        stateDuration: durationSnapshot.duration,
+                        engineDuration: audioDuration
+                    )
+                }
+                await self.accumulatePlaybackProgress(progress)
                 await self.periodicNowPlayingPush(elapsed: progress)
                 await self.checkScrobbleThreshold()
                 await self.checkPrefetchThreshold()
@@ -1309,6 +1507,19 @@ actor PlayerService: PlayerServiceProtocol {
     private func stopProgressTimer() {
         progressTask?.cancel()
         progressTask = nil
+    }
+
+    private func logDurationMismatchIfNeeded(
+        trackID: String,
+        progress: Double,
+        stateDuration: Double,
+        engineDuration: Double
+    ) {
+        guard durationMismatchLoggedTrackID != trackID else { return }
+        durationMismatchLoggedTrackID = trackID
+        Logger.player.warning(
+            "[DURATION] playhead exceeded advertised duration — track=\(trackID, privacy: .public) position=\(progress, format: .fixed(precision: 3))s stateDuration=\(stateDuration, format: .fixed(precision: 3))s engineDuration=\(engineDuration, format: .fixed(precision: 3))s"
+        )
     }
 
     // MARK: - Scrobble
@@ -1330,9 +1541,7 @@ actor PlayerService: PlayerServiceProtocol {
     private func fireScrobbleIfThresholdMet(song: DisplayableSong) {
         let duration = song.duration
         let songId = song.id
-        let segmentContrib = currentPlaySegmentStart.map { Date().timeIntervalSince($0) } ?? 0
-        let accumulated = accumulatedPlayedSeconds + segmentContrib
-        guard detector.check(duration: duration, accumulated: accumulated) else { return }
+        guard detector.check(duration: duration, accumulated: accumulatedPlayedSeconds) else { return }
         let startDate = trackPlayStartDate ?? Date()
         Task { [libraryService] in
             await libraryService.scrobble(songId: songId, submission: true)
@@ -1356,13 +1565,21 @@ actor PlayerService: PlayerServiceProtocol {
     }
 
     nonisolated static func shouldSchedulePrefetch(crossfadeDuration: Double, remaining: Double) -> Bool {
-        guard crossfadeDuration > 0 else { return false }
-        return remaining <= crossfadeDuration + 15.0
+        remaining <= max(0, crossfadeDuration) + 15.0
     }
 
     nonisolated static func shouldProceedWithPrefetch(isExpensive: Bool, allowCellular: Bool) -> Bool {
         if isExpensive && !allowCellular { return false }
         return true
+    }
+
+    nonisolated static func effectiveCrossfadeOverlap(
+        duration: Double,
+        disableForGapless: Bool,
+        isGaplessPair: Bool
+    ) -> Double {
+        guard duration > 0 else { return 0 }
+        return disableForGapless && isGaplessPair ? 0 : duration
     }
 
     private func checkPrefetchThreshold() async {
@@ -1387,48 +1604,70 @@ actor PlayerService: PlayerServiceProtocol {
 
         prefetchScheduled = true
         Logger.player.debug("[PREFETCH] scheduling prefetch for '\(resolved.nextSong.title, privacy: .public)' (remaining=\(String(format: "%.1f", remaining))s)")
-        await prefetchNextTrack(nextSong: resolved.nextSong, serverId: resolved.serverId)
+        let generation = playbackGeneration
+        await prefetchNextTrack(
+            nextSong: resolved.nextSong,
+            serverId: resolved.serverId,
+            generation: generation
+        )
     }
 
-    private func prefetchNextTrack(nextSong: DisplayableSong, serverId: UUID) async {
+    private func prefetchNextTrack(
+        nextSong: DisplayableSong,
+        serverId: UUID,
+        generation: UInt64
+    ) async {
         let songId = nextSong.id
+        guard await isPrefetchContextValid(songId: songId, serverId: serverId, generation: generation) else { return }
 
         if await audioStreamCache.cachedURL(forSongId: songId, serverId: serverId) != nil {
             Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' already cached — skip")
-            await preloadNextForGapless(songId: songId, serverId: serverId)
+            await preloadNextForGapless(nextSong: nextSong, serverId: serverId, generation: generation)
             return
         }
         if await downloadService.isDownloaded(songId: songId, serverId: serverId) {
             Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' already downloaded — skip")
-            await preloadNextForGapless(songId: songId, serverId: serverId)
+            await preloadNextForGapless(nextSong: nextSong, serverId: serverId, generation: generation)
             return
         }
 
-        let (isExpensive, allowCellular) = await MainActor.run {
-            (serverService.state.isExpensive, cacheSettings.cacheOverCellular)
+        let (isExpensive, allowCellular, cacheFormat) = await MainActor.run {
+            (serverService.state.isExpensive, cacheSettings.cacheOverCellular, cacheSettings.cacheFormat)
         }
         guard PlayerService.shouldProceedWithPrefetch(isExpensive: isExpensive, allowCellular: allowCellular) else {
             Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' skipped — cellular guard")
             // No cache write will happen, so the track will stream at advance — preload that stream.
-            await preloadNextForGapless(songId: songId, serverId: serverId)
+            await preloadNextForGapless(nextSong: nextSong, serverId: serverId, generation: generation)
             return
         }
 
-        guard let streamURL = (try? await serverService.makeSwiftSonicClient())?.streamURL(
-            id: songId,
-            maxBitRate: 0,
-            format: nil
-        ) else {
-            Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' no stream URL — skip")
-            return
-        }
-
+        let streamURL: URL
         let customHeaders: [String: String]
-        do {
-            customHeaders = try await serverService.activeCredentials().customHeaders
-        } catch {
-            Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' credentials unavailable — skip")
-            return
+        if cacheFormat == .matchStream {
+            guard let source = try? await mediaResolver.resolve(songId: songId, serverId: serverId),
+                  case .stream(let resolvedURL, let resolvedHeaders) = source else {
+                Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' no stream source — skip")
+                return
+            }
+            streamURL = resolvedURL
+            customHeaders = resolvedHeaders
+        } else {
+            guard let resolvedURL = (try? await serverService.makeSwiftSonicClient())?.streamURL(
+                id: songId,
+                maxBitRate: cacheFormat.subsonicMaxBitRate,
+                format: cacheFormat.subsonicFormat,
+                estimateContentLength: true
+            ) else {
+                Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' no cache-format URL — skip")
+                return
+            }
+            streamURL = resolvedURL
+            do {
+                customHeaders = try await serverService.activeCredentials().customHeaders
+            } catch {
+                Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' credentials unavailable — skip")
+                return
+            }
         }
 
         prefetchTask = Task { [prefetchSession, weak self] in
@@ -1445,32 +1684,100 @@ actor PlayerService: PlayerServiceProtocol {
             } catch {
                 Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' prefetch failed: \(error, privacy: .public)")
             }
-            // Preload AFTER the cache write settles, so the engine warms the same source (cached file
-            // on success, live stream on failure) that resolve will return at the actual transition.
-            await self?.preloadNextForGapless(songId: songId, serverId: serverId)
         }
+        // Warm the standby deck immediately while the complete cache download runs in parallel.
+        // Waiting for a large FLAC to finish downloading can consume the entire 15 s lead window,
+        // leaving no ready deck when the configured crossfade should begin.
+        await preloadNextForGapless(
+            nextSong: nextSong,
+            serverId: serverId,
+            generation: generation
+        )
     }
 
     /// Pre-buffers the next track in the engine for a seamless hand-off. The crossfade itself is
     /// delegated here (duration > 0 = engine-blended overlap; gapless pairs stay at 0 when the user
     /// asked crossfade to stand aside for them). Repeat-one always skips: the queue's next is not
     /// what actually plays next.
-    private func preloadNextForGapless(songId: String, serverId: UUID) async {
+    private func preloadNextForGapless(
+        nextSong: DisplayableSong,
+        serverId: UUID,
+        generation: UInt64
+    ) async {
+        let songId = nextSong.id
+        guard await isPrefetchContextValid(songId: songId, serverId: serverId, generation: generation) else { return }
         let repeatMode = await MainActor.run { state.repeatMode }
         guard repeatMode != .one else { return }
 
-        var overlap: Double = 0
-        if crossfadeConfig.duration > 0 {
-            var standsAsideForPair = false
-            if crossfadeConfig.disableForGapless {
-                standsAsideForPair = await isNextGaplessPair(songId: songId)
-            }
-            overlap = standsAsideForPair ? 0 : crossfadeConfig.duration
-        }
+        let isPair = await isNextGaplessPair(songId: songId)
+        let overlap = Self.effectiveCrossfadeOverlap(
+            duration: crossfadeConfig.duration,
+            disableForGapless: crossfadeConfig.disableForGapless,
+            isGaplessPair: isPair
+        )
 
-        guard let source = try? await mediaResolver.resolve(songId: songId, serverId: serverId) else { return }
-        engine.preloadNext(url: source.url, headers: source.customHeaders, crossfadeDuration: overlap)
-        Logger.player.debug("[GAPLESS] preloaded next '\(songId, privacy: .public)' (overlap=\(overlap, format: .fixed(precision: 1))s)")
+        guard let source = try? await mediaResolver.resolve(songId: songId, serverId: serverId) else {
+            Logger.player.warning("[CROSSFADE] unable to resolve next track '\(songId, privacy: .public)' for preload")
+            return
+        }
+        let trim = await gaplessTrim(nextSongId: songId, serverId: serverId, isPair: isPair, overlap: overlap)
+        guard await isPrefetchContextValid(songId: songId, serverId: serverId, generation: generation) else {
+            Logger.player.debug("[PREFETCH] discarded stale preload for '\(songId, privacy: .public)'")
+            return
+        }
+        let replayGainConfig = await MainActor.run { replayGainSettings.config }
+        let replayGainDB = ReplayGainService.gainDB(track: nextSong, config: replayGainConfig)
+        engine.setTrackEndTrim(trim.leadOut)
+        engine.preloadNext(
+            trackID: songId,
+            url: source.url,
+            headers: source.customHeaders,
+            crossfadeDuration: overlap,
+            leadInTrim: trim.leadIn,
+            replayGainDB: replayGainDB
+        )
+        Logger.player.info(
+            "[CROSSFADE] preloaded next='\(songId, privacy: .public)' configured=\(self.crossfadeConfig.duration, format: .fixed(precision: 1))s gaplessPair=\(isPair, privacy: .public) overlap=\(overlap, format: .fixed(precision: 1))s replayGain=\(replayGainDB, format: .fixed(precision: 2))dB trimIn=\(trim.leadIn, format: .fixed(precision: 3))s trimOut=\(trim.leadOut, format: .fixed(precision: 3))s"
+        )
+    }
+
+    private func isPrefetchContextValid(
+        songId: String,
+        serverId: UUID,
+        generation: UInt64
+    ) async -> Bool {
+        guard generation == playbackGeneration, !Task.isCancelled else { return false }
+        return await MainActor.run {
+            let nextIndex = state.currentIndex + 1
+            return serverService.state.activeServer?.id == serverId
+                && state.queue.indices.contains(nextIndex)
+                && state.queue[nextIndex].id == songId
+                && state.currentTrack != nil
+        }
+    }
+
+    /// Silence to cut at the seam between two consecutive album tracks.
+    ///
+    /// Only for a real butt-splice: a crossfade needs the outgoing tail to fade into, and two tracks
+    /// that are not album neighbours were never meant to run together. Downloaded files only —
+    /// measuring means decoding, and doing that over the network for a few milliseconds of silence
+    /// is not a trade worth making.
+    private func gaplessTrim(
+        nextSongId: String,
+        serverId: UUID,
+        isPair: Bool,
+        overlap: Double
+    ) async -> GaplessTrim {
+        guard isPair, overlap == 0,
+              let nextURL = await downloadService.downloadedURL(forSongId: nextSongId, serverId: serverId),
+              let currentId = await MainActor.run(body: { state.currentTrack?.id }),
+              let currentURL = await downloadService.downloadedURL(forSongId: currentId, serverId: serverId)
+        else { return .none }
+
+        async let incoming = GaplessTrimAnalyzer.measure(url: nextURL)
+        async let outgoing = GaplessTrimAnalyzer.measure(url: currentURL)
+        let (headTrim, tailTrim) = await (incoming, outgoing)
+        return GaplessTrim(leadIn: headTrim.leadIn, leadOut: tailTrim.leadOut)
     }
 
     /// True when the current track and the queued `songId` form a gapless pair (same album,
@@ -1520,12 +1827,9 @@ actor PlayerService: PlayerServiceProtocol {
 
     // MARK: - Play-time accumulator
 
-    /// Closes the current play segment and adds its duration to the accumulator.
-    /// Safe to call when paused (currentPlaySegmentStart == nil) — no-op in that case.
+    /// Breaks playhead-delta continuity. The next playing tick establishes a new baseline.
     private func finalizePlaySegment() {
-        guard let start = currentPlaySegmentStart else { return }
-        accumulatedPlayedSeconds += Date().timeIntervalSince(start)
-        currentPlaySegmentStart = nil
+        lastCountedEngineProgress = nil
     }
 
     /// Resets all per-track accumulator state for the next track.
@@ -1533,8 +1837,32 @@ actor PlayerService: PlayerServiceProtocol {
     private func resetTrackAccumulator(isPlaying: Bool) {
         accumulatedPlayedSeconds = 0
         trackPlayStartDate = Date()
-        currentPlaySegmentStart = isPlaying ? Date() : nil
+        // startPlayback calls this before the new item is installed, so using the engine's current
+        // position here would accidentally seed the new track with the outgoing track's clock.
+        lastCountedEngineProgress = nil
         detector.reset()
+    }
+
+    private func accumulatePlaybackProgress(_ progress: TimeInterval) async {
+        guard progress.isFinite, progress >= 0 else { return }
+        let shouldCount = await MainActor.run {
+            state.playbackState == .playing && !state.isLiveStream
+        }
+        guard shouldCount else {
+            lastCountedEngineProgress = nil
+            return
+        }
+        guard let previous = lastCountedEngineProgress else {
+            lastCountedEngineProgress = progress
+            return
+        }
+        let delta = progress - previous
+        // A normal 500 ms tick is ~0.5 s. Ignore discontinuities caused by seek, deck promotion,
+        // source restart or a long suspended task instead of counting unheard time.
+        if delta >= 0, delta <= 2.0 {
+            accumulatedPlayedSeconds += delta
+        }
+        lastCountedEngineProgress = progress
     }
 
     // MARK: - Stats recording
@@ -1543,11 +1871,8 @@ actor PlayerService: PlayerServiceProtocol {
         guard let song = await MainActor.run(body: { state.currentTrack }),
               let startDate = trackPlayStartDate else { return }
         guard let serverId = await MainActor.run(body: { serverService.state.activeServer?.id }) else { return }
-
-        // Tally the in-progress segment without permanently mutating accumulatedPlayedSeconds
-        // (the caller resets the accumulator immediately after this call).
-        let segmentContrib = currentPlaySegmentStart.map { Date().timeIntervalSince($0) } ?? 0
-        let durationListened = accumulatedPlayedSeconds + segmentContrib
+        await accumulatePlaybackProgress(engine.progress)
+        let durationListened = accumulatedPlayedSeconds
         guard durationListened >= 30 else {
             Logger.player.debug("[STATS] Skip — durationListened=\(durationListened, format: .fixed(precision: 1))s < 30s for '\(song.title, privacy: .public)'")
             return
@@ -1598,7 +1923,8 @@ actor PlayerService: PlayerServiceProtocol {
             wasTrackCompletedNaturally = false
             resetTrackAccumulator(isPlaying: true)
             if let source = currentSource {
-                engine.play(url: source.url, headers: source.customHeaders)
+                let trackID = await MainActor.run { state.currentTrack?.id ?? "repeat" }
+                engine.play(trackID: trackID, url: source.url, headers: source.customHeaders)
             }
         } else {
             // Signal natural completion — recordCurrentTrackPlayback() reads this in startPlayback().
@@ -1620,7 +1946,7 @@ actor PlayerService: PlayerServiceProtocol {
         await recordCurrentTrackPlayback(trigger: "end_of_queue")
         wasTrackCompletedNaturally = false
         accumulatedPlayedSeconds = 0
-        currentPlaySegmentStart = nil
+        lastCountedEngineProgress = nil
         trackPlayStartDate = nil
 
         stopProgressTimer()
@@ -1650,14 +1976,25 @@ actor PlayerService: PlayerServiceProtocol {
     func handleEngineState(_ newState: AudioEngineState) async {
         switch newState {
         case .playing:
-            guard let info = pendingRestoreInfo else { break }
+            guard let info = pendingRestoreInfo else {
+                if lastCountedEngineProgress == nil { lastCountedEngineProgress = engine.progress }
+                break
+            }
             pendingRestoreInfo = nil
-            // Seek while engine is running — processSource() is a no-op when paused.
-            // Skip if stream is not seekable (Ogg Vorbis, live radio) or position is at start.
-            if engine.isSeekable && info.seekTime > 1 {
-                engine.seek(to: info.seekTime)
+            // Seek while the engine is running. AVPlayer may still accept the request while its
+            // seekable ranges are being populated, so isSeekable is diagnostic rather than a gate.
+            if info.seekTime > 1 {
+                let succeeded = await engine.seek(to: info.seekTime)
+                Logger.player.info(
+                    "[RESTORE] seek target=\(info.seekTime, format: .fixed(precision: 3))s completed=\(succeeded, privacy: .public) landed=\(self.engine.progress, format: .fixed(precision: 3))s"
+                )
+                lastCountedEngineProgress = engine.progress
             }
             guard info.pause else {
+                if isMutedForRestore {
+                    engine.volume = restoredVolume
+                    isMutedForRestore = false
+                }
                 isRestoringSession = false
                 break
             }
@@ -1676,7 +2013,15 @@ actor PlayerService: PlayerServiceProtocol {
                 self.isRestoringSession = false
                 Logger.player.info("[RESTORE] seek landed — paused at \(self.engine.progress, format: .fixed(precision: 1))s")
             }
+        case .buffering, .paused, .stopped:
+            finalizePlaySegment()
         case .error:
+            finalizePlaySegment()
+            stopProgressTimer()
+            stopPositionSaveTimer()
+            cancelPendingCacheDownload()
+            cancelPendingPrefetch()
+            engine.stop()
             Logger.player.error("[PLAYER] engine entered error state")
             let isLive = await MainActor.run { state.isLiveStream }
             if isLive {
@@ -1692,6 +2037,12 @@ actor PlayerService: PlayerServiceProtocol {
 
     /// Called by the engine bridge on unexpected errors.
     func handleEngineError(_ message: String) async {
+        finalizePlaySegment()
+        stopProgressTimer()
+        stopPositionSaveTimer()
+        cancelPendingCacheDownload()
+        cancelPendingPrefetch()
+        engine.stop()
         Logger.player.error("[PLAYER] engine unexpected error: \(message, privacy: .public)")
         let isLive = await MainActor.run { state.isLiveStream }
         if isLive {
@@ -1725,7 +2076,7 @@ actor PlayerService: PlayerServiceProtocol {
     // MARK: - Cache download helpers
 
     /// Downloads the track from its stream URL and stores it in AudioStreamCache.
-    /// Uses URLSession.download for disk-streaming efficiency (temp file → read → store).
+    /// Uses URLSession.download for disk-streaming efficiency (temporary file → cache file).
     private func downloadAndCache(
         songId: String,
         serverId: UUID,
@@ -1751,18 +2102,18 @@ actor PlayerService: PlayerServiceProtocol {
         // truncated body) — a broken cache file plays as silence through FileAudioSource.
         try AudioResponseValidator.validate(fileAt: tempURL, response: response, songId: songId, logger: Logger.cache)
 
-        let data = try Data(contentsOf: tempURL)
         let ext = streamURL.pathExtension
         let mimeType = response.mimeType ?? (ext.isEmpty ? "audio/mpeg" : "audio/\(ext)")
+        let fileSize = (try? FileManager.default.attributesOfItem(atPath: tempURL.path)[.size] as? Int64) ?? 0
 
         _ = try await audioStreamCache.store(
-            data: data,
+            fileAt: tempURL,
             forSongId: songId,
             serverId: serverId,
             mimeType: mimeType
         )
 
-        Logger.player.info("Cached '\(songId, privacy: .public)' from stream (\(data.count) bytes, \(mimeType, privacy: .public))")
+        Logger.player.info("Cached '\(songId, privacy: .public)' from stream (\(fileSize) bytes, \(mimeType, privacy: .public))")
     }
 
     // MARK: - NowPlaying position push
@@ -1783,13 +2134,12 @@ actor PlayerService: PlayerServiceProtocol {
             resolvedRate = 0.0
         }
 
-        let clampedPosition = duration > 0 ? min(position, duration) : position
         let snapshot = NowPlayingSnapshot(
             title: track.title,
             artist: track.artist,
             album: track.albumName,
             duration: duration,
-            position: clampedPosition,
+            position: max(position, 0),
             playbackRate: resolvedRate,
             artworkURL: nil,
             artworkHeaders: [:],
@@ -1810,11 +2160,7 @@ actor PlayerService: PlayerServiceProtocol {
         }
         guard case .playing = playbackState, !isLiveStream, hasTrack else { return }
         guard elapsed >= 0, duration > 0 else { return }
-        // The decoder clock runs a fraction past `duration` at the end of most tracks — the server
-        // reports whole seconds, the file is not whole seconds long. Dropping those pushes (the old
-        // `elapsed <= duration` guard) froze the lock screen and Dynamic Island at the last accepted
-        // position for the rest of the track, so clamp instead.
-        await nowPlayingService?.pushPosition(elapsed: min(elapsed, duration), rate: 1.0, duration: duration)
+        await nowPlayingService?.pushPosition(elapsed: elapsed, rate: 1.0, duration: duration)
     }
 
     // nonisolated: safe — only called during app termination
@@ -1911,6 +2257,7 @@ extension PlayerService {
                 .flatMap(AVAudioSession.InterruptionReason.init(rawValue:)) == .routeDisconnected
             let isPlaying = await MainActor.run { state.playbackState == .playing }
             guard isPlaying else { return }
+            finalizePlaySegment()
             engine.pause()
             await MainActor.run { state.playbackState = .paused }
             stopProgressTimer()

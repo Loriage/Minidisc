@@ -851,7 +851,7 @@ private struct ScrubberView: View {
 
     // Prefer AVPlayer-reported duration; fall back to song metadata to avoid slider clamping to 0..1
     private var effectiveDuration: TimeInterval {
-        playerState.duration > 0 ? playerState.duration : (playerState.currentTrack?.duration ?? 1)
+        playerState.duration > 0 ? playerState.duration : (playerState.currentTrack?.duration ?? 0)
     }
 
     // ProgressSlider writes dragged values here; holds the seeked position until AVPlayer confirms.
@@ -962,7 +962,7 @@ struct ProgressSlider: View {
                     .onChanged { gesture in
                         // Track not laid out yet (zero width) -> dividing by it yields NaN that would flow into
                         // seek (and trap in the engine). Skip the drag until the track has a real width.
-                        guard trackW > 0 else { return }
+                        guard trackW > 0, total > 0, total.isFinite else { return }
                         if !isDragging {
                             isDragging = true
                             onEditingChanged(true)
@@ -974,6 +974,7 @@ struct ProgressSlider: View {
                         value = dragValue ?? value
                     }
                     .onEnded { _ in
+                        guard total > 0, total.isFinite else { return }
                         isDragging = false
                         dragValue = nil
                         onEditingChanged(false)

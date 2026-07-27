@@ -131,6 +131,10 @@ struct MinidiscApp: App {
                 Logger.session.info("App inactive — position flushed (iOS kill guard)")
             }
             guard newPhase == .background, let c = container else { return }
+            guard c.playerState.currentRadio == nil, c.playerState.currentTrack != nil else {
+                Logger.session.info("App backgrounded during radio — preserving the last music session")
+                return
+            }
             let snapshot = SessionPayload(
                 currentIndex: c.playerState.currentIndex,
                 currentPosition: c.playerState.position,

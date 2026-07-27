@@ -36,11 +36,13 @@ nonisolated protocol AudioEngineDelegate: AnyObject, Sendable {
 nonisolated protocol AudioEngine: AnyObject, Sendable {
     var delegate: AudioEngineDelegate? { get set }
 
-    func play(url: URL, headers: [String: String])
+    func play(trackID: String, url: URL, headers: [String: String])
     func pause()
     func resume()
     func stop()
-    func seek(to seconds: Double)
+    /// Repositions the active deck and returns only after AVPlayer has completed (or rejected) the seek.
+    /// `false` also covers a deck transition that made the request stale while it was in flight.
+    func seek(to seconds: Double) async -> Bool
 
     var volume: Float { get set }
     var progress: Double { get }
@@ -54,9 +56,25 @@ nonisolated protocol AudioEngine: AnyObject, Sendable {
 
     /// Hints that `url` will very likely be the next `play` target, so the engine can pre-buffer it
     /// for a seamless hand-off. `crossfadeDuration` == 0 asks for a gapless butt-splice; > 0 asks the
-    /// engine to blend the two tracks over that window. A later `play` with the same URL adopts the
-    /// pre-buffered source; any other URL discards it.
-    func preloadNext(url: URL, headers: [String: String], crossfadeDuration: Double)
+    /// engine to blend the two tracks over that window. A later `play` with the same stable track ID
+    /// adopts the pre-buffered source; any other ID discards it.
+    /// `leadInTrim` skips that many seconds of silence at the start of the preloaded track, so a
+    /// gapless pair butts together instead of playing the encoder's padding.
+    func preloadNext(
+        trackID: String,
+        url: URL,
+        headers: [String: String],
+        crossfadeDuration: Double,
+        leadInTrim: Double,
+        replayGainDB: Float
+    )
+
+    /// Drops a pending standby deck without touching the active track.
+    func cancelPreload()
+
+    /// Ends the CURRENT track `seconds` early, cutting its trailing silence. 0 restores the full
+    /// length. Only meaningful ahead of a gapless hand-off; a crossfade wants the real tail.
+    func setTrackEndTrim(_ seconds: Double)
 
     /// The authoritative length of the current track from library metadata, for engines whose own
     /// duration estimate drifts (transcoded/VBR streams) and would mistime transitions.

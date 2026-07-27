@@ -8,6 +8,7 @@ import AVFoundation
 import Foundation
 import MediaToolbox
 import OSLog
+import Synchronization
 
 /// The system engine: two AVFoundation `AVPlayer` decks with role swapping, so decoding runs on
 /// Apple's hardware path (bit-perfect lossless without the software-decode crackle) AND transitions
@@ -35,11 +36,11 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
 
     private var currentItem: AVPlayerItem?
     private var preloadedItem: AVPlayerItem?
-    private var preloadedURL: URL?
+    private var preloadedTrackID: String?
     /// Overlap window for the pending transition (0 = gapless butt-splice).
     private var pendingOverlap: Double = 0
     /// URL of an item the engine already promoted at a hand-off; the next `play` with it adopts.
-    private var handedOffURL: URL?
+    private var handedOffTrackID: String?
 
     /// PlayerService-facing volume (restore mute, user fades). Deck volumes = fadeLevel × ramp.
     private var fadeLevel: Float = 1
@@ -114,19 +115,19 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
 
     // MARK: - AudioEngine
 
-    func play(url: URL, headers: [String: String]) {
+    func play(trackID: String, url: URL, headers: [String: String]) {
         lock.lock()
         defer { lock.unlock() }
 
         // Adopt a hand-off the engine already performed at the natural end of the previous track.
-        if url == handedOffURL, currentItem != nil {
-            handedOffURL = nil
+        if trackID == handedOffTrackID, currentItem != nil {
+            handedOffTrackID = nil
             beginPlaying()
             return
         }
 
         // Manual skip into the preloaded track: promote the warm standby deck right away.
-        if url == preloadedURL, preloadedItem != nil {
+        if trackID == preloadedTrackID, preloadedItem?.status == .readyToPlay {
             promotePreloaded(startPlaying: true)
             return
         }
@@ -140,40 +141,89 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         currentItem = item
         activePlayer.replaceCurrentItem(with: item)
         beginPlaying()
-        installReplayGainTap(on: item, asset: asset, context: activeContext)
+        installReplayGainTap(on: item, asset: asset, context: activeContext, trackID: trackID)
         installPeriodicObserver(on: activePlayer)
     }
 
-    func preloadNext(url: URL, headers: [String: String], crossfadeDuration: Double) {
+    func setTrackEndTrim(_ seconds: Double) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let item = currentItem else { return }
+        guard seconds > 0 else {
+            item.forwardPlaybackEndTime = .invalid
+            return
+        }
+        let duration = item.duration.isNumeric ? CMTimeGetSeconds(item.duration) : metadataDuration
+        guard duration > seconds else { return }
+        // Ending the item early makes AVPlayer post didPlayToEndTime at that point, so the hand-off
+        // fires where the music actually stops rather than after the encoder's padding.
+        item.forwardPlaybackEndTime = CMTime(seconds: duration - seconds, preferredTimescale: 600)
+    }
+
+    func preloadNext(
+        trackID: String,
+        url: URL,
+        headers: [String: String],
+        crossfadeDuration: Double,
+        leadInTrim: Double,
+        replayGainDB: Float
+    ) {
         lock.lock()
         defer { lock.unlock() }
         guard currentItem != nil else { return }
-        if url == preloadedURL {
+        if trackID == preloadedTrackID {
             pendingOverlap = crossfadeDuration
             return
         }
-        standbyStatusObserver?.invalidate()
-        standbyStatusObserver = nil
-        standbyPlayer.pause()
+        clearPreloadedDeck()
         let options: [String: Any]? = headers.isEmpty ? nil : ["AVURLAssetHTTPHeaderFieldsKey": headers]
         let asset = AVURLAsset(url: url, options: options)
         let item = AVPlayerItem(asset: asset)
-        // Carry the current gain until the real value lands when PlayerService confirms the advance.
-        standbyContext.gain = activeContext.gain
-        installReplayGainTap(on: item, asset: asset, context: standbyContext)
+        // The incoming deck must carry its own normalization throughout the overlap. Applying it only
+        // after PlayerService confirms the hand-off creates an audible volume step halfway through.
+        standbyContext.gain = pow(10, replayGainDB / 20)
+        installReplayGainTap(on: item, asset: asset, context: standbyContext, trackID: trackID)
         standbyPlayer.replaceCurrentItem(with: item)
         preloadedItem = item
-        preloadedURL = url
+        preloadedTrackID = trackID
         pendingOverlap = crossfadeDuration
-        // Preroll once ready so the hand-off starts render-tight.
+        // Preroll once ready so the hand-off starts render-tight, and park the playhead past the
+        // track's silent lead-in first — seeking after the deck is audible would be heard.
         standbyStatusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
-            guard let self, item.status == .readyToPlay else { return }
+            guard let self else { return }
             self.lock.lock()
-            if item === self.preloadedItem {
+            defer { self.lock.unlock() }
+            guard item === self.preloadedItem else { return }
+            if item.status == .failed {
+                Logger.player.warning("[ENGINE] standby preload failed — falling back to a cold transition")
+                self.clearPreloadedDeck()
+                return
+            }
+            guard item.status == .readyToPlay else { return }
+            Logger.player.info(
+                "[CROSSFADE] standby ready track='\(self.preloadedTrackID ?? "unknown", privacy: .public)' overlap=\(self.pendingOverlap, format: .fixed(precision: 1))s"
+            )
+            if leadInTrim > 0 {
+                item.seek(
+                    to: CMTime(seconds: leadInTrim, preferredTimescale: 600),
+                    toleranceBefore: .zero,
+                    toleranceAfter: .zero
+                ) { [weak self] _ in
+                    self?.lock.lock()
+                    if item === self?.preloadedItem { self?.standbyPlayer.preroll(atRate: 1) { _ in } }
+                    self?.lock.unlock()
+                }
+            } else {
                 self.standbyPlayer.preroll(atRate: 1) { _ in }
             }
-            self.lock.unlock()
         }
+    }
+
+    func cancelPreload() {
+        lock.lock()
+        defer { lock.unlock() }
+        clearPreloadedDeck()
+        currentItem?.forwardPlaybackEndTime = .invalid
     }
 
     func pause() {
@@ -197,19 +247,32 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         resetDecks()
     }
 
-    func seek(to seconds: Double) {
-        lock.lock()
-        defer { lock.unlock() }
-        cancelOverlap()
-        // A seek moves the playhead on its own; without a fresh baseline the watchdog would read the
-        // jump as a frozen clock (or, seeking backwards, as one that never advanced).
-        resetWatchdogBaseline()
-        didSignalEnd = false
-        activePlayer.seek(
-            to: CMTime(seconds: seconds, preferredTimescale: 600),
-            toleranceBefore: .zero,
-            toleranceAfter: .zero
-        )
+    func seek(to seconds: Double) async -> Bool {
+        let (player, item) = lock.withLock {
+            cancelOverlap()
+            // A seek moves the playhead on its own; without a fresh baseline the watchdog would read the
+            // jump as a frozen clock (or, seeking backwards, as one that never advanced).
+            resetWatchdogBaseline()
+            didSignalEnd = false
+            return (activePlayer, currentItem)
+        }
+
+        let finished = await withCheckedContinuation { continuation in
+            // A small tolerance is inaudible for music and lets AVPlayer land on a nearby packet boundary.
+            // Exact zero-tolerance seeks are unnecessarily slow on compressed progressive streams.
+            let tolerance = CMTime(seconds: 0.05, preferredTimescale: 600)
+            player.seek(
+                to: CMTime(seconds: seconds, preferredTimescale: 600),
+                toleranceBefore: tolerance,
+                toleranceAfter: tolerance
+            ) { completed in
+                continuation.resume(returning: completed)
+            }
+        }
+
+        return lock.withLock {
+            finished && item != nil && item === currentItem && player === activePlayer
+        }
     }
 
     var volume: Float {
@@ -243,7 +306,8 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         guard let duration = currentItem?.duration, duration.isNumeric else { return 0 }
-        return CMTimeGetSeconds(duration)
+        let seconds = CMTimeGetSeconds(duration)
+        return seconds.isFinite && seconds > 0 ? seconds : 0
     }
 
     var isSeekable: Bool {
@@ -285,7 +349,8 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     private func overlapTick() {
         lock.lock()
         defer { lock.unlock() }
-        guard !isOverlapping, pendingOverlap > 0, preloadedItem != nil,
+        guard !isOverlapping, pendingOverlap > 0,
+              let preloadedItem, preloadedItem.status == .readyToPlay,
               activePlayer.timeControlStatus == .playing,
               let item = currentItem else { return }
         let itemDuration = item.duration.isNumeric ? CMTimeGetSeconds(item.duration) : 0
@@ -299,6 +364,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     /// Starts the standby deck at zero and blends both decks with an equal-power ramp — both tracks
     /// audible for `duration` seconds. The active deck finishes naturally; `finalizeAdvance` swaps.
     private func beginOverlap(duration: Double) {
+        Logger.player.info("[CROSSFADE] overlap started duration=\(duration, format: .fixed(precision: 2))s")
         isOverlapping = true
         rampStandby = 0
         applyDeckVolumes()
@@ -324,6 +390,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         rampActive = cos(x * .pi / 2)
         applyDeckVolumes()
         if overlapStep >= overlapSteps {
+            Logger.player.info("[CROSSFADE] overlap completed")
             overlapTimer?.cancel()
             overlapTimer = nil
             // Blend complete — the outgoing deck is silent. Hand off NOW instead of waiting for its
@@ -412,9 +479,11 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         }
         // `position > 0` keeps a track that never started (still opening the stream, failed to load)
         // out of this path — that is an error for PlayerService to handle, not a finished track.
+        let remaining = trackDuration - position
         guard position > 0,
               Date().timeIntervalSince(lastWatchdogAdvance) >= Self.frozenClockGrace,
-              trackDuration - position <= Self.endOfFileTolerance else { return }
+              remaining >= -Self.endOfFileTolerance,
+              remaining <= Self.endOfFileTolerance else { return }
 
         let reading = String(format: "%.2fs of %.2fs", position, trackDuration)
         Logger.player.warning(
@@ -425,18 +494,20 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
 
     /// The current item played to its end. With a preloaded next: retire the finished deck, promote
     /// the standby (already blending in a crossfade, or started now for gapless), then tell
-    /// PlayerService — whose confirming `play` adopts the promoted deck via `handedOffURL`.
+    /// PlayerService — whose confirming `play` adopts the promoted deck via `handedOffTrackID`.
     private func finalizeAdvance() {
         // The notification, the crossfade ramp and the watchdog all land here, and any two of them can
         // fire for the same track — one advance per item.
         guard !didSignalEnd else { return }
         didSignalEnd = true
-        guard preloadedItem != nil, let url = preloadedURL else {
+        guard let preloadedItem, preloadedItem.status == .readyToPlay,
+              let trackID = preloadedTrackID else {
+            clearPreloadedDeck()
             delegate?.audioEngineDidReachEndOfTrack()
             return
         }
         let wasOverlapping = isOverlapping
-        handedOffURL = url
+        handedOffTrackID = trackID
         promotePreloaded(startPlaying: !wasOverlapping)
         delegate?.audioEngineDidReachEndOfTrack()
     }
@@ -454,7 +525,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         activeIsA.toggle()
         currentItem = preloadedItem
         preloadedItem = nil
-        preloadedURL = nil
+        preloadedTrackID = nil
         pendingOverlap = 0
         metadataDuration = 0
         rampActive = 1
@@ -490,13 +561,24 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         deckB.replaceCurrentItem(with: nil)
         currentItem = nil
         preloadedItem = nil
-        preloadedURL = nil
-        handedOffURL = nil
+        preloadedTrackID = nil
+        handedOffTrackID = nil
         pendingOverlap = 0
         metadataDuration = 0
         rampActive = 1
         rampStandby = 1
         applyDeckVolumes()
+    }
+
+    /// Clears only the standby role. Caller holds `lock`.
+    private func clearPreloadedDeck() {
+        standbyStatusObserver?.invalidate()
+        standbyStatusObserver = nil
+        standbyPlayer.pause()
+        standbyPlayer.replaceCurrentItem(with: nil)
+        preloadedItem = nil
+        preloadedTrackID = nil
+        pendingOverlap = 0
     }
 
     private func applyDeckVolumes() {
@@ -552,15 +634,27 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
 
     // MARK: - ReplayGain tap install
 
-    private func installReplayGainTap(on item: AVPlayerItem, asset: AVURLAsset, context: ReplayGainTapContext) {
+    private func installReplayGainTap(
+        on item: AVPlayerItem,
+        asset: AVURLAsset,
+        context: ReplayGainTapContext,
+        trackID: String
+    ) {
         Task { @MainActor in
-            guard let track = try? await asset.loadTracks(withMediaType: .audio).first,
-                  let tap = Self.makeReplayGainTap(context: context) else { return }
+            guard let track = try? await asset.loadTracks(withMediaType: .audio).first else {
+                Logger.player.warning("[REPLAYGAIN] no audio track available for '\(trackID, privacy: .public)'")
+                return
+            }
+            guard let tap = Self.makeReplayGainTap(context: context) else {
+                Logger.player.warning("[REPLAYGAIN] audio tap creation failed for '\(trackID, privacy: .public)'")
+                return
+            }
             let params = AVMutableAudioMixInputParameters(track: track)
             params.audioTapProcessor = tap
             let mix = AVMutableAudioMix()
             mix.inputParameters = [params]
             item.audioMix = mix
+            Logger.player.info("[REPLAYGAIN] audio tap installed for '\(trackID, privacy: .public)'")
         }
     }
 
@@ -588,11 +682,15 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
 
 // MARK: - ReplayGain audio tap
 
-/// Shared between the engine (writes on control paths) and the audio render thread (reads in the tap).
-/// A bare Float is deliberate: aligned 32-bit loads/stores are atomic on ARM, and the render thread
-/// must never take a lock.
+/// Shared between the engine and the realtime render callback. The Float bit pattern is atomic so
+/// the callback never takes a lock and the access remains valid under Swift's memory model.
 private nonisolated final class ReplayGainTapContext: @unchecked Sendable {
-    nonisolated(unsafe) var gain: Float = 1.0
+    private let gainBits = Atomic<UInt32>(Float(1).bitPattern)
+
+    var gain: Float {
+        get { Float(bitPattern: gainBits.load(ordering: .relaxed)) }
+        set { gainBits.store(newValue.bitPattern, ordering: .relaxed) }
+    }
 }
 
 private nonisolated func replayGainTapInit(

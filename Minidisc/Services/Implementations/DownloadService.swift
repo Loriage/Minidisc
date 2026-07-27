@@ -32,7 +32,11 @@ actor DownloadService: DownloadServiceProtocol {
 
         let sessionConfig = URLSessionConfiguration.default
         sessionConfig.timeoutIntervalForRequest = 30
-        sessionConfig.timeoutIntervalForResource = 30
+        // A lossless track can legitimately take several minutes on a slow connection.
+        // The old 30-second resource cap made those downloads fail deterministically even
+        // while bytes were still arriving. Keep the short request/inactivity timeout, but
+        // give the complete transfer a realistic upper bound.
+        sessionConfig.timeoutIntervalForResource = 60 * 60
         self.downloadSession = URLSession(configuration: sessionConfig)
 
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -74,11 +78,22 @@ actor DownloadService: DownloadServiceProtocol {
     }
 
     func downloadedSongIds(serverId: UUID) async -> Set<String> {
-        await MainActor.run {
+        let entries: [(songId: String, filePath: String, fileSize: Int64)] = await MainActor.run {
             let context = ModelContext(modelContainer)
             let all = (try? context.fetch(FetchDescriptor<DownloadedTrack>())) ?? []
-            return Set(all.filter { $0.serverId == serverId }.map(\.songId))
+            return all
+                .filter { $0.serverId == serverId }
+                .map { ($0.songId, $0.filePath, $0.fileSize) }
         }
+        // Match downloadedURL's integrity contract. A stale SwiftData row must not make
+        // the UI claim a track is available offline or make a playlist count it as a
+        // successful download.
+        return Set(entries.compactMap { entry in
+            let url = downloadsDirectory.appendingPathComponent(entry.filePath)
+            let diskSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
+            guard diskSize > 0, entry.fileSize == 0 || diskSize == entry.fileSize else { return nil }
+            return entry.songId
+        })
     }
 
     func localCoverArtURL(forId coverArtId: String) async -> URL? {
@@ -274,8 +289,13 @@ actor DownloadService: DownloadServiceProtocol {
         }
 
         let key = taskKey(songId: song.id, serverId: serverId)
-        // If already in-flight, do nothing — caller can observe progressStream.
-        guard inFlightTasks[key] == nil else { return }
+        // Every caller must observe the real result. Returning immediately used to make
+        // overlapping album/playlist requests count a still-running (or later failing)
+        // transfer as a success.
+        if let existing = inFlightTasks[key] {
+            try await existing.value
+            return
+        }
 
         let task = Task<Void, Error> {
             try await self._downloadSong(song, serverId: serverId, key: key)
@@ -622,7 +642,9 @@ actor DownloadService: DownloadServiceProtocol {
     func cancelDownload(songId: String, serverId: UUID) async {
         let key = taskKey(songId: songId, serverId: serverId)
         inFlightTasks[key]?.cancel()
-        inFlightTasks.removeValue(forKey: key)
+        // _downloadSong owns removal in its defer. Removing here opened a race where an
+        // immediate retry installed a new task, then the cancelled old task's defer removed
+        // the new entry and made cancellation/deduplication state lie.
     }
 
     // MARK: - Remove
@@ -640,58 +662,61 @@ actor DownloadService: DownloadServiceProtocol {
                 try FileManager.default.removeItem(at: fileURL)
             }
         }
-        await MainActor.run {
+        try await MainActor.run {
             let context = ModelContext(modelContainer)
             let predicate = #Predicate<DownloadedTrack> { $0.songId == songId }
             let tracks = (try? context.fetch(FetchDescriptor(predicate: predicate))) ?? []
-            tracks.filter { $0.serverId == serverId }.forEach { context.delete($0) }
-            do {
-                try context.save()
-            } catch {
-                Logger.download.debug("DownloadService: remove track save failed — \(error)")
+            let removing = tracks.filter { $0.serverId == serverId }
+            let removingIds = Set(removing.map(\.id))
+            let affectedAlbumIds = Set(removing.compactMap(\.albumId))
+            removing.forEach { context.delete($0) }
+
+            let remainingTracks = ((try? context.fetch(FetchDescriptor<DownloadedTrack>())) ?? [])
+                .filter { $0.serverId == serverId && !removingIds.contains($0.id) }
+            if !affectedAlbumIds.isEmpty {
+                let albums = (try? context.fetch(FetchDescriptor<DownloadedAlbum>())) ?? []
+                for album in albums where album.serverId == serverId && affectedAlbumIds.contains(album.albumId) {
+                    album.tracksCount = remainingTracks.filter { $0.albumId == album.albumId }.count
+                }
             }
-        }
-        // Sync DownloadedPlaylist.songIds — remove this songId from any playlist that contains it.
-        // Without this, the cold-start retry would re-download the song silently after removal.
-        await MainActor.run {
-            let context = ModelContext(modelContainer)
+
+            // Sync DownloadedPlaylist.songIds — remove this songId from any playlist that
+            // contains it. Without this, the cold-start retry would re-download it silently.
             let sid = serverId
             let playlists = (try? context.fetch(
                 FetchDescriptor<DownloadedPlaylist>(predicate: #Predicate { $0.serverId == sid })
             )) ?? []
-            var didMutate = false
             for playlist in playlists where playlist.songIds.contains(songId) {
                 playlist.songIds.removeAll { $0 == songId }
-                didMutate = true
+                playlist.tracksCount = playlist.songIds.count
             }
-            if didMutate {
-                do {
-                    try context.save()
-                } catch {
-                    Logger.download.debug("DownloadService: remove playlist sync save failed — \(error)")
-                }
-            }
+            try context.save()
         }
     }
 
     func remove(albumId: String, serverId: UUID) async throws {
-        let songIds: [String] = await MainActor.run {
+        // Remove the album intent first, then purge only tracks that no downloaded
+        // playlist still owns. The old implementation called remove(songId:) for every
+        // album track, which silently broke offline playlists sharing those songs.
+        let songsToPurge: [String] = try await MainActor.run {
             let context = ModelContext(modelContainer)
-            let all = (try? context.fetch(FetchDescriptor<DownloadedTrack>())) ?? []
-            return all.filter { $0.serverId == serverId && $0.albumId == albumId }.map(\.songId)
-        }
-        for songId in songIds {
-            try? await remove(songId: songId, serverId: serverId)
-        }
-        await MainActor.run {
-            let context = ModelContext(modelContainer)
+            let owned = Set(
+                ((try? context.fetch(FetchDescriptor<DownloadedTrack>())) ?? [])
+                    .filter { $0.serverId == serverId && $0.albumId == albumId }
+                    .map(\.songId)
+            )
+            let playlistReferences = Set(
+                ((try? context.fetch(FetchDescriptor<DownloadedPlaylist>())) ?? [])
+                    .filter { $0.serverId == serverId }
+                    .flatMap(\.songIds)
+            )
             let albums = (try? context.fetch(FetchDescriptor<DownloadedAlbum>())) ?? []
             albums.filter { $0.albumId == albumId && $0.serverId == serverId }.forEach { context.delete($0) }
-            do {
-                try context.save()
-            } catch {
-                Logger.download.debug("DownloadService: remove album save failed — \(error)")
-            }
+            try context.save()
+            return Array(owned.subtracting(playlistReferences))
+        }
+        for songId in songsToPurge {
+            try await remove(songId: songId, serverId: serverId)
         }
     }
 
@@ -700,7 +725,7 @@ actor DownloadService: DownloadServiceProtocol {
         // owns — but KEEP any file still referenced by another downloaded playlist or a downloaded album, so a
         // song shared between two playlists survives until the LAST one is removed. Purely local: never touches
         // the server, so purging an orphan whose playlist is already gone is safe and idempotent.
-        let songsToPurge: [String] = await MainActor.run {
+        let songsToPurge: [String] = try await MainActor.run {
             let context = ModelContext(modelContainer)
             let sid = serverId
             let allPlaylists = (try? context.fetch(FetchDescriptor<DownloadedPlaylist>())) ?? []
@@ -729,16 +754,12 @@ actor DownloadService: DownloadServiceProtocol {
             }
             // Delete the playlist record FIRST so remove(songId:)'s playlist-sync is a no-op for it.
             mine.forEach { context.delete($0) }
-            do {
-                try context.save()
-            } catch {
-                Logger.download.debug("DownloadService: remove playlist save failed — \(error)")
-            }
+            try context.save()
             return Array(toPurge)
         }
         // Delete the files + DownloadedTrack records for the non-shared songs (local + idempotent).
         for songId in songsToPurge {
-            try? await remove(songId: songId, serverId: serverId)
+            try await remove(songId: songId, serverId: serverId)
         }
     }
 

@@ -26,12 +26,18 @@ struct OfflineDownloadRoundTripTests {
         return (service, container, UUID())
     }
 
-    private func insertTrack(_ container: ModelContainer, songId: String, serverId: UUID, track: Int) {
+    private func insertTrack(
+        _ container: ModelContainer,
+        songId: String,
+        serverId: UUID,
+        track: Int,
+        albumId: String? = "album-1"
+    ) {
         container.mainContext.insert(
             DownloadedTrack(
                 songId: songId,
                 serverId: serverId,
-                albumId: "album-1",
+                albumId: albumId,
                 filePath: "\(serverId.uuidString)/\(songId).mp3",
                 fileSize: 1234,
                 mimeType: "audio/mpeg",
@@ -132,5 +138,212 @@ struct OfflineDownloadRoundTripTests {
 
         let data = await service.localPlaylistData(playlistId: "pl-1", serverId: sid)
         #expect(data?.songs.map(\.id) == ["s1", "s2"]) // unchanged
+    }
+
+    @Test("downloadedSongIds excludes records whose file is missing")
+    func downloadedIdsExcludeMissingFiles() async throws {
+        let (service, container, sid) = try makeService()
+        insertTrack(container, songId: "missing-on-disk", serverId: sid, track: 1)
+        try container.mainContext.save()
+
+        let ids = await service.downloadedSongIds(serverId: sid)
+
+        #expect(ids.isEmpty)
+    }
+
+    @Test("removing an album keeps tracks referenced by a downloaded playlist")
+    func removingAlbumPreservesPlaylistTracks() async throws {
+        let (service, container, sid) = try makeService()
+        insertTrack(container, songId: "shared", serverId: sid, track: 1)
+        insertTrack(container, songId: "album-only", serverId: sid, track: 2)
+        container.mainContext.insert(
+            DownloadedAlbum(
+                albumId: "album-1",
+                serverId: sid,
+                name: "Album",
+                tracksCount: 2,
+                totalTracksCount: 2
+            )
+        )
+        container.mainContext.insert(
+            DownloadedPlaylist(
+                playlistId: "pl-1",
+                serverId: sid,
+                name: "Playlist",
+                tracksCount: 1,
+                totalTracksCount: 1,
+                songIds: ["shared"]
+            )
+        )
+        try container.mainContext.save()
+
+        try await service.remove(albumId: "album-1", serverId: sid)
+
+        let playlist = await service.localPlaylistData(playlistId: "pl-1", serverId: sid)
+        #expect(playlist?.songs.map(\.id) == ["shared"])
+        let context = ModelContext(container)
+        let remainingIds = Set(try context.fetch(FetchDescriptor<DownloadedTrack>()).map(\.songId))
+        #expect(remainingIds == ["shared"])
+        #expect(try context.fetch(FetchDescriptor<DownloadedAlbum>()).isEmpty)
+    }
+
+    @Test("removing a playlist keeps album tracks and purges playlist-only tracks")
+    func removingPlaylistPreservesAlbumTracks() async throws {
+        let (service, container, sid) = try makeService()
+        insertTrack(container, songId: "shared", serverId: sid, track: 1)
+        insertTrack(container, songId: "playlist-only", serverId: sid, track: 2, albumId: nil)
+        container.mainContext.insert(
+            DownloadedAlbum(
+                albumId: "album-1",
+                serverId: sid,
+                name: "Album",
+                tracksCount: 1,
+                totalTracksCount: 1
+            )
+        )
+        container.mainContext.insert(
+            DownloadedPlaylist(
+                playlistId: "pl-1",
+                serverId: sid,
+                name: "Playlist",
+                tracksCount: 2,
+                totalTracksCount: 2,
+                songIds: ["shared", "playlist-only"]
+            )
+        )
+        try container.mainContext.save()
+
+        try await service.remove(playlistId: "pl-1", serverId: sid)
+
+        let album = await service.localAlbumData(albumId: "album-1", serverId: sid)
+        #expect(album?.songs.map(\.id) == ["shared"])
+        let context = ModelContext(container)
+        let remainingIds = Set(try context.fetch(FetchDescriptor<DownloadedTrack>()).map(\.songId))
+        #expect(remainingIds == ["shared"])
+        #expect(try context.fetch(FetchDescriptor<DownloadedPlaylist>()).isEmpty)
+    }
+
+    @Test("removing one track refreshes album and playlist completeness counts")
+    func removingTrackRefreshesCounts() async throws {
+        let (service, container, sid) = try makeService()
+        insertTrack(container, songId: "s1", serverId: sid, track: 1)
+        insertTrack(container, songId: "s2", serverId: sid, track: 2)
+        container.mainContext.insert(
+            DownloadedAlbum(
+                albumId: "album-1",
+                serverId: sid,
+                name: "Album",
+                tracksCount: 2,
+                totalTracksCount: 2
+            )
+        )
+        container.mainContext.insert(
+            DownloadedPlaylist(
+                playlistId: "pl-1",
+                serverId: sid,
+                name: "Playlist",
+                tracksCount: 2,
+                totalTracksCount: 2,
+                songIds: ["s1", "s2"]
+            )
+        )
+        try container.mainContext.save()
+
+        try await service.remove(songId: "s1", serverId: sid)
+
+        let context = ModelContext(container)
+        let album = try #require(context.fetch(FetchDescriptor<DownloadedAlbum>()).first)
+        let playlist = try #require(context.fetch(FetchDescriptor<DownloadedPlaylist>()).first)
+        #expect(album.tracksCount == 1)
+        #expect(!album.isComplete)
+        #expect(playlist.songIds == ["s2"])
+        #expect(playlist.tracksCount == 1)
+        #expect(!playlist.isComplete)
+    }
+
+    @Test("removing a partial album from Settings preserves playlist-owned tracks")
+    @MainActor
+    func removingPartialAlbumFromSettingsPreservesPlaylistTracks() async throws {
+        let (service, container, sid) = try makeService()
+        insertTrack(container, songId: "shared", serverId: sid, track: 1)
+        insertTrack(container, songId: "partial-only", serverId: sid, track: 2)
+        container.mainContext.insert(
+            DownloadedPlaylist(
+                playlistId: "pl-1",
+                serverId: sid,
+                name: "Playlist",
+                tracksCount: 1,
+                totalTracksCount: 1,
+                songIds: ["shared"]
+            )
+        )
+        try container.mainContext.save()
+        let display = DownloadedAlbumDisplay(
+            id: "album-1",
+            albumId: "album-1",
+            serverId: sid,
+            name: "Partial album",
+            artist: "Artist",
+            coverArtId: nil,
+            downloadedTracksCount: 2,
+            totalTracksCount: nil,
+            hasFullDownloadIntent: false
+        )
+        let viewModel = DownloadsViewModel(
+            modelContainer: container,
+            downloadService: service,
+            serverState: ServerState()
+        )
+
+        await viewModel.removeAlbum(display)
+
+        let context = ModelContext(container)
+        let remainingIds = Set(try context.fetch(FetchDescriptor<DownloadedTrack>()).map(\.songId))
+        #expect(remainingIds == ["shared"])
+        #expect(viewModel.trackCount == 1)
+    }
+
+    @Test("clear all removes album, playlist, and standalone download records")
+    @MainActor
+    func clearAllRemovesEveryDownloadRecord() async throws {
+        let (service, container, sid) = try makeService()
+        insertTrack(container, songId: "album-and-playlist", serverId: sid, track: 1)
+        insertTrack(container, songId: "standalone", serverId: sid, track: 2, albumId: nil)
+        container.mainContext.insert(
+            DownloadedAlbum(
+                albumId: "album-1",
+                serverId: sid,
+                name: "Album",
+                tracksCount: 1,
+                totalTracksCount: 1
+            )
+        )
+        container.mainContext.insert(
+            DownloadedPlaylist(
+                playlistId: "pl-1",
+                serverId: sid,
+                name: "Playlist",
+                tracksCount: 1,
+                totalTracksCount: 1,
+                songIds: ["album-and-playlist"]
+            )
+        )
+        try container.mainContext.save()
+        let viewModel = DownloadsViewModel(
+            modelContainer: container,
+            downloadService: service,
+            serverState: ServerState()
+        )
+
+        await viewModel.clearAll()
+
+        let context = ModelContext(container)
+        #expect(try context.fetch(FetchDescriptor<DownloadedAlbum>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<DownloadedPlaylist>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<DownloadedTrack>()).isEmpty)
+        #expect(viewModel.displayAlbums.isEmpty)
+        #expect(viewModel.downloadedPlaylists.isEmpty)
+        #expect(viewModel.trackCount == 0)
+        #expect(!viewModel.isClearingAll)
     }
 }

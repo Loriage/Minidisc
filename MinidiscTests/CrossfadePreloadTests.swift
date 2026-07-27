@@ -11,10 +11,11 @@ import Testing
 @Suite("PlayerService.shouldSchedulePrefetch")
 struct ShouldSchedulePrefetchTests {
 
-    @Test func dormantWhenDurationIsZero() {
-        // Default crossfade duration = 0 → prefetch must never fire
-        #expect(PlayerService.shouldSchedulePrefetch(crossfadeDuration: 0, remaining: 0) == false)
-        #expect(PlayerService.shouldSchedulePrefetch(crossfadeDuration: 0, remaining: 5) == false)
+    @Test func gaplessPreloadStillRunsWhenCrossfadeIsOff() {
+        // "Off" disables overlap, not the warm standby deck required for a butt-splice.
+        #expect(PlayerService.shouldSchedulePrefetch(crossfadeDuration: 0, remaining: 0) == true)
+        #expect(PlayerService.shouldSchedulePrefetch(crossfadeDuration: 0, remaining: 5) == true)
+        #expect(PlayerService.shouldSchedulePrefetch(crossfadeDuration: 0, remaining: 15) == true)
         #expect(PlayerService.shouldSchedulePrefetch(crossfadeDuration: 0, remaining: 100) == false)
     }
 
@@ -62,6 +63,33 @@ struct ShouldProceedWithPrefetchTests {
     }
 }
 
+@Suite("PlayerService.effectiveCrossfadeOverlap")
+struct EffectiveCrossfadeOverlapTests {
+    @Test func usesConfiguredDurationForOrdinaryTransitions() {
+        #expect(PlayerService.effectiveCrossfadeOverlap(
+            duration: 5,
+            disableForGapless: true,
+            isGaplessPair: false
+        ) == 5)
+    }
+
+    @Test func preservesConsecutiveAlbumTracksWhenRequested() {
+        #expect(PlayerService.effectiveCrossfadeOverlap(
+            duration: 5,
+            disableForGapless: true,
+            isGaplessPair: true
+        ) == 0)
+    }
+
+    @Test func canCrossfadeConsecutiveAlbumTracks() {
+        #expect(PlayerService.effectiveCrossfadeOverlap(
+            duration: 5,
+            disableForGapless: false,
+            isGaplessPair: true
+        ) == 5)
+    }
+}
+
 // MARK: - isGaplessPair
 
 @Suite("PlayerService.isGaplessPair")
@@ -104,5 +132,18 @@ struct IsGaplessPairTests {
             currentAlbumId: "A", currentTrackNumber: nil,
             nextAlbumId: "A", nextTrackNumber: 4
         ) == false)
+    }
+}
+
+@Suite("PlayerService.clampedSeekTarget")
+struct ClampedSeekTargetTests {
+    @Test func clampsMalformedAndOutOfRangeTargets() {
+        #expect(PlayerService.clampedSeekTarget(requested: .nan, stateDuration: 180, engineDuration: 180) == nil)
+        #expect(PlayerService.clampedSeekTarget(requested: -20, stateDuration: 180, engineDuration: 180) == 0)
+        #expect(PlayerService.clampedSeekTarget(requested: 250, stateDuration: 180, engineDuration: 200) == 200)
+    }
+
+    @Test func usesUnboundedNonnegativeTargetWhenDurationIsUnknown() {
+        #expect(PlayerService.clampedSeekTarget(requested: 42, stateDuration: 0, engineDuration: 0) == 42)
     }
 }

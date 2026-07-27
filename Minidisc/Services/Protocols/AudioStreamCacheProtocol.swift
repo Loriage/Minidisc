@@ -14,7 +14,8 @@ protocol AudioStreamCacheProtocol: AnyObject, Sendable {
     /// No-op since LRU removal. Kept for MediaResolver API stability — removed in phase 5.
     func touch(songId: String, serverId: UUID) async
 
-    func store(data: Data, forSongId songId: String, serverId: UUID, mimeType: String) async throws -> URL
+    /// Moves a completed download into the cache without materialising the whole track in RAM.
+    func store(fileAt sourceURL: URL, forSongId songId: String, serverId: UUID, mimeType: String) async throws -> URL
 
     /// Updates the maximum number of cached tracks. Triggers FIFO eviction if current count exceeds the new limit.
     func setMaxTracks(_ value: Int) async

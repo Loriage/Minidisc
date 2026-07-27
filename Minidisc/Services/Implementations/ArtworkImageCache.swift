@@ -97,6 +97,9 @@ final class ArtworkImageCache {
     /// Per-cover `Last-Modified` + last-checked, so a cached cover is re-verified on a slow cadence.
     private let revalidationStore: CoverRevalidationStore
     /// Cover ids whose revalidation is in flight, so the two tiers of one id don't both HEAD it.
+    /// Loads currently running, keyed like `cache`, so concurrent callers for the same cover share
+    /// one fetch + decode instead of racing each other.
+    private var inFlight: [String: Task<PlatformImage?, Never>] = [:]
     private var revalidating: Set<String> = []
     /// Ids whose revalidation failed this run (offline / error). Skipped until relaunch so an
     /// offline session doesn't fire a HEAD per cover on every scroll.
@@ -141,7 +144,6 @@ final class ArtworkImageCache {
         guard let coverArtId else { return nil }
 
         let key = cacheKey(id: coverArtId, tier: tier)
-        let maxDim = tier.decodePixels
 
         // 1. RAM hit.
         if let hit = cache[key] {
@@ -149,6 +151,26 @@ final class ArtworkImageCache {
             revalidateIfDue(coverArtId: coverArtId, tier: tier)
             return hit
         }
+
+        // 1b. Someone is already loading this exact key: join them. Without this, two views asking
+        // for the same cover before either finishes each run a full network fetch, a full-size
+        // decode and a disk write — two 1200px hero decodes at once are enough to make playback
+        // stutter. The gates below bound concurrency but do not deduplicate identical work.
+        if let existing = inFlight[key] {
+            return await existing.value
+        }
+
+        let task = Task { @MainActor in
+            defer { self.inFlight[key] = nil }
+            return await self.fetch(coverArtId: coverArtId, tier: tier, key: key)
+        }
+        inFlight[key] = task
+        return await task.value
+    }
+
+    /// Disk then network, for a key that missed RAM and has no load already in flight.
+    private func fetch(coverArtId: String, tier: ArtworkTier, key: String) async -> PlatformImage? {
+        let maxDim = tier.decodePixels
 
         // 2. Disk hit — tiered file only (`{id}@thumb` / `{id}@hero`).
         //    Legacy untagged files (`{id}` with no suffix, full-res JPEGs written by

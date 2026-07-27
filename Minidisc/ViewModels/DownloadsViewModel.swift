@@ -4,6 +4,7 @@
 // See LICENSE file in the project root for full license information.
 
 import Foundation
+import OSLog
 import SwiftData
 
 nonisolated struct DownloadedPlaylistDTO: Identifiable, Sendable {
@@ -80,27 +81,10 @@ final class DownloadsViewModel {
         isClearingAll = true
         defer { isClearingAll = false }
 
-        // Work from value snapshots: each removal uses its own ModelContext, so keeping
-        // model instances from one context across awaits can leave this loop with stale data.
-        let albumTargets = ((try? ModelContext(modelContainer).fetch(FetchDescriptor<DownloadedAlbum>())) ?? [])
-            .map { (albumId: $0.albumId, serverId: $0.serverId) }
-        for target in albumTargets {
-            try? await downloadService.remove(albumId: target.albumId, serverId: target.serverId)
-        }
-
-        // Albums deliberately preserve tracks still owned by playlists. Remove those
-        // intents next; otherwise "Clear all" leaves empty playlist rows behind.
-        let playlistTargets = ((try? ModelContext(modelContainer).fetch(FetchDescriptor<DownloadedPlaylist>())) ?? [])
-            .map { (playlistId: $0.playlistId, serverId: $0.serverId) }
-        for target in playlistTargets {
-            try? await downloadService.remove(playlistId: target.playlistId, serverId: target.serverId)
-        }
-
-        // Finally purge standalone tracks that belonged to neither kind of intent.
-        let remainingTargets = ((try? ModelContext(modelContainer).fetch(FetchDescriptor<DownloadedTrack>())) ?? [])
-            .map { (songId: $0.songId, serverId: $0.serverId) }
-        for target in remainingTargets {
-            try? await downloadService.remove(songId: target.songId, serverId: target.serverId)
+        do {
+            try await downloadService.removeAll()
+        } catch {
+            Logger.download.error("Failed to clear offline library: \(error, privacy: .public)")
         }
         await loadData()
     }

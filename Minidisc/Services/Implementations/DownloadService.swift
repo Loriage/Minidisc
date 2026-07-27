@@ -21,6 +21,7 @@ actor DownloadService: DownloadServiceProtocol {
     private var inFlightTasks: [String: Task<Void, Error>] = [:]
     private var activeAlbumDownloads: Set<String> = []
     private var activePlaylistDownloads: Set<String> = []
+    private var isRemovingAllDownloads = false
     private let toastService: ToastService
     private let downloadSession: URLSession
 
@@ -289,10 +290,12 @@ actor DownloadService: DownloadServiceProtocol {
     // MARK: - Single track download
 
     func download(song: Song, serverId: UUID) async throws {
+        guard !isRemovingAllDownloads else { throw CancellationError() }
         guard await !isDownloaded(songId: song.id, serverId: serverId) else {
             Logger.download.debug("Song '\(song.id, privacy: .public)' already downloaded — skipping.")
             return
         }
+        guard !isRemovingAllDownloads else { throw CancellationError() }
 
         let key = taskKey(songId: song.id, serverId: serverId)
         // Every caller must observe the real result. Returning immediately used to make
@@ -443,6 +446,7 @@ actor DownloadService: DownloadServiceProtocol {
 
     func download(album: AlbumID3, serverId: UUID) async throws {
         guard let songs = album.song else { return }
+        guard !isRemovingAllDownloads else { throw CancellationError() }
         activeAlbumDownloads.insert(album.id)
         defer { activeAlbumDownloads.remove(album.id) }
         let total = songs.count
@@ -468,7 +472,7 @@ actor DownloadService: DownloadServiceProtocol {
 
             for await didSucceed in group {
                 if didSucceed { succeeded += 1 }
-                if let song = iterator.next() {
+                if !isRemovingAllDownloads, let song = iterator.next() {
                     group.addTask {
                         do {
                             try await self.download(song: song, serverId: serverId)
@@ -481,6 +485,7 @@ actor DownloadService: DownloadServiceProtocol {
                 }
             }
         }
+        guard !isRemovingAllDownloads else { throw CancellationError() }
 
         var localCoverPath: String? = nil
         if let coverArtId = album.coverArt {
@@ -491,6 +496,7 @@ actor DownloadService: DownloadServiceProtocol {
                 Logger.download.error("Cover art download failed for album '\(album.id, privacy: .public)' (coverArtId: \(coverArtId, privacy: .public)): \(error, privacy: .public)")
             }
         }
+        guard !isRemovingAllDownloads else { throw CancellationError() }
 
         let albumId = album.id
         let albumName = album.name
@@ -538,6 +544,7 @@ actor DownloadService: DownloadServiceProtocol {
     // MARK: - Playlist download
 
     func download(playlist: PlaylistWithSongs, serverId: UUID) async throws {
+        guard !isRemovingAllDownloads else { throw CancellationError() }
         let songs = playlist.entry ?? []
         let total = songs.count
         let pid = playlist.id
@@ -560,7 +567,7 @@ actor DownloadService: DownloadServiceProtocol {
             }
 
             for await _ in group {
-                if let song = iterator.next() {
+                if !isRemovingAllDownloads, let song = iterator.next() {
                     group.addTask {
                         do {
                             try await self.download(song: song, serverId: serverId)
@@ -571,8 +578,10 @@ actor DownloadService: DownloadServiceProtocol {
                 }
             }
         }
+        guard !isRemovingAllDownloads else { throw CancellationError() }
 
         let downloadedIds = await downloadedSongIds(serverId: serverId)
+        guard !isRemovingAllDownloads else { throw CancellationError() }
         let succeededIds = songs.filter { downloadedIds.contains($0.id) }.map(\.id)
 
         var localCoverPath: String? = nil
@@ -584,6 +593,7 @@ actor DownloadService: DownloadServiceProtocol {
                 Logger.download.error("Cover art download failed for playlist '\(playlist.id, privacy: .public)' (coverArtId: \(coverArtId, privacy: .public)): \(error, privacy: .public)")
             }
         }
+        guard !isRemovingAllDownloads else { throw CancellationError() }
 
         let playlistId = playlist.id
         let playlistName = playlist.name
@@ -665,6 +675,20 @@ actor DownloadService: DownloadServiceProtocol {
 
     func remove(playlistId: String, serverId: UUID) async throws {
         try await offlineRemovalCoordinator.remove(.playlist(playlistId: playlistId), serverId: serverId)
+    }
+
+    func removeAll() async throws {
+        guard !isRemovingAllDownloads else { return }
+        isRemovingAllDownloads = true
+        defer { isRemovingAllDownloads = false }
+
+        let tasks = Array(inFlightTasks.values)
+        tasks.forEach { $0.cancel() }
+        for task in tasks {
+            _ = try? await task.value
+        }
+
+        try await offlineRemovalCoordinator.removeAll()
     }
 
     // MARK: - Helpers

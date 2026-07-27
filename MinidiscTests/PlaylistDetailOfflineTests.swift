@@ -78,6 +78,7 @@ private final class PDDownloadStub: DownloadServiceProtocol {
     func remove(songId: String, serverId: UUID) async throws { throw URLError(.unknown) }
     func remove(albumId: String, serverId: UUID) async throws { throw URLError(.unknown) }
     func remove(playlistId: String, serverId: UUID) async throws { throw URLError(.unknown) }
+    func removeAll() async throws { throw URLError(.unknown) }
 }
 
 /// All playlist mutations throw — unused by the offline-load paths under test.

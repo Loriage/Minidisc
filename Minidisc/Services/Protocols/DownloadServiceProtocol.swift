@@ -96,4 +96,5 @@ protocol DownloadServiceProtocol: AnyObject, Sendable {
     func remove(songId: String, serverId: UUID) async throws
     func remove(albumId: String, serverId: UUID) async throws
     func remove(playlistId: String, serverId: UUID) async throws
+    func removeAll() async throws
 }

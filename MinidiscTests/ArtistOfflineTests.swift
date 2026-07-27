@@ -178,6 +178,7 @@ private final class ARDownloadStub: DownloadServiceProtocol {
     func remove(songId: String, serverId: UUID) async throws { throw URLError(.unknown) }
     func remove(albumId: String, serverId: UUID) async throws { throw URLError(.unknown) }
     func remove(playlistId: String, serverId: UUID) async throws { throw URLError(.unknown) }
+    func removeAll() async throws { throw URLError(.unknown) }
 }
 
 @Suite("ArtistDetailViewModel — offline local fallback")

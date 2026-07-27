@@ -198,4 +198,63 @@ struct OfflineLibraryRemovalCoordinatorTests {
         let context = ModelContext(subject.container)
         #expect(try context.fetch(FetchDescriptor<DownloadedTrack>()).isEmpty)
     }
+
+    @Test("remove all clears every server and its audio files")
+    func removeAllClearsEveryServerAndFile() async throws {
+        let subject = try makeSubject()
+        defer { try? FileManager.default.removeItem(at: subject.downloadsDirectory) }
+        let otherServerId = UUID()
+        let firstPath = "\(subject.serverId.uuidString)/first.mp3"
+        let secondPath = "\(otherServerId.uuidString)/second.mp3"
+        let firstURL = try writeAudioFile(
+            in: subject.downloadsDirectory,
+            relativePath: firstPath
+        )
+        let secondURL = try writeAudioFile(
+            in: subject.downloadsDirectory,
+            relativePath: secondPath
+        )
+        insertTrack(
+            subject.container,
+            songId: "first",
+            serverId: subject.serverId,
+            filePath: firstPath
+        )
+        insertTrack(
+            subject.container,
+            songId: "second",
+            serverId: otherServerId,
+            filePath: secondPath,
+            albumId: nil
+        )
+        subject.container.mainContext.insert(
+            DownloadedAlbum(
+                albumId: "album",
+                serverId: subject.serverId,
+                name: "Album",
+                tracksCount: 1,
+                totalTracksCount: 1
+            )
+        )
+        subject.container.mainContext.insert(
+            DownloadedPlaylist(
+                playlistId: "playlist",
+                serverId: otherServerId,
+                name: "Playlist",
+                tracksCount: 1,
+                totalTracksCount: 1,
+                songIds: ["second"]
+            )
+        )
+        try subject.container.mainContext.save()
+
+        try await subject.coordinator.removeAll()
+
+        let context = ModelContext(subject.container)
+        #expect(try context.fetch(FetchDescriptor<DownloadedAlbum>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<DownloadedPlaylist>()).isEmpty)
+        #expect(try context.fetch(FetchDescriptor<DownloadedTrack>()).isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: firstURL.path))
+        #expect(!FileManager.default.fileExists(atPath: secondURL.path))
+    }
 }

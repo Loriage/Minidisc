@@ -30,6 +30,13 @@ actor OfflineLibraryRemovalCoordinator {
         removeFiles(at: filePaths)
     }
 
+    func removeAll() async throws {
+        let filePaths = try await MainActor.run {
+            try Self.commitRemoveAll(modelContainer: modelContainer)
+        }
+        removeFiles(at: filePaths)
+    }
+
     @MainActor
     private static func commitRemoval(
         _ request: OfflineLibraryRemovalPlanner.Request,
@@ -115,6 +122,23 @@ actor OfflineLibraryRemovalCoordinator {
 
         try context.save()
         return Set(tracksToRemove.map(\.filePath))
+    }
+
+    @MainActor
+    private static func commitRemoveAll(
+        modelContainer: ModelContainer
+    ) throws -> Set<String> {
+        let context = ModelContext(modelContainer)
+        let tracks = try context.fetch(FetchDescriptor<DownloadedTrack>())
+        let albums = try context.fetch(FetchDescriptor<DownloadedAlbum>())
+        let playlists = try context.fetch(FetchDescriptor<DownloadedPlaylist>())
+
+        albums.forEach { context.delete($0) }
+        playlists.forEach { context.delete($0) }
+        tracks.forEach { context.delete($0) }
+        try context.save()
+
+        return Set(tracks.map(\.filePath))
     }
 
     private func removeFiles(at relativePaths: Set<String>) {

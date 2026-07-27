@@ -52,12 +52,10 @@ actor PlayerService: PlayerServiceProtocol {
     private var playingNowTask: Task<Void, Never>?
     private var cacheDownloadTask: Task<Void, Never>?
     private let cacheSession: URLSession
-    private var prefetchTask: Task<Void, Never>?
     private var prefetchScheduled = false
     private var playbackGeneration: UInt64 = 0
     private var seekGeneration: UInt64 = 0
     private var durationMismatchLoggedTrackID: String?
-    private let prefetchSession: URLSession
     private var originalQueueOrder: [DisplayableSong]?
     private var autoExtendFetchTask: Task<Void, Never>?
     private nonisolated static let autoExtendUserDefaultsKey = "minidisc.player.autoExtendEnabled"
@@ -102,12 +100,6 @@ actor PlayerService: PlayerServiceProtocol {
         cacheConfig.timeoutIntervalForRequest = 30
         cacheConfig.timeoutIntervalForResource = 300
         self.cacheSession = URLSession(configuration: cacheConfig)
-
-        let prefetchConfig = URLSessionConfiguration.default
-        prefetchConfig.timeoutIntervalForRequest = 30
-        prefetchConfig.timeoutIntervalForResource = 300
-        prefetchConfig.networkServiceType = .background
-        self.prefetchSession = URLSession(configuration: prefetchConfig)
 
         self.engine = engine
         let bridge = AudioEngineBridge()
@@ -1512,18 +1504,11 @@ actor PlayerService: PlayerServiceProtocol {
     // MARK: - Crossfade prefetch
 
     private func cancelPendingPrefetch() {
-        prefetchTask?.cancel()
-        prefetchTask = nil
         prefetchScheduled = false
     }
 
     nonisolated static func shouldSchedulePrefetch(crossfadeDuration: Double, remaining: Double) -> Bool {
         remaining <= max(0, crossfadeDuration) + 15.0
-    }
-
-    nonisolated static func shouldProceedWithPrefetch(isExpensive: Bool, allowCellular: Bool) -> Bool {
-        if isExpensive && !allowCellular { return false }
-        return true
     }
 
     nonisolated static func effectiveCrossfadeOverlap(
@@ -1556,94 +1541,11 @@ actor PlayerService: PlayerServiceProtocol {
         guard let resolved else { return }
 
         prefetchScheduled = true
-        Logger.player.debug("[PREFETCH] scheduling prefetch for '\(resolved.nextSong.title, privacy: .public)' (remaining=\(String(format: "%.1f", remaining))s)")
+        Logger.player.debug("[PREFETCH] scheduling standby preload for '\(resolved.nextSong.title, privacy: .public)' (remaining=\(String(format: "%.1f", remaining))s)")
         let generation = playbackGeneration
-        await prefetchNextTrack(
+        await preloadNextForGapless(
             nextSong: resolved.nextSong,
             serverId: resolved.serverId,
-            generation: generation
-        )
-    }
-
-    private func prefetchNextTrack(
-        nextSong: DisplayableSong,
-        serverId: UUID,
-        generation: UInt64
-    ) async {
-        let songId = nextSong.id
-        guard await isPrefetchContextValid(songId: songId, serverId: serverId, generation: generation) else { return }
-
-        if await audioStreamCache.cachedURL(forSongId: songId, serverId: serverId) != nil {
-            Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' already cached — skip")
-            await preloadNextForGapless(nextSong: nextSong, serverId: serverId, generation: generation)
-            return
-        }
-        if await downloadService.isDownloaded(songId: songId, serverId: serverId) {
-            Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' already downloaded — skip")
-            await preloadNextForGapless(nextSong: nextSong, serverId: serverId, generation: generation)
-            return
-        }
-
-        let (isExpensive, allowCellular, cacheFormat) = await MainActor.run {
-            (serverService.state.isExpensive, cacheSettings.cacheOverCellular, cacheSettings.cacheFormat)
-        }
-        guard PlayerService.shouldProceedWithPrefetch(isExpensive: isExpensive, allowCellular: allowCellular) else {
-            Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' skipped — cellular guard")
-            // No cache write will happen, so the track will stream at advance — preload that stream.
-            await preloadNextForGapless(nextSong: nextSong, serverId: serverId, generation: generation)
-            return
-        }
-
-        let streamURL: URL
-        let customHeaders: [String: String]
-        if cacheFormat == .matchStream {
-            guard let source = try? await mediaResolver.resolve(songId: songId, serverId: serverId),
-                  case .stream(let resolvedURL, let resolvedHeaders) = source else {
-                Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' no stream source — skip")
-                return
-            }
-            streamURL = resolvedURL
-            customHeaders = resolvedHeaders
-        } else {
-            guard let resolvedURL = (try? await serverService.makeSwiftSonicClient())?.streamURL(
-                id: songId,
-                maxBitRate: cacheFormat.subsonicMaxBitRate,
-                format: cacheFormat.subsonicFormat,
-                estimateContentLength: true
-            ) else {
-                Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' no cache-format URL — skip")
-                return
-            }
-            streamURL = resolvedURL
-            do {
-                customHeaders = try await serverService.activeCredentials().customHeaders
-            } catch {
-                Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' credentials unavailable — skip")
-                return
-            }
-        }
-
-        prefetchTask = Task { [prefetchSession, weak self] in
-            guard !Task.isCancelled else { return }
-            do {
-                try await self?.downloadAndCache(
-                    songId: songId,
-                    serverId: serverId,
-                    streamURL: streamURL,
-                    customHeaders: customHeaders,
-                    using: prefetchSession
-                )
-                Logger.player.info("[PREFETCH] '\(songId, privacy: .public)' prefetch complete")
-            } catch {
-                Logger.player.debug("[PREFETCH] '\(songId, privacy: .public)' prefetch failed: \(error, privacy: .public)")
-            }
-        }
-        // Warm the standby deck immediately while the complete cache download runs in parallel.
-        // Waiting for a large FLAC to finish downloading can consume the entire 15 s lead window,
-        // leaving no ready deck when the configured crossfade should begin.
-        await preloadNextForGapless(
-            nextSong: nextSong,
-            serverId: serverId,
             generation: generation
         )
     }

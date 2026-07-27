@@ -34,30 +34,6 @@ struct ShouldSchedulePrefetchTests {
     }
 }
 
-// MARK: - shouldProceedWithPrefetch
-
-@Suite("PlayerService.shouldProceedWithPrefetch")
-struct ShouldProceedWithPrefetchTests {
-
-    @Test func proceedsOnWifi() {
-        #expect(PlayerService.shouldProceedWithPrefetch(isExpensive: false, allowCellular: false) == true)
-    }
-
-    @Test func proceedsOnCellularWhenAllowed() {
-        #expect(PlayerService.shouldProceedWithPrefetch(isExpensive: true, allowCellular: true) == true)
-    }
-
-    @Test func blockedOnCellularWhenNotAllowed() {
-        #expect(PlayerService.shouldProceedWithPrefetch(isExpensive: true, allowCellular: false) == false)
-    }
-
-    @Test func proceedsWhenNotExpensiveRegardlessOfAllowCellular() {
-        // isExpensive=false means we're on Wi-Fi; allowCellular flag is irrelevant
-        #expect(PlayerService.shouldProceedWithPrefetch(isExpensive: false, allowCellular: true) == true)
-        #expect(PlayerService.shouldProceedWithPrefetch(isExpensive: false, allowCellular: false) == true)
-    }
-}
-
 @Suite("PlayerService.effectiveCrossfadeOverlap")
 struct EffectiveCrossfadeOverlapTests {
     @Test func usesConfiguredDurationForOrdinaryTransitions() {

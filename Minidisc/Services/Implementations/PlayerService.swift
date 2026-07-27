@@ -599,11 +599,8 @@ actor PlayerService: PlayerServiceProtocol {
     func crossfadeSettingsDidChange() async {
         crossfadeConfig = await MainActor.run { crossfadeSettings.config }
         Logger.player.info(
-            "[CROSSFADE] settings duration=\(self.crossfadeConfig.duration, format: .fixed(precision: 1))s keepAlbumTracksBackToBack=\(self.crossfadeConfig.disableForGapless, privacy: .public)"
+            "[CROSSFADE] settings duration=\(self.crossfadeConfig.duration, format: .fixed(precision: 1))s keepAlbumTracksBackToBack=\(self.crossfadeConfig.disableForGapless, privacy: .public) appliesToNextPreload=true"
         )
-        playbackGeneration &+= 1
-        cancelPendingPrefetch()
-        engine.cancelPreload()
     }
 
     func setAutoExtendEnabled(_ enabled: Bool) async {

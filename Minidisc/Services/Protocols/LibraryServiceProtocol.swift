@@ -60,7 +60,7 @@ protocol LibraryServiceProtocol: AnyObject, Sendable {
     /// Most played albums (Subsonic `getAlbumList2?type=frequent`).
     func mostPlayedAlbums(size: Int) async throws -> [AlbumID3]
 
-    /// Random songs from the user's library. Used as the source pool for Smart Shuffle (phase 3).
+    /// Random songs from the user's library. Used as the source pool for Smart Shuffle.
     /// Server has no "exclude recently played" filter — filtering is done client-side by the consumer.
     func randomSongs(size: Int) async throws -> [Song]
 
@@ -95,10 +95,6 @@ protocol LibraryServiceProtocol: AnyObject, Sendable {
     /// Degrades to pure random with no listening history or a thin pool; offline
     /// falls back to downloaded tracks only.
     func similarBackfillQueue(targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong]
-
-    // TODO(v1.x): verify Navidrome savePlayQueue / getPlayQueue support before relying on these
-    func savePlayQueue(songIds: [String], currentIndex: Int, positionSeconds: Double) async throws
-    func getPlayQueue() async throws -> SavedPlayQueue?
 
     // MARK: - Similar artists support
 

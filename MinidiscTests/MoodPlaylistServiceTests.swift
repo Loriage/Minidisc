@@ -68,7 +68,7 @@ private final class PlaylistStub: PlaylistSyncClient, @unchecked Sendable {
 // MARK: - Harness
 
 /// Records every cover the service asks to be applied.
-private final class CoverStub: @unchecked Sendable {
+private nonisolated final class CoverStub: @unchecked Sendable {
     private let lock = NSLock()
     private var _applied: [(spec: PlaylistGradientSpec, playlistId: String)] = []
     var applied: [(spec: PlaylistGradientSpec, playlistId: String)] { lock.withLock { _applied } }

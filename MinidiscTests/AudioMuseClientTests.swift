@@ -9,7 +9,7 @@ import Foundation
 
 /// Serves canned responses per path, and records the request bodies it saw.
 private final class StubProtocol: URLProtocol, @unchecked Sendable {
-    nonisolated(unsafe) static let lock = NSLock()
+    static let lock = NSLock()
     nonisolated(unsafe) static var responses: [String: (status: Int, body: String)] = [:]
     nonisolated(unsafe) static var bodies: [String: [String: Any]] = [:]
 

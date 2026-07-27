@@ -18,7 +18,7 @@ import OSLog
 /// - DownloadService → permanent, user-explicit, never auto-evicted, lives in Documents/.
 /// - AudioStreamCache → transient, automatic, evicted by FIFO, lives in Caches/.
 ///
-/// Populated via the streaming hook in PlayerService (phase 2). MediaResolver reads from this cache
+/// Populated via the streaming hook in PlayerService. MediaResolver reads from this cache
 /// between permanent downloads and remote streaming.
 actor AudioStreamCache: AudioStreamCacheProtocol {
     private let modelContainer: ModelContainer
@@ -73,10 +73,6 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
             return nil
         }
         return url
-    }
-
-    func touch(songId: String, serverId: UUID) async {
-        // No-op now that LRU is removed. Kept for MediaResolver API stability (phase 5 removes it).
     }
 
     // MARK: - Storage
@@ -247,7 +243,7 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
         Logger.cache.info("Cleared all cache entries")
     }
 
-    /// Clears all cache entries for a specific server (used at server switch in phase 6).
+    /// Clears all cache entries for a specific server.
     func clearAllForServer(_ serverId: UUID) async {
         let filePaths: [String] = await MainActor.run {
             let context = ModelContext(modelContainer)

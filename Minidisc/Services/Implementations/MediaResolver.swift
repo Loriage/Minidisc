@@ -38,9 +38,8 @@ actor MediaResolver: MediaResolverProtocol {
             return .downloaded(url)
         }
 
-        // 2. Ephemeral cache — no network needed, bump LRU clock.
+        // 2. Ephemeral cache — no network needed.
         if let url = await audioStreamCache.cachedURL(forSongId: songId, serverId: serverId) {
-            await audioStreamCache.touch(songId: songId, serverId: serverId)
             Logger.resolver.debug("Resolved '\(songId, privacy: .public)' from cache.")
             return .cached(url)
         }

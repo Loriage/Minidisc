@@ -37,7 +37,6 @@ final class MockAudioStreamCache: AudioStreamCacheProtocol {
     var usedBytes: Int64 = 0
     var trackCount: Int = 0
     func cachedURL(forSongId songId: String, serverId: UUID) async -> URL? { nil }
-    func touch(songId: String, serverId: UUID) async {}
     func store(fileAt sourceURL: URL, forSongId songId: String, serverId: UUID, mimeType: String) async throws -> URL {
         struct MockError: Error {}; throw MockError()
     }

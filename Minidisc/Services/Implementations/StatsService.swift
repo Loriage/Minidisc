@@ -104,7 +104,7 @@ actor StatsService {
         }
     }
 
-    // MARK: - Phase 2: Wrapped aggregation
+    // MARK: - Wrapped aggregation
 
     func hasEventsInPeriod(_ period: WrappedPeriod, serverId: String, calendar: Calendar) async -> Bool {
         let range = period.dateRange(in: calendar)

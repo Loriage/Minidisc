@@ -99,9 +99,6 @@ struct SearchView: View {
     }
 
     var body: some View {
-        let _ = Self._printChanges()
-        // [DIAG] Measures how often and how quickly body is re-evaluated on search open.
-        let _ = Logger.ui.debug("[SEARCH-OPEN] SearchView.body — query='\(searchQuery, privacy: .public)'")
         let trimmed = searchQuery.trimmingCharacters(in: .whitespaces)
         Group {
             if trimmed.isEmpty {
@@ -183,27 +180,13 @@ struct SearchView: View {
             }
         }
         .onAppear {
-            // [DIAG] Time the onAppear block (viewModel init is the only work here).
-            let t0 = Date()
-            Logger.ui.debug("[SEARCH-OPEN] SearchView.onAppear start")
-            guard let svc = container?.libraryService else {
-                Logger.ui.debug("[SEARCH-OPEN] SearchView.onAppear — no libraryService, early return")
-                return
-            }
-            let wasNil = viewModel == nil
+            guard let svc = container?.libraryService else { return }
             if viewModel == nil, let state = container?.serverState {
                 viewModel = SearchViewModel(libraryService: svc, serverState: state)
             }
-            Logger.ui.debug("[SEARCH-OPEN] SearchView.onAppear done — \(Int(Date().timeIntervalSince(t0) * 1000))ms — viewModel \(wasNil ? "created" : "already existed", privacy: .public)")
         }
         .task(id: searchQuery) {
-            // [DIAG] Fires on every searchQuery change including the initial empty-string open.
-            // search("") synchronously sets searchResults = nil on MainActor, which can
-            // trigger a SwiftUI re-render while the search bar animation is in flight.
-            let t0 = Date()
-            Logger.ui.debug("[SEARCH-OPEN] task(id:searchQuery) fired — query='\(searchQuery, privacy: .public)'")
             await viewModel?.search(query: searchQuery)
-            Logger.ui.debug("[SEARCH-OPEN] task(id:searchQuery) done — \(Int(Date().timeIntervalSince(t0) * 1000))ms")
         }
         .sheet(item: $songToAddToPlaylist) { song in
             AddToPlaylistSheet(song: song)
@@ -444,10 +427,6 @@ struct SearchView: View {
         @State private var showClearConfirm = false
 
         init(serverId: String, path: Binding<NavigationPath>) {
-            // [DIAG] Time the Query descriptor construction.
-            // Note: the actual SwiftData fetch executes later on the main thread
-            // when SwiftUI first renders this view — its cost will not appear here.
-            let t0 = Date()
             self.serverId = serverId
             self._path = path
             var descriptor = FetchDescriptor<SearchHistoryEntry>(
@@ -455,7 +434,6 @@ struct SearchView: View {
             )
             descriptor.fetchLimit = 50
             _historyEntries = Query(descriptor)
-            Logger.ui.debug("[SEARCH-OPEN] SearchHistoryListView.init done — \(Int(Date().timeIntervalSince(t0) * 1000))ms")
         }
 
         private var serverHistory: [SearchHistoryEntry] {
@@ -463,16 +441,8 @@ struct SearchView: View {
         }
 
         var body: some View {
-            let _ = Self._printChanges()
-            // [DIAG] Log raw @Query result count and cost of the in-process serverHistory filter.
-            // historyEntries.count > 0 here means the SwiftData fetch already ran (on main thread).
-            // If filter time >> 0ms with large historyEntries, add serverId predicate to @Query.
-            let bodyStart = CFAbsoluteTimeGetCurrent()
             let history = serverHistory
             let rowsData = history.map { SearchHistoryRowData(entry: $0) }
-            let filterMs = Int((CFAbsoluteTimeGetCurrent() - bodyStart) * 1000)
-            let _ = Logger.ui.debug("[SEARCH-OPEN] SearchHistoryListView.body — @Query:\(historyEntries.count) server-filtered:\(history.count) filter:\(filterMs)ms")
-            let _ = { if filterMs > 16 { Logger.ui.warning("[BODY-SLOW] SearchHistoryListView filter=\(filterMs)ms (main thread)") } }()
             if history.isEmpty {
                 EmptyStateView(
                     systemImage: "magnifyingglass",
@@ -524,11 +494,6 @@ struct SearchView: View {
                     }
                 }
                 .listStyle(.plain)
-                // [DIAG] Fires after the List is on-screen — gap between body log and this
-                // log is the main-thread cost of the @Query fetch + SwiftUI layout pass.
-                .onAppear {
-                    Logger.ui.debug("[SEARCH-OPEN] SearchHistoryListView appeared — \(history.count) row(s) visible")
-                }
                 // Clearing search history is destructive with no undo, so gate it behind a confirmation.
                 // A centered .alert (popin) is used here — intentionally diverging from the playlist
                 // delete's bottom action-sheet. The clear runs ONLY on confirm; Cancel leaves the history

@@ -128,15 +128,6 @@ actor LibraryService: LibraryServiceProtocol {
         ).song ?? []
     }
 
-    func savePlayQueue(songIds: [String], currentIndex: Int, positionSeconds: Double) async throws {
-        // TODO(v1.x): verify Navidrome savePlayQueue support; implement best-effort sync
-    }
-
-    func getPlayQueue() async throws -> SavedPlayQueue? {
-        // TODO(v1.x): implement best-effort queue restore from server
-        return nil
-    }
-
     // MARK: - Artist tracks
 
     func fetchAllTracks(forArtistID artistID: String) async throws -> [DisplayableSong] {

@@ -8,15 +8,11 @@ import Foundation
 /// The low-level playback state an `AudioEngine` reports, independent of any concrete backend so
 /// another engine could drive the same `PlayerService` orchestration.
 nonisolated enum AudioEngineState: Equatable, Sendable {
-    /// Idle and ready to start a source.
-    case ready
     case buffering
     case playing
     case paused
     case stopped
     case error
-    /// Anything the orchestration does not act on (running, disposed, unknown).
-    case other
 }
 
 /// Events an `AudioEngine` reports back. Called on the engine's callback thread; a consumer that is an

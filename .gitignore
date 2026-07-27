@@ -7,6 +7,7 @@ CACHE_AUDIT.md
 xcuserdata/
 *.xcuserstate
 build/
+.build/
 
 # graphify — generated locally, not versioned. graphify's own README suggests committing
 # graphify-out/, but its post-commit hook rebuilds the graph after every commit, and a rebuild

@@ -106,8 +106,6 @@ private final class PRLibraryNullStub: LibraryServiceProtocol {
     func randomSongs(size: Int) async throws -> [Song] { throw URLError(.unknown) }
     func smartShuffleQueue(targetSize: Int) async throws -> [DisplayableSong] { throw URLError(.unknown) }
     func similarBackfillQueue(targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong] { throw URLError(.unknown) }
-    func savePlayQueue(songIds: [String], currentIndex: Int, positionSeconds: Double) async throws {}
-    func getPlayQueue() async throws -> SavedPlayQueue? { nil }
     func getArtistInfo(forArtistID artistID: String, count: Int) async throws -> ArtistInfo { throw URLError(.unknown) }
     func getArtistMBID(forArtistID artistID: String) async throws -> String? { nil }
     func findArtist(byName name: String) async -> ArtistID3? { nil }
@@ -146,8 +144,6 @@ private final class PRLibraryConfigurableStub: LibraryServiceProtocol {
     func randomSongs(size: Int) async throws -> [Song] { throw URLError(.unknown) }
     func smartShuffleQueue(targetSize: Int) async throws -> [DisplayableSong] { throw URLError(.unknown) }
     func similarBackfillQueue(targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong] { throw URLError(.unknown) }
-    func savePlayQueue(songIds: [String], currentIndex: Int, positionSeconds: Double) async throws {}
-    func getPlayQueue() async throws -> SavedPlayQueue? { nil }
     func getArtistInfo(forArtistID artistID: String, count: Int) async throws -> ArtistInfo { throw URLError(.unknown) }
     func getArtistMBID(forArtistID artistID: String) async throws -> String? { try mbidResult.get() }
     func findArtist(byName name: String) async -> ArtistID3? { artistsByName[name] }

@@ -8,8 +8,7 @@ import Foundation
 /// A frequently-appearing artist in a playlist, for the "Featured Artists" rail (Apple-Music direction).
 ///
 /// Only artists with a non-nil `artistId` qualify — navigating to the artist detail reuses
-/// `.minidiscNavigateToArtist`, which needs the id. (Real artist *photos* would require a `getArtist`
-/// call; Phase 1 uses a representative track cover in the circle — flagged as a later refinement.)
+/// `.minidiscNavigateToArtist`, which needs the id. The circle uses a representative track cover.
 struct FeaturedArtist: Identifiable, Hashable, Sendable {
     let id: String          // artistId — required (drives navigation)
     let name: String

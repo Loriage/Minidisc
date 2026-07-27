@@ -235,7 +235,7 @@ actor PlayerService: PlayerServiceProtocol {
         // Record the previous track before transitioning (state.currentTrack still holds it here).
         await recordCurrentTrackPlayback(trigger: wasTrackCompletedNaturally ? "track_completed" : "user_skipped")
         wasTrackCompletedNaturally = false
-        resetTrackAccumulator(isPlaying: true)
+        resetTrackAccumulator()
 
         // Cancel any pending +30s scrobble, cache download, and prefetch from the previous track.
         cancelPendingScrobble()
@@ -260,7 +260,6 @@ actor PlayerService: PlayerServiceProtocol {
             await listenBrainzService.notifyTrackStarted(song: song)
         }
         // Schedule cache download for stream sources only. Same +30s threshold as scrobble.
-        // Phase 3: reads cacheSettings for format and cellular policy.
         if case .stream(let streamURL, let customHeaders) = source {
             // Capture settings at task-creation time — in-flight tasks use values from when they were scheduled.
             let (allowCellular, cacheFormat) = await MainActor.run {
@@ -343,7 +342,6 @@ actor PlayerService: PlayerServiceProtocol {
         startProgressTimer()
 
         let artworkURL = await resolveArtworkURL(for: song)
-        Logger.player.debug("[TRANSITION] attempting credentials fetch for NowPlaying headers")
         let artworkHeaders: [String: String]
         do {
             artworkHeaders = try await serverService.activeCredentials().customHeaders
@@ -395,7 +393,7 @@ actor PlayerService: PlayerServiceProtocol {
         }
 
         await recordCurrentTrackPlayback(trigger: "radio_started")
-        resetTrackAccumulator(isPlaying: false)
+        resetTrackAccumulator()
         cancelPendingScrobble()
         cancelPendingCacheDownload()
         cancelPendingPrefetch()
@@ -1834,7 +1832,7 @@ actor PlayerService: PlayerServiceProtocol {
 
     /// Resets all per-track accumulator state for the next track.
     /// Call immediately after recordCurrentTrackPlayback() in every transition site.
-    private func resetTrackAccumulator(isPlaying: Bool) {
+    private func resetTrackAccumulator() {
         accumulatedPlayedSeconds = 0
         trackPlayStartDate = Date()
         // startPlayback calls this before the new item is installed, so using the engine's current
@@ -1921,7 +1919,7 @@ actor PlayerService: PlayerServiceProtocol {
             wasTrackCompletedNaturally = true
             await recordCurrentTrackPlayback(trigger: "repeat_one")
             wasTrackCompletedNaturally = false
-            resetTrackAccumulator(isPlaying: true)
+            resetTrackAccumulator()
             if let source = currentSource {
                 let trackID = await MainActor.run { state.currentTrack?.id ?? "repeat" }
                 engine.play(trackID: trackID, url: source.url, headers: source.customHeaders)
@@ -2030,8 +2028,6 @@ actor PlayerService: PlayerServiceProtocol {
             } else {
                 await MainActor.run { state.playbackState = .error(.timeout) }
             }
-        default:
-            break
         }
     }
 

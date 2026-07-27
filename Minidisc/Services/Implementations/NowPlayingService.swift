@@ -291,80 +291,17 @@ actor NowPlayingService: NowPlayingServiceProtocol {
     private func updateRemoteCommandsAvailability(isLiveStream: Bool) async {
         // MPRemoteCommandCenter is a main-thread API. Keep availability changes on the same executor
         // as initial command registration so iOS never observes a half-updated command set.
-        let values = await MainActor.run {
+        await MainActor.run {
             let center = MPRemoteCommandCenter.shared()
-            let beforeNext = center.nextTrackCommand.isEnabled
-            let beforePrevious = center.previousTrackCommand.isEnabled
             center.nextTrackCommand.isEnabled = !isLiveStream
             center.previousTrackCommand.isEnabled = !isLiveStream
             center.changePlaybackPositionCommand.isEnabled = !isLiveStream
-            return (
-                beforeNext: beforeNext,
-                beforePrevious: beforePrevious,
-                afterNext: center.nextTrackCommand.isEnabled,
-                afterPrevious: center.previousTrackCommand.isEnabled
-            )
         }
         // Skip, previous, and scrubbing are meaningless for a live stream.
         // play/pause/togglePlayPause remain enabled in both modes (always-on).
-        Logger.nowPlaying.debug("[REMOTE] updateRemoteCommandsAvailability — isLiveStream=\(isLiveStream, privacy: .public) nextEnabled=\(!isLiveStream, privacy: .public)")
-        Logger.nowPlaying.debug("[REMOTE] nextTrackCommand.isEnabled BEFORE=\(values.beforeNext, privacy: .public)")
-        Logger.nowPlaying.debug("[REMOTE] previousTrackCommand.isEnabled BEFORE=\(values.beforePrevious, privacy: .public)")
-        Logger.nowPlaying.debug("[REMOTE] nextTrackCommand.isEnabled AFTER=\(values.afterNext, privacy: .public)")
-        Logger.nowPlaying.debug("[REMOTE] previousTrackCommand.isEnabled AFTER=\(values.afterPrevious, privacy: .public)")
-        appendToDebugLog("[RCC] updateRemoteCommandsAvailability called — isLiveStream=\(isLiveStream)")
-        appendToDebugLog("[RCC] nextTrack BEFORE=\(values.beforeNext)")
-        appendToDebugLog("[RCC] previousTrack BEFORE=\(values.beforePrevious)")
-        appendToDebugLog("[RCC] nextTrack AFTER=\(values.afterNext)")
-        appendToDebugLog("[RCC] previousTrack AFTER=\(values.afterPrevious)")
+        Logger.nowPlaying.debug(
+            "[REMOTE] command availability updated — live=\(isLiveStream, privacy: .public) seek/next/previous=\(!isLiveStream, privacy: .public)"
+        )
     }
 
-    // MARK: - Discord RPC
-
-    private func appendToDebugLog(_ message: String) {
-        // Forward to the off-actor, opt-in, size-capped logger — no synchronous disk I/O on the playback
-        // actor or the track-change path (audit finding L4). Disabled by default; see RemoteCommandDebugLog.
-        RemoteCommandDebugLog.log(message)
-    }
-}
-
-/// Opt-in, size-capped, off-actor file logger for the MPRemoteCommandCenter skip/previous diagnostic.
-///
-/// This is the active diagnostic for the remote-command (next/previous) bug, so the capability is kept —
-/// but made safe. It is OFF by default and enabled at runtime via the UserDefaults flag `debug.rccFileLog`
-/// (so it can be turned on for a release build on a real device, unlike a `#if DEBUG` gate). When enabled it
-/// appends on a background serial queue — never blocking the playback actor — and rotates the file at a size
-/// cap so `minidisc_debug.log` can never grow unbounded.
-private enum RemoteCommandDebugLog {
-    /// Runtime toggle, default OFF. Set this UserDefaults bool to true to capture the log while diagnosing.
-    nonisolated static let enabledKey = "debug.rccFileLog"
-    /// Rotate when the active log reaches this size; total on disk is bounded to ~2x this (.log + .log.1).
-    private nonisolated static let maxBytes = 256 * 1024
-    private nonisolated static let queue = DispatchQueue(label: "com.nohitdev.minidisc.rcc-debug-log", qos: .utility)
-
-    nonisolated static func log(_ message: String) {
-        // Cheap in-memory flag check on the caller; when disabled (the default) we do zero work and zero I/O.
-        guard UserDefaults.standard.bool(forKey: enabledKey) else { return }
-        let line = "\(Date()): \(message)\n"
-        queue.async {
-            let fm = FileManager.default
-            guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first,
-                  let data = line.data(using: .utf8) else { return }
-            let file = docs.appendingPathComponent("minidisc_debug.log")
-            // Rotate before appending once at/over the cap so the file can't grow without bound.
-            if let attrs = try? fm.attributesOfItem(atPath: file.path),
-               let size = attrs[.size] as? Int, size >= maxBytes {
-                let rotated = docs.appendingPathComponent("minidisc_debug.log.1")
-                try? fm.removeItem(at: rotated)
-                try? fm.moveItem(at: file, to: rotated)
-            }
-            if let handle = try? FileHandle(forWritingTo: file) {
-                defer { try? handle.close() }
-                handle.seekToEndOfFile()
-                handle.write(data)
-            } else {
-                try? data.write(to: file)
-            }
-        }
-    }
 }

@@ -5,7 +5,7 @@
 
 import Foundation
 
-/// User-configurable format for cached tracks. Exposed in Settings (phase 5).
+/// User-configurable format for cached tracks.
 /// `.matchStream` caches the same format the server serves for streaming.
 /// Other cases force a specific transcode via Subsonic `format` + `maxBitRate` params.
 nonisolated enum CacheFormat: String, CaseIterable, Identifiable, Sendable {

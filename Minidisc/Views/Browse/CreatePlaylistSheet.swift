@@ -210,7 +210,7 @@ struct CreatePlaylistSheet: View {
             artworkImageCache: c.artworkImageCache
         )
         if let shape = selectedGradient {
-            // Empty playlist at creation → neutral base color now; first-track derivation is Phase 2b.
+            // Empty playlists use a neutral base color until they receive a first track.
             let spec = PlaylistGradientSpec.neutral(shape: shape)
             await manager.applyGradientCover(spec, playlistId: playlistId)
             if let serverId = c.serverState.activeServer?.id {

@@ -11,9 +11,6 @@ protocol AudioStreamCacheProtocol: AnyObject, Sendable {
 
     func cachedURL(forSongId songId: String, serverId: UUID) async -> URL?
 
-    /// No-op since LRU removal. Kept for MediaResolver API stability — removed in phase 5.
-    func touch(songId: String, serverId: UUID) async
-
     /// Moves a completed download into the cache without materialising the whole track in RAM.
     func store(fileAt sourceURL: URL, forSongId songId: String, serverId: UUID, mimeType: String) async throws -> URL
 
@@ -26,6 +23,6 @@ protocol AudioStreamCacheProtocol: AnyObject, Sendable {
     /// Deletes every cached track and file — called by "Clear cache now".
     func clearAll() async
 
-    /// Deletes all cached tracks for a specific server — called at server switch (phase 6).
+    /// Deletes all cached tracks for a specific server.
     func clearAllForServer(_ serverId: UUID) async
 }

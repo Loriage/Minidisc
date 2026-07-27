@@ -9,9 +9,8 @@ import UniformTypeIdentifiers
 
 /// Apple-Music-style modal playlist editor: X (cancel) / ✓ (commit), a cover-picker carousel
 /// (`PlaylistCoverPicker`, pre-selected from the stored gradient choice), title, description (↔ playlist
-/// `comment`), the track list, and a trash (delete) action. Phase 2b/A: metadata + cover re-pick; the track
-/// list is read-only here (reorder + multi-select remove land in Phase B). Cross-platform-ready; only the
-/// photo-picker plumbing and the bottom-bar placement are iOS-gated.
+/// `comment`), an editable track list, and a trash (delete) action. Only the photo-picker plumbing and
+/// bottom-bar placement are iOS-gated.
 struct EditPlaylistSheet: View {
     let playlistId: String
     let serverId: UUID
@@ -205,8 +204,7 @@ struct EditPlaylistSheet: View {
 
     /// Multi-select remove: drop the selected tracks from the local working list. NO per-index server delete —
     /// the commit replaces the whole list atomically (final list = `editSongs` minus the selection), so it's
-    /// immune to index drift. Distinct from the detail-view swipe-remove (Phase 1) and the trash (delete
-    /// playlist).
+    /// immune to index drift. Distinct from the detail-view swipe-remove and the trash (delete playlist).
     private func removeSelectedTracks() {
         editSongs.removeAll { selectedSongIds.contains($0.id) }
         selectedSongIds.removeAll()
@@ -305,7 +303,7 @@ struct EditPlaylistSheet: View {
             await applyCover(container: c)
         }
         // First-track derivation: if "Add Music" filled a previously-empty playlist, derive the gradient color
-        // from the new first track — the SAME hook the add-music detail flow uses (Phase 3). Runs after
+        // from the new first track — the same hook the add-music detail flow uses. Runs after
         // applyCover so a simultaneous re-pick (which resolves from the OLD empty first track = neutral) is
         // corrected to the real first track. No-op unless the playlist was empty.
         await AddMusicCommitter.deriveFirstTrackCoverIfNeeded(

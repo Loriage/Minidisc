@@ -383,7 +383,7 @@ extension AppContainer {
     /// earlier migration renamed `.mp3` is still caught. A remux REWRITES the bytes, so
     /// `DownloadedTrack.fileSize` is refreshed from the remuxed file (with the same `?? 0` fallback
     /// as the download path, so `downloadedURL`'s `fileSize == 0` escape covers a size-read miss
-    /// instead of persisting a stale, mismatched size). Scope: DownloadedTrack only (CachedTrack = Phase 2).
+    /// instead of persisting a stale, mismatched size). Scope: downloaded tracks only.
     static func migrateM4AFaststartIfNeeded(modelContainer: ModelContainer) async {
         guard !UserDefaults.standard.bool(forKey: m4aFaststartMigrationKey) else { return }
 

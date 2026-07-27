@@ -4,7 +4,6 @@
 // See LICENSE file in the project root for full license information.
 
 import SwiftUI
-import OSLog
 
 struct WrappedRecapMonthCard: View {
     let period: WrappedPeriod
@@ -46,8 +45,6 @@ struct WrappedRecapMonthCard: View {
     }
 
     var body: some View {
-        let bodyStart = CFAbsoluteTimeGetCurrent()
-        let _ = { let e = Int((CFAbsoluteTimeGetCurrent() - bodyStart) * 1000); if e > 5 { Logger.ui.warning("[BODY-SLOW] WrappedRecapMonthCard \(e)ms") } }()
         NavigationLink {
             WrappedView(initialPeriod: period)
         } label: {

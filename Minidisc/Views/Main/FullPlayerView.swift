@@ -1096,7 +1096,6 @@ private struct BottomToolbar: View {
 
             if !isLiveStream {
                 Button {
-                    // Phase 1: instant surface toggle (no morph animation).
                     if surface == .queue {
                         surface = .player
                     } else {

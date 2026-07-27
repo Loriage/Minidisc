@@ -88,26 +88,26 @@ struct MinidiscApp: App {
             .tint(MinidiscColors.accent)
             .task {
                 guard container == nil else { return }
-                Logger.boot.notice("🟡 AppContainer init start")
-                guard let newContainer = try? AppContainer() else { return }
-                Logger.boot.notice("🟡 setup() start")
+                let newContainer: AppContainer
+                do {
+                    newContainer = try AppContainer()
+                } catch {
+                    Logger.boot.fault("AppContainer initialization failed: \(error, privacy: .public)")
+                    return
+                }
                 await newContainer.setup()
                 // Start reachability before the UI is interactive so serverState.isOnline
                 // is corrected from its optimistic default before any view loads data.
                 newContainer.networkMonitor.start(serverState: newContainer.serverState)
-                Logger.boot.notice("🟡 setup() done — nowPlayingService.start()")
                 await newContainer.nowPlayingService.start()
                 AppContainer.invalidateCoverArtCacheIfNeeded(artworkCache: newContainer.artworkImageCache)
                 AppContainer.sweepLegacyCoverArtFiles()
                 Task { await AppContainer.migrateAudioExtensionsIfNeeded(modelContainer: newContainer.modelContainer, audioStreamCache: newContainer.audioStreamCache) }
                 Task { await AppContainer.migrateM4AFaststartIfNeeded(modelContainer: newContainer.modelContainer) }
-                Logger.boot.notice("🟡 container = newContainer (views will render)")
                 container = newContainer
-                Logger.boot.notice("🟡 loadPersistedState() start")
                 // loadPersistedState must complete before restoreSession so the active
                 // server is known when prepareCurrentTrackForRestoration resolves the URL.
                 await newContainer.serverService.loadPersistedState()
-                Logger.boot.notice("🟡 loadPersistedState() done — activeServer = \(String(describing: newContainer.serverState.activeServer?.baseURL), privacy: .public)")
                 await newContainer.playerService.restoreSession()
                 Task { await runCoverArtGarbageCollection(container: newContainer) }
                 // Cold start fallback: primary trigger for Wrapped updates (BGTask is best-effort).
@@ -118,6 +118,7 @@ struct MinidiscApp: App {
                 MinidiscApp._bgTaskServerState = newContainer.serverState
                 MinidiscApp._bgTaskMoodService = newContainer.moodPlaylistService
                 MinidiscApp.scheduleWrappedUpdate()
+                Logger.boot.info("App services ready")
             }
             .task(id: container?.serverState.isOnline) {
                 guard let c = container, c.serverState.isOnline else { return }

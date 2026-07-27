@@ -187,6 +187,41 @@ struct OfflineDownloadRoundTripTests {
         #expect(try context.fetch(FetchDescriptor<DownloadedAlbum>()).isEmpty)
     }
 
+    @Test("removing an album ignores playlist ownership from another server")
+    func removingAlbumIgnoresOtherServerPlaylist() async throws {
+        let (service, container, sid) = try makeService()
+        let otherServerId = UUID()
+        insertTrack(container, songId: "shared-id", serverId: sid, track: 1)
+        container.mainContext.insert(
+            DownloadedAlbum(
+                albumId: "album-1",
+                serverId: sid,
+                name: "Album",
+                tracksCount: 1,
+                totalTracksCount: 1
+            )
+        )
+        container.mainContext.insert(
+            DownloadedPlaylist(
+                playlistId: "other-server-playlist",
+                serverId: otherServerId,
+                name: "Other server",
+                tracksCount: 1,
+                totalTracksCount: 1,
+                songIds: ["shared-id"]
+            )
+        )
+        try container.mainContext.save()
+
+        try await service.remove(albumId: "album-1", serverId: sid)
+
+        let context = ModelContext(container)
+        let remainingTracks = try context.fetch(FetchDescriptor<DownloadedTrack>())
+        #expect(remainingTracks.allSatisfy { $0.serverId != sid })
+        let remainingPlaylists = try context.fetch(FetchDescriptor<DownloadedPlaylist>())
+        #expect(remainingPlaylists.contains { $0.serverId == otherServerId })
+    }
+
     @Test("removing a playlist keeps album tracks and purges playlist-only tracks")
     func removingPlaylistPreservesAlbumTracks() async throws {
         let (service, container, sid) = try makeService()
@@ -221,6 +256,41 @@ struct OfflineDownloadRoundTripTests {
         let remainingIds = Set(try context.fetch(FetchDescriptor<DownloadedTrack>()).map(\.songId))
         #expect(remainingIds == ["shared"])
         #expect(try context.fetch(FetchDescriptor<DownloadedPlaylist>()).isEmpty)
+    }
+
+    @Test("removing a playlist ignores album ownership from another server")
+    func removingPlaylistIgnoresOtherServerAlbum() async throws {
+        let (service, container, sid) = try makeService()
+        let otherServerId = UUID()
+        insertTrack(container, songId: "shared-id", serverId: sid, track: 1)
+        container.mainContext.insert(
+            DownloadedAlbum(
+                albumId: "album-1",
+                serverId: otherServerId,
+                name: "Other server album",
+                tracksCount: 1,
+                totalTracksCount: 1
+            )
+        )
+        container.mainContext.insert(
+            DownloadedPlaylist(
+                playlistId: "playlist-1",
+                serverId: sid,
+                name: "Playlist",
+                tracksCount: 1,
+                totalTracksCount: 1,
+                songIds: ["shared-id"]
+            )
+        )
+        try container.mainContext.save()
+
+        try await service.remove(playlistId: "playlist-1", serverId: sid)
+
+        let context = ModelContext(container)
+        let remainingTracks = try context.fetch(FetchDescriptor<DownloadedTrack>())
+        #expect(remainingTracks.allSatisfy { $0.serverId != sid })
+        let remainingAlbums = try context.fetch(FetchDescriptor<DownloadedAlbum>())
+        #expect(remainingAlbums.contains { $0.serverId == otherServerId })
     }
 
     @Test("removing one track refreshes album and playlist completeness counts")

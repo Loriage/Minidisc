@@ -15,6 +15,7 @@ actor DownloadService: DownloadServiceProtocol {
     private let modelContainer: ModelContainer
     private let downloadsDirectory: URL
     private let coverArtsDirectory: URL
+    private let offlineLibraryReader: OfflineLibraryReader
     private let offlineRemovalCoordinator: OfflineLibraryRemovalCoordinator
     private var progressContinuation: AsyncStream<[DownloadProgress]>.Continuation?
     /// Keyed by "songId::serverId" to allow per-track cancellation.
@@ -46,6 +47,10 @@ actor DownloadService: DownloadServiceProtocol {
         let downloadsDirectory = base.appendingPathComponent("downloads", isDirectory: true)
         self.downloadsDirectory = downloadsDirectory
         self.coverArtsDirectory = base.appendingPathComponent("coverarts", isDirectory: true)
+        self.offlineLibraryReader = OfflineLibraryReader(
+            modelContainer: modelContainer,
+            downloadsDirectory: downloadsDirectory
+        )
         self.offlineRemovalCoordinator = OfflineLibraryRemovalCoordinator(
             modelContainer: modelContainer,
             downloadsDirectory: downloadsDirectory
@@ -60,24 +65,7 @@ actor DownloadService: DownloadServiceProtocol {
     // MARK: - Lookup
 
     func downloadedURL(forSongId songId: String, serverId: UUID) async -> URL? {
-        let entry: (filePath: String, fileSize: Int64)? = await MainActor.run {
-            let context = ModelContext(modelContainer)
-            let predicate = #Predicate<DownloadedTrack> { $0.songId == songId }
-            let tracks = (try? context.fetch(FetchDescriptor(predicate: predicate))) ?? []
-            return tracks.first(where: { $0.serverId == serverId }).map { ($0.filePath, $0.fileSize) }
-        }
-        guard let entry else { return nil }
-        let url = downloadsDirectory.appendingPathComponent(entry.filePath)
-        // A missing, empty, or size-mismatched file must fall through to cache/stream —
-        // never hand a broken local file to the player. The file is NOT deleted here
-        // (permanent downloads are user data); the record's size 0 means a legacy entry
-        // whose size read failed at write time, where only non-emptiness can be checked.
-        let diskSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
-        guard diskSize > 0, entry.fileSize == 0 || diskSize == entry.fileSize else {
-            Logger.download.warning("Downloaded track record exists but file missing or invalid (disk \(diskSize) bytes, record \(entry.fileSize)): \(entry.filePath, privacy: .public)")
-            return nil
-        }
-        return url
+        await offlineLibraryReader.downloadedURL(forSongId: songId, serverId: serverId)
     }
 
     func isDownloaded(songId: String, serverId: UUID) async -> Bool {
@@ -85,22 +73,7 @@ actor DownloadService: DownloadServiceProtocol {
     }
 
     func downloadedSongIds(serverId: UUID) async -> Set<String> {
-        let entries: [(songId: String, filePath: String, fileSize: Int64)] = await MainActor.run {
-            let context = ModelContext(modelContainer)
-            let all = (try? context.fetch(FetchDescriptor<DownloadedTrack>())) ?? []
-            return all
-                .filter { $0.serverId == serverId }
-                .map { ($0.songId, $0.filePath, $0.fileSize) }
-        }
-        // Match downloadedURL's integrity contract. A stale SwiftData row must not make
-        // the UI claim a track is available offline or make a playlist count it as a
-        // successful download.
-        return Set(entries.compactMap { entry in
-            let url = downloadsDirectory.appendingPathComponent(entry.filePath)
-            let diskSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
-            guard diskSize > 0, entry.fileSize == 0 || diskSize == entry.fileSize else { return nil }
-            return entry.songId
-        })
+        await offlineLibraryReader.downloadedSongIds(serverId: serverId)
     }
 
     func localCoverArtURL(forId coverArtId: String) async -> URL? {
@@ -176,115 +149,30 @@ actor DownloadService: DownloadServiceProtocol {
     }
 
     func localAlbumData(albumId: String, serverId: UUID) async -> LocalAlbumData? {
-        await MainActor.run {
-            let context = ModelContext(modelContainer)
-            // Tracks are the primary source — present whether the album was downloaded
-            // directly or via a playlist download that never created a DownloadedAlbum record.
-            let allTracks = (try? context.fetch(FetchDescriptor<DownloadedTrack>())) ?? []
-            let albumTracks = allTracks
-                .filter { $0.albumId == albumId && $0.serverId == serverId }
-                .sorted { ($0.trackNumber ?? Int.max) < ($1.trackNumber ?? Int.max) }
-            guard !albumTracks.isEmpty else { return nil }
-            let first = albumTracks[0]
-            // DownloadedAlbum record may exist for richer metadata (direct album downloads).
-            let allAlbums = (try? context.fetch(FetchDescriptor<DownloadedAlbum>())) ?? []
-            let albumRecord = allAlbums.first(where: { $0.albumId == albumId && $0.serverId == serverId })
-            let songs = albumTracks.map { DisplayableSong(from: $0) }
-            return LocalAlbumData(
-                albumId: albumId,
-                albumName: albumRecord?.name ?? first.album ?? albumId,
-                artistName: albumRecord?.artist ?? first.artist,
-                coverArtId: albumRecord?.coverArtId ?? first.coverArtId,
-                songs: songs
-            )
-        }
+        await offlineLibraryReader.localAlbumData(albumId: albumId, serverId: serverId)
     }
 
     func localArtistData(artistId: String, artistName: String?, serverId: UUID) async -> LocalArtistData? {
-        await MainActor.run {
-            let context = ModelContext(modelContainer)
-            let allTracks = ((try? context.fetch(FetchDescriptor<DownloadedTrack>())) ?? [])
-                .filter { $0.serverId == serverId }
-            // Match on artistId first; fall back to the name only for tracks whose server omitted the id,
-            // so a correctly-tagged track is never pulled in by a namesake.
-            let artistTracks = allTracks.filter { track in
-                if let id = track.artistId { return id == artistId }
-                guard let artistName, let trackArtist = track.artist else { return false }
-                return trackArtist.localizedCaseInsensitiveCompare(artistName) == .orderedSame
-            }
-            guard !artistTracks.isEmpty else { return nil }
-
-            let allAlbums = ((try? context.fetch(FetchDescriptor<DownloadedAlbum>())) ?? [])
-                .filter { $0.serverId == serverId }
-            // Tracks with no albumId can't be grouped — they still play from `tracks` below.
-            let byAlbum = Dictionary(grouping: artistTracks.filter { $0.albumId != nil }) { $0.albumId! }
-            let albums = byAlbum
-                .map { albumId, tracks -> LocalAlbumData in
-                    let ordered = tracks.sorted { ($0.trackNumber ?? Int.max) < ($1.trackNumber ?? Int.max) }
-                    let first = ordered[0]
-                    let record = allAlbums.first { $0.albumId == albumId }
-                    return LocalAlbumData(
-                        albumId: albumId,
-                        albumName: record?.name ?? first.album ?? albumId,
-                        artistName: record?.artist ?? first.artist,
-                        coverArtId: record?.coverArtId ?? first.coverArtId,
-                        songs: ordered.map { DisplayableSong(from: $0) }
-                    )
-                }
-                .sorted { $0.albumName.localizedCaseInsensitiveCompare($1.albumName) == .orderedAscending }
-
-            return LocalArtistData(
-                artistId: artistId,
-                artistName: artistName ?? artistTracks[0].artist ?? artistId,
-                coverArtId: albums.first?.coverArtId ?? artistTracks[0].coverArtId,
-                albums: albums,
-                tracks: albums.flatMap(\.songs)
-            )
-        }
+        await offlineLibraryReader.localArtistData(
+            artistId: artistId,
+            artistName: artistName,
+            serverId: serverId
+        )
     }
 
     func localPlaylistData(playlistId: String, serverId: UUID) async -> LocalPlaylistData? {
-        await MainActor.run {
-            let context = ModelContext(modelContainer)
-            let allPlaylists = (try? context.fetch(FetchDescriptor<DownloadedPlaylist>())) ?? []
-            guard let playlist = allPlaylists.first(where: { $0.playlistId == playlistId && $0.serverId == serverId }) else { return nil }
-            // serverId-scoped lookup table — O(1) per id and avoids matching a track that was
-            // re-downloaded under a different server with a colliding songId.
-            let tracksBySongId = Dictionary(
-                (((try? context.fetch(FetchDescriptor<DownloadedTrack>())) ?? [])
-                    .filter { $0.serverId == serverId })
-                    .map { ($0.songId, $0) },
-                uniquingKeysWith: { first, _ in first }
-            )
-            let songs = playlist.songIds.compactMap { tracksBySongId[$0] }.map { DisplayableSong(from: $0) }
-            return LocalPlaylistData(playlistId: playlist.playlistId, name: playlist.name, coverArtId: playlist.coverArtId, songs: songs)
-        }
+        await offlineLibraryReader.localPlaylistData(
+            playlistId: playlistId,
+            serverId: serverId
+        )
     }
 
     func backfillPlaylistSongIds(playlistId: String, serverId: UUID, orderedSongIds: [String]) async {
-        await MainActor.run {
-            let context = ModelContext(modelContainer)
-            let playlists = (try? context.fetch(FetchDescriptor<DownloadedPlaylist>())) ?? []
-            // Only repair records that are actually missing their order. DownloadedTrack carries
-            // no playlist link, so membership cannot be recovered from disk alone — the order must
-            // come from the authoritative API list, intersected with what is actually downloaded.
-            guard let record = playlists.first(where: { $0.playlistId == playlistId && $0.serverId == serverId }),
-                  record.songIds.isEmpty else { return }
-            let downloaded = Set(
-                (((try? context.fetch(FetchDescriptor<DownloadedTrack>())) ?? [])
-                    .filter { $0.serverId == serverId })
-                    .map(\.songId)
-            )
-            let repaired = orderedSongIds.filter { downloaded.contains($0) }
-            guard !repaired.isEmpty else { return }
-            record.songIds = repaired
-            do {
-                try context.save()
-                Logger.download.info("Back-filled \(repaired.count, privacy: .public) songId(s) for playlist '\(playlistId, privacy: .public)'")
-            } catch {
-                Logger.download.debug("DownloadService: songIds back-fill save failed — \(error)")
-            }
-        }
+        await offlineLibraryReader.backfillPlaylistSongIds(
+            playlistId: playlistId,
+            serverId: serverId,
+            orderedSongIds: orderedSongIds
+        )
     }
 
     // MARK: - Single track download

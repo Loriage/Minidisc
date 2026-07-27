@@ -99,16 +99,16 @@ struct LocalArtistDataTests {
         #expect(data == nil)
     }
 
-    @Test("tracks without an albumId don't crash the grouping and are simply not listed as albums")
+    @Test("tracks without an albumId remain playable without appearing as albums")
     func tracksWithoutAlbumId() async throws {
         let (service, container, sid) = try makeService()
         insertTrack(container, songId: "s1", serverId: sid, albumId: nil, artistId: "ar-1", artist: "Orelsan", track: 1)
         try container.mainContext.save()
 
         let data = await service.localArtistData(artistId: "ar-1", artistName: "Orelsan", serverId: sid)
-        // A match exists, so the artist is not nil — but there is no album to show.
         #expect(data != nil)
         #expect(data?.albums.isEmpty == true)
+        #expect(data?.tracks.map(\.id) == ["s1"])
     }
 }
 

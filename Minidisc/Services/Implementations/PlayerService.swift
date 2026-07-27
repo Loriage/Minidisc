@@ -99,6 +99,7 @@ actor PlayerService: PlayerServiceProtocol {
         let cacheConfig = URLSessionConfiguration.default
         cacheConfig.timeoutIntervalForRequest = 30
         cacheConfig.timeoutIntervalForResource = 300
+        cacheConfig.networkServiceType = .background
         self.cacheSession = URLSession(configuration: cacheConfig)
 
         self.engine = engine
@@ -223,27 +224,16 @@ actor PlayerService: PlayerServiceProtocol {
             }
 
             if let cacheStreamURL {
-                cacheDownloadTask = Task { [audioStreamCache, downloadService, serverService, cacheSession, weak self] in
-                    try? await Task.sleep(for: .seconds(30))
-                    guard !Task.isCancelled else { return }
-                    if await audioStreamCache.cachedURL(forSongId: songId, serverId: serverId) != nil { return }
-                    if await downloadService.isDownloaded(songId: songId, serverId: serverId) { return }
-                    let isExpensive = await MainActor.run { serverService.state.isExpensive }
-                    if isExpensive && !allowCellular {
-                        Logger.player.debug("Cache skipped — cellular for '\(songId, privacy: .public)'")
-                        return
-                    }
-                    do {
-                        try await self?.downloadAndCache(
-                            songId: songId,
-                            serverId: serverId,
-                            streamURL: cacheStreamURL,
-                            customHeaders: customHeaders,
-                            using: cacheSession
-                        )
-                    } catch {
-                        Logger.player.debug("Cache download failed for '\(songId, privacy: .public)': \(error, privacy: .public)")
-                    }
+                let generation = playbackGeneration
+                cacheDownloadTask = Task { [weak self] in
+                    await self?.cacheStreamAfterDelay(
+                        songId: songId,
+                        serverId: serverId,
+                        streamURL: cacheStreamURL,
+                        customHeaders: customHeaders,
+                        allowCellular: allowCellular,
+                        generation: generation
+                    )
                 }
             } else {
                 Logger.player.debug("Cache: no URL for '\(songId, privacy: .public)' in \(cacheFormat.rawValue) — skipping")
@@ -1511,6 +1501,10 @@ actor PlayerService: PlayerServiceProtocol {
         remaining <= max(0, crossfadeDuration) + 15.0
     }
 
+    nonisolated static func shouldProtectTransitionFromCaching(crossfadeDuration: Double, remaining: Double) -> Bool {
+        remaining <= max(0, crossfadeDuration) + 30.0
+    }
+
     nonisolated static func effectiveCrossfadeOverlap(
         duration: Double,
         disableForGapless: Bool,
@@ -1525,11 +1519,28 @@ actor PlayerService: PlayerServiceProtocol {
         // Snapshot only the scalars each tick — never copy the whole `state.queue` array (it can be large
         // and this runs every 500ms). The next-song element is read on MainActor only when we actually
         // proceed, in a single hop alongside the server id (also trimming one MainActor round-trip).
-        let (currentIndex, duration, position) = await MainActor.run {
-            (state.currentIndex, state.duration, state.position)
+        let (currentIndex, duration, position, hasNextTrack, repeatMode) = await MainActor.run {
+            let nextIndex = state.currentIndex + 1
+            return (
+                state.currentIndex,
+                state.duration,
+                state.position,
+                state.queue.indices.contains(nextIndex),
+                state.repeatMode
+            )
         }
-        guard duration > 0 else { return }
+        guard duration > 0, hasNextTrack, repeatMode != .one else { return }
         let remaining = duration - position
+        if cacheDownloadTask != nil,
+           PlayerService.shouldProtectTransitionFromCaching(
+               crossfadeDuration: crossfadeConfig.duration,
+               remaining: remaining
+           ) {
+            Logger.player.debug(
+                "[CACHE] cancelling background download before standby preload (remaining=\(String(format: "%.1f", remaining))s)"
+            )
+            cancelPendingCacheDownload()
+        }
         guard PlayerService.shouldSchedulePrefetch(crossfadeDuration: crossfadeConfig.duration, remaining: remaining) else { return }
 
         let nextIndex = currentIndex + 1
@@ -1877,6 +1888,52 @@ actor PlayerService: PlayerServiceProtocol {
     }
 
     // MARK: - Cache download helpers
+
+    private func cacheStreamAfterDelay(
+        songId: String,
+        serverId: UUID,
+        streamURL: URL,
+        customHeaders: [String: String],
+        allowCellular: Bool,
+        generation: UInt64
+    ) async {
+        defer {
+            if generation == playbackGeneration {
+                cacheDownloadTask = nil
+            }
+        }
+
+        do {
+            try await Task.sleep(for: .seconds(30))
+        } catch {
+            return
+        }
+        guard !Task.isCancelled, generation == playbackGeneration else { return }
+        if await audioStreamCache.cachedURL(forSongId: songId, serverId: serverId) != nil { return }
+        if await downloadService.isDownloaded(songId: songId, serverId: serverId) { return }
+
+        let isExpensive = await MainActor.run { serverService.state.isExpensive }
+        if isExpensive && !allowCellular {
+            Logger.player.debug("Cache skipped — cellular for '\(songId, privacy: .public)'")
+            return
+        }
+
+        do {
+            try await downloadAndCache(
+                songId: songId,
+                serverId: serverId,
+                streamURL: streamURL,
+                customHeaders: customHeaders,
+                using: cacheSession
+            )
+        } catch {
+            if Task.isCancelled {
+                Logger.player.debug("Cache download cancelled for '\(songId, privacy: .public)'")
+            } else {
+                Logger.player.debug("Cache download failed for '\(songId, privacy: .public)': \(error, privacy: .public)")
+            }
+        }
+    }
 
     /// Downloads the track from its stream URL and stores it in AudioStreamCache.
     /// Uses URLSession.download for disk-streaming efficiency (temporary file → cache file).

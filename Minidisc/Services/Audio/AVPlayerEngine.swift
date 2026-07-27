@@ -12,8 +12,8 @@ import Synchronization
 /// Conforms to `AudioEngine`; `PlayerService` keeps all orchestration.
 ///
 /// Threading: control methods arrive from the `PlayerService` actor, KVO/notification/ramp callbacks
-/// on other threads; a recursive lock guards the deck roles and transition state. ReplayGain is
-/// applied per deck by an `MTAudioProcessingTap` (Sound-Check style, never the visible volume).
+/// on other threads; a recursive lock guards the deck roles and transition state. ReplayGain cuts use
+/// each deck's volume; boosts use an `MTAudioProcessingTap` because `AVPlayer.volume` cannot exceed 1.
 nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     weak var delegate: AudioEngineDelegate?
 
@@ -30,7 +30,10 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     private var standbyContext: ReplayGainTapContext { activeIsA ? contextB : contextA }
 
     private var currentItem: AVPlayerItem?
+    private var currentAsset: AVAsset?
+    private var currentTrackID: String?
     private var preloadedItem: AVPlayerItem?
+    private var preloadedAsset: AVAsset?
     private var preloadedTrackID: String?
     /// Overlap window for the pending transition (0 = gapless butt-splice).
     private var pendingOverlap: Double = 0
@@ -134,9 +137,12 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         let item = AVPlayerItem(asset: asset)
         attachItemObservers(item)
         currentItem = item
+        currentAsset = asset
+        currentTrackID = trackID
         activePlayer.replaceCurrentItem(with: item)
+        applyDeckVolumes()
         beginPlaying()
-        installReplayGainTap(on: item, asset: asset, context: activeContext, trackID: trackID)
+        installReplayGainTapIfNeeded(on: item, asset: asset, context: activeContext, trackID: trackID)
         installPeriodicObserver(on: activePlayer)
     }
 
@@ -174,14 +180,14 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         let options: [String: Any]? = headers.isEmpty ? nil : ["AVURLAssetHTTPHeaderFieldsKey": headers]
         let asset = AVURLAsset(url: url, options: options)
         let item = AVPlayerItem(asset: asset)
-        // The incoming deck must carry its own normalization throughout the overlap. Applying it only
-        // after PlayerService confirms the hand-off creates an audible volume step halfway through.
-        standbyContext.gain = pow(10, replayGainDB / 20)
-        installReplayGainTap(on: item, asset: asset, context: standbyContext, trackID: trackID)
         standbyPlayer.replaceCurrentItem(with: item)
         preloadedItem = item
+        preloadedAsset = asset
         preloadedTrackID = trackID
         pendingOverlap = crossfadeDuration
+        standbyContext.gain = pow(10, replayGainDB / 20)
+        applyDeckVolumes()
+        installReplayGainTapIfNeeded(on: item, asset: asset, context: standbyContext, trackID: trackID)
         // Preroll once ready so the hand-off starts render-tight, and park the playhead past the
         // track's silent lead-in first — seeking after the deck is audible would be heard.
         standbyStatusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
@@ -288,6 +294,15 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         activeContext.gain = pow(10, dB / 20)
+        applyDeckVolumes()
+        if let item = currentItem, let asset = currentAsset, let trackID = currentTrackID {
+            installReplayGainTapIfNeeded(
+                on: item,
+                asset: asset,
+                context: activeContext,
+                trackID: trackID
+            )
+        }
     }
 
     var progress: Double {
@@ -517,9 +532,13 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         standbyStatusObserver = nil
         activePlayer.pause()
         activePlayer.replaceCurrentItem(with: nil)
+        activeContext.tapInstalled = false
         activeIsA.toggle()
         currentItem = preloadedItem
+        currentAsset = preloadedAsset
+        currentTrackID = preloadedTrackID
         preloadedItem = nil
+        preloadedAsset = nil
         preloadedTrackID = nil
         pendingOverlap = 0
         metadataDuration = 0
@@ -555,13 +574,18 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         deckA.replaceCurrentItem(with: nil)
         deckB.replaceCurrentItem(with: nil)
         currentItem = nil
+        currentAsset = nil
+        currentTrackID = nil
         preloadedItem = nil
+        preloadedAsset = nil
         preloadedTrackID = nil
         handedOffTrackID = nil
         pendingOverlap = 0
         metadataDuration = 0
         rampActive = 1
         rampStandby = 1
+        contextA.tapInstalled = false
+        contextB.tapInstalled = false
         applyDeckVolumes()
     }
 
@@ -571,14 +595,16 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         standbyStatusObserver = nil
         standbyPlayer.pause()
         standbyPlayer.replaceCurrentItem(with: nil)
+        standbyContext.tapInstalled = false
         preloadedItem = nil
+        preloadedAsset = nil
         preloadedTrackID = nil
         pendingOverlap = 0
     }
 
     private func applyDeckVolumes() {
-        activePlayer.volume = fadeLevel * rampActive
-        standbyPlayer.volume = fadeLevel * rampStandby
+        activePlayer.volume = fadeLevel * rampActive * activeContext.deckVolumeScale
+        standbyPlayer.volume = fadeLevel * rampStandby * standbyContext.deckVolumeScale
     }
 
     // MARK: - Per-item observers
@@ -629,28 +655,44 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
 
     // MARK: - ReplayGain tap install
 
-    private func installReplayGainTap(
+    private func installReplayGainTapIfNeeded(
         on item: AVPlayerItem,
-        asset: AVURLAsset,
+        asset: AVAsset,
         context: ReplayGainTapContext,
         trackID: String
     ) {
+        guard Self.requiresReplayGainTap(linearGain: context.gain) else { return }
         Task { @MainActor in
             guard let track = try? await asset.loadTracks(withMediaType: .audio).first else {
                 Logger.player.warning("[REPLAYGAIN] no audio track available for '\(trackID, privacy: .public)'")
                 return
             }
-            guard let tap = Self.makeReplayGainTap(context: context) else {
-                Logger.player.warning("[REPLAYGAIN] audio tap creation failed for '\(trackID, privacy: .public)'")
-                return
+            let installed = self.lock.withLock {
+                guard item === self.currentItem || item === self.preloadedItem,
+                      Self.requiresReplayGainTap(linearGain: context.gain),
+                      !context.tapInstalled,
+                      let tap = Self.makeReplayGainTap(context: context) else { return false }
+                let params = AVMutableAudioMixInputParameters(track: track)
+                params.audioTapProcessor = tap
+                let mix = AVMutableAudioMix()
+                mix.inputParameters = [params]
+                item.audioMix = mix
+                context.tapInstalled = true
+                self.applyDeckVolumes()
+                return true
             }
-            let params = AVMutableAudioMixInputParameters(track: track)
-            params.audioTapProcessor = tap
-            let mix = AVMutableAudioMix()
-            mix.inputParameters = [params]
-            item.audioMix = mix
-            Logger.player.info("[REPLAYGAIN] audio tap installed for '\(trackID, privacy: .public)'")
+            if installed {
+                Logger.player.info("[REPLAYGAIN] audio tap installed for '\(trackID, privacy: .public)'")
+            }
         }
+    }
+
+    nonisolated static func requiresReplayGainTap(linearGain: Float) -> Bool {
+        linearGain > 1
+    }
+
+    nonisolated static func replayGainDeckVolumeScale(linearGain: Float, tapInstalled: Bool) -> Float {
+        tapInstalled ? 1 : min(linearGain, 1)
     }
 
     private static func makeReplayGainTap(context: ReplayGainTapContext) -> MTAudioProcessingTap? {
@@ -681,10 +723,20 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
 /// the callback never takes a lock and the access remains valid under Swift's memory model.
 private nonisolated final class ReplayGainTapContext: @unchecked Sendable {
     private let gainBits = Atomic<UInt32>(Float(1).bitPattern)
+    private let tapInstalledBits = Atomic<UInt8>(0)
 
     var gain: Float {
         get { Float(bitPattern: gainBits.load(ordering: .relaxed)) }
         set { gainBits.store(newValue.bitPattern, ordering: .relaxed) }
+    }
+
+    var tapInstalled: Bool {
+        get { tapInstalledBits.load(ordering: .relaxed) == 1 }
+        set { tapInstalledBits.store(newValue ? 1 : 0, ordering: .relaxed) }
+    }
+
+    var deckVolumeScale: Float {
+        AVPlayerEngine.replayGainDeckVolumeScale(linearGain: gain, tapInstalled: tapInstalled)
     }
 }
 

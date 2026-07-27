@@ -34,6 +34,36 @@ struct ShouldSchedulePrefetchTests {
     }
 }
 
+@Suite("PlayerService.shouldProtectTransitionFromCaching")
+struct ShouldProtectTransitionFromCachingTests {
+    @Test func cancelsCacheBeforeStandbyPreloadWindow() {
+        #expect(PlayerService.shouldProtectTransitionFromCaching(crossfadeDuration: 5, remaining: 35))
+        #expect(!PlayerService.shouldProtectTransitionFromCaching(crossfadeDuration: 5, remaining: 35.1))
+    }
+
+    @Test func protectsGaplessTransitionWhenCrossfadeIsOff() {
+        #expect(PlayerService.shouldProtectTransitionFromCaching(crossfadeDuration: 0, remaining: 30))
+        #expect(!PlayerService.shouldProtectTransitionFromCaching(crossfadeDuration: 0, remaining: 30.1))
+    }
+}
+
+@Suite("AVPlayerEngine ReplayGain routing")
+struct AVPlayerEngineReplayGainRoutingTests {
+    @Test func attenuationUsesDeckVolumeWithoutAudioTap() {
+        #expect(!AVPlayerEngine.requiresReplayGainTap(linearGain: 0.5))
+        #expect(AVPlayerEngine.replayGainDeckVolumeScale(linearGain: 0.5, tapInstalled: false) == 0.5)
+    }
+
+    @Test func boostRequiresAudioTap() {
+        #expect(AVPlayerEngine.requiresReplayGainTap(linearGain: 1.5))
+        #expect(AVPlayerEngine.replayGainDeckVolumeScale(linearGain: 1.5, tapInstalled: false) == 1)
+    }
+
+    @Test func installedTapOwnsTheEntireGain() {
+        #expect(AVPlayerEngine.replayGainDeckVolumeScale(linearGain: 0.5, tapInstalled: true) == 1)
+    }
+}
+
 @Suite("PlayerService.effectiveCrossfadeOverlap")
 struct EffectiveCrossfadeOverlapTests {
     @Test func usesConfiguredDurationForOrdinaryTransitions() {

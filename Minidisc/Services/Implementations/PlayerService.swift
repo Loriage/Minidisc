@@ -1,5 +1,4 @@
 // Minidisc — Music client for Subsonic/OpenSubsonic servers
-// Copyright (C) 2026 Mathieu Dubart
 // Licensed under the Mozilla Public License 2.0.
 // See LICENSE file in the project root for full license information.
 
@@ -75,7 +74,6 @@ actor PlayerService: PlayerServiceProtocol {
     private var positionSaveTask: Task<Void, Never>?
     /// Task reserved for the playing-now notification. Cancelled on track change.
     private var playingNowTask: Task<Void, Never>?
-    private var detector = ScrobbleThresholdDetector()
     /// Task scheduled to download and cache the current track at +30s of playback.
     /// Cancelled when track changes via cancelPendingCacheDownload().
     private var cacheDownloadTask: Task<Void, Never>?
@@ -97,12 +95,7 @@ actor PlayerService: PlayerServiceProtocol {
     private var autoExtendFetchTask: Task<Void, Never>?
     private nonisolated static let autoExtendUserDefaultsKey = "minidisc.player.autoExtendEnabled"
 
-    /// Wall-clock time when the current track first started (used as event timestamp). Nil before first track.
-    private var trackPlayStartDate: Date?
-    /// Seconds of playhead movement accumulated for the current track.
-    private var accumulatedPlayedSeconds: TimeInterval = 0
-    /// Previous decoder-clock sample. Nil while paused/buffering and after a seek or track transition.
-    private var lastCountedEngineProgress: TimeInterval?
+    private var playbackProgressTracker = PlaybackProgressTracker()
     /// Set to true by handleEndOfTrack before a natural completion transition; reset after recording.
     private var wasTrackCompletedNaturally: Bool = false
 
@@ -235,7 +228,7 @@ actor PlayerService: PlayerServiceProtocol {
         // Record the previous track before transitioning (state.currentTrack still holds it here).
         await recordCurrentTrackPlayback(trigger: wasTrackCompletedNaturally ? "track_completed" : "user_skipped")
         wasTrackCompletedNaturally = false
-        resetTrackAccumulator()
+        playbackProgressTracker.startTrack()
 
         // Cancel any pending +30s scrobble, cache download, and prefetch from the previous track.
         cancelPendingScrobble()
@@ -393,7 +386,7 @@ actor PlayerService: PlayerServiceProtocol {
         }
 
         await recordCurrentTrackPlayback(trigger: "radio_started")
-        resetTrackAccumulator()
+        playbackProgressTracker.reset()
         cancelPendingScrobble()
         cancelPendingCacheDownload()
         cancelPendingPrefetch()
@@ -837,7 +830,7 @@ actor PlayerService: PlayerServiceProtocol {
     // MARK: - Pause / Resume
 
     func pause() async {
-        finalizePlaySegment()
+        playbackProgressTracker.breakContinuity()
         engine.pause()
         // Flip the UI state BEFORE deactivating the audio session — setActive(false) routinely takes
         // hundreds of ms and used to hold the play/pause icon hostage behind it.
@@ -864,9 +857,7 @@ actor PlayerService: PlayerServiceProtocol {
         // take hundreds of ms, and the play/pause icon must not wait on them.
         await MainActor.run { state.playbackState = .playing }
         configureAudioSessionIfNeeded()
-        // Lazily start the accumulator for session-restored tracks that resume for the first time.
-        if trackPlayStartDate == nil { trackPlayStartDate = Date() }
-        lastCountedEngineProgress = engine.progress
+        playbackProgressTracker.resume(at: engine.progress)
 
         // Resuming after the queue ended restarts at track 0. A normal mid-track pause keeps the
         // current source. The planner owns that distinction so every resume entry point shares it.
@@ -954,9 +945,7 @@ actor PlayerService: PlayerServiceProtocol {
         sessionActivationRetryTask?.cancel()
         sessionActivationRetryTask = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        accumulatedPlayedSeconds = 0
-        lastCountedEngineProgress = nil
-        trackPlayStartDate = nil
+        playbackProgressTracker.reset()
         engine.applyReplayGain(dB: 0)
         currentSource = nil
         pendingRestoreInfo = nil
@@ -1019,7 +1008,7 @@ actor PlayerService: PlayerServiceProtocol {
         )
         // Finalize the current segment and start a fresh one so that only
         // audio actually heard after the seek point is counted in played time.
-        finalizePlaySegment()
+        playbackProgressTracker.breakContinuity()
         let succeeded = await engine.seek(to: target)
         let landed = engine.progress
         guard requestedSeekGeneration == seekGeneration,
@@ -1036,7 +1025,7 @@ actor PlayerService: PlayerServiceProtocol {
             return
         }
         let confirmedPosition = landed.isFinite ? max(landed, 0) : target
-        lastCountedEngineProgress = confirmedPosition
+        playbackProgressTracker.setBaseline(confirmedPosition)
         await MainActor.run { state.position = confirmedPosition }
         Logger.player.info(
             "[SEEK] completed target=\(target, format: .fixed(precision: 3))s landed=\(confirmedPosition, format: .fixed(precision: 3))s"
@@ -1115,7 +1104,7 @@ actor PlayerService: PlayerServiceProtocol {
             wasTrackCompletedNaturally = true
             await recordCurrentTrackPlayback(trigger: "repeat_one")
             wasTrackCompletedNaturally = false
-            resetTrackAccumulator()
+            playbackProgressTracker.startTrack()
             if let source = currentSource {
                 let trackID = await MainActor.run { state.currentTrack?.id ?? "repeat" }
                 engine.play(trackID: trackID, url: source.url, headers: source.customHeaders)
@@ -1586,13 +1575,14 @@ actor PlayerService: PlayerServiceProtocol {
         fireScrobbleIfThresholdMet(song: song)
     }
 
-    // Synchronous split required by Swift 6: mutating a struct property (`detector`)
-    // is only legal in a non-async actor method (no suspension points → no reentrancy window).
+    // Synchronous split keeps the tracker's one-shot threshold mutation free of reentrancy.
     private func fireScrobbleIfThresholdMet(song: DisplayableSong) {
-        let duration = song.duration
         let songId = song.id
-        guard detector.check(duration: duration, accumulated: accumulatedPlayedSeconds) else { return }
-        let startDate = trackPlayStartDate ?? Date()
+        guard let startDate = playbackProgressTracker.scrobbleStartDateIfThresholdMet(
+            trackDuration: song.duration
+        ) else {
+            return
+        }
         Task { [libraryService] in
             await libraryService.scrobble(songId: songId, submission: true)
         }
@@ -1877,78 +1867,37 @@ actor PlayerService: PlayerServiceProtocol {
 
     // MARK: - Play-time accumulator
 
-    /// Breaks playhead-delta continuity. The next playing tick establishes a new baseline.
-    private func finalizePlaySegment() {
-        lastCountedEngineProgress = nil
-    }
-
-    /// Resets all per-track accumulator state for the next track.
-    /// Call immediately after recordCurrentTrackPlayback() in every transition site.
-    private func resetTrackAccumulator() {
-        accumulatedPlayedSeconds = 0
-        trackPlayStartDate = Date()
-        // startPlayback calls this before the new item is installed, so using the engine's current
-        // position here would accidentally seed the new track with the outgoing track's clock.
-        lastCountedEngineProgress = nil
-        detector.reset()
-    }
-
     private func accumulatePlaybackProgress(_ progress: TimeInterval) async {
-        guard progress.isFinite, progress >= 0 else { return }
         let shouldCount = await MainActor.run {
             state.playbackState == .playing && !state.isLiveStream
         }
-        guard shouldCount else {
-            lastCountedEngineProgress = nil
-            return
-        }
-        guard let previous = lastCountedEngineProgress else {
-            lastCountedEngineProgress = progress
-            return
-        }
-        let delta = progress - previous
-        // A normal 500 ms tick is ~0.5 s. Ignore discontinuities caused by seek, deck promotion,
-        // source restart or a long suspended task instead of counting unheard time.
-        if delta >= 0, delta <= 2.0 {
-            accumulatedPlayedSeconds += delta
-        }
-        lastCountedEngineProgress = progress
+        playbackProgressTracker.record(progress: progress, isPlaying: shouldCount)
     }
 
     // MARK: - Stats recording
 
     private func recordCurrentTrackPlayback(trigger: String = "unknown") async {
-        guard let song = await MainActor.run(body: { state.currentTrack }),
-              let startDate = trackPlayStartDate else { return }
+        guard let song = await MainActor.run(body: { state.currentTrack }) else { return }
         guard let serverId = await MainActor.run(body: { serverService.state.activeServer?.id }) else { return }
         await accumulatePlaybackProgress(engine.progress)
-        let durationListened = accumulatedPlayedSeconds
-        guard durationListened >= 30 else {
+        let trackDuration = await MainActor.run { state.duration }
+        guard let dto = playbackProgressTracker.playbackEvent(
+            song: song,
+            trackDuration: trackDuration,
+            wasCompleted: wasTrackCompletedNaturally,
+            serverId: serverId
+        ) else {
+            let durationListened = playbackProgressTracker.accumulatedTime
             Logger.player.debug("[STATS] Skip — durationListened=\(durationListened, format: .fixed(precision: 1))s < 30s for '\(song.title, privacy: .public)'")
             return
         }
 
-        let trackDuration = await MainActor.run { state.duration }
-        let dto = PlaybackEventDTO(
-            trackId: song.id,
-            trackTitle: song.title,
-            albumId: song.albumId,
-            albumTitle: song.albumName,
-            artistId: song.artistId,
-            artistName: song.artist ?? "",
-            genre: song.genre,
-            timestamp: startDate,
-            durationListened: durationListened,
-            trackDuration: trackDuration,
-            wasCompleted: wasTrackCompletedNaturally,
-            serverId: serverId.uuidString
-        )
         await statsService.recordPlayback(dto, trigger: trigger)
         let artistIdForLog = song.artistId ?? "nil"
-        let durationForLog = String(format: "%.1f", durationListened)
+        let durationForLog = String(format: "%.1f", dto.durationListened)
         let trackDurationForLog = String(format: "%.1f", trackDuration)
         Logger.player.debug(
-            "[STATS] Recorded: trigger=\(trigger, privacy: .public) trackId=\(song.id, privacy: .public) artistId=\(artistIdForLog, privacy: .public) durationListened=\(durationForLog, privacy: .public)s trackDuration=\(trackDurationForLog, privacy: .public)s startedAt=\(startDate, privacy: .public) completed=\(self.wasTrackCompletedNaturally, privacy: .public)"
+            "[STATS] Recorded: trigger=\(trigger, privacy: .public) trackId=\(song.id, privacy: .public) artistId=\(artistIdForLog, privacy: .public) durationListened=\(durationForLog, privacy: .public)s trackDuration=\(trackDurationForLog, privacy: .public)s startedAt=\(dto.timestamp, privacy: .public) completed=\(dto.wasCompleted, privacy: .public)"
         )
     }
 
@@ -1988,9 +1937,7 @@ actor PlayerService: PlayerServiceProtocol {
         // The transition plan set the completion attribution before entering this method.
         await recordCurrentTrackPlayback(trigger: "end_of_queue")
         wasTrackCompletedNaturally = false
-        accumulatedPlayedSeconds = 0
-        lastCountedEngineProgress = nil
-        trackPlayStartDate = nil
+        playbackProgressTracker.reset()
 
         stopProgressTimer()
         stopPositionSaveTimer()
@@ -2020,7 +1967,7 @@ actor PlayerService: PlayerServiceProtocol {
         switch newState {
         case .playing:
             guard let info = pendingRestoreInfo else {
-                if lastCountedEngineProgress == nil { lastCountedEngineProgress = engine.progress }
+                playbackProgressTracker.establishBaselineIfNeeded(engine.progress)
                 break
             }
             pendingRestoreInfo = nil
@@ -2031,7 +1978,7 @@ actor PlayerService: PlayerServiceProtocol {
                 Logger.player.info(
                     "[RESTORE] seek target=\(info.seekTime, format: .fixed(precision: 3))s completed=\(succeeded, privacy: .public) landed=\(self.engine.progress, format: .fixed(precision: 3))s"
                 )
-                lastCountedEngineProgress = engine.progress
+                playbackProgressTracker.setBaseline(engine.progress)
             }
             guard info.pause else {
                 if isMutedForRestore {
@@ -2057,9 +2004,9 @@ actor PlayerService: PlayerServiceProtocol {
                 Logger.player.info("[RESTORE] seek landed — paused at \(self.engine.progress, format: .fixed(precision: 1))s")
             }
         case .buffering, .paused, .stopped:
-            finalizePlaySegment()
+            playbackProgressTracker.breakContinuity()
         case .error:
-            finalizePlaySegment()
+            playbackProgressTracker.breakContinuity()
             stopProgressTimer()
             stopPositionSaveTimer()
             cancelPendingCacheDownload()
@@ -2078,7 +2025,7 @@ actor PlayerService: PlayerServiceProtocol {
 
     /// Called by the engine bridge on unexpected errors.
     func handleEngineError(_ message: String) async {
-        finalizePlaySegment()
+        playbackProgressTracker.breakContinuity()
         stopProgressTimer()
         stopPositionSaveTimer()
         cancelPendingCacheDownload()
@@ -2298,7 +2245,7 @@ extension PlayerService {
                 .flatMap(AVAudioSession.InterruptionReason.init(rawValue:)) == .routeDisconnected
             let isPlaying = await MainActor.run { state.playbackState == .playing }
             guard isPlaying else { return }
-            finalizePlaySegment()
+            playbackProgressTracker.breakContinuity()
             engine.pause()
             await MainActor.run { state.playbackState = .paused }
             stopProgressTimer()

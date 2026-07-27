@@ -4413,6 +4413,9 @@
         }
       }
     },
+    "Appearance" : {
+
+    },
     "Application" : {
       "localizations" : {
         "de" : {
@@ -28756,6 +28759,9 @@
         }
       }
     },
+    "System follows your device's light or dark setting." : {
+
+    },
     "Take a Photo" : {
       "localizations" : {
         "de" : {
@@ -30237,6 +30243,9 @@
           }
         }
       }
+    },
+    "Theme" : {
+
     },
     "Theme colour" : {
       "localizations" : {

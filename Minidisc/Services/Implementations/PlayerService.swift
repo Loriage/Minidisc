@@ -1290,13 +1290,14 @@ actor PlayerService: PlayerServiceProtocol {
                 let progress = self.engine.progress
                 let audioDuration = self.engine.duration
                 await MainActor.run {
-                    let cur = self.state.duration
-                    let clamped = cur > 0 ? min(progress, cur) : progress
-                    self.state.position = clamped
-                    // Refine duration when the engine reports the real value from the stream.
-                    if audioDuration > 0, abs(audioDuration - cur) > 0.5 {
+                    // Refine the duration BEFORE clamping the position against it. The engine's own
+                    // value lands as soon as the stream reports its length; clamping first pinned the
+                    // position for a tick against a metadata length already known to be wrong.
+                    if audioDuration > 0, abs(audioDuration - self.state.duration) > 0.5 {
                         self.state.duration = audioDuration
                     }
+                    let cur = self.state.duration
+                    self.state.position = cur > 0 ? min(progress, cur) : progress
                 }
                 await self.periodicNowPlayingPush(elapsed: progress)
                 await self.checkScrobbleThreshold()

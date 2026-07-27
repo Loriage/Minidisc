@@ -61,10 +61,15 @@ actor MediaResolver: MediaResolverProtocol {
         // the audio thread under a CPU spike (the crackle fix). The tier follows the current
         // network (Wi-Fi vs cellular).
         let quality = await MainActor.run { streamSettings.currentQuality }
+        // `estimateContentLength` asks the server to send a Content-Length for a transcoded stream.
+        // Without it the response is chunked, AVPlayer cannot work out the track length, and the
+        // player falls back to the library metadata: the counter freezes at the advertised end while
+        // the audio keeps going, and the crossfade window — armed off that same length — never opens.
         guard let streamURL = client.streamURL(
             id: songId,
             maxBitRate: quality.subsonicMaxBitRate,
-            format: quality.subsonicFormat
+            format: quality.subsonicFormat,
+            estimateContentLength: true
         ) else {
             throw MinidiscError.mediaNotFound(songId: songId)
         }

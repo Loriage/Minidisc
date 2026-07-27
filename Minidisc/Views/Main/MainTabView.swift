@@ -15,6 +15,7 @@ struct MainTabView: View {
     @State private var showingFullPlayer = false
     @Namespace private var playerZoom
     private let fullPlayerZoomID = "full-player"
+    @AppStorage("minidisc.appTheme") private var theme: AppTheme = .system
 
     private enum AppTab: Hashable { case home, discover, library, lidarr, search }
 
@@ -72,6 +73,8 @@ struct MainTabView: View {
                 }
             }
 
+            // Bare `Tab(value:role:)`: the search role renders its own detached button, glyph and
+            // label. Passing a title and systemImage here draws a second glyph over the system's.
             Tab(value: AppTab.search, role: .search) {
                 NavigationStack(path: $searchPath) {
                     SearchView(searchQuery: $searchText, path: $searchPath)
@@ -82,6 +85,7 @@ struct MainTabView: View {
             }
         }
         .accentColor(.minidiscAccent)
+        .preferredColorScheme(theme.colorScheme)
 
         .task(id: container?.serverState.isOnline) {
             guard container?.serverState.isOnline == true else { return }

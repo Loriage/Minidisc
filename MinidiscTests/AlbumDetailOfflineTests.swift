@@ -65,6 +65,8 @@ private final class ADDownloadStub: DownloadServiceProtocol {
     func persistCover(_ data: Data, forId coverArtId: String) async {}
     func removeCover(forId coverArtId: String) async {}
     func garbageCollectOrphanedCovers(referencedIds: Set<String>) async -> Int { 0 }
+    func coverCacheStats() async -> (count: Int, bytes: Int64) { (0, 0) }
+    func clearAllCovers() async {}
     func localPlaylistData(playlistId: String, serverId: UUID) async -> LocalPlaylistData? { nil }
     func localArtistData(artistId: String, artistName: String?, serverId: UUID) async -> LocalArtistData? { nil }
     func backfillPlaylistSongIds(playlistId: String, serverId: UUID, orderedSongIds: [String]) async {}

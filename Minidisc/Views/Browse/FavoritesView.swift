@@ -67,19 +67,22 @@ struct FavoritesView: View {
     private func songsSection(_ songs: [DisplayableSong]) -> some View {
         if !songs.isEmpty {
             Section("Songs") {
-                HStack(spacing: 12) {
+                // Same header as SongsListView — `.bordered` on both, so Play keeps its glyph and the
+                // pair reads as one control rather than a primary/secondary split.
+                HStack(spacing: MinidiscSpacing.m) {
                     Button {
+                        HapticFeedback.medium.trigger()
                         Task {
                             try? await container?.playerService.play(tracks: songs, startIndex: 0)
                         }
                     } label: {
                         Label("Play", systemImage: "play.fill")
                             .frame(maxWidth: .infinity)
+                            .padding(.vertical, MinidiscSpacing.s)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Color.minidiscAccent)
 
                     Button {
+                        HapticFeedback.medium.trigger()
                         Task {
                             let idx = Int.random(in: 0..<songs.count)
                             try? await container?.playerService.play(tracks: songs, startIndex: idx)
@@ -90,10 +93,11 @@ struct FavoritesView: View {
                     } label: {
                         Label("Shuffle", systemImage: "shuffle")
                             .frame(maxWidth: .infinity)
+                            .padding(.vertical, MinidiscSpacing.s)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(Color.minidiscAccent)
                 }
+                .buttonStyle(.bordered)
+                .tint(.minidiscAccent)
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
                 .padding(.vertical, 4)

@@ -60,11 +60,19 @@ struct AlphabetJumpBar: View {
 
 // MARK: - Helpers
 
-/// Returns the uppercased first letter of `name`, or "#" for names starting with a non-letter.
+/// Returns the A–Z bucket for `name`, or "#" for anything the bar cannot show a row for.
+///
+/// Diacritics are folded first, so "Édith" indexes under E. Everything that is still not an ASCII
+/// letter — Cyrillic, Greek, CJK, digits, punctuation — belongs under "#". Returning the raw letter
+/// instead (as this did) produced index entries like "Л" that no row in the bar could ever match:
+/// those items were unreachable, and "#" stayed greyed out despite having content.
 func alphabetFirstLetter(of name: String) -> String {
     guard let first = name.first else { return "#" }
-    let upper = String(first).uppercased()
-    return upper.first?.isLetter == true ? upper : "#"
+    let folded = String(first)
+        .folding(options: .diacriticInsensitive, locale: Locale(identifier: "en_US_POSIX"))
+        .uppercased()
+    guard let letter = folded.first, letter.isASCII, letter.isLetter else { return "#" }
+    return String(letter)
 }
 
 extension Collection {

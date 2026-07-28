@@ -111,6 +111,24 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         }
     }
 
+    // MARK: - Asset construction
+
+    /// Options every asset the engine opens is built with.
+    ///
+    /// `PreferPreciseDurationAndTiming` is what makes seeking work on lossless. Left at its default,
+    /// AVFoundation builds an approximate time/byte map rather than indexing the file, and on raw FLAC
+    /// that approximation ignores the container's own seek table — a seek then reports the requested
+    /// second while the audio resumes up to a minute away, and the gap never closes. Asking for precise
+    /// timing costs more work when the asset is opened, which is the right trade for a player whose
+    /// scrubber has to land where the user pointed.
+    private static func assetOptions(headers: [String: String]) -> [String: Any] {
+        var options: [String: Any] = [AVURLAssetPreferPreciseDurationAndTimingKey: true]
+        if !headers.isEmpty {
+            options["AVURLAssetHTTPHeaderFieldsKey"] = headers
+        }
+        return options
+    }
+
     // MARK: - AudioEngine
 
     func play(trackID: String, url: URL, headers: [String: String]) {
@@ -132,8 +150,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
 
         // Fresh start — drop both decks.
         resetDecks()
-        let options: [String: Any]? = headers.isEmpty ? nil : ["AVURLAssetHTTPHeaderFieldsKey": headers]
-        let asset = AVURLAsset(url: url, options: options)
+        let asset = AVURLAsset(url: url, options: Self.assetOptions(headers: headers))
         let item = AVPlayerItem(asset: asset)
         attachItemObservers(item)
         currentItem = item
@@ -177,8 +194,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
             return
         }
         clearPreloadedDeck()
-        let options: [String: Any]? = headers.isEmpty ? nil : ["AVURLAssetHTTPHeaderFieldsKey": headers]
-        let asset = AVURLAsset(url: url, options: options)
+        let asset = AVURLAsset(url: url, options: Self.assetOptions(headers: headers))
         let item = AVPlayerItem(asset: asset)
         standbyPlayer.replaceCurrentItem(with: item)
         preloadedItem = item
@@ -259,13 +275,16 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         }
 
         let finished = await withCheckedContinuation { continuation in
-            // A small tolerance is inaudible for music and lets AVPlayer land on a nearby packet boundary.
-            // Exact zero-tolerance seeks are unnecessarily slow on compressed progressive streams.
-            let tolerance = CMTime(seconds: 0.05, preferredTimescale: 600)
+            // Zero tolerance, always. A tolerance does not bound how far the playhead ends up from the
+            // target — it grants AVFoundation permission to jump to a position it *estimates* is within
+            // range. On raw FLAC that estimate comes from a time/byte map the framework builds without
+            // reading the file's seek table, and it can be a minute off: the clock reports the requested
+            // second while the audio resumes somewhere else entirely, and the two never resync. Forcing
+            // an exact landing makes it verify by decoding instead of guessing.
             player.seek(
                 to: CMTime(seconds: seconds, preferredTimescale: 600),
-                toleranceBefore: tolerance,
-                toleranceAfter: tolerance
+                toleranceBefore: .zero,
+                toleranceAfter: .zero
             ) { completed in
                 continuation.resume(returning: completed)
             }

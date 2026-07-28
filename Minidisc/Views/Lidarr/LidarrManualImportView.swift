@@ -1,17 +1,22 @@
 import SwiftUI
 
 /// Manual import for a stuck download: lists the files Lidarr found with the artist, album, and tracks
-/// it guessed, and imports the selected ones. Mirrors Lidarr's "Manual Import" dialog.
+/// it guessed, and imports the selected ones with the chosen import mode. Mirrors Lidarr's "Manual
+/// Import" dialog.
 struct LidarrManualImportView: View {
     let downloadId: String
     let navigationTitle: String
     let client: LidarrClient
+    /// Called instead of dismissing once the import command is queued, so a presenting sheet can close
+    /// itself along with this screen.
+    var onImported: (() -> Void)?
 
     @Environment(\.appContainer) private var container
     @Environment(\.dismiss) private var dismiss
 
     @State private var files: [LidarrManualImportFile] = []
     @State private var selected: Set<Int> = []
+    @State private var importMode: LidarrImportMode = .auto
     @State private var isLoading = true
     @State private var isImporting = false
     @State private var errorMessage: String?
@@ -40,6 +45,10 @@ struct LidarrManualImportView: View {
         .navigationTitle("Manual Import")
         .navigationBarTitleDisplayModeInline()
         .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button(role: .close) { dismiss() }
+                    .tint(.primary)
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     Task { await runImport() }
@@ -74,6 +83,16 @@ struct LidarrManualImportView: View {
                 let count = importableSelected.count
                 Text(count == 1 ? "1 file will be imported." : "\(count) files will be imported.")
             }
+
+            Section {
+                Picker("Import Mode", selection: $importMode) {
+                    ForEach(LidarrImportMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+            } footer: {
+                Text(importMode.explanation)
+            }
         }
         .listStyle(.insetGrouped)
     }
@@ -104,10 +123,10 @@ struct LidarrManualImportView: View {
         isImporting = true
         defer { isImporting = false }
         do {
-            try await client.runManualImport(files: requests)
+            try await client.runManualImport(files: requests, importMode: importMode)
             NotificationCenter.default.post(name: .lidarrQueueDidChange, object: nil)
             container?.toastService.showSuccess(String(localized: "Import started in Lidarr"))
-            dismiss()
+            if let onImported { onImported() } else { dismiss() }
         } catch {
             container?.toastService.showError(String(localized: "Couldn't start the import."))
         }

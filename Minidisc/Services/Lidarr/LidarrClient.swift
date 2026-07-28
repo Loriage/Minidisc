@@ -164,10 +164,19 @@ actor LidarrClient {
 
     /// Removes a queue item (`DELETE /api/v1/queue/{id}`). Optionally removes it from the download
     /// client and blocklists the release so it is not grabbed again.
-    func removeQueueItem(id: Int, removeFromClient: Bool, blocklist: Bool) async throws {
+    ///
+    /// Lidarr states the last option the other way round — `skipRedownload` — so asking it to look for a
+    /// replacement means telling it not to skip one.
+    func removeQueueItem(
+        id: Int,
+        removeFromClient: Bool,
+        blocklist: Bool,
+        searchForReplacement: Bool
+    ) async throws {
         try await deleteRequest(path: "/api/v1/queue/\(id)", query: [
             URLQueryItem(name: "removeFromClient", value: String(removeFromClient)),
             URLQueryItem(name: "blocklist", value: String(blocklist)),
+            URLQueryItem(name: "skipRedownload", value: String(!searchForReplacement)),
         ])
     }
 
@@ -179,9 +188,10 @@ actor LidarrClient {
         ], timeout: 60)
     }
 
-    /// Imports the given files (`POST /api/v1/command` with `ManualImport`).
-    func runManualImport(files: [LidarrManualImportFileRequest]) async throws {
-        try await postJSON(path: "/api/v1/command", body: LidarrManualImportCommand(files: files))
+    /// Imports the given files (`POST /api/v1/command` with `ManualImport`), moving or copying them out
+    /// of the download folder according to `importMode`.
+    func runManualImport(files: [LidarrManualImportFileRequest], importMode: LidarrImportMode) async throws {
+        try await postJSON(path: "/api/v1/command", body: LidarrManualImportCommand(files: files, importMode: importMode))
     }
 
     // MARK: - Images

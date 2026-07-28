@@ -3,20 +3,15 @@ import SwiftUI
 /// A pushed route to the Lidarr activity queue.
 struct LidarrQueueRoute: Hashable {}
 
-/// A pushed route to the manual import of one stuck download.
-struct LidarrManualImportRoute: Hashable {
-    let downloadId: String
-    let title: String
-}
-
-/// The Lidarr activity queue: the downloads Lidarr is tracking, with progress and a way to manually
-/// import the ones it could not sort out on its own.
+/// The Lidarr activity queue: the downloads Lidarr is tracking, with progress and, on tap, what to do
+/// with one — import it by hand, or drop it from the queue.
 struct LidarrQueueView: View {
     let client: LidarrClient
 
     @Environment(\.appContainer) private var container
 
     @State private var items: [LidarrQueueItem] = []
+    @State private var selectedItem: LidarrQueueItem?
     @State private var isLoading = true
     @State private var errorMessage: String?
 
@@ -43,8 +38,17 @@ struct LidarrQueueView: View {
         }
         .navigationTitle("Activity")
         .navigationBarTitleDisplayModeInline()
-        .navigationDestination(for: LidarrManualImportRoute.self) { route in
-            LidarrManualImportView(downloadId: route.downloadId, navigationTitle: route.title, client: client)
+        .sheet(item: $selectedItem) { item in
+            LidarrQueueDetailSheet(item: item, client: client) { removeFromClient, blocklist, search in
+                Task {
+                    await remove(
+                        item,
+                        removeFromClient: removeFromClient,
+                        blocklist: blocklist,
+                        searchForReplacement: search
+                    )
+                }
+            }
         }
         .task { await load() }
         .refreshable { await load() }
@@ -68,15 +72,12 @@ struct LidarrQueueView: View {
     private var queueList: some View {
         List {
             ForEach(items) { item in
-                Group {
-                    if item.needsManualImport, let downloadId = item.downloadId {
-                        NavigationLink(value: LidarrManualImportRoute(downloadId: downloadId, title: item.displayTitle)) {
-                            LidarrQueueRow(item: item)
-                        }
-                    } else {
-                        LidarrQueueRow(item: item)
-                    }
+                Button {
+                    selectedItem = item
+                } label: {
+                    LidarrQueueRow(item: item)
                 }
+                .buttonStyle(.plain)
                 .swipeActions(edge: .trailing) {
                     Button(role: .destructive) {
                         Task { await remove(item) }
@@ -101,9 +102,21 @@ struct LidarrQueueView: View {
         isLoading = false
     }
 
-    private func remove(_ item: LidarrQueueItem) async {
+    /// Drops one download. The swipe action uses Lidarr's own defaults; the detail sheet passes what the
+    /// user picked there.
+    private func remove(
+        _ item: LidarrQueueItem,
+        removeFromClient: Bool = true,
+        blocklist: Bool = false,
+        searchForReplacement: Bool = false
+    ) async {
         do {
-            try await client.removeQueueItem(id: item.id, removeFromClient: true, blocklist: false)
+            try await client.removeQueueItem(
+                id: item.id,
+                removeFromClient: removeFromClient,
+                blocklist: blocklist,
+                searchForReplacement: searchForReplacement
+            )
             items.removeAll { $0.id == item.id }
             container?.toastService.showConfirmation(String(localized: "Removed from queue"))
         } catch {
@@ -148,13 +161,12 @@ private struct LidarrQueueRow: View {
             }
             Spacer(minLength: 0)
 
-            if item.needsManualImport {
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.tertiary)
-            }
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.tertiary)
         }
         .padding(.vertical, MinidiscSpacing.xs)
+        .contentShape(Rectangle())
     }
 }

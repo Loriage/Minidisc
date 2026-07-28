@@ -101,11 +101,41 @@ nonisolated struct LidarrRejection: Decodable, Sendable {
 
 // MARK: - Manual import command
 
+/// What Lidarr does with the source files once it has imported them.
+nonisolated enum LidarrImportMode: String, CaseIterable, Identifiable, Sendable {
+    case auto
+    case move
+    case copy
+
+    var id: String { rawValue }
+
+    var label: LocalizedStringResource {
+        switch self {
+        case .auto: return "Automatic"
+        case .move: return "Move"
+        case .copy: return "Copy"
+        }
+    }
+
+    var explanation: LocalizedStringResource {
+        switch self {
+        case .auto: return "Lidarr picks: it moves the files, or copies them when the download is still seeding."
+        case .move: return "Moves the files into your library and frees the download folder. Stops seeding."
+        case .copy: return "Copies the files and leaves the download in place, so a torrent keeps seeding."
+        }
+    }
+}
+
 /// Body of `POST /api/v1/command` for `ManualImport`.
 nonisolated struct LidarrManualImportCommand: Encodable, Sendable {
     let name = "ManualImport"
-    let importMode = "auto"
+    let importMode: String
     let files: [LidarrManualImportFileRequest]
+
+    init(files: [LidarrManualImportFileRequest], importMode: LidarrImportMode) {
+        self.files = files
+        self.importMode = importMode.rawValue
+    }
 }
 
 /// One file to import, mapped to its artist, album, release, and tracks.

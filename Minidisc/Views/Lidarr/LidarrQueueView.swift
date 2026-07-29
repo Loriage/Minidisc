@@ -1,10 +1,7 @@
 import SwiftUI
 
-/// A pushed route to the Lidarr activity queue.
 struct LidarrQueueRoute: Hashable {}
 
-/// The Lidarr activity queue: the downloads Lidarr is tracking, with progress and, on tap, what to do
-/// with one — import it by hand, or drop it from the queue.
 struct LidarrQueueView: View {
     let client: LidarrClient
 
@@ -57,9 +54,6 @@ struct LidarrQueueView: View {
         }
     }
 
-    /// Wraps a non-scrolling placeholder in a full-height, always-bouncing ScrollView so the outer
-    /// `.refreshable` still gets a pull gesture when the queue is empty or errored — otherwise the user
-    /// can't pull to check whether Lidarr has pushed new downloads.
     private func pullableState<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         ScrollView {
             content()
@@ -102,8 +96,6 @@ struct LidarrQueueView: View {
         isLoading = false
     }
 
-    /// Drops one download. The swipe action uses Lidarr's own defaults; the detail sheet passes what the
-    /// user picked there.
     private func remove(
         _ item: LidarrQueueItem,
         removeFromClient: Bool = true,
@@ -124,8 +116,6 @@ struct LidarrQueueView: View {
         }
     }
 }
-
-// MARK: - Row
 
 private struct LidarrQueueRow: View {
     let item: LidarrQueueItem

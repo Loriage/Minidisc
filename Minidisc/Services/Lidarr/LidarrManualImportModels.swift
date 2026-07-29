@@ -1,9 +1,5 @@
 import Foundation
 
-// MARK: - Raw JSON passthrough
-
-/// A JSON value decoded and re-encoded verbatim. Used to round-trip Lidarr's `quality` object into the
-/// manual-import command without modelling every field, so nothing Lidarr needs is dropped.
 nonisolated enum LidarrRawJSON: Codable, Sendable, Hashable {
     case null
     case bool(Bool)
@@ -48,10 +44,6 @@ nonisolated enum LidarrRawJSON: Codable, Sendable, Hashable {
     }
 }
 
-// MARK: - Manual import candidates
-
-/// A file Lidarr found in a completed download, with the artist, album, and tracks it guessed from the
-/// tags (`GET /api/v1/manualimport`).
 nonisolated struct LidarrManualImportFile: Decodable, Sendable, Identifiable {
     let id: Int
     let path: String
@@ -77,7 +69,6 @@ nonisolated struct LidarrManualImportFile: Decodable, Sendable, Identifiable {
 
     var reasons: [String] { (rejections ?? []).compactMap(\.reason) }
 
-    /// Lidarr can only import a file it matched to an artist, album, and at least one track.
     var isImportable: Bool {
         artist != nil && album != nil && !(tracks ?? []).isEmpty
     }
@@ -99,9 +90,6 @@ nonisolated struct LidarrRejection: Decodable, Sendable {
     let reason: String?
 }
 
-// MARK: - Manual import command
-
-/// What Lidarr does with the source files once it has imported them.
 nonisolated enum LidarrImportMode: String, CaseIterable, Identifiable, Sendable {
     case auto
     case move
@@ -126,7 +114,6 @@ nonisolated enum LidarrImportMode: String, CaseIterable, Identifiable, Sendable 
     }
 }
 
-/// Body of `POST /api/v1/command` for `ManualImport`.
 nonisolated struct LidarrManualImportCommand: Encodable, Sendable {
     let name = "ManualImport"
     let importMode: String
@@ -138,7 +125,6 @@ nonisolated struct LidarrManualImportCommand: Encodable, Sendable {
     }
 }
 
-/// One file to import, mapped to its artist, album, release, and tracks.
 nonisolated struct LidarrManualImportFileRequest: Encodable, Sendable {
     let path: String
     let artistId: Int

@@ -1,14 +1,9 @@
 import SwiftUI
 
-/// Manual import for a stuck download: lists the files Lidarr found with the artist, album, and tracks
-/// it guessed, and imports the selected ones with the chosen import mode. Mirrors Lidarr's "Manual
-/// Import" dialog.
 struct LidarrManualImportView: View {
     let downloadId: String
     let navigationTitle: String
     let client: LidarrClient
-    /// Called instead of dismissing once the import command is queued, so a presenting sheet can close
-    /// itself along with this screen.
     var onImported: (() -> Void)?
 
     @Environment(\.appContainer) private var container
@@ -132,8 +127,6 @@ struct LidarrManualImportView: View {
         }
     }
 }
-
-// MARK: - Row
 
 private struct LidarrManualImportRow: View {
     let file: LidarrManualImportFile

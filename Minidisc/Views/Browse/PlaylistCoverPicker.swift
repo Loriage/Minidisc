@@ -1,15 +1,11 @@
 import SwiftUI
 
-/// The Apple-Music-style cover-picker carousel shared by the create and edit flows: a leading option
-/// (None / Current) + (where available) a Photo option + the six gradient forms, as tappable swatches.
-/// Pure render + callbacks — the caller owns all selection state. Cross-platform.
 struct PlaylistCoverPicker: View {
     let selectedGradient: PlaylistGradientShape?
     let isPhotoSelected: Bool
     var photoPreview: PlatformImage? = nil
     var showsPhotoOption: Bool = true
     var leadingLabel: LocalizedStringKey = "None"
-    /// When set (edit flow), the leading swatch shows the current cover instead of the "none" glyph.
     var leadingCoverArtId: String? = nil
     let onSelectLeading: () -> Void
     var onSelectPhoto: () -> Void = {}
@@ -63,7 +59,6 @@ struct PlaylistCoverPicker: View {
     }
 }
 
-/// A single 60pt cover-picker swatch — rounded tile + caption, ringed when selected.
 struct PlaylistCoverSwatch<Content: View>: View {
     let isSelected: Bool
     let label: LocalizedStringKey

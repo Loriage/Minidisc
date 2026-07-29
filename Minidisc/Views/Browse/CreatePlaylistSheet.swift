@@ -7,8 +7,6 @@ struct CreatePlaylistSheet: View {
     @Environment(\.appContainer) private var container
     @State private var viewModel: CreatePlaylistViewModel?
     @State private var selectedGradient: PlaylistGradientShape?
-    /// Whether the PHOTO is the chosen cover. Separate from "a photo is picked" (pendingImage) so a picked
-    /// photo's preview survives switching to another cover and back.
     @State private var photoIsCover = false
     @FocusState private var nameFieldFocused: Bool
 
@@ -125,7 +123,6 @@ struct CreatePlaylistSheet: View {
                     .padding(.top, MinidiscSpacing.s)
 
                 VStack(spacing: MinidiscSpacing.s) {
-                    // Editorial centered title + discreet description, no field chrome, no separators (AM style).
                     TextField("Playlist Title", text: Bindable(vm).name)
                         .font(.system(.title2, design: .rounded, weight: .semibold))
                         .multilineTextAlignment(.center)
@@ -156,16 +153,12 @@ struct CreatePlaylistSheet: View {
         return pendingImage
     }
 
-    /// Defer presenting the crop screen so the picker fully dismisses first (sequential full-screen covers).
     private func presentCrop(_ image: UIImage) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             imageToCrop = CroppableImage(image: image)
         }
     }
 
-    /// Create-flow cover carousel (Apple-Music direction). The gradient previews show the neutral base color
-    /// (an empty playlist has no first track to derive from yet — that derivation is the edit flow's job);
-    /// forms differ by geometry. The live title renders into the gradient cards.
     private func coverCarousel(_ vm: CreatePlaylistViewModel) -> some View {
         PlaylistCoverCarousel(
             title: vm.name,
@@ -176,10 +169,9 @@ struct CreatePlaylistSheet: View {
             leadingLabel: "None",
             onSelectLeading: {
                 selectedGradient = nil
-                photoIsCover = false        // keep pendingImage so the photo card preview survives
+                photoIsCover = false
             },
             onSelectPhoto: {
-                // Swipe settled on the photo card → focus the photo as cover, NO modal.
                 selectedGradient = nil
                 photoIsCover = true
             },
@@ -190,13 +182,11 @@ struct CreatePlaylistSheet: View {
             },
             onSelectGradient: { shape in
                 selectedGradient = shape
-                photoIsCover = false        // keep pendingImage so the photo card preview survives
+                photoIsCover = false
             }
         )
     }
 
-    /// Applies the chosen cover after the playlist is created: render+cache+upload via PlaylistCoverManager
-    /// (cross-platform, supersedes the old iOS-only inline upload) and persist a gradient choice client-side.
     private func applyCover(playlistId: String, container c: AppContainer) async {
         let manager = PlaylistCoverManager(
             serverState: c.serverState,
@@ -205,7 +195,6 @@ struct CreatePlaylistSheet: View {
             artworkImageCache: c.artworkImageCache
         )
         if let shape = selectedGradient {
-            // Empty playlists use a neutral base color until they receive a first track.
             let spec = PlaylistGradientSpec.neutral(shape: shape)
             await manager.applyGradientCover(spec, playlistId: playlistId)
             if let serverId = c.serverState.activeServer?.id {

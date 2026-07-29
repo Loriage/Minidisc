@@ -1,15 +1,5 @@
 import SwiftUI
 
-/// Resolves a gradient cover spec for a chosen form by deriving its base color from a playlist's FIRST
-/// track (the playlist's musical identity). The single source of truth for "form + content → spec", reused
-/// by the edit flow (re-pick) and the empty→first-track transition. Cross-platform.
-///
-/// - `firstTrackCoverArtId == nil` (empty playlist) → the neutral default spec.
-/// - otherwise → the first track cover's dominant color (averaged OFF-MAIN so a resolve never hitches the
-///   UI), memoized via `DominantColorExtractor`.
-///
-/// Callers FREEZE the result into `PlaylistCoverChoice`; this is never re-run on reorder/remove/track-1
-/// change — only on an explicit re-pick or the one-time empty→first-track transition.
 @MainActor
 enum PlaylistGradientResolver {
     static func resolve(
@@ -18,14 +8,11 @@ enum PlaylistGradientResolver {
         artworkImageCache: ArtworkImageCache,
         colorExtractor: DominantColorExtractor
     ) async -> PlaylistGradientSpec {
-        // A mesh preset has its own palette, so there is nothing to derive and no artwork to load for it.
         if form.meshPalette != nil { return .neutral(shape: form) }
         guard let coverArtId = firstTrackCoverArtId else {
             return .neutral(shape: form)
         }
         if let cached = colorExtractor.cachedColor(for: coverArtId) {
-            // Vibrance-boost the DERIVED (averaged, muddy) color so the gradient pops; baked into the frozen
-            // spec, so it propagates to the crisp hero + the JPEG. The neutral/brand-default path is untouched.
             return PlaylistGradientSpec(shape: form, baseColor: cached.vibranceBoosted())
         }
         guard let image = await artworkImageCache.load(coverArtId: coverArtId, tier: .thumb) else {

@@ -1,27 +1,15 @@
 import SwiftUI
 
-/// Apple-Music-style cover carousel for the create + edit playlist sheets: wide square cards that snap and
-/// peek (real paging, not enlarged swatches), the live playlist title rendered INTO the gradient card (the
-/// `WrappedCoverRenderer` look — title over the gradient), a leading None/Current card, a Photo card, and the
-/// six gradient forms. A pagination-dot row + a camera shortcut sit below. Pure render + callbacks — the caller
-/// owns selection state. Cross-platform; the snap/scroll-position APIs are iOS 17+ (the app targets
-/// well beyond that).
 struct PlaylistCoverCarousel: View {
-    /// Live title rendered over the gradient cards (empty → a muted placeholder).
     let title: String
     let selectedGradient: PlaylistGradientShape?
     let isPhotoSelected: Bool
     var photoPreview: PlatformImage? = nil
     var showsPhotoOption: Bool = true
-    /// "None" (create) or "Current" (edit).
     var leadingLabel: LocalizedStringKey = "None"
-    /// Edit flow: the leading card shows the current cover instead of the empty glyph.
     var leadingCoverArtId: String? = nil
     let onSelectLeading: () -> Void
-    /// Focus the photo option (swipe settled on the photo card) — selects it as the cover, NO modal.
     var onSelectPhoto: () -> Void = {}
-    /// Explicit request to open the system photo picker (tap the photo card or the camera button) — distinct
-    /// from onSelectPhoto so swiping past/onto the photo card never auto-opens the picker.
     var onRequestPhotoPicker: () -> Void = {}
     let onSelectGradient: (PlaylistGradientShape) -> Void
 
@@ -46,7 +34,6 @@ struct PlaylistCoverCarousel: View {
         return .leading
     }
 
-    /// Card width as a fraction of the carousel width — the rest is the peek of the neighbouring cards.
     private let cardFraction: CGFloat = 0.74
 
     var body: some View {
@@ -58,7 +45,7 @@ struct PlaylistCoverCarousel: View {
                     LazyHStack(spacing: MinidiscSpacing.m) {
                         ForEach(options, id: \.self) { option in
                             card(option)
-                                .frame(width: cardSize, height: cardSize)   // SQUARE
+                                .frame(width: cardSize, height: cardSize)
                                 .id(option)
                         }
                     }
@@ -68,22 +55,16 @@ struct PlaylistCoverCarousel: View {
                 .scrollTargetBehavior(.viewAligned)
                 .scrollPosition(id: $scrolledOption)
             }
-            // Container height == card height (square) so the geometry resolves: width × cardFraction·width.
             .aspectRatio(1 / cardFraction, contentMode: .fit)
 
             dotRow
         }
         .onAppear { scrolledOption = selectedOption }
         .onChange(of: scrolledOption) { _, option in
-            // Only act when the user actually settled on a DIFFERENT option than what's selected — so the
-            // initial onAppear set (and a re-settle on the current card) never re-fires (notably never
-            // re-opens the photo picker).
             guard let option, option != selectedOption else { return }
             commitSelection(option)
         }
     }
-
-    // MARK: - Card
 
     @ViewBuilder
     private func card(_ option: CoverOption) -> some View {
@@ -126,17 +107,11 @@ struct PlaylistCoverCarousel: View {
         .onTapGesture { handleTap(option) }
     }
 
-    /// Tap centers the card; tapping the photo card ALSO opens the picker (the only path that opens the modal).
     private func handleTap(_ option: CoverOption) {
         withAnimation(.snappy) { scrolledOption = option }
         if case .photo = option { onRequestPhotoPicker() }
     }
 
-    /// The live title rendered over the gradient — the WrappedCoverRenderer pattern (white, bold, rounded,
-    /// top-leading). Empty title shows a muted placeholder so the card never looks broken.
-    ///
-    /// Legibility over the pale covers comes from one tight shadow hugging each glyph — not from a scrim, a
-    /// wide soft shadow, or darker gradient colours, all of which dull the cover well beyond the text.
     private var titleOverlay: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title.isEmpty ? "Playlist Title" : title)
@@ -150,8 +125,6 @@ struct PlaylistCoverCarousel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(MinidiscSpacing.l)
     }
-
-    // MARK: - Dots + camera
 
     private var dotRow: some View {
         ZStack {
@@ -174,8 +147,6 @@ struct PlaylistCoverCarousel: View {
             .padding(.leading, MinidiscSpacing.l)
         }
     }
-
-    // MARK: - Selection
 
     private func commitSelection(_ option: CoverOption) {
         switch option {

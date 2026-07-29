@@ -1,14 +1,8 @@
 import SwiftUI
 
-/// The detail of one download in the activity queue, presented when its row is tapped: what Lidarr is
-/// doing with it, why it is stuck, and the two things the user can do about it — import the files by
-/// hand, or drop it from the queue. Removing asks for its options in place, on a second step, so the
-/// user still sees what they are about to remove.
 struct LidarrQueueDetailSheet: View {
     let item: LidarrQueueItem
     let client: LidarrClient
-    /// Removes the item with the options the user picked. The queue owns the call so its list updates as
-    /// soon as this sheet closes.
     let onRemove: (_ removeFromClient: Bool, _ blocklist: Bool, _ searchForReplacement: Bool) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -45,9 +39,6 @@ struct LidarrQueueDetailSheet: View {
         }
     }
 
-    // MARK: - Detail step
-
-    /// The banner already names the state, so the information list only repeats it when there is none.
     private var showsStatusBanner: Bool { item.hasIssue || !item.allMessages.isEmpty }
 
     private var detailStep: some View {
@@ -203,8 +194,6 @@ struct LidarrQueueDetailSheet: View {
         }
     }
 
-    // MARK: - Remove step
-
     private var removeStep: some View {
         VStack(spacing: 0) {
             removeBar
@@ -221,7 +210,6 @@ struct LidarrQueueDetailSheet: View {
                 Section {
                     Toggle("Blocklist Release", isOn: $blocklist)
 
-                    // Only blocklisting makes replacing the release possible.
                     if blocklist {
                         Toggle("Search for Replacement", isOn: $searchForReplacement)
                     }
@@ -230,7 +218,6 @@ struct LidarrQueueDetailSheet: View {
                 }
             }
             .formStyle(.grouped)
-            // Switches keep the system colour rather than the app's accent.
             .tint(nil)
             .contentMargins(.top, MinidiscSpacing.m, for: .scrollContent)
         }

@@ -4,16 +4,11 @@ import Foundation
 
 @Suite("LidarrQueueItem — queue payload")
 struct LidarrQueueItemTests {
-
     private func item(_ fields: String) throws -> LidarrQueueItem {
         let json = "{ \"id\": 1, \(fields) }"
         return try JSONDecoder().decode(LidarrQueueItem.self, from: Data(json.utf8))
     }
 
-    // MARK: - State
-
-    /// Every value Lidarr can put in `status` before the download completes: `DownloadItemStatus`, plus
-    /// the `PendingReleaseReason` it uses for releases it is holding back.
     static let clientStatuses: [(status: String, state: LidarrQueueState)] = [
         ("queued", .queued),
         ("delay", .queued),
@@ -30,8 +25,6 @@ struct LidarrQueueItemTests {
         #expect(try item("\"status\": \"\(status)\"").state == state)
     }
 
-    /// Every value of Lidarr's `TrackedDownloadState`, which names two of its cases differently from
-    /// Sonarr and Radarr (`downloadFailed`/`importFailed` rather than `failed`).
     static let trackedStates: [(tracked: String, state: LidarrQueueState)] = [
         ("downloading", .downloading),
         ("downloadFailed", .downloadFailed),
@@ -64,7 +57,6 @@ struct LidarrQueueItemTests {
     func unknownValuesDegrade() throws {
         #expect(try item("\"status\": \"somethingNew\"").state == .unknown)
         #expect(try item("\"title\": \"No status at all\"").state == .unknown)
-        // A completed download Lidarr has not picked up yet is still, as far as it is concerned, downloading.
         #expect(try item("\"status\": \"completed\", \"trackedDownloadState\": \"alsoNew\"").state == .downloading)
     }
 
@@ -75,8 +67,6 @@ struct LidarrQueueItemTests {
         let fine: [LidarrQueueState] = [.queued, .paused, .downloading, .importPending, .importing, .imported, .ignored, .unknown]
         for state in fine { #expect(!state.isProblem, "\(state) should not be a problem") }
     }
-
-    // MARK: - Manual import eligibility
 
     @Test("a warned, import-pending download can be imported by hand")
     func importPendingNeedsManualImport() throws {
@@ -137,8 +127,6 @@ struct LidarrQueueItemTests {
         #expect(!queued.canManuallyImport)
     }
 
-    // MARK: - Time left
-
     static let timespans: [(raw: String, seconds: Int)] = [
         ("02:14:00", 8_040),
         ("00:12:34.5670000", 754),
@@ -162,8 +150,6 @@ struct LidarrQueueItemTests {
         #expect(queued.timeRemaining == nil)
     }
 
-    // MARK: - Added date
-
     static let isoTimestamps: [String] = ["2026-07-23T00:22:00Z", "2026-07-23T00:22:00.000Z"]
 
     @Test("the added timestamp is read with or without fractional seconds", arguments: isoTimestamps)
@@ -180,8 +166,6 @@ struct LidarrQueueItemTests {
     func addedDateIsNilWhenAbsent() throws {
         #expect(try item("\"status\": \"downloading\"").addedDate == nil)
     }
-
-    // MARK: - Progress and messages
 
     @Test("progress is the downloaded fraction of the size")
     func progressUsesSizeAndSizeleft() throws {
@@ -207,8 +191,6 @@ struct LidarrQueueItemTests {
     func allMessagesIsEmptyWhenClean() throws {
         #expect(try item("\"status\": \"downloading\"").allMessages.isEmpty)
     }
-
-    // MARK: - Fields the detail sheet shows
 
     @Test("protocol, client, and indexer are decoded for the information rows")
     func decodesTransportFields() throws {

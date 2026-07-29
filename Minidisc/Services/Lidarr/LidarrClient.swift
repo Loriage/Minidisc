@@ -1,46 +1,28 @@
 import Foundation
 import OSLog
 
-// MARK: - Errors
-
 nonisolated enum LidarrError: Error, Equatable, Sendable {
     case badURL
-    /// The API key was missing or rejected (HTTP 401).
     case unauthorized
-    /// The server returned an HTML page instead of API data. Usually a reverse proxy (Cloudflare
-    /// Access, Authelia, Authentik) that intercepts the request with a login page.
     case htmlResponse
-    /// The request was cancelled (a newer debounced search superseded it). Callers ignore this.
     case cancelled
     case transport(String)
     case decoding(String)
 }
 
-// MARK: - Wire types
-
-/// Subset of `GET /api/v1/system/status`. Only the fields the connection screen shows are decoded,
-/// so the app stays resilient to the response growing.
 nonisolated struct LidarrSystemStatus: Decodable, Sendable, Equatable {
     let version: String
     let instanceName: String?
     let appName: String?
 }
 
-/// A single row of `GET /api/v1/artist`. Only `id` is decoded, because the screen just counts them.
 private nonisolated struct LidarrArtistLite: Decodable {
     let id: Int
 }
 
-// MARK: - Client
-
-/// Talks to a Lidarr instance over its v1 HTTP API.
-///
-/// Lidarr is a separate service from the music server, on its own host and port (8686 by default).
-/// It authenticates with an `X-Api-Key` header, found in Lidarr under Settings > General.
 actor LidarrClient {
     private let baseURL: URL
     private let apiKey: String
-    /// Extra headers for a reverse proxy in front of Lidarr, for example Cloudflare Access.
     private let headers: [String: String]
     private let session: URLSession
 
@@ -55,20 +37,15 @@ actor LidarrClient {
         self.session = session
     }
 
-    /// Reads `/api/v1/system/status`. Used to test the connection and to show the Lidarr version.
     func systemStatus() async throws -> LidarrSystemStatus {
         try await get(path: "/api/v1/system/status")
     }
 
-    /// The number of artists Lidarr currently manages.
     func artistCount() async throws -> Int {
         let artists: [LidarrArtistLite] = try await get(path: "/api/v1/artist")
         return artists.count
     }
 
-    // MARK: - Add-artist flow
-
-    /// Searches MusicBrainz through Lidarr for artists matching `term` (`/api/v1/artist/lookup`).
     func searchArtists(term: String) async throws -> [LidarrArtistLookup] {
         try await get(path: "/api/v1/artist/lookup", query: [URLQueryItem(name: "term", value: term)])
     }
@@ -85,73 +62,54 @@ actor LidarrClient {
         try await get(path: "/api/v1/rootfolder")
     }
 
-    /// Adds an artist so Lidarr starts managing (and optionally searching for) it.
     func addArtist(_ request: LidarrAddArtistRequest) async throws {
         try await postJSON(path: "/api/v1/artist", body: request)
     }
 
-    // MARK: - Library
-
-    /// Every artist Lidarr manages (`/api/v1/artist`).
     func artists() async throws -> [LidarrArtist] {
         try await get(path: "/api/v1/artist")
     }
 
-    /// The albums of one managed artist (`/api/v1/album?artistId=`).
     func albums(artistId: Int) async throws -> [LidarrAlbum] {
         try await get(path: "/api/v1/album", query: [URLQueryItem(name: "artistId", value: String(artistId))])
     }
 
-    /// The tracks of one album (`/api/v1/track?albumId=`).
     func tracks(albumId: Int) async throws -> [LidarrTrack] {
         try await get(path: "/api/v1/track", query: [URLQueryItem(name: "albumId", value: String(albumId))])
     }
 
-    /// Asks Lidarr to search for specific albums (`POST /api/v1/command`).
     func triggerAlbumSearch(albumIds: [Int]) async throws {
         try await postJSON(path: "/api/v1/command", body: LidarrAlbumSearchCommand(name: "AlbumSearch", albumIds: albumIds))
     }
 
-    /// Interactive search: releases found by indexers for an album (`GET /api/v1/release`).
-    /// Uses a long timeout because indexers can be slow.
     func releases(albumId: Int) async throws -> [LidarrRelease] {
         try await get(path: "/api/v1/release", query: [URLQueryItem(name: "albumId", value: String(albumId))], timeout: 120)
     }
 
-    /// Interactive search across every monitored album of an artist (`GET /api/v1/release?artistId=`).
     func releases(artistId: Int) async throws -> [LidarrRelease] {
         try await get(path: "/api/v1/release", query: [URLQueryItem(name: "artistId", value: String(artistId))], timeout: 120)
     }
 
-    /// Grabs (downloads) a specific release (`POST /api/v1/release`). When Lidarr cannot parse the
-    /// release, `albumId`+`artistId` force the target so it still grabs and lands in the queue.
     func grabRelease(guid: String, indexerId: Int, albumId: Int? = nil, artistId: Int? = nil) async throws {
         try await postJSON(path: "/api/v1/release", body: LidarrGrabRequest(guid: guid, indexerId: indexerId, albumId: albumId, artistId: artistId))
     }
 
-    /// Asks Lidarr to search all monitored albums of an artist (`POST /api/v1/command`).
     func triggerArtistSearch(artistId: Int) async throws {
         try await postJSON(path: "/api/v1/command", body: LidarrCommand(name: "ArtistSearch", artistId: artistId))
     }
 
-    /// Refreshes an artist's metadata and disk scan (`POST /api/v1/command`).
     func refreshArtist(artistId: Int) async throws {
         try await postJSON(path: "/api/v1/command", body: LidarrCommand(name: "RefreshArtist", artistId: artistId))
     }
 
-    /// Toggles the monitored flag of one or more albums (`PUT /api/v1/album/monitor`).
     func setAlbumsMonitored(albumIds: [Int], monitored: Bool) async throws {
         try await putJSON(path: "/api/v1/album/monitor", body: LidarrAlbumMonitorRequest(albumIds: albumIds, monitored: monitored))
     }
 
-    /// Removes an artist from Lidarr. `deleteFiles` also deletes the downloaded music.
     func deleteArtist(artistId: Int, deleteFiles: Bool) async throws {
         try await deleteRequest(path: "/api/v1/artist/\(artistId)", query: [URLQueryItem(name: "deleteFiles", value: String(deleteFiles))])
     }
 
-    // MARK: - Activity queue and manual import
-
-    /// The download queue with artist and album included (`GET /api/v1/queue`).
     func queue() async throws -> [LidarrQueueItem] {
         let response: LidarrQueueResponse = try await get(path: "/api/v1/queue", query: [
             URLQueryItem(name: "pageSize", value: "200"),
@@ -162,11 +120,6 @@ actor LidarrClient {
         return response.records
     }
 
-    /// Removes a queue item (`DELETE /api/v1/queue/{id}`). Optionally removes it from the download
-    /// client and blocklists the release so it is not grabbed again.
-    ///
-    /// Lidarr states the last option the other way round — `skipRedownload` — so asking it to look for a
-    /// replacement means telling it not to skip one.
     func removeQueueItem(
         id: Int,
         removeFromClient: Bool,
@@ -180,7 +133,6 @@ actor LidarrClient {
         ])
     }
 
-    /// Files Lidarr found in a completed download, with its guessed mapping (`GET /api/v1/manualimport`).
     func manualImportCandidates(downloadId: String) async throws -> [LidarrManualImportFile] {
         try await get(path: "/api/v1/manualimport", query: [
             URLQueryItem(name: "downloadId", value: downloadId),
@@ -188,20 +140,10 @@ actor LidarrClient {
         ], timeout: 60)
     }
 
-    /// Imports the given files (`POST /api/v1/command` with `ManualImport`), moving or copying them out
-    /// of the download folder according to `importMode`.
     func runManualImport(files: [LidarrManualImportFileRequest], importMode: LidarrImportMode) async throws {
         try await postJSON(path: "/api/v1/command", body: LidarrManualImportCommand(files: files, importMode: importMode))
     }
 
-    // MARK: - Images
-
-    /// Fetches cover-art bytes for an image path.
-    ///
-    /// Lidarr returns local paths (e.g. `/MediaCover/10/poster.jpg`) for artist covers it has cached.
-    /// Those are served by the Lidarr instance and sit behind the same reverse proxy, so they need the
-    /// base URL, the API key, and the custom headers. Absolute (`http`) paths are external covers
-    /// (fanart), fetched plainly.
     func imageData(forPath path: String) async throws -> Data {
         let request: URLRequest
         if path.hasPrefix("http") {
@@ -222,8 +164,6 @@ actor LidarrClient {
         }
         return data
     }
-
-    // MARK: - Transport
 
     private func get<T: Decodable>(path: String, query: [URLQueryItem] = [], timeout: TimeInterval? = nil) async throws -> T {
         var request = try makeRequest(path: path, query: query, method: "GET", timeout: timeout)
@@ -271,7 +211,6 @@ actor LidarrClient {
         return request
     }
 
-    /// Runs a request and returns the body, translating status and non-JSON responses into `LidarrError`.
     private func send(_ request: URLRequest) async throws -> Data {
         let data: Data
         let response: URLResponse
@@ -291,7 +230,6 @@ actor LidarrClient {
         case 401, 403:
             throw LidarrError.unauthorized
         default:
-            // Lidarr returns a JSON array of validation errors with a message; surface the first one.
             if let message = Self.firstErrorMessage(in: data) {
                 throw LidarrError.transport(message)
             }
@@ -299,7 +237,6 @@ actor LidarrClient {
         }
     }
 
-    /// Lidarr reports failures as `[{"errorMessage": "..."}]` or `{"message": "..."}`. Returns the first.
     private static func firstErrorMessage(in data: Data) -> String? {
         if let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
            let message = array.first?["errorMessage"] as? String {
@@ -312,7 +249,6 @@ actor LidarrClient {
         return nil
     }
 
-    /// True when the body is a web page rather than API data, by content type or by a leading `<`.
     private static func looksLikeHTML(data: Data, response: HTTPURLResponse) -> Bool {
         if let type = response.value(forHTTPHeaderField: "Content-Type")?.lowercased(),
            type.contains("html") {

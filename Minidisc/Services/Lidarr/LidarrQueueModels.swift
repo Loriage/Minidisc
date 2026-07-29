@@ -1,51 +1,31 @@
 import Foundation
 
-// MARK: - Shared refs
-
-/// A lenient artist reference embedded in queue and manual-import payloads.
 nonisolated struct LidarrArtistRef: Decodable, Sendable, Hashable {
     let id: Int
     let artistName: String?
 }
 
-/// A lenient album reference embedded in queue and manual-import payloads.
 nonisolated struct LidarrAlbumRef: Decodable, Sendable, Hashable {
     let id: Int
     let title: String?
 }
 
-// MARK: - Queue
-
-/// One page of `GET /api/v1/queue`.
 nonisolated struct LidarrQueueResponse: Decodable, Sendable {
     let records: [LidarrQueueItem]
 }
 
-/// What a queue item is doing, resolved from the three fields Lidarr uses to describe one: the download
-/// client's `status`, and — once that reports `completed` — the `trackedDownloadState` and
-/// `trackedDownloadStatus` pair saying what Lidarr then made of the files.
-///
-/// Lidarr spells two of its tracked states differently from Sonarr and Radarr (`downloadFailed` and
-/// `importFailed`, where they say `failed`), so the raw values matched here are Lidarr's own:
-/// `DownloadItemStatus` and `PendingReleaseReason` for the first field, `TrackedDownloadState` for the
-/// second.
 nonisolated enum LidarrQueueState: Sendable, Hashable {
-    /// Waiting on the download client, on a delay profile, or on a fallback to another indexer.
     case queued
     case paused
     case downloading
-    /// The transfer failed, or failed and is waiting for Lidarr to act on it.
     case downloadFailed
     case importPending
     case importing
-    /// Downloaded, but Lidarr will not import it on its own — this is what manual import is for.
     case importBlocked
     case importFailed
     case imported
     case ignored
-    /// The download client itself reported a problem, such as a stalled transfer.
     case warning
-    /// A value a newer Lidarr introduced, which this app does not know yet.
     case unknown
 
     var label: String {
@@ -65,7 +45,6 @@ nonisolated enum LidarrQueueState: Sendable, Hashable {
         }
     }
 
-    /// True when the state is one the user has to deal with.
     var isProblem: Bool {
         switch self {
         case .downloadFailed, .importBlocked, .importFailed, .warning: return true
@@ -74,8 +53,6 @@ nonisolated enum LidarrQueueState: Sendable, Hashable {
     }
 }
 
-/// A download Lidarr is tracking. Status/state are kept as raw strings so an unfamiliar value from a
-/// newer Lidarr never fails the whole decode.
 nonisolated struct LidarrQueueItem: Decodable, Sendable, Identifiable {
     let id: Int
     let downloadId: String?
@@ -100,14 +77,11 @@ nonisolated struct LidarrQueueItem: Decodable, Sendable, Identifiable {
 
     var qualityName: String? { quality?.quality?.name }
 
-    /// Total size in bytes, for the detail sheet. Lidarr sends it as a JSON number.
     var totalSize: Int64? {
         guard let size, size > 0 else { return nil }
         return Int64(size)
     }
 
-    /// When Lidarr added the download, parsed from its ISO-8601 timestamp (with or without fractional
-    /// seconds, both of which Lidarr sends depending on the version).
     var addedDate: Date? {
         guard let added, !added.isEmpty else { return nil }
         let formatter = ISO8601DateFormatter()
@@ -117,13 +91,10 @@ nonisolated struct LidarrQueueItem: Decodable, Sendable, Identifiable {
         return formatter.date(from: added)
     }
 
-    /// The remaining time as a localized, abbreviated duration ("2h 14m"), from Lidarr's .NET timespan
-    /// (`[d.]hh:mm:ss[.fffffff]`).
     var timeRemaining: String? {
         guard let timeleft, !timeleft.isEmpty else { return nil }
         var body = Substring(timeleft)
         var days = 0
-        // A leading `d.` is a day count; a trailing `.fffffff` is fractional seconds, and is dropped.
         if let dot = body.firstIndex(of: "."), let colon = body.firstIndex(of: ":"), dot < colon,
            let parsed = Int(body[..<dot]) {
             days = parsed
@@ -138,7 +109,6 @@ nonisolated struct LidarrQueueItem: Decodable, Sendable, Identifiable {
         )
     }
 
-    /// Fraction downloaded, 0...1.
     var progress: Double {
         guard let size, size > 0, let sizeleft else { return status == "completed" ? 1 : 0 }
         return max(0, min(1, (size - sizeleft) / size))
@@ -153,8 +123,6 @@ nonisolated struct LidarrQueueItem: Decodable, Sendable, Identifiable {
         }
     }
 
-    /// What Lidarr is doing with this download. Until the download client reports `completed`, its own
-    /// status is the whole story; after that, what matters is the tracked state Lidarr moved it to.
     var state: LidarrQueueState {
         guard let status else { return .unknown }
         guard status == "completed" else {
@@ -168,7 +136,6 @@ nonisolated struct LidarrQueueItem: Decodable, Sendable, Identifiable {
             }
         }
         switch trackedDownloadState {
-        // Older Lidarr parks a blocked import in `importPending` and flags it with a warning instead.
         case "importPending" where trackedDownloadStatus == "warning": return .importBlocked
         case "importPending":                          return .importPending
         case "importBlocked":                          return .importBlocked
@@ -177,20 +144,15 @@ nonisolated struct LidarrQueueItem: Decodable, Sendable, Identifiable {
         case "imported":                               return .imported
         case "downloadFailed", "downloadFailedPending": return .downloadFailed
         case "ignored":                                return .ignored
-        // A download the client finished but Lidarr has not picked up yet stays in its downloading state.
         default:                                       return .downloading
         }
     }
 
-    /// True when Lidarr downloaded the release but will not import it on its own, so the user has to.
     var needsManualImport: Bool {
         guard downloadId != nil else { return false }
         return state == .importBlocked || state == .importFailed
     }
 
-    /// True when the files are on disk, so asking Lidarr for import candidates can return something.
-    /// Broader than `needsManualImport`: a download Lidarr is still deciding about can also be imported
-    /// by hand, while one it already imported or was told to ignore has nothing left to offer.
     var canManuallyImport: Bool {
         guard downloadId != nil, status == "completed" else { return false }
         switch state {
@@ -205,7 +167,6 @@ nonisolated struct LidarrQueueItem: Decodable, Sendable, Identifiable {
 
     var statusLabel: String { state.label }
 
-    /// The reasons Lidarr attached to a blocked import, flattened.
     var messages: [String] {
         (statusMessages ?? []).flatMap { message -> [String] in
             var lines = message.messages
@@ -214,7 +175,6 @@ nonisolated struct LidarrQueueItem: Decodable, Sendable, Identifiable {
         }
     }
 
-    /// Every reason Lidarr gave for the current state, error first, for the detail sheet to list.
     var allMessages: [String] {
         var all = messages
         if let errorMessage, !errorMessage.isEmpty, !all.contains(errorMessage) {
@@ -223,7 +183,6 @@ nonisolated struct LidarrQueueItem: Decodable, Sendable, Identifiable {
         return all
     }
 
-    /// A one-line reason for an issue (stalled download, blocked import), for the row to show.
     var issueDetail: String? {
         if let errorMessage, !errorMessage.isEmpty { return errorMessage }
         return (statusMessages ?? []).flatMap(\.messages).first

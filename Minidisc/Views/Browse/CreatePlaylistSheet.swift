@@ -60,7 +60,7 @@ struct CreatePlaylistSheet: View {
                 }
             }
         }
-        .tint(Color.minidiscAccent)
+        .tint(.primary)
         .confirmationDialog("Add Cover Art", isPresented: $showImageOptions, titleVisibility: .visible) {
             Button("Choose from Library") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { showImagePicker = true }

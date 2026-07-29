@@ -52,8 +52,10 @@ nonisolated struct MoodPreferences: Sendable {
     private static func lastSourceKey(_ serverId: String) -> String {
         "minidisc.mood.lastSource.\(serverId)"
     }
+    /// Versioned: the covers are uploaded once and never revisited, so bumping this is what lets a new
+    /// cover design reach playlists that already carry the old one. Costs one re-upload per mood, once.
     private static func coverKey(_ mood: Mood, _ serverId: String) -> String {
-        "minidisc.mood.coverApplied.\(mood.rawValue).\(serverId)"
+        "minidisc.mood.coverApplied.v2.\(mood.rawValue).\(serverId)"
     }
 
     // MARK: - Per-mood cycle marker

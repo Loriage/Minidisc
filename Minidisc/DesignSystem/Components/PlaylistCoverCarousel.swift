@@ -36,7 +36,7 @@ struct PlaylistCoverCarousel: View {
     private var options: [CoverOption] {
         var opts: [CoverOption] = [.leading]
         if showsPhotoOption { opts.append(.photo) }
-        opts += PlaylistGradientShape.allCases.map { .gradient($0) }
+        opts += PlaylistGradientShape.selectable.map { .gradient($0) }
         return opts
     }
 
@@ -134,6 +134,9 @@ struct PlaylistCoverCarousel: View {
 
     /// The live title rendered over the gradient — the WrappedCoverRenderer pattern (white, bold, rounded,
     /// top-leading). Empty title shows a muted placeholder so the card never looks broken.
+    ///
+    /// Legibility over the pale covers comes from one tight shadow hugging each glyph — not from a scrim, a
+    /// wide soft shadow, or darker gradient colours, all of which dull the cover well beyond the text.
     private var titleOverlay: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(title.isEmpty ? "Playlist Title" : title)
@@ -141,7 +144,7 @@ struct PlaylistCoverCarousel: View {
                 .foregroundStyle(.white.opacity(title.isEmpty ? 0.6 : 1))
                 .lineLimit(3)
                 .minimumScaleFactor(0.7)
-                .shadow(color: .black.opacity(0.18), radius: 6, y: 1)
+                .shadow(color: .black.opacity(0.22), radius: 3, y: 1)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

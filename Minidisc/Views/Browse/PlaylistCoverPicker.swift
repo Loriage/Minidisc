@@ -44,7 +44,7 @@ struct PlaylistCoverPicker: View {
                     }
                 }
 
-                ForEach(PlaylistGradientShape.allCases) { shape in
+                ForEach(PlaylistGradientShape.selectable) { shape in
                     PlaylistCoverSwatch(
                         isSelected: selectedGradient == shape,
                         label: LocalizedStringKey(shape.displayName),

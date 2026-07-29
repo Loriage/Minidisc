@@ -18,6 +18,8 @@ enum PlaylistGradientResolver {
         artworkImageCache: ArtworkImageCache,
         colorExtractor: DominantColorExtractor
     ) async -> PlaylistGradientSpec {
+        // A mesh preset has its own palette, so there is nothing to derive and no artwork to load for it.
+        if form.meshPalette != nil { return .neutral(shape: form) }
         guard let coverArtId = firstTrackCoverArtId else {
             return .neutral(shape: form)
         }

@@ -21,16 +21,18 @@ struct AlbumGridCell: View {
             .aspectRatio(1, contentMode: .fit)
             .minidiscMatchedTransitionSource(id: zoomSourceId, in: zoomNamespace)
 
-            Text(album.name)
-                .font(.minidiscCellTitle)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            if let artist = album.artist {
-                Text(artist)
-                    .font(.minidiscCaption)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
+                Text(album.name)
+                    .font(.minidiscCellTitle)
                     .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let artist = album.artist {
+                    Text(artist)
+                        .font(.minidiscCaption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

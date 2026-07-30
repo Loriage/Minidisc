@@ -293,7 +293,7 @@ private struct LidarrAlbumPickerSheet: View {
             .navigationBarTitleDisplayModeInline()
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(role: .close) { dismiss() }
+                    Button("Close", systemImage: "xmark") { dismiss() }
                         .tint(.primary)
                 }
             }

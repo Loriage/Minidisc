@@ -234,18 +234,16 @@ struct AlbumDetailView: View {
         .enableSwipeBack()
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                Button {
+                Button("Back", systemImage: "chevron.left") {
                     dismiss()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(headerTextColor)
-                        .minidiscHeroButton(size: 34)
                 }
-                .buttonStyle(.plain)
+                .tint(.primary)
             }
             ToolbarItem(placement: .primaryAction) {
-                Button {
+                Button(
+                    isAlbumFavorite ? "Remove from Favorites" : "Add to Favorites",
+                    systemImage: isAlbumFavorite ? "star.fill" : "star"
+                ) {
                     HapticFeedback.light.trigger()
                     Task {
                         if isAlbumFavorite {
@@ -254,17 +252,13 @@ struct AlbumDetailView: View {
                             try? await container?.favoritesService.star(itemType: .album, itemId: albumId)
                         }
                     }
-                } label: {
-                    Image(systemName: isAlbumFavorite ? "star.fill" : "star")
-                        .foregroundStyle(headerTextColor)
-                        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isAlbumFavorite)
-                        .minidiscHeroButton(size: 34)
                 }
-                .buttonStyle(.plain)
+                .tint(.primary)
+                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isAlbumFavorite)
                 .disabled(!isOnline)
             }
             ToolbarItem(placement: .primaryAction) {
-                Menu {
+                Menu("More options", systemImage: "ellipsis") {
                     Group {
                         Button("Instant Mix", systemImage: instantMixSymbol) {
                             HapticFeedback.medium.trigger()
@@ -285,13 +279,8 @@ struct AlbumDetailView: View {
                         }
                     }
                     .tint(.primary)
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .foregroundStyle(headerTextColor)
-                        .minidiscHeroButton(size: 34)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("More options")
+                .tint(.primary)
             }
         }
         .sheet(isPresented: $showThemeColorSheet) {

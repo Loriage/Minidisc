@@ -50,9 +50,8 @@ struct ExternalProvidersSettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { showingAdd = true } label: {
-                    Image(systemName: "plus")
-                }
+                Button("Add Provider", systemImage: "plus") { showingAdd = true }
+                    .tint(.primary)
             }
         }
         .sheet(isPresented: $showingAdd) {

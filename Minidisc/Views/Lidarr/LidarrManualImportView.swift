@@ -41,7 +41,7 @@ struct LidarrManualImportView: View {
         .navigationBarTitleDisplayModeInline()
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button(role: .close) { dismiss() }
+                Button("Close", systemImage: "xmark") { dismiss() }
                     .tint(.primary)
             }
             ToolbarItem(placement: .primaryAction) {

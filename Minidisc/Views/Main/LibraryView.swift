@@ -111,14 +111,11 @@ struct LibraryView: View {
         .navigationTitle("Library")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button {
+                Button("New Playlist", systemImage: "text.badge.plus") {
                     showCreatePlaylistSheet = true
-                } label: {
-                    Image(systemName: "text.badge.plus")
                 }
                 .tint(.primary)
                 .disabled(!isOnline)
-                .accessibilityLabel("New Playlist")
             }
         }
         .fullScreenCover(isPresented: $showCreatePlaylistSheet) {

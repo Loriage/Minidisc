@@ -34,10 +34,9 @@ struct CreatePlaylistSheet: View {
             .navigationBarTitleDisplayModeInline()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button { dismiss() } label: { Image(systemName: "xmark") }
-                        .buttonStyle(.plain)
+                    Button("Close", systemImage: "xmark") { dismiss() }
+                        .tint(.primary)
                         .disabled(viewModel?.isCreating == true)
-                        .accessibilityLabel("Cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if viewModel?.isCreating == true {
@@ -45,7 +44,7 @@ struct CreatePlaylistSheet: View {
                             .controlSize(.small)
                     } else {
                         let canCreate = viewModel?.canCreate ?? false
-                        Button {
+                        Button("Create Playlist", systemImage: "checkmark") {
                             guard let vm = viewModel, let c = container else { return }
                             Task {
                                 if let created = await vm.create() {
@@ -55,12 +54,9 @@ struct CreatePlaylistSheet: View {
                                     dismiss()
                                 }
                             }
-                        } label: {
-                            Image(systemName: "checkmark")
                         }
                         .buttonStyle(.borderedProminent)
                         .disabled(!canCreate)
-                        .accessibilityLabel("Create Playlist")
                     }
                 }
             }

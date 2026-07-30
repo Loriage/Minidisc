@@ -42,14 +42,12 @@ struct LidarrLibraryView: View {
         }
         .navigationTitle("Lidarr")
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                NavigationLink(value: LidarrQueueRoute()) {
-                    Image(systemName: "waveform.path.ecg")
-                }
+            ToolbarItemGroup(placement: .topBarLeading) {
+                Button(
+                    gridLayout ? "List view" : "Grid view",
+                    systemImage: gridLayout ? "list.bullet" : "square.grid.2x2"
+                ) { gridLayout.toggle() }
                 .tint(.primary)
-                .accessibilityLabel("Activity")
-            }
-            ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Picker("Sort By", selection: $artistSort) {
                         ForEach(ArtistSort.allCases, id: \.self) { option in
@@ -57,24 +55,17 @@ struct LidarrLibraryView: View {
                         }
                     }
                 } label: {
-                    Image(systemName: "arrow.up.arrow.down")
+                    Label("Sort", systemImage: "arrow.up.arrow.down")
                 }
                 .tint(.primary)
-                .accessibilityLabel("Sort")
             }
-            ToolbarItem(placement: .primaryAction) {
-                Button { gridLayout.toggle() } label: {
-                    Image(systemName: gridLayout ? "list.bullet" : "square.grid.2x2")
+            ToolbarItemGroup(placement: .primaryAction) {
+                NavigationLink(value: LidarrQueueRoute()) {
+                    Label("Activity", systemImage: "waveform.path.ecg")
                 }
                 .tint(.primary)
-                .accessibilityLabel(gridLayout ? "List view" : "Grid view")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button { showSearch = true } label: {
-                    Image(systemName: "plus")
-                }
-                .tint(.primary)
-                .accessibilityLabel("Add Artist")
+                Button("Add Artist", systemImage: "plus") { showSearch = true }
+                    .tint(.primary)
             }
         }
         .sheet(isPresented: $showSearch, onDismiss: { Task { await load() } }) {

@@ -29,11 +29,8 @@ struct HomeView: View {
         .navigationTitle("Home")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { showSettings = true } label: {
-                    Image(systemName: "gearshape.fill")
-                }
-                .tint(.primary)
-                .accessibilityLabel("Settings")
+                Button("Settings", systemImage: "gearshape.fill") { showSettings = true }
+                    .tint(.primary)
             }
         }
         .sheet(isPresented: $showSettings) { SettingsSheet() }

@@ -134,8 +134,8 @@ struct EditPlaylistSheet: View {
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
-            Button { dismiss() } label: { CircleToolbarLabel(systemName: "xmark") }
-                .buttonStyle(.plain)
+            Button("Close", systemImage: "xmark") { dismiss() }
+                .tint(.primary)
                 .disabled(isSaving)
         }
         ToolbarItem(placement: .confirmationAction) {
@@ -143,25 +143,24 @@ struct EditPlaylistSheet: View {
                 ProgressView().controlSize(.small)
             } else {
                 let canSave = !editName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                Button { Task { await commit() } } label: { CircleToolbarLabel(systemName: "checkmark", filled: canSave) }
-                    .buttonStyle(.plain)
+                Button("Save", systemImage: "checkmark") { Task { await commit() } }
+                    .buttonStyle(.borderedProminent)
                     .disabled(!canSave)
             }
         }
         ToolbarItemGroup(placement: .bottomBar) {
-            Button(role: .destructive) { showDeleteConfirm = true } label: {
-                Image(systemName: "trash")
-            }
-            .disabled(isSaving)
+            Button("Delete Playlist", systemImage: "trash", role: .destructive) { showDeleteConfirm = true }
+                .tint(.red)
+                .disabled(isSaving)
             Spacer()
             if selectedSongIds.isEmpty {
-                Button { showAddMusic = true } label: { Image(systemName: "plus") }
+                Button("Add Music", systemImage: "plus") { showAddMusic = true }
+                    .tint(.primary)
                     .disabled(isSaving || container?.serverState.isOnline != true)
             } else {
-                Button(role: .destructive) { removeSelectedTracks() } label: {
-                    Text("Remove \(selectedSongIds.count)")
-                }
-                .disabled(isSaving)
+                Button("Remove \(selectedSongIds.count)", role: .destructive) { removeSelectedTracks() }
+                    .tint(.red)
+                    .disabled(isSaving)
             }
         }
     }

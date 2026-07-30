@@ -154,28 +154,24 @@ struct AddMusicSheet: View {
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
-            Button { dismiss() } label: { Image(systemName: "xmark") }
-                .buttonStyle(.plain)
+            Button("Close", systemImage: "xmark") { dismiss() }
+                .tint(.primary)
                 .disabled(isSaving)
-                .accessibilityLabel("Cancel")
         }
         ToolbarItem(placement: .confirmationAction) {
             if isSaving {
                 ProgressView().controlSize(.small)
             } else {
-                Button {
+                Button("Add Selection", systemImage: "checkmark") {
                     Task {
                         isSaving = true
                         await onCommit(selection.selected)
                         isSaving = false
                         dismiss()
                     }
-                } label: {
-                    Image(systemName: "checkmark")
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(selection.count == 0)
-                .accessibilityLabel("Add Selection")
             }
         }
     }

@@ -8,7 +8,7 @@ struct ArtistListView: View {
     @AppStorage("minidisc.artistSort") private var artistSort: ArtistSort = .name
     @AppStorage("minidisc.artistListGrid") private var gridLayout = false
 
-    private let gridColumns = [GridItem(.adaptive(minimum: 110, maximum: 150), spacing: MinidiscSpacing.l)]
+    private let gridColumns = [GridItem(.adaptive(minimum: 110, maximum: 180), spacing: MinidiscSpacing.l)]
 
     var body: some View {
         Group {
@@ -26,13 +26,13 @@ struct ArtistListView: View {
                     .tint(.primary)
             }
             ToolbarItem(placement: .primaryAction) {
-                Button {
+                Button(
+                    gridLayout ? "List view" : "Grid view",
+                    systemImage: gridLayout ? "list.bullet" : "square.grid.2x2"
+                ) {
                     gridLayout.toggle()
-                } label: {
-                    Image(systemName: gridLayout ? "list.bullet" : "square.grid.2x2")
                 }
                 .tint(.primary)
-                .accessibilityLabel(gridLayout ? "List view" : "Grid view")
             }
         }
         .task(id: container?.serverState.isOnline) {

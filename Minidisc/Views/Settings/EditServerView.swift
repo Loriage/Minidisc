@@ -36,12 +36,10 @@ struct EditServerView: View {
     private var toolbar: some ToolbarContent {
         if viewModel.hasUnsavedChanges {
             ToolbarItem(placement: .cancellationAction) {
-                Button {
+                Button("Back", systemImage: "chevron.backward") {
                     showDiscardAlert = true
-                } label: {
-                    Image(systemName: "chevron.backward")
-                        .fontWeight(.semibold)
                 }
+                .tint(.primary)
             }
         }
     }

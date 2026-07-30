@@ -614,7 +614,8 @@ private struct TrackInfoSection: View {
                         Image(systemName: isFavorite ? "star.fill" : "star")
                             .font(.title3)
                             .foregroundStyle(contentColor)
-                            .minidiscHeroButton(size: 44)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
                     .disabled(!isOnline)
@@ -654,7 +655,8 @@ private struct TrackInfoSection: View {
                     Image(systemName: "ellipsis")
                         .font(.title3)
                         .foregroundStyle(contentColor)
-                        .minidiscHeroButton(size: 44)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .tint(.primary)

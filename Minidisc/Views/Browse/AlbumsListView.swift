@@ -30,13 +30,13 @@ struct AlbumsListView: View {
                     .tint(.primary)
             }
             ToolbarItem(placement: .primaryAction) {
-                Button {
+                Button(
+                    gridLayout ? "List view" : "Grid view",
+                    systemImage: gridLayout ? "list.bullet" : "square.grid.2x2"
+                ) {
                     gridLayout.toggle()
-                } label: {
-                    Image(systemName: gridLayout ? "list.bullet" : "square.grid.2x2")
                 }
                 .tint(.primary)
-                .accessibilityLabel(gridLayout ? "List view" : "Grid view")
             }
         }
         .task(id: container?.serverState.isOnline) {

@@ -431,45 +431,41 @@ struct PlaylistDetailView: View {
     private var toolbarContent: some ToolbarContent {
         if isEditing {
             ToolbarItem(placement: .cancellationAction) {
-                Button { cancelEdit() } label: { navBarIcon("xmark") }
-                    .buttonStyle(.plain)
+                Button("Cancel", systemImage: "xmark") { cancelEdit() }
+                    .tint(.primary)
                     .disabled(isSaving)
             }
             ToolbarItem(placement: .primaryAction) {
-                Button(role: .destructive) {
+                Button("Delete", systemImage: "trash", role: .destructive) {
                     if selectedSongIds.isEmpty { showDeletePlaylistConfirm = true } else { showRemoveSongsConfirm = true }
-                } label: {
-                    navBarIcon("trash", tint: .red)
                 }
-                .buttonStyle(.plain)
+                .tint(.red)
                 .disabled(isSaving)
             }
             ToolbarItem(placement: .primaryAction) {
-                Button { showAddMusic = true } label: { navBarIcon("plus") }
-                    .buttonStyle(.plain)
+                Button("Add Music", systemImage: "plus") { showAddMusic = true }
+                    .tint(.primary)
                     .disabled(isSaving || container?.serverState.isOnline != true)
             }
             ToolbarItem(placement: .confirmationAction) {
                 if isSaving {
-                    ProgressView().controlSize(.small).tint(headerTextColor)
+                    ProgressView().controlSize(.small).tint(.primary)
                 } else {
                     let canSave = !editName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    Button { Task { isSaving = true; await commitEdit(); isSaving = false } } label: { navBarIcon("checkmark") }
-                        .buttonStyle(.plain)
+                    Button("Save", systemImage: "checkmark") { Task { isSaving = true; await commitEdit(); isSaving = false } }
+                        .buttonStyle(.borderedProminent)
                         .disabled(!canSave)
                 }
             }
         } else {
             ToolbarItem(placement: .navigation) {
-                Button {
+                Button("Back", systemImage: "chevron.left") {
                     dismiss()
-                } label: {
-                    navBarIcon("chevron.left")
                 }
-                .buttonStyle(.plain)
+                .tint(.primary)
             }
             ToolbarItem(placement: .primaryAction) {
-                Menu {
+                Menu("More options", systemImage: "ellipsis") {
                     Group {
                         let canEdit = container?.serverState.isOnline == true && viewModel?.playlistDetail != nil
                         Button("Add Music", systemImage: "plus") {
@@ -501,23 +497,10 @@ struct PlaylistDetailView: View {
                         }
                     }
                     .tint(.primary)
-                } label: {
-                    navBarIcon("ellipsis")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("More options")
+                .tint(.primary)
             }
         }
-    }
-
-    /// A nav-bar icon on the unified hero button surface (opaque solid circle, same variant as the transport
-    /// + Play). The opaque circle + `.buttonStyle(.plain)` on the ToolbarItem button replace the native
-    /// toolbar Liquid-Glass, so there is a SINGLE background, not two stacked layers.
-    private func navBarIcon(_ systemName: String, tint: Color? = nil) -> some View {
-        Image(systemName: systemName)
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(tint ?? headerTextColor)
-            .minidiscHeroButton(size: 34)
     }
 
     // MARK: - Skeleton rows (list-compatible; kept with listRow modifiers since List is preserved)

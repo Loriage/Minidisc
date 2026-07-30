@@ -11,12 +11,9 @@ struct SettingsSheet: View {
             SettingsView()
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button { dismiss() } label: {
-                            Image(systemName: "xmark")
-                                .font(.body.weight(.semibold))
-                        }
-                        .tint(.primary)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Close", systemImage: "xmark") { dismiss() }
+                            .tint(.primary)
                     }
                 }
         }

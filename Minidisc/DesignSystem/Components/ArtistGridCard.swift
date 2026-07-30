@@ -1,33 +1,38 @@
 import SwiftUI
 import SwiftSonic
 
-/// An artist avatar card (circular cover + name + album count) for the artists grid.
-/// The circle fills the cell width up to a cap, so it adapts to different column counts.
+/// Adaptive grid cell for the artists browse surface.
+/// Mirrors AlbumGridCell: square cover art, artist name, album count.
 struct ArtistGridCard: View {
     let artist: ArtistID3
 
     var body: some View {
-        VStack(spacing: MinidiscSpacing.s) {
-            CoverArtView(
-                id: artist.coverArt ?? artist.id,
-                size: 280,
-                placeholderSystemImage: "person.fill"
-            )
+        VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
+            GeometryReader { geo in
+                CoverArtView(
+                    id: artist.coverArt ?? artist.id,
+                    size: Int(geo.size.width * 2),
+                    placeholderSystemImage: "person.fill"
+                )
+                .frame(width: geo.size.width, height: geo.size.width)
+                .minidiscCoverStyle(cornerRadius: MinidiscCornerRadius.standard)
+            }
             .aspectRatio(1, contentMode: .fit)
-            .frame(maxWidth: 150)
-            .clipShape(Circle())
 
-            Text(artist.name)
-                .font(.minidiscCellTitle)
-                .lineLimit(1)
-                .multilineTextAlignment(.center)
+            VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
+                Text(artist.name)
+                    .font(.minidiscCellTitle)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-            if let count = artist.albumCount {
-                Text("\(count) albums")
-                    .font(.minidiscCaption)
-                    .foregroundStyle(.secondary)
+                if let count = artist.albumCount {
+                    Text("\(count) albums")
+                        .font(.minidiscCaption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

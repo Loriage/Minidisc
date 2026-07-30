@@ -22,6 +22,9 @@ struct PlayButton: View {
             sizedLabel
                 .background(isDisabled ? accentColor.opacity(0.4) : accentColor)
                 .clipShape(Capsule())
+                // The hero passes a white capsule, which would vanish on an album/playlist whose theme colour
+                // is white; a faint shadow lifts it off the background without tinting it.
+                .shadow(color: .black.opacity(isDisabled ? 0.06 : 0.14), radius: 3, y: 1)
         }
         .disabled(isDisabled)
     }

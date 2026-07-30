@@ -52,7 +52,7 @@ actor MoodPlaylistService {
     private let makeProvider: @Sendable () async -> (any MoodTrackProvider)?
     /// Renders and applies a playlist cover. Injected rather than called directly because
     /// PlaylistCoverManager is MainActor-bound and this is an actor.
-    private let applyCover: (@Sendable (PlaylistGradientSpec, String) async -> Void)?
+    private let applyCover: (@Sendable (PlaylistGradientSpec, String, String) async -> Void)?
 
     /// Minimum gap between attempts, so an unreachable instance is not re-probed every launch.
     static let attemptThrottle: TimeInterval = 3600
@@ -60,7 +60,7 @@ actor MoodPlaylistService {
     init(
         playlistClientFactory: @escaping @Sendable () async throws -> any PlaylistSyncClient,
         providerFactory: @escaping @Sendable () async -> (any MoodTrackProvider)?,
-        coverApplier: (@Sendable (PlaylistGradientSpec, String) async -> Void)? = nil,
+        coverApplier: (@Sendable (PlaylistGradientSpec, String, String) async -> Void)? = nil,
         preferences: MoodPreferences = MoodPreferences()
     ) {
         self.makePlaylistClient = playlistClientFactory
@@ -75,7 +75,7 @@ actor MoodPlaylistService {
         serverService: any ServerServiceProtocol,
         serverState: ServerState,
         libraryService: any LibraryServiceProtocol,
-        coverApplier: (@Sendable (PlaylistGradientSpec, String) async -> Void)? = nil,
+        coverApplier: (@Sendable (PlaylistGradientSpec, String, String) async -> Void)? = nil,
         preferences: MoodPreferences = MoodPreferences()
     ) {
         self.preferences = preferences
@@ -210,7 +210,7 @@ actor MoodPlaylistService {
         if let applyCover, !preferences.hasCover(mood: mood, serverId: serverId) {
             let playlistId = preferences.playlistId(mood: mood, serverId: serverId)
             if let playlistId {
-                await applyCover(mood.gradientSpec, playlistId)
+                await applyCover(mood.gradientSpec, playlistId, mood.playlistName)
                 preferences.setHasCover(mood: mood, serverId: serverId)
             }
         }

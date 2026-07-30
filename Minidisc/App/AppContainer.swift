@@ -72,15 +72,12 @@ final class AppContainer {
 
         artworkImageCache = ArtworkImageCache(downloadService: download, libraryService: library)
         artworkImageCache.persistCoversEnabled = cacheSettings.cacheArtwork
-        let moodState = serverState
-        let moodCovers: @Sendable (PlaylistGradientSpec, String) async -> Void = { [artworkImageCache] spec, playlistId in
+        let moodCovers: @Sendable (PlaylistGradientSpec, String, String) async -> Void = { [artworkImageCache] spec, playlistId, title in
             let manager = await PlaylistCoverManager(
-                serverState: moodState,
-                serverService: server,
                 downloadService: download,
                 artworkImageCache: artworkImageCache
             )
-            await manager.applyGradientCover(spec, playlistId: playlistId)
+            await manager.applyGradientCover(spec, playlistId: playlistId, title: title, coverArtId: nil)
         }
         moodPlaylistService = MoodPlaylistService(
             serverService: server,

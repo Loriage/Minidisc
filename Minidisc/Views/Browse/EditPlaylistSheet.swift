@@ -256,7 +256,8 @@ struct EditPlaylistSheet: View {
         let commentChanged = trimmedComment != currentComment.trimmingCharacters(in: .whitespacesAndNewlines)
         let songsChanged = editSongs.map(\.id) != songs.map(\.id)
 
-        if !trimmedName.isEmpty && trimmedName != currentName.trimmingCharacters(in: .whitespacesAndNewlines) {
+        let nameChanged = !trimmedName.isEmpty && trimmedName != currentName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if nameChanged {
             try? await c.playlistService.renamePlaylist(id: playlistId, newName: trimmedName)
         }
         if songsChanged {
@@ -268,11 +269,15 @@ struct EditPlaylistSheet: View {
         }
         if coverDirty {
             await applyCover(container: c)
+        } else if nameChanged {
+            await rebakeGradientTitle(container: c, title: trimmedName)
         }
         await AddMusicCommitter.deriveFirstTrackCoverIfNeeded(
             wasEmpty: songs.isEmpty,
             firstSong: editSongs.first,
             playlistId: playlistId,
+            playlistName: editName,
+            coverArtId: currentCoverArtId,
             serverId: serverId,
             container: c,
             colorExtractor: colorExtractor
@@ -281,10 +286,20 @@ struct EditPlaylistSheet: View {
         onCommitted()
     }
 
+    /// A gradient cover carries the playlist title as pixels, so a rename has to re-render it.
+    private func rebakeGradientTitle(container c: AppContainer, title: String) async {
+        let store = PlaylistCoverStore(modelContainer: c.modelContainer)
+        guard let choice = store.choice(playlistId: playlistId, serverId: serverId),
+              choice.isUserPicked, let spec = choice.spec else { return }
+        let manager = PlaylistCoverManager(
+            downloadService: c.downloadService,
+            artworkImageCache: c.artworkImageCache
+        )
+        await manager.applyGradientCover(spec, playlistId: playlistId, title: title, coverArtId: currentCoverArtId)
+    }
+
     private func applyCover(container c: AppContainer) async {
         let manager = PlaylistCoverManager(
-            serverState: c.serverState,
-            serverService: c.serverService,
             downloadService: c.downloadService,
             artworkImageCache: c.artworkImageCache
         )
@@ -296,12 +311,12 @@ struct EditPlaylistSheet: View {
                 artworkImageCache: c.artworkImageCache,
                 colorExtractor: colorExtractor
             )
-            await manager.applyGradientCover(spec, playlistId: playlistId)
+            await manager.applyGradientCover(spec, playlistId: playlistId, title: editName, coverArtId: currentCoverArtId)
             store.save(spec, playlistId: playlistId, serverId: serverId, isUserPicked: true)
             return
         }
         if photoIsCover, let image = pendingImage, let data = image.jpegData(compressionQuality: 0.85) {
-            await manager.applyImageCover(data, playlistId: playlistId)
+            await manager.applyImageCover(data, playlistId: playlistId, coverArtId: currentCoverArtId)
             store.remove(playlistId: playlistId, serverId: serverId)
         }
         // Leading "Current" with no photo → no cover change (no cover-delete API exists).

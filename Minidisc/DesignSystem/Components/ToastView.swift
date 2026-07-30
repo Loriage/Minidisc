@@ -36,7 +36,6 @@ struct ToastView: View {
             RoundedRectangle(cornerRadius: MinidiscCornerRadius.large)
                 .fill(.regularMaterial)
         )
-        .shadow(radius: 8, y: 2)
         .padding(.horizontal, MinidiscSpacing.l)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }

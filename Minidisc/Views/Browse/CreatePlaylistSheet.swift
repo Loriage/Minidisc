@@ -5,10 +5,12 @@ import UniformTypeIdentifiers
 struct CreatePlaylistSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appContainer) private var container
+    @Environment(DominantColorExtractor.self) private var colorExtractor
     @State private var viewModel: CreatePlaylistViewModel?
     @State private var selectedGradient: PlaylistGradientShape?
     @State private var photoIsCover = false
-    @FocusState private var nameFieldFocused: Bool
+    @State private var showAddMusic = false
+    @State private var pendingSongs: [DisplayableSong] = []
 
     var onCreated: ((PlaylistWithSongs) -> Void)? = nil
 
@@ -28,37 +30,41 @@ struct CreatePlaylistSheet: View {
                     ProgressView()
                 }
             }
-            .navigationTitle("New Playlist")
+            .navigationTitle("")
             .navigationBarTitleDisplayModeInline()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button { dismiss() } label: { Image(systemName: "xmark") }
+                        .buttonStyle(.plain)
                         .disabled(viewModel?.isCreating == true)
+                        .accessibilityLabel("Cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        guard let vm = viewModel, let c = container else { return }
-                        Task {
-                            if let created = await vm.create() {
-                                await applyCover(playlistId: created.id, container: c)
-                                onCreated?(created)
-                                dismiss()
+                    if viewModel?.isCreating == true {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        let canCreate = viewModel?.canCreate ?? false
+                        Button {
+                            guard let vm = viewModel, let c = container else { return }
+                            Task {
+                                if let created = await vm.create() {
+                                    await applyCover(playlistId: created.id, title: created.name, coverArtId: created.coverArt, container: c)
+                                    await addPendingSongs(playlistId: created.id, title: created.name, coverArtId: created.coverArt, container: c)
+                                    onCreated?(created)
+                                    dismiss()
+                                }
                             }
+                        } label: {
+                            Image(systemName: "checkmark")
                         }
-                    } label: {
-                        if viewModel?.isCreating == true {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Text("Create")
-                                .fontWeight(.semibold)
-                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!canCreate)
+                        .accessibilityLabel("Create Playlist")
                     }
-                    .disabled(!(viewModel?.canCreate ?? false))
                 }
             }
         }
-        .tint(.primary)
         .confirmationDialog("Add Cover Art", isPresented: $showImageOptions, titleVisibility: .visible) {
             Button("Choose from Library") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { showImagePicker = true }
@@ -75,6 +81,20 @@ struct CreatePlaylistSheet: View {
                 Button("Remove Image", role: .destructive) { pendingImage = nil }
             }
             Button("Cancel", role: .cancel) {}
+        }
+        .tint(.primary)
+        .sheet(isPresented: $showAddMusic) {
+            if let c = container {
+                AddMusicSheet(
+                    playlistName: addMusicPlaylistName,
+                    existingTrackIds: pendingSongs.map(\.id)
+                ) { added in
+                    pendingSongs.append(contentsOf: added)
+                }
+                .environment(colorExtractor)
+                .environment(c.artworkImageCache)
+                .environment(\.appContainer, c)
+            }
         }
         .fullScreenCover(isPresented: $showImagePicker) {
             ImagePickerController(sourceType: .photoLibrary, allowsEditing: false, onPick: { presentCrop($0) }, onCancel: {})
@@ -111,7 +131,6 @@ struct CreatePlaylistSheet: View {
                     toastService: c.toastService
                 )
             }
-            nameFieldFocused = true
         }
     }
 
@@ -119,26 +138,97 @@ struct CreatePlaylistSheet: View {
     private func content(_ vm: CreatePlaylistViewModel) -> some View {
         ScrollView {
             VStack(spacing: MinidiscSpacing.xl) {
+                TextField("Playlist Title", text: Bindable(vm).name)
+                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                    .submitLabel(.done)
+                    .padding(.vertical, MinidiscSpacing.s)
+                    .padding(.horizontal, MinidiscSpacing.l)
+
                 coverCarousel(vm)
-                    .padding(.top, MinidiscSpacing.s)
 
-                VStack(spacing: MinidiscSpacing.s) {
-                    TextField("Playlist Title", text: Bindable(vm).name)
-                        .font(.system(.title2, design: .rounded, weight: .semibold))
-                        .multilineTextAlignment(.center)
-                        .focused($nameFieldFocused)
-                        .submitLabel(.done)
-                        .padding(.vertical, MinidiscSpacing.s)
+                selectedSongsList
 
-                    TextField("Description", text: Bindable(vm).description, axis: .vertical)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(1...4)
-                }
-                .padding(.horizontal, MinidiscSpacing.l)
+                addSongsRow
             }
             .padding(.top, MinidiscSpacing.m)
         }
         .scrollDismissesKeyboard(.interactively)
+    }
+
+    @ViewBuilder
+    private var selectedSongsList: some View {
+        if !pendingSongs.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(pendingSongs) { song in
+                    HStack(spacing: MinidiscSpacing.l) {
+                        CoverArtView(id: song.coverArtId ?? song.id, size: 120, cornerRadius: MinidiscCornerRadius.standard)
+                            .frame(width: 52, height: 52)
+                            .minidiscCoverStyle(cornerRadius: MinidiscCornerRadius.standard)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(song.title)
+                                .font(.minidiscCellTitle)
+                                .lineLimit(1)
+                            if let artist = song.artist {
+                                Text(artist)
+                                    .font(.minidiscCellSubtitle)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        Spacer(minLength: MinidiscSpacing.s)
+                        Button {
+                            pendingSongs.removeAll { $0.id == song.id }
+                        } label: {
+                            Image(systemName: "minus.circle")
+                                .font(.system(size: 18))
+                                .foregroundStyle(Color.minidiscAccent)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Remove \(song.title)")
+                    }
+                    .padding(.vertical, MinidiscSpacing.xs)
+                    if song.id != pendingSongs.last?.id {
+                        Divider().padding(.leading, 68)
+                    }
+                }
+            }
+            .padding(.horizontal, MinidiscSpacing.l)
+        }
+    }
+
+    private var addSongsRow: some View {
+        Button {
+            showAddMusic = true
+        } label: {
+            HStack(spacing: MinidiscSpacing.m) {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.secondary.opacity(0.18))
+                    .frame(width: 48, height: 48)
+                    .overlay {
+                        Image(systemName: "plus")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                Text("Add Songs")
+                    .font(.minidiscCellTitle)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 0)
+                if !pendingSongs.isEmpty {
+                    Text("\(pendingSongs.count)")
+                        .font(.minidiscCellSubtitle)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(container?.serverState.isOnline != true)
+        .padding(.horizontal, MinidiscSpacing.l)
+    }
+
+    private var addMusicPlaylistName: String {
+        let trimmed = (viewModel?.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? String(localized: "New Playlist") : trimmed
     }
 
     private var hasPhoto: Bool {
@@ -183,20 +273,19 @@ struct CreatePlaylistSheet: View {
             onSelectGradient: { shape in
                 selectedGradient = shape
                 photoIsCover = false
-            }
+            },
+            cardFraction: 0.5
         )
     }
 
-    private func applyCover(playlistId: String, container c: AppContainer) async {
+    private func applyCover(playlistId: String, title: String, coverArtId: String?, container c: AppContainer) async {
         let manager = PlaylistCoverManager(
-            serverState: c.serverState,
-            serverService: c.serverService,
             downloadService: c.downloadService,
             artworkImageCache: c.artworkImageCache
         )
         if let shape = selectedGradient {
             let spec = PlaylistGradientSpec.neutral(shape: shape)
-            await manager.applyGradientCover(spec, playlistId: playlistId)
+            await manager.applyGradientCover(spec, playlistId: playlistId, title: title, coverArtId: coverArtId)
             if let serverId = c.serverState.activeServer?.id {
                 PlaylistCoverStore(modelContainer: c.modelContainer)
                     .save(spec, playlistId: playlistId, serverId: serverId, isUserPicked: true)
@@ -204,7 +293,22 @@ struct CreatePlaylistSheet: View {
             return
         }
         if photoIsCover, let image = pendingImage, let data = image.jpegData(compressionQuality: 0.85) {
-            await manager.applyImageCover(data, playlistId: playlistId)
+            await manager.applyImageCover(data, playlistId: playlistId, coverArtId: coverArtId)
         }
+    }
+
+    private func addPendingSongs(playlistId: String, title: String, coverArtId: String?, container c: AppContainer) async {
+        guard !pendingSongs.isEmpty, let serverId = c.serverState.activeServer?.id else { return }
+        await AddMusicCommitter.commit(
+            addedSongs: pendingSongs,
+            playlistId: playlistId,
+            playlistName: title,
+            coverArtId: coverArtId,
+            serverId: serverId,
+            existingTrackIds: [],
+            currentComment: "",
+            container: c,
+            colorExtractor: colorExtractor
+        )
     }
 }

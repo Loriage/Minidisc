@@ -31,6 +31,7 @@ struct LibraryView: View {
     // Local mutable copy for smooth drag-to-reorder; synced from @Query on count changes.
     @State private var localPinnedItems: [PinnedItem] = []
     @State private var dropTargetId: String?
+    @State private var showCreatePlaylistSheet = false
     private let recentColumns = [
         GridItem(.adaptive(minimum: 140, maximum: 180), spacing: MinidiscSpacing.m)
     ]
@@ -108,6 +109,21 @@ struct LibraryView: View {
             .padding(.bottom, MinidiscSpacing.xl)
         }
         .navigationTitle("Library")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showCreatePlaylistSheet = true
+                } label: {
+                    Image(systemName: "text.badge.plus")
+                }
+                .tint(.primary)
+                .disabled(!isOnline)
+                .accessibilityLabel("New Playlist")
+            }
+        }
+        .fullScreenCover(isPresented: $showCreatePlaylistSheet) {
+            CreatePlaylistSheet()
+        }
         .navigationDestination(for: HomeDestination.self) { destination in
             switch destination {
             case .libraryAlbums:

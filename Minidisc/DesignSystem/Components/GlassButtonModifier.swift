@@ -16,7 +16,6 @@ extension View {
     /// to drop the native iOS 26 toolbar glass.
     func minidiscHeroButton(size: CGFloat = 44) -> some View {
         self
-            .shadow(color: .black.opacity(0.28), radius: 3, y: 1)
             .frame(width: size, height: size)
             .contentShape(Circle())
     }

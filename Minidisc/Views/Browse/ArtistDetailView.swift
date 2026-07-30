@@ -276,7 +276,6 @@ struct ArtistDetailView: View {
                                 .blendMode(.destinationOut)
                         }
                         .compositingGroup()
-                        .shadow(color: .black.opacity(0.22), radius: 10, y: 4)
                 }
                 .buttonStyle(.plain)
                 .disabled(vm.isPlayLoading || albums.isEmpty)

@@ -34,7 +34,7 @@ struct PlaylistCoverCarousel: View {
         return .leading
     }
 
-    private let cardFraction: CGFloat = 0.74
+    var cardFraction: CGFloat = 0.74
 
     var body: some View {
         VStack(spacing: MinidiscSpacing.m) {
@@ -113,17 +113,19 @@ struct PlaylistCoverCarousel: View {
     }
 
     private var titleOverlay: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(title.isEmpty ? "Playlist Title" : title)
-                .font(.system(.title2, design: .rounded, weight: .bold))
-                .foregroundStyle(.white.opacity(title.isEmpty ? 0.6 : 1))
-                .lineLimit(3)
-                .minimumScaleFactor(0.7)
-                .shadow(color: .black.opacity(0.22), radius: 3, y: 1)
-            Spacer(minLength: 0)
+        GeometryReader { geo in
+            VStack(alignment: .leading, spacing: 0) {
+                Text(title.isEmpty ? "Playlist Title" : title)
+                    .font(.system(size: geo.size.height * 0.15, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(title.isEmpty ? 0.6 : 1))
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.6)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, geo.size.height * 0.09)
+            .padding(.top, geo.size.height * 0.30)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(MinidiscSpacing.l)
     }
 
     private var dotRow: some View {
@@ -135,16 +137,6 @@ struct PlaylistCoverCarousel: View {
                         .frame(width: 7, height: 7)
                 }
             }
-            HStack {
-                Button(action: onRequestPhotoPicker) {
-                    Image(systemName: "camera.fill")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                Spacer()
-            }
-            .padding(.leading, MinidiscSpacing.l)
         }
     }
 

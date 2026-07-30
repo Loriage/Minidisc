@@ -51,7 +51,6 @@ struct WrappedYearCard: View {
                 Text("Minidisc Wrapped")
                     .font(.system(size: 22, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
                 Spacer()
                 if playlistId != nil {
                     Image(systemName: "chevron.right")
@@ -68,13 +67,11 @@ struct WrappedYearCard: View {
                 .foregroundStyle(.white.opacity(0.95))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
                 .frame(maxWidth: .infinity, alignment: .trailing)
 
             subtitleView
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.white.opacity(0.7))
-                .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
                 .lineLimit(2)
                 .padding(.top, MinidiscSpacing.xs)
         }

@@ -4,6 +4,25 @@ import SwiftData
 import OSLog
 import UniformTypeIdentifiers
 
+/// Local ordering for the track list. Release date is absent on purpose: `DisplayableSong` carries no year.
+enum PlaylistSortOrder: String, CaseIterable, Identifiable {
+    case playlistOrder
+    case title
+    case artist
+    case album
+
+    var id: String { rawValue }
+
+    var label: LocalizedStringKey {
+        switch self {
+        case .playlistOrder: "Playlist Order"
+        case .title: "Title"
+        case .artist: "Artist"
+        case .album: "Album"
+        }
+    }
+}
+
 struct PlaylistDetailView: View {
     private let playlistId: String
     private let initialName: String
@@ -59,6 +78,9 @@ struct PlaylistDetailView: View {
     @State private var viewModel: PlaylistDetailViewModel?
     @State private var dominantColor: Color = .clear
     @State private var gradientSpec: PlaylistGradientSpec?
+    @State private var localCoverId: String?
+    @State private var showThemeColorSheet = false
+    @State private var sortOrder: PlaylistSortOrder = .playlistOrder
     @State private var showDeleteAlert = false
     @State private var showAddMusic = false
     @State private var songToAddToPlaylist: DisplayableSong?
@@ -92,6 +114,17 @@ struct PlaylistDetailView: View {
     @Query private var allDownloadedTracks: [DownloadedTrack]
 
     private var effectiveCoverArtId: String { viewModel?.coverArtId ?? coverArtId ?? playlistId }
+    private var displayCoverArtId: String { localCoverId ?? effectiveCoverArtId }
+    /// Every id the playlist theme can be keyed on, so the override resolves whichever cover id a surface uses.
+    /// Track cover ids are deliberately excluded — they belong to albums that must keep their own colour.
+    private var playlistThemeIds: [String] {
+        Array(Set([displayCoverArtId, effectiveCoverArtId, playlistId]))
+    }
+    /// Drops the manual override and falls back to the gradient's own colour, else the one taken from the cover.
+    private func resetThemeColor() {
+        colorExtractor.setColorOverride(nil, forIds: playlistThemeIds)
+        dominantColor = gradientSpec?.baseColor ?? colorExtractor.cachedColor(for: displayCoverArtId) ?? dominantColor
+    }
 
     private var theme: PlaylistTheme { PlaylistTheme(dominantColor: dominantColor) }
     private var headerTextColor: Color { theme.contentColor }
@@ -127,6 +160,21 @@ struct PlaylistDetailView: View {
         return record.songIds.compactMap { bySongId[$0] }.map { DisplayableSong(from: $0) }
     }
 
+    /// The order the list and playback follow. Purely local — the stored order is untouched, so edit / remove
+    /// keep working against the real positions.
+    private func sortedSongs(_ songs: [DisplayableSong]) -> [DisplayableSong] {
+        switch sortOrder {
+        case .playlistOrder:
+            return songs
+        case .title:
+            return songs.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        case .artist:
+            return songs.sorted { ($0.artist ?? "").localizedStandardCompare($1.artist ?? "") == .orderedAscending }
+        case .album:
+            return songs.sorted { ($0.albumName ?? "").localizedStandardCompare($1.albumName ?? "") == .orderedAscending }
+        }
+    }
+
     private func resolvedSongs(_ vm: PlaylistDetailViewModel?) -> [DisplayableSong] {
         if let songs = vm?.songs, !songs.isEmpty { return songs }
         return downloadedFallbackSongs
@@ -153,7 +201,7 @@ struct PlaylistDetailView: View {
             } else if isEditing {
                 editableSongRows
             } else if let vm = viewModel {
-                let songs = resolvedSongs(vm)
+                let songs = sortedSongs(resolvedSongs(vm))
                 if songs.isEmpty, let error = vm.error {
                     EmptyStateView(
                         systemImage: "exclamationmark.triangle",
@@ -173,8 +221,12 @@ struct PlaylistDetailView: View {
                     .listRowBackground(bodyColor)
                 } else {
                     let serverId = container?.serverState.activeServer?.id ?? UUID()
+                    // Rows are displayed in the sorted order, the view model removes by stored position.
                     let removeTrack: ((Int) -> Void)? = vm.isOffline ? nil : { index in
-                        Task { await vm.removeTrack(at: index) }
+                        guard songs.indices.contains(index) else { return }
+                        let song = songs[index]
+                        guard let stored = resolvedSongs(vm).firstIndex(where: { $0.id == song.id }) else { return }
+                        Task { await vm.removeTrack(at: stored) }
                     }
                     PlaylistSongRows(
                         songs: songs,
@@ -274,6 +326,20 @@ struct PlaylistDetailView: View {
         } message: {
             Text("They'll be removed from the playlist when you save.")
         }
+        .sheet(isPresented: $showThemeColorSheet) {
+            ThemeColorSheet(
+                color: Binding(
+                    get: { colorExtractor.cachedColor(for: displayCoverArtId) ?? dominantColor },
+                    set: { newColor in
+                        colorExtractor.setColorOverride(newColor, forIds: playlistThemeIds)
+                        dominantColor = newColor
+                    }
+                ),
+                hasOverride: colorExtractor.colorOverride(for: displayCoverArtId) != nil,
+                footerText: "Overrides the colour taken from the cover, here and anywhere else this playlist appears.",
+                onReset: resetThemeColor
+            )
+        }
         .sheet(isPresented: $showAddMusic) {
             if let vm = viewModel, let c = container, let serverId = c.serverState.activeServer?.id {
                 AddMusicSheet(
@@ -283,6 +349,8 @@ struct PlaylistDetailView: View {
                     await AddMusicCommitter.commit(
                         addedSongs: added,
                         playlistId: playlistId,
+                        playlistName: vm.name,
+                        coverArtId: effectiveCoverArtId,
                         serverId: serverId,
                         existingTrackIds: resolvedSongs(vm).map(\.id),
                         currentComment: vm.playlistDetail?.comment ?? "",
@@ -339,12 +407,19 @@ struct PlaylistDetailView: View {
             await loadDominantColor(coverArtId: artId)
         }
         .task(id: coverRefreshID) {
+            if let downloadService = container?.downloadService {
+                localCoverId = await PlaylistCoverManager.localCoverId(
+                    playlistId: playlistId,
+                    downloadService: downloadService
+                )
+            }
             guard let container, let serverId = container.serverState.activeServer?.id else { gradientSpec = nil; return }
             let choice = PlaylistCoverStore(modelContainer: container.modelContainer).choice(playlistId: playlistId, serverId: serverId)
             let spec = choice?.isUserPicked == true ? choice?.spec : nil
             gradientSpec = spec
             if let spec {
-                withAnimation(.easeIn(duration: 0.2)) { dominantColor = spec.baseColor }
+                let color = colorExtractor.colorOverride(for: displayCoverArtId) ?? spec.baseColor
+                withAnimation(.easeIn(duration: 0.2)) { dominantColor = color }
             }
         }
         .minidiscZoomTransition(sourceID: zoomSourceId, in: zoomNamespace)
@@ -394,22 +469,43 @@ struct PlaylistDetailView: View {
                 .buttonStyle(.plain)
             }
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showAddMusic = true
+                Menu {
+                    Group {
+                        let canEdit = container?.serverState.isOnline == true && viewModel?.playlistDetail != nil
+                        Button("Add Music", systemImage: "plus") {
+                            showAddMusic = true
+                        }
+                        .disabled(!canEdit)
+                        Button("Edit", systemImage: "pencil") {
+                            enterEdit()
+                        }
+                        .disabled(!canEdit)
+                        Divider()
+                        Menu {
+                            Picker("Sort By", selection: $sortOrder) {
+                                ForEach(PlaylistSortOrder.allCases) { order in
+                                    Text(order.label).tag(order)
+                                }
+                            }
+                        } label: {
+                            Label("Sort By", systemImage: "arrow.up.arrow.down")
+                        }
+                        Divider()
+                        Button("Theme colour", systemImage: "paintpalette") {
+                            showThemeColorSheet = true
+                        }
+                        if colorExtractor.colorOverride(for: displayCoverArtId) != nil {
+                            Button("Reset to cover colour", systemImage: "arrow.uturn.backward") {
+                                resetThemeColor()
+                            }
+                        }
+                    }
+                    .tint(.primary)
                 } label: {
-                    navBarIcon("plus")
+                    navBarIcon("ellipsis")
                 }
                 .buttonStyle(.plain)
-                .disabled(container?.serverState.isOnline != true || viewModel?.playlistDetail == nil)
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    enterEdit()
-                } label: {
-                    navBarIcon("pencil")
-                }
-                .buttonStyle(.plain)
-                .disabled(container?.serverState.isOnline != true || viewModel?.playlistDetail == nil)
+                .accessibilityLabel("More options")
             }
         }
     }
@@ -494,7 +590,7 @@ struct PlaylistDetailView: View {
             photoPreview: editPhotoPreview,
             showsPhotoOption: editShowsPhotoOption,
             leadingLabel: "Current",
-            leadingCoverArtId: effectiveCoverArtId,
+            leadingCoverArtId: displayCoverArtId,
             onSelectLeading: {
                 selectedGradient = nil
                 photoIsCover = false
@@ -557,7 +653,8 @@ struct PlaylistDetailView: View {
         let originalSongs = resolvedSongs(viewModel)
         let songsChanged = editSongs.map(\.id) != originalSongs.map(\.id)
 
-        if !trimmedName.isEmpty && trimmedName != currentName.trimmingCharacters(in: .whitespacesAndNewlines) {
+        let nameChanged = !trimmedName.isEmpty && trimmedName != currentName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if nameChanged {
             try? await c.playlistService.renamePlaylist(id: playlistId, newName: trimmedName)
         }
         if songsChanged {
@@ -569,11 +666,15 @@ struct PlaylistDetailView: View {
         }
         if coverDirty {
             await applyCoverInPlace(container: c, serverId: serverId, originalSongs: originalSongs)
+        } else if nameChanged {
+            await rebakeGradientTitle(container: c, serverId: serverId, title: trimmedName)
         }
         await AddMusicCommitter.deriveFirstTrackCoverIfNeeded(
             wasEmpty: originalSongs.isEmpty,
             firstSong: editSongs.first,
             playlistId: playlistId,
+            playlistName: editName,
+            coverArtId: effectiveCoverArtId,
             serverId: serverId,
             container: c,
             colorExtractor: colorExtractor
@@ -583,10 +684,20 @@ struct PlaylistDetailView: View {
         withAnimation(.smooth) { isEditing = false }
     }
 
+    /// A gradient cover carries the playlist title as pixels, so a rename has to re-render it.
+    private func rebakeGradientTitle(container c: AppContainer, serverId: UUID, title: String) async {
+        let store = PlaylistCoverStore(modelContainer: c.modelContainer)
+        guard let choice = store.choice(playlistId: playlistId, serverId: serverId),
+              choice.isUserPicked, let spec = choice.spec else { return }
+        let manager = PlaylistCoverManager(
+            downloadService: c.downloadService,
+            artworkImageCache: c.artworkImageCache
+        )
+        await manager.applyGradientCover(spec, playlistId: playlistId, title: title, coverArtId: effectiveCoverArtId)
+    }
+
     private func applyCoverInPlace(container c: AppContainer, serverId: UUID, originalSongs: [DisplayableSong]) async {
         let manager = PlaylistCoverManager(
-            serverState: c.serverState,
-            serverService: c.serverService,
             downloadService: c.downloadService,
             artworkImageCache: c.artworkImageCache
         )
@@ -598,12 +709,12 @@ struct PlaylistDetailView: View {
                 artworkImageCache: c.artworkImageCache,
                 colorExtractor: colorExtractor
             )
-            await manager.applyGradientCover(spec, playlistId: playlistId)
+            await manager.applyGradientCover(spec, playlistId: playlistId, title: editName, coverArtId: effectiveCoverArtId)
             store.save(spec, playlistId: playlistId, serverId: serverId, isUserPicked: true)
             return
         }
         if photoIsCover, let image = pendingImage, let data = image.jpegData(compressionQuality: 0.85) {
-            await manager.applyImageCover(data, playlistId: playlistId)
+            await manager.applyImageCover(data, playlistId: playlistId, coverArtId: effectiveCoverArtId)
             store.remove(playlistId: playlistId, serverId: serverId)
         }
     }
@@ -685,11 +796,10 @@ struct PlaylistDetailView: View {
             GeometryReader { geo in
                 let stretch = max(0, geo.frame(in: .global).minY)
                 PlaylistThemedBackground(
-                    coverArtId: effectiveCoverArtId,
+                    coverArtId: displayCoverArtId,
                     coverImage: initialCoverImage,
                     theme: theme,
                     heroHeight: heroHeight,
-                    gradientSpec: gradientSpec,
                     lightMelt: true
                 )
                 .frame(width: geo.size.width, height: heroHeight + stretch)
@@ -745,7 +855,7 @@ struct PlaylistDetailView: View {
 
                     PlayButton(action: {
                         Task {
-                            let songs = resolvedSongs(vm)
+                            let songs = sortedSongs(resolvedSongs(vm))
                             guard !songs.isEmpty else { return }
                             try? await container?.playerService.play(tracks: songs, startIndex: 0)
                         }

@@ -16,10 +16,6 @@ struct PlaylistThemedBackground: View {
     let theme: PlaylistTheme
     /// Height of the full-bleed cover region (from the screen top), beyond which it's solid body color.
     var heroHeight: CGFloat = 460
-    /// When set (a user-picked gradient playlist), the hero renders the gradient CRISP from the spec instead
-    /// of the uploaded JPEG. The JPEG stays the cards/cross-device source of truth; this is a local crisp
-    /// enrichment. Default nil keeps every other caller (photo / server cover / ImmersiveCoverHero) unchanged.
-    var gradientSpec: PlaylistGradientSpec? = nil
     /// Fade ONLY the bottom edge (square covers shown in full with content sitting below) instead of the lower
     /// ~half (full-bleed covers with content floating over them).
     var lightMelt: Bool = false
@@ -32,15 +28,9 @@ struct PlaylistThemedBackground: View {
 
             if theme.isThemed, let coverArtId {
                 ZStack(alignment: .top) {
-                    // Sharp full-bleed cover — an ANIMATED mesh gradient from the spec (foreground only, cheap;
-                    // the melt below stays static), else the artwork. Edge-to-edge.
-                    Group {
-                        if let gradientSpec {
-                            AnimatedGradientHeroView(spec: gradientSpec)
-                        } else {
-                            CoverArtView(id: coverArtId, size: 1000, initialImage: coverImage)
-                        }
-                    }
+                    // Sharp full-bleed cover, edge-to-edge. Always the stored artwork: gradient covers are
+                    // rasterized once with their title, so this path is identical for every cover kind.
+                    CoverArtView(id: coverArtId, size: 1000, initialImage: coverImage)
                     .frame(maxWidth: .infinity)
                     .frame(height: heroHeight)
                     .clipped()
@@ -59,13 +49,7 @@ struct PlaylistThemedBackground: View {
     @ViewBuilder
     private func blurredMelt(coverArtId: String) -> some View {
         ZStack {
-            Group {
-                if let gradientSpec {
-                    PlaylistGradientView(spec: gradientSpec)
-                } else {
-                    CoverArtView(id: coverArtId, size: 600, initialImage: coverImage)
-                }
-            }
+            CoverArtView(id: coverArtId, size: 600, initialImage: coverImage)
             .frame(maxWidth: .infinity)
             .frame(height: heroHeight)
             .clipped()

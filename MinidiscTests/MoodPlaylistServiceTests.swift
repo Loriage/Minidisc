@@ -91,7 +91,7 @@ private struct Harness {
         service = MoodPlaylistService(
             playlistClientFactory: { playlists },
             providerFactory: { provider },
-            coverApplier: { spec, playlistId in covers.apply(spec, playlistId) },
+            coverApplier: { spec, playlistId, _ in covers.apply(spec, playlistId) },
             preferences: preferences
         )
     }

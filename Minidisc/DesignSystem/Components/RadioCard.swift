@@ -53,7 +53,6 @@ struct RadioCard: View {
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(.white)
             .lineLimit(2)
-            .shadow(color: .black.opacity(0.5), radius: 3, y: 1)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(MinidiscSpacing.s)
             .background(

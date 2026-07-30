@@ -6,7 +6,6 @@ import OSLog
 @Observable
 final class CreatePlaylistViewModel {
     var name: String = ""
-    var description: String = ""
     private(set) var isCreating: Bool = false
 
     private let playlistService: any PlaylistServiceProtocol
@@ -23,7 +22,6 @@ final class CreatePlaylistViewModel {
 
     func create() async -> PlaylistWithSongs? {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedDesc = description.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { return nil }
 
         isCreating = true
@@ -32,7 +30,7 @@ final class CreatePlaylistViewModel {
         do {
             let playlist = try await playlistService.createPlaylist(
                 name: trimmedName,
-                description: trimmedDesc.isEmpty ? nil : trimmedDesc
+                description: nil
             )
             toastService.showSuccess("Playlist created")
             return playlist

@@ -30,7 +30,6 @@ struct WrappedYearlyCard: View {
                     Image(systemName: "play.circle.fill")
                         .font(.system(size: 30, weight: .medium))
                         .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
                 }
                 .buttonStyle(.plain)
                 .padding(MinidiscSpacing.s)

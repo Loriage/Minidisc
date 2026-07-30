@@ -47,8 +47,6 @@ final class AddMusicSelection {
 /// Value-based routes for the single navigationDestination at the sheet root — heterogeneous drill targets.
 enum AddMusicRoute: Hashable {
     case allAlbums
-    case recentlyAdded
-    case recentlyPlayed
     case allArtists
     case allPlaylists
     case favorites
@@ -106,35 +104,43 @@ struct AddMusicSheet: View {
             .toolbar { toolbar }
         }
         .searchable(text: $searchText, prompt: "Find in library")
+        .tint(.primary)
         .environment(selection)
     }
 
     // MARK: Root (Home "Library" layout, browse-only)
 
     private var libraryRoot: some View {
-        List {
-            Section {
-                AddMusicLibraryRow(title: "Playlists", systemImage: "music.note.list", route: .allPlaylists)
-                AddMusicLibraryRow(title: "Albums", systemImage: "square.stack", route: .allAlbums)
-                AddMusicLibraryRow(title: "Artists", systemImage: "music.mic", route: .allArtists)
-                AddMusicLibraryRow(title: "Favorites", systemImage: "star.fill", route: .favorites)
-                AddMusicLibraryRow(title: "Downloads", systemImage: "arrow.down.circle.fill", route: .downloads)
-            } header: {
-                Text("Library").font(.minidiscSectionTitle).textCase(nil).foregroundStyle(.primary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: MinidiscSpacing.xl) {
+                VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
+                    Text("Library")
+                        .font(.minidiscShelfTitle)
+                    VStack(spacing: 0) {
+                        AddMusicLibraryRow(title: "Playlists", systemImage: "music.note.list", route: .allPlaylists)
+                        Divider().padding(.leading, 52)
+                        AddMusicLibraryRow(title: "Albums", systemImage: "square.stack", route: .allAlbums)
+                        Divider().padding(.leading, 52)
+                        AddMusicLibraryRow(title: "Artists", systemImage: "music.mic", route: .allArtists)
+                        Divider().padding(.leading, 52)
+                        AddMusicLibraryRow(title: "Favorites", systemImage: "star.fill", route: .favorites)
+                        Divider().padding(.leading, 52)
+                        AddMusicLibraryRow(title: "Downloads", systemImage: "arrow.down.circle.fill", route: .downloads)
+                    }
+                }
+                .padding(.horizontal, MinidiscSpacing.l)
+
+                AddMusicSongShelf(feed: .recentlyAdded, title: "Recently Added")
+                AddMusicSongShelf(feed: .recentlyPlayed, title: "Recently Played")
             }
-            Section {
-                AddMusicLibraryRow(title: "Recently Added", systemImage: "clock", route: .recentlyAdded)
-                AddMusicLibraryRow(title: "Recently Played", systemImage: "play.circle", route: .recentlyPlayed)
-            }
+            .padding(.vertical, MinidiscSpacing.m)
         }
     }
 
     @ViewBuilder
     private func destination(for route: AddMusicRoute) -> some View {
         switch route {
-        case .allAlbums:        AddMusicAlbumList(mode: .all, title: "Albums")
-        case .recentlyAdded:    AddMusicAlbumList(mode: .recentlyAdded, title: "Recently Added")
-        case .recentlyPlayed:   AddMusicAlbumList(mode: .recentlyPlayed, title: "Recently Played")
+        case .allAlbums:        AddMusicAlbumList()
         case .allArtists:       AddMusicArtistList()
         case .allPlaylists:     AddMusicPlaylistList()
         case .favorites:        AddMusicSongPicker(source: .favorites, title: "Favorites")
@@ -148,9 +154,10 @@ struct AddMusicSheet: View {
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
-            Button { dismiss() } label: { CircleToolbarLabel(systemName: "xmark") }
+            Button { dismiss() } label: { Image(systemName: "xmark") }
                 .buttonStyle(.plain)
                 .disabled(isSaving)
+                .accessibilityLabel("Cancel")
         }
         ToolbarItem(placement: .confirmationAction) {
             if isSaving {
@@ -164,10 +171,11 @@ struct AddMusicSheet: View {
                         dismiss()
                     }
                 } label: {
-                    CircleToolbarLabel(systemName: "checkmark", filled: selection.count > 0)
+                    Image(systemName: "checkmark")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderedProminent)
                 .disabled(selection.count == 0)
+                .accessibilityLabel("Add Selection")
             }
         }
     }
@@ -191,9 +199,19 @@ private struct AddMusicLibraryRow: View {
                         .font(.caption).fontWeight(.semibold)
                         .foregroundStyle(.white)
                 }
-                Text(title).font(.minidiscCellTitle)
+                Text(title)
+                    .font(.minidiscCellTitle)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.tertiary)
             }
+            .padding(.vertical, MinidiscSpacing.m)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
     }
 }
 
@@ -207,9 +225,10 @@ private struct AddMusicSongRow: View {
         Button {
             selection.toggle(song)
         } label: {
-            HStack(spacing: MinidiscSpacing.m) {
-                CoverArtView(id: song.coverArtId ?? song.id, size: 80, cornerRadius: MinidiscCornerRadius.standard)
-                    .frame(width: 44, height: 44)
+            HStack(spacing: MinidiscSpacing.l) {
+                CoverArtView(id: song.coverArtId ?? song.id, size: 120, cornerRadius: MinidiscCornerRadius.standard)
+                    .frame(width: 52, height: 52)
+                    .minidiscCoverStyle(cornerRadius: MinidiscCornerRadius.standard)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(song.title).font(.minidiscCellTitle).lineLimit(1)
                     if let artist = song.artist {
@@ -228,11 +247,17 @@ private struct AddMusicSongRow: View {
     @ViewBuilder
     private var trailingIcon: some View {
         if selection.isExisting(song) {
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(.tertiary)
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 18))
+                .foregroundStyle(.tertiary)
         } else if selection.isSelected(song) {
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.minidiscAccent)
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 18))
+                .foregroundStyle(Color.minidiscAccent)
         } else {
-            Image(systemName: "plus.circle").foregroundStyle(Color.minidiscAccent)
+            Image(systemName: "plus.circle")
+                .font(.system(size: 18))
+                .foregroundStyle(Color.minidiscAccent)
         }
     }
 }
@@ -293,13 +318,9 @@ private struct AddMusicSongPicker: View {
     }
 }
 
-// MARK: - Album list (all / recently-added / recently-played)
+// MARK: - Album list (full library drill-in)
 
 private struct AddMusicAlbumList: View {
-    enum Mode: Hashable { case all, recentlyAdded, recentlyPlayed }
-    let mode: Mode
-    let title: String
-
     @Environment(\.appContainer) private var container
     @State private var albums: [AlbumID3] = []
     @State private var phase: AddMusicLoadPhase = .loading
@@ -317,7 +338,7 @@ private struct AddMusicAlbumList: View {
                 }
             }
         }
-        .navigationTitle(title)
+        .navigationTitle("Albums")
         .navigationBarTitleDisplayModeInline()
         .task { await load() }
     }
@@ -326,14 +347,91 @@ private struct AddMusicAlbumList: View {
         guard let svc = container?.libraryService else { phase = .failed; return }
         phase = .loading
         do {
-            switch mode {
-            case .all:            albums = try await svc.allAlbums()
-            case .recentlyAdded:  albums = try await svc.recentlyAddedAlbums(size: 100)
-            case .recentlyPlayed: albums = try await svc.recentlyPlayedAlbums(size: 100)
-            }
+            albums = try await svc.allAlbums()
             phase = albums.isEmpty ? .empty : .loaded
         } catch {
             Logger.library.error("[ADD-MUSIC] album list failed: \(error, privacy: .public)")
+            phase = .failed
+        }
+    }
+}
+
+// MARK: - Recent shelves (paged carousel, 4 song rows per page)
+
+private enum AddMusicRecentFeed: Hashable { case recentlyAdded, recentlyPlayed }
+
+private struct AddMusicSongShelf: View {
+    let feed: AddMusicRecentFeed
+    let title: LocalizedStringKey
+
+    @Environment(\.appContainer) private var container
+    @State private var pages: [[DisplayableSong]] = []
+    @State private var phase: AddMusicLoadPhase = .loading
+
+    private static let rowsPerPage = 4
+    private static let albumsToScan = 5
+    private static let songLimit = 24
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
+            Text(title)
+                .font(.minidiscShelfTitle)
+                .padding(.horizontal, MinidiscSpacing.l)
+            if pages.isEmpty {
+                AddMusicPhaseView(phase: phase, emptyText: "No songs")
+                    .padding(.horizontal, MinidiscSpacing.l)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: MinidiscSpacing.l) {
+                        ForEach(Array(pages.enumerated()), id: \.offset) { _, page in
+                            songPage(page)
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .contentMargins(.horizontal, MinidiscSpacing.l, for: .scrollContent)
+                .scrollTargetBehavior(.viewAligned)
+            }
+        }
+        .task { await load() }
+    }
+
+    private func songPage(_ songs: [DisplayableSong]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(songs) { song in
+                AddMusicSongRow(song: song)
+                    .padding(.vertical, MinidiscSpacing.xs)
+                if song.id != songs.last?.id {
+                    Divider().padding(.leading, 68)
+                }
+            }
+        }
+        .containerRelativeFrame(.horizontal) { length, _ in
+            length - MinidiscSpacing.s
+        }
+    }
+
+    private func load() async {
+        guard let svc = container?.libraryService else { phase = .failed; return }
+        phase = .loading
+        do {
+            let albums: [AlbumID3]
+            switch feed {
+            case .recentlyAdded:  albums = try await svc.recentlyAddedAlbums(size: Self.albumsToScan)
+            case .recentlyPlayed: albums = try await svc.recentlyPlayedAlbums(size: Self.albumsToScan)
+            }
+            var songs: [DisplayableSong] = []
+            for album in albums where songs.count < Self.songLimit {
+                let detail = try? await svc.album(id: album.id)
+                songs += (detail?.song ?? []).map { DisplayableSong(from: $0) }
+            }
+            songs = Array(songs.prefix(Self.songLimit))
+            pages = stride(from: 0, to: songs.count, by: Self.rowsPerPage).map { start in
+                Array(songs[start..<min(start + Self.rowsPerPage, songs.count)])
+            }
+            phase = pages.isEmpty ? .empty : .loaded
+        } catch {
+            Logger.library.error("[ADD-MUSIC] recent shelf failed: \(error, privacy: .public)")
             phase = .failed
         }
     }
@@ -574,9 +672,10 @@ private struct AddMusicCoverRow: View {
     let subtitle: String?
 
     var body: some View {
-        HStack(spacing: MinidiscSpacing.m) {
-            CoverArtView(id: coverArtId, size: 80, cornerRadius: MinidiscCornerRadius.standard)
-                .frame(width: 44, height: 44)
+        HStack(spacing: MinidiscSpacing.l) {
+            CoverArtView(id: coverArtId, size: 120, cornerRadius: MinidiscCornerRadius.standard)
+                .frame(width: 52, height: 52)
+                .minidiscCoverStyle(cornerRadius: MinidiscCornerRadius.standard)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.minidiscCellTitle).lineLimit(1)
                 if let subtitle, !subtitle.isEmpty {
@@ -626,6 +725,8 @@ enum AddMusicCommitter {
     static func commit(
         addedSongs: [DisplayableSong],
         playlistId: String,
+        playlistName: String,
+        coverArtId: String?,
         serverId: UUID,
         existingTrackIds: [String],
         currentComment: String,
@@ -658,6 +759,8 @@ enum AddMusicCommitter {
             wasEmpty: wasEmpty,
             firstSong: addedSongs.first,
             playlistId: playlistId,
+            playlistName: playlistName,
+            coverArtId: coverArtId,
             serverId: serverId,
             container: container,
             colorExtractor: colorExtractor
@@ -673,6 +776,8 @@ enum AddMusicCommitter {
         wasEmpty: Bool,
         firstSong: DisplayableSong?,
         playlistId: String,
+        playlistName: String,
+        coverArtId: String?,
         serverId: UUID,
         container: AppContainer,
         colorExtractor: DominantColorExtractor
@@ -688,12 +793,10 @@ enum AddMusicCommitter {
             colorExtractor: colorExtractor
         )
         let manager = PlaylistCoverManager(
-            serverState: container.serverState,
-            serverService: container.serverService,
             downloadService: container.downloadService,
             artworkImageCache: container.artworkImageCache
         )
-        _ = await manager.applyGradientCover(derived, playlistId: playlistId)
+        _ = await manager.applyGradientCover(derived, playlistId: playlistId, title: playlistName, coverArtId: coverArtId)
         // Preserve the existing user-pick flag so the cover-store overwrite guard never blocks the derived save.
         store.save(derived, playlistId: playlistId, serverId: serverId, isUserPicked: choice.isUserPicked)
     }

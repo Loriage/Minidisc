@@ -304,6 +304,7 @@ struct AlbumDetailView: View {
                     }
                 ),
                 hasOverride: colorExtractor.colorOverride(for: albumCoverId) != nil,
+                footerText: "Overrides the colour taken from the cover, here and anywhere else this album appears.",
                 onReset: resetThemeColor
             )
         }
@@ -630,9 +631,10 @@ struct AlbumSongRows: View {
 /// Host for the album's theme-colour override. A ColorPicker cannot be placed inside a Menu, so the
 /// overflow menu opens this instead — which also gives "Reset to cover colour" a visible home rather
 /// than the long-press-only contextMenu it used to live in.
-private struct ThemeColorSheet: View {
+struct ThemeColorSheet: View {
     @Binding var color: Color
     let hasOverride: Bool
+    var footerText: LocalizedStringKey = "Overrides the colour taken from the cover, here and anywhere else this appears."
     let onReset: () -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -642,7 +644,7 @@ private struct ThemeColorSheet: View {
                 Section {
                     ColorPicker("Theme colour", selection: $color, supportsOpacity: false)
                 } footer: {
-                    Text("Overrides the colour taken from the cover, here and anywhere else this album appears.")
+                    Text(footerText)
                 }
                 if hasOverride {
                     Section {

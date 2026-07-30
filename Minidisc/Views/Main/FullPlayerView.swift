@@ -324,7 +324,6 @@ struct FullPlayerView: View {
                             CoverArtView(id: coverArtId, size: 600)
                         }
                         .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.large))
-                        .shadow(color: .black.opacity(0.3), radius: 30, y: 10)
                         // Rasterize before matched geometry to avoid recompositing the shadow while animating.
                         .drawingGroup()
                         .morphCover(!reduceMotion, in: morphNS, isSource: !isQueueVisible(playerState))

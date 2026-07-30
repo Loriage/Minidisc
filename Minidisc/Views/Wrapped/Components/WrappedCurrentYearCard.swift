@@ -29,7 +29,6 @@ struct WrappedCurrentYearCard: View {
                     .font(.system(size: 30, weight: .medium))
                     .foregroundStyle(.white)
                     .opacity(isUnlocked ? 1.0 : 0.45)
-                    .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
             }
             .buttonStyle(.plain)
             .padding(MinidiscSpacing.s)

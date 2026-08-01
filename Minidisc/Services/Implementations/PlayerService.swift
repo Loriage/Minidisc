@@ -35,6 +35,15 @@ private nonisolated enum AudioSessionInterruptionEvent: Sendable {
     }
 }
 
+nonisolated enum NetworkPlaybackRecoveryAction: Equatable, Sendable {
+    /// No current finite network stream is affected.
+    case none
+    /// Keep playing buffered audio, but rebuild the item on the next explicit resume.
+    case reloadOnResume
+    /// The stream was expected to be active; a stalled/error callback may rebuild it automatically.
+    case armAutomaticRecovery
+}
+
 actor PlayerService: PlayerServiceProtocol {
     nonisolated let state: PlayerState
 
@@ -85,6 +94,20 @@ actor PlayerService: PlayerServiceProtocol {
     private var cacheDownloadTask: Task<Void, Never>?
     private let cacheSession: URLSession
     private var prefetchScheduled = false
+    /// Invalidates a preload resolution already suspended in MediaResolver when its context changes.
+    private var prefetchGeneration: UInt64 = 0
+    /// Latest coherent path observed from NetworkMonitor. Generation zero is the launch baseline.
+    private var latestNetworkPathEvent: NetworkPathEvent = .initial
+    /// Track-specific marker: a Bool could accidentally survive a skip and rebuild the wrong item.
+    private var networkReloadRequiredTrackID: String?
+    private var networkRecoveryTask: Task<Void, Never>?
+    private var networkRecoveryTaskGeneration: UInt64 = 0
+    private struct AutomaticNetworkRecoveryKey: Equatable {
+        let trackID: String
+        let pathGeneration: UInt64
+    }
+    /// At most one automatic rebuild per track/path. Manual Play remains available for another try.
+    private var lastAutomaticNetworkRecoveryKey: AutomaticNetworkRecoveryKey?
     /// Orders user requests that must build a queue before calling `play`.
     /// It is separate from `playbackGeneration`, so a failed Smart Shuffle or
     /// Instant Mix lookup does not invalidate the playback already in progress.
@@ -217,6 +240,26 @@ actor PlayerService: PlayerServiceProtocol {
             && activeEnginePlayback.transportIntentGeneration == transportIntentGeneration
     }
 
+    nonisolated static func networkRecoveryAction(
+        sourceIsRemoteStream: Bool,
+        isOnline: Bool,
+        playbackState: PlaybackState
+    ) -> NetworkPlaybackRecoveryAction {
+        guard sourceIsRemoteStream else { return .none }
+        guard isOnline else { return .reloadOnResume }
+        switch playbackState {
+        case .playing, .error:
+            return .armAutomaticRecovery
+        case .idle, .loading, .paused:
+            return .reloadOnResume
+        }
+    }
+
+    private var currentSourceIsRemoteStream: Bool {
+        if case .stream = currentSource { return true }
+        return false
+    }
+
     // MARK: - Play
 
     func play(tracks: [DisplayableSong], startIndex: Int) async throws {
@@ -227,6 +270,7 @@ actor PlayerService: PlayerServiceProtocol {
         transportIntentGeneration &+= 1
         let generation = playbackGeneration
         let transportGeneration = transportIntentGeneration
+        cancelNetworkRecoveryProbe()
         let previousEnginePlayback = activeEnginePlayback
         defer {
             // Resolution can fail before the engine is replaced. Keep the still-audible item eligible
@@ -402,6 +446,8 @@ actor PlayerService: PlayerServiceProtocol {
         liveStreamStallTask?.cancel()
         liveStreamStallTask = nil
         currentSource = source
+        networkReloadRequiredTrackID = nil
+        lastAutomaticNetworkRecoveryKey = nil
         pendingRestoreInfo = nil
         // Starting a new track can interrupt a muted parking play (end-of-queue rewind)
         // without going through resume()/stop() — cancel the deferred pause and unmute,
@@ -558,6 +604,9 @@ actor PlayerService: PlayerServiceProtocol {
         transportIntentGeneration &+= 1
         let generation = playbackGeneration
         let transportGeneration = transportIntentGeneration
+        cancelNetworkRecoveryProbe()
+        networkReloadRequiredTrackID = nil
+        lastAutomaticNetworkRecoveryKey = nil
         let previousEnginePlayback = activeEnginePlayback
         defer {
             if generation == playbackGeneration,
@@ -1235,6 +1284,7 @@ actor PlayerService: PlayerServiceProtocol {
         queueBuildGeneration &+= 1
         transportIntentGeneration &+= 1
         let transportGeneration = transportIntentGeneration
+        cancelNetworkRecoveryProbe()
         isRestoringSession = false
 
         await waitForTransitionCommit()
@@ -1262,6 +1312,7 @@ actor PlayerService: PlayerServiceProtocol {
         queueBuildGeneration &+= 1
         transportIntentGeneration &+= 1
         let transportGeneration = transportIntentGeneration
+        cancelNetworkRecoveryProbe()
         isRestoringSession = false
 
         // Resuming after the queue ended restarts at track 0. A normal mid-track pause keeps the
@@ -1281,25 +1332,42 @@ actor PlayerService: PlayerServiceProtocol {
             return
         }
 
-        // Cold-restore path: session activation was deferred at launch, so the player was never
-        // started. Resolve the possibly stale URL before owning the transition gate so a newer
-        // pause/stop/play intent is never blocked behind network I/O.
+        // Cold restore, runtime error and network handover all need a new AVPlayerItem. `isReady`
+        // only means `currentItem == nil`; a wedged item remains non-nil, so the track-specific
+        // network marker must participate in this decision too.
         let coldStartSource: MediaSource?
         let coldStartTrackID: String?
         let coldStartDuration: TimeInterval?
-        if engine.isReady, let source = currentSource {
+        let coldStartPosition: TimeInterval?
+        let resumeSnapshot = await MainActor.run {
+            (
+                trackID: state.currentTrack?.id,
+                playbackState: state.playbackState,
+                duration: state.duration,
+                position: state.position
+            )
+        }
+        guard transportGeneration == transportIntentGeneration, !Task.isCancelled else { return }
+        let stateRequiresFreshItem: Bool
+        if case .error = resumeSnapshot.playbackState {
+            stateRequiresFreshItem = true
+        } else {
+            stateRequiresFreshItem = false
+        }
+        let pathRequiresFreshItem = resumeSnapshot.trackID == networkReloadRequiredTrackID
+        let shouldStartFresh = engine.isReady || stateRequiresFreshItem || pathRequiresFreshItem
+
+        if shouldStartFresh, let source = currentSource {
             coldStartSource = await refreshedColdStartSource() ?? source
             guard transportGeneration == transportIntentGeneration, !Task.isCancelled else { return }
-            let snapshot = await MainActor.run {
-                (state.currentTrack?.id ?? "restored", state.duration)
-            }
-            guard transportGeneration == transportIntentGeneration, !Task.isCancelled else { return }
-            coldStartTrackID = snapshot.0
-            coldStartDuration = snapshot.1
+            coldStartTrackID = resumeSnapshot.trackID ?? "restored"
+            coldStartDuration = resumeSnapshot.duration
+            coldStartPosition = resumeSnapshot.position
         } else {
             coldStartSource = nil
             coldStartTrackID = nil
             coldStartDuration = nil
+            coldStartPosition = nil
         }
 
         await waitForTransitionCommit()
@@ -1321,15 +1389,19 @@ actor PlayerService: PlayerServiceProtocol {
 
         if let freshSource = coldStartSource,
            let trackID = coldStartTrackID,
-           let restoredDuration = coldStartDuration {
+           let restoredDuration = coldStartDuration,
+           let restartPosition = coldStartPosition {
             if let info = pendingRestoreInfo, info.pause {
                 pendingRestoreInfo = (seekTime: info.seekTime, pause: false)
+            } else if pendingRestoreInfo == nil {
+                pendingRestoreInfo = (seekTime: restartPosition, pause: false)
             }
             if let info = pendingRestoreInfo, info.seekTime > 1 {
                 engine.volume = 0
                 isMutedForRestore = true
             }
             currentSource = freshSource
+            engine.cancelPreload()
             let playbackToken = engine.play(
                 trackID: trackID,
                 url: freshSource.url,
@@ -1341,6 +1413,10 @@ actor PlayerService: PlayerServiceProtocol {
                 transportIntentGeneration: transportGeneration
             )
             engine.setTrackDuration(restoredDuration)
+            if networkReloadRequiredTrackID == trackID {
+                networkReloadRequiredTrackID = nil
+            }
+            lastAutomaticNetworkRecoveryKey = nil
         } else {
             if let activeEnginePlayback {
                 self.activeEnginePlayback = ActiveEnginePlayback(
@@ -1384,6 +1460,9 @@ actor PlayerService: PlayerServiceProtocol {
         transportIntentGeneration &+= 1
         let generation = playbackGeneration
         let transportGeneration = transportIntentGeneration
+        cancelNetworkRecoveryProbe()
+        networkReloadRequiredTrackID = nil
+        lastAutomaticNetworkRecoveryKey = nil
         await waitForTransitionCommit()
         guard isCurrentPlaybackIntent(
             playbackGeneration: generation,
@@ -1903,7 +1982,7 @@ actor PlayerService: PlayerServiceProtocol {
             playbackGeneration: generation,
             transportIntentGeneration: transportGeneration
         ) else { return }
-        // Set the guard immediately — before any await — so handleNetworkRestored() cannot
+        // Set the guard immediately — before any await — so a network-path event cannot
         // race in during mediaResolver.resolve() and trigger a second play() call that would
         // consume pendingRestoreInfo before the deferred seek is applied.
         isRestoringSession = true
@@ -1943,6 +2022,8 @@ actor PlayerService: PlayerServiceProtocol {
 
         stopProgressTimer()
         currentSource = source
+        networkReloadRequiredTrackID = nil
+        lastAutomaticNetworkRecoveryKey = nil
         // Seek to saved position on first play; pause flag cleared in resume() when user
         // explicitly starts playback, or kept if user hasn't tapped play yet.
         pendingRestoreInfo = (seekTime: position, pause: true)
@@ -2009,28 +2090,267 @@ actor PlayerService: PlayerServiceProtocol {
         ))
     }
 
-    func handleNetworkRestored() async {
-        // Don't race with an in-progress session restore; prepareCurrentTrackForRestoration
-        // sets isRestoringSession before its first await so this check is reliable.
-        guard !isRestoringSession else {
-            Logger.player.info("Network restored — session restore already in progress, skipping re-prepare")
-            return
-        }
+    // MARK: - Network-path recovery
+
+    func handleNetworkPathChanged(_ event: NetworkPathEvent) async {
+        // Generation zero is the launch baseline. Reject duplicate or out-of-order events too: the
+        // AsyncStream is newest-only and a cancelled SwiftUI task can finish after its replacement.
+        guard event.generation > 0,
+              event.generation > latestNetworkPathEvent.generation else { return }
+
+        latestNetworkPathEvent = event
+        cancelNetworkRecoveryProbe()
+        cancelPendingPrefetch()
+        cancelPendingCacheDownload()
+        // Drop the standby item immediately. It may be `.readyToPlay` while its HTTP connection is
+        // still tied to the previous interface, and manual Next would otherwise promote it.
+        engine.cancelPreload()
+
         let generation = playbackGeneration
         let transportGeneration = transportIntentGeneration
-        let (isAvailable, track, position) = await MainActor.run {
-            (state.isPlaybackAvailable, state.currentTrack, state.position)
+        let snapshot = await MainActor.run {
+            (
+                track: state.currentTrack,
+                playbackState: state.playbackState,
+                position: state.position,
+                isAvailable: state.isPlaybackAvailable
+            )
         }
-        guard isCurrentPlaybackIntent(
-            playbackGeneration: generation,
-            transportIntentGeneration: transportGeneration
-        ), !isAvailable, let track else { return }
-        Logger.player.info("Network restored — re-preparing '\(track.title)'")
-        await prepareCurrentTrackForRestoration(
-            track: track,
-            position: position,
-            generation: generation,
-            transportGeneration: transportGeneration
+        guard generation == playbackGeneration,
+              transportGeneration == transportIntentGeneration else { return }
+
+        // Preserve cold-session restoration: unlike an active stream failure, this path has no
+        // AVPlayerItem yet and `isPlaybackAvailable` explicitly records that resolution failed.
+        if event.isOnline,
+           !snapshot.isAvailable,
+           let track = snapshot.track,
+           !isRestoringSession {
+            Logger.player.info("Network path restored — re-preparing '\(track.title, privacy: .public)'")
+            await prepareCurrentTrackForRestoration(
+                track: track,
+                position: snapshot.position,
+                generation: generation,
+                transportGeneration: transportGeneration
+            )
+            return
+        }
+
+        guard let track = snapshot.track else {
+            networkReloadRequiredTrackID = nil
+            return
+        }
+        let sourceIsRemote = currentSourceIsRemoteStream
+        let action = Self.networkRecoveryAction(
+            sourceIsRemoteStream: sourceIsRemote,
+            isOnline: event.isOnline,
+            playbackState: snapshot.playbackState
+        )
+        guard action != .none else {
+            networkReloadRequiredTrackID = nil
+            return
+        }
+
+        // Keep consuming any already-buffered audio while offline. The marker forces a fresh item
+        // on explicit Resume, or arms recovery when AVPlayer later reports a real stall.
+        networkReloadRequiredTrackID = track.id
+        Logger.player.info(
+            "[NETWORK-RECOVERY] path generation=\(event.generation, privacy: .public) online=\(event.isOnline, privacy: .public) marked track='\(track.id, privacy: .public)'"
+        )
+
+        guard action == .armAutomaticRecovery else { return }
+        switch snapshot.playbackState {
+        case .error:
+            armNetworkRecoveryProbe(trackID: track.id, delay: .milliseconds(750), requireStall: false)
+        case .playing:
+            // Rebind deterministically after the new path has stabilised. This resets AVPlayer's
+            // network connection pool even when the old item still reports `.playing` from buffer.
+            armNetworkRecoveryProbe(trackID: track.id, delay: .milliseconds(750), requireStall: false)
+        case .idle, .loading, .paused:
+            // A seamless handover stays audible. Do not manufacture a gap; explicit Play rebuilds.
+            break
+        }
+    }
+
+    private func cancelNetworkRecoveryProbe() {
+        networkRecoveryTask?.cancel()
+        networkRecoveryTask = nil
+        networkRecoveryTaskGeneration &+= 1
+    }
+
+    private func armNetworkRecoveryProbe(
+        trackID: String,
+        delay: Duration,
+        requireStall: Bool
+    ) {
+        let key = AutomaticNetworkRecoveryKey(
+            trackID: trackID,
+            pathGeneration: latestNetworkPathEvent.generation
+        )
+        guard lastAutomaticNetworkRecoveryKey != key else { return }
+
+        cancelNetworkRecoveryProbe()
+        let requestGeneration = networkRecoveryTaskGeneration
+        let pathGeneration = latestNetworkPathEvent.generation
+        let expectedPlaybackGeneration = playbackGeneration
+        let expectedTransportGeneration = transportIntentGeneration
+        let baselineProgress = engine.progress
+
+        networkRecoveryTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: delay)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, let self else { return }
+            await self.performNetworkRecoveryProbe(
+                trackID: trackID,
+                pathGeneration: pathGeneration,
+                expectedPlaybackGeneration: expectedPlaybackGeneration,
+                expectedTransportGeneration: expectedTransportGeneration,
+                requestGeneration: requestGeneration,
+                baselineProgress: baselineProgress,
+                requireStall: requireStall
+            )
+        }
+    }
+
+    private func performNetworkRecoveryProbe(
+        trackID: String,
+        pathGeneration: UInt64,
+        expectedPlaybackGeneration: UInt64,
+        expectedTransportGeneration: UInt64,
+        requestGeneration: UInt64,
+        baselineProgress: TimeInterval,
+        requireStall: Bool
+    ) async {
+        defer {
+            if requestGeneration == networkRecoveryTaskGeneration {
+                networkRecoveryTask = nil
+            }
+        }
+        guard !Task.isCancelled,
+              requestGeneration == networkRecoveryTaskGeneration,
+              pathGeneration == latestNetworkPathEvent.generation,
+              latestNetworkPathEvent.isOnline,
+              expectedPlaybackGeneration == playbackGeneration,
+              expectedTransportGeneration == transportIntentGeneration,
+              networkReloadRequiredTrackID == trackID else { return }
+
+        let snapshot = await MainActor.run {
+            (
+                track: state.currentTrack,
+                playbackState: state.playbackState,
+                position: state.position,
+                duration: state.duration,
+                serverID: serverService.state.activeServer?.id,
+                replayGainConfig: replayGainSettings.config
+            )
+        }
+        guard !Task.isCancelled,
+              requestGeneration == networkRecoveryTaskGeneration,
+              pathGeneration == latestNetworkPathEvent.generation,
+              expectedPlaybackGeneration == playbackGeneration,
+              expectedTransportGeneration == transportIntentGeneration,
+              snapshot.track?.id == trackID,
+              let track = snapshot.track,
+              let serverID = snapshot.serverID else { return }
+
+        switch snapshot.playbackState {
+        case .playing, .error:
+            break
+        case .idle, .loading, .paused:
+            // A user pause/stop always wins. Keep the marker for the next explicit Resume.
+            return
+        }
+
+        let currentProgress = engine.progress
+        if requireStall, currentProgress > baselineProgress + 0.1 {
+            Logger.player.debug(
+                "[NETWORK-RECOVERY] probe recovered without reload track='\(trackID, privacy: .public)'"
+            )
+            return
+        }
+
+        let key = AutomaticNetworkRecoveryKey(trackID: trackID, pathGeneration: pathGeneration)
+        guard lastAutomaticNetworkRecoveryKey != key else { return }
+        lastAutomaticNetworkRecoveryKey = key
+
+        let freshSource: MediaSource
+        do {
+            freshSource = try await mediaResolver.resolve(songId: trackID, serverId: serverID)
+        } catch {
+            Logger.player.warning(
+                "[NETWORK-RECOVERY] source refresh failed track='\(trackID, privacy: .public)': \(error, privacy: .public)"
+            )
+            return
+        }
+        guard !Task.isCancelled,
+              requestGeneration == networkRecoveryTaskGeneration,
+              pathGeneration == latestNetworkPathEvent.generation,
+              expectedPlaybackGeneration == playbackGeneration,
+              expectedTransportGeneration == transportIntentGeneration,
+              networkReloadRequiredTrackID == trackID else { return }
+
+        await waitForTransitionCommit()
+        guard !Task.isCancelled,
+              requestGeneration == networkRecoveryTaskGeneration,
+              pathGeneration == latestNetworkPathEvent.generation,
+              expectedPlaybackGeneration == playbackGeneration,
+              expectedTransportGeneration == transportIntentGeneration,
+              networkReloadRequiredTrackID == trackID else { return }
+
+        beginTransitionCommit()
+        var ownsTransitionCommit = true
+        defer {
+            if ownsTransitionCommit {
+                endTransitionCommit()
+            }
+        }
+
+        // This is the same logical track, not a skip: preserve queue/index, stats and scrobble state.
+        // The existing `.playing` callback consumes pendingRestoreInfo, seeks, then unmutes.
+        playbackProgressTracker.breakContinuity()
+        stopProgressTimer()
+        stopPositionSaveTimer()
+        cancelPendingPrefetch()
+        engine.cancelPreload()
+
+        let resumePosition = max(currentProgress, snapshot.position)
+        pendingRestoreInfo = (seekTime: resumePosition, pause: false)
+        if resumePosition > 1 {
+            engine.volume = 0
+            isMutedForRestore = true
+        }
+        currentSource = freshSource
+        engine.applyReplayGain(dB: ReplayGainService.gainDB(track: track, config: snapshot.replayGainConfig))
+        configureAudioSessionIfNeeded()
+        let token = engine.play(
+            trackID: trackID,
+            url: freshSource.url,
+            headers: freshSource.customHeaders
+        )
+        registerActiveEnginePlayback(
+            token,
+            playbackGeneration: expectedPlaybackGeneration,
+            transportIntentGeneration: expectedTransportGeneration
+        )
+        engine.setTrackDuration(snapshot.duration)
+        networkReloadRequiredTrackID = nil
+
+        await MainActor.run {
+            state.playbackState = .playing
+            state.isPlaybackAvailable = true
+            state.position = resumePosition
+        }
+        guard expectedPlaybackGeneration == playbackGeneration,
+              expectedTransportGeneration == transportIntentGeneration else { return }
+        startProgressTimer()
+        startPositionSaveTimer()
+        endTransitionCommit()
+        ownsTransitionCommit = false
+        await pushPositionSnapshot(rate: 1.0)
+        Logger.player.info(
+            "[NETWORK-RECOVERY] rebuilt track='\(trackID, privacy: .public)' at \(resumePosition, format: .fixed(precision: 1))s"
         )
     }
 
@@ -2175,6 +2495,7 @@ actor PlayerService: PlayerServiceProtocol {
     // MARK: - Crossfade prefetch
 
     private func cancelPendingPrefetch() {
+        prefetchGeneration &+= 1
         prefetchScheduled = false
     }
 
@@ -2235,10 +2556,12 @@ actor PlayerService: PlayerServiceProtocol {
         prefetchScheduled = true
         Logger.player.debug("[PREFETCH] scheduling standby preload for '\(resolved.nextSong.title, privacy: .public)' (remaining=\(String(format: "%.1f", remaining))s)")
         let generation = playbackGeneration
+        let requestedPrefetchGeneration = prefetchGeneration
         await preloadNextForGapless(
             nextSong: resolved.nextSong,
             serverId: resolved.serverId,
-            generation: generation
+            generation: generation,
+            prefetchGeneration: requestedPrefetchGeneration
         )
     }
 
@@ -2249,10 +2572,16 @@ actor PlayerService: PlayerServiceProtocol {
     private func preloadNextForGapless(
         nextSong: DisplayableSong,
         serverId: UUID,
-        generation: UInt64
+        generation: UInt64,
+        prefetchGeneration: UInt64
     ) async {
         let songId = nextSong.id
-        guard await isPrefetchContextValid(songId: songId, serverId: serverId, generation: generation) else { return }
+        guard await isPrefetchContextValid(
+            songId: songId,
+            serverId: serverId,
+            generation: generation,
+            prefetchGeneration: prefetchGeneration
+        ) else { return }
         let repeatMode = await MainActor.run { state.repeatMode }
         guard repeatMode != .one else { return }
 
@@ -2268,7 +2597,12 @@ actor PlayerService: PlayerServiceProtocol {
             return
         }
         let trim = await gaplessTrim(nextSongId: songId, serverId: serverId, isPair: isPair, overlap: overlap)
-        guard await isPrefetchContextValid(songId: songId, serverId: serverId, generation: generation) else {
+        guard await isPrefetchContextValid(
+            songId: songId,
+            serverId: serverId,
+            generation: generation,
+            prefetchGeneration: prefetchGeneration
+        ) else {
             Logger.player.debug("[PREFETCH] discarded stale preload for '\(songId, privacy: .public)'")
             return
         }
@@ -2276,7 +2610,8 @@ actor PlayerService: PlayerServiceProtocol {
         guard await isPrefetchContextValid(
             songId: songId,
             serverId: serverId,
-            generation: generation
+            generation: generation,
+            prefetchGeneration: prefetchGeneration
         ) else {
             Logger.player.debug("[PREFETCH] discarded stale ReplayGain preload for '\(songId, privacy: .public)'")
             return
@@ -2299,9 +2634,12 @@ actor PlayerService: PlayerServiceProtocol {
     private func isPrefetchContextValid(
         songId: String,
         serverId: UUID,
-        generation: UInt64
+        generation: UInt64,
+        prefetchGeneration: UInt64
     ) async -> Bool {
-        guard generation == playbackGeneration, !Task.isCancelled else { return false }
+        guard generation == playbackGeneration,
+              prefetchGeneration == self.prefetchGeneration,
+              !Task.isCancelled else { return false }
         return await MainActor.run {
             let nextIndex = state.currentIndex + 1
             return serverService.state.activeServer?.id == serverId
@@ -2530,17 +2868,25 @@ actor PlayerService: PlayerServiceProtocol {
                 self.isRestoringSession = false
                 Logger.player.info("[RESTORE] seek landed — paused at \(self.engine.progress, format: .fixed(precision: 1))s")
             }
-        case .buffering, .paused, .stopped:
+        case .buffering, .paused:
+            playbackProgressTracker.breakContinuity()
+            await armRecoveryForUnexpectedEngineStall(playbackToken: playbackToken)
+        case .stopped:
             playbackProgressTracker.breakContinuity()
         case .error:
-            let isLive = await MainActor.run { state.isLiveStream }
+            let engineSnapshot = await MainActor.run {
+                (isLive: state.isLiveStream, trackID: state.currentTrack?.id)
+            }
             guard isCurrentEngineEvent(playbackToken) else { return }
             let liveStationName: String?
-            if isLive {
+            if engineSnapshot.isLive {
                 liveStationName = await MainActor.run { state.currentRadio?.name ?? "" }
                 guard isCurrentEngineEvent(playbackToken) else { return }
             } else {
                 liveStationName = nil
+            }
+            if currentSourceIsRemoteStream, let trackID = engineSnapshot.trackID {
+                networkReloadRequiredTrackID = trackID
             }
             playbackProgressTracker.breakContinuity()
             stopProgressTimer()
@@ -2554,8 +2900,31 @@ actor PlayerService: PlayerServiceProtocol {
                 await handleLiveStreamFailure(stationName: liveStationName, error: nil)
             } else {
                 await MainActor.run { state.playbackState = .error(.timeout) }
+                if let trackID = networkReloadRequiredTrackID,
+                   latestNetworkPathEvent.isOnline {
+                    armNetworkRecoveryProbe(
+                        trackID: trackID,
+                        delay: .milliseconds(750),
+                        requireStall: false
+                    )
+                }
             }
         }
+    }
+
+    private func armRecoveryForUnexpectedEngineStall(
+        playbackToken: AudioEnginePlaybackToken
+    ) async {
+        guard currentSourceIsRemoteStream,
+              latestNetworkPathEvent.isOnline else { return }
+        let snapshot = await MainActor.run {
+            (trackID: state.currentTrack?.id, playbackState: state.playbackState)
+        }
+        guard isCurrentEngineEvent(playbackToken),
+              snapshot.playbackState == .playing,
+              let trackID = snapshot.trackID,
+              networkReloadRequiredTrackID == trackID else { return }
+        armNetworkRecoveryProbe(trackID: trackID, delay: .seconds(8), requireStall: true)
     }
 
     /// Called by the engine bridge on unexpected errors.
@@ -2564,14 +2933,19 @@ actor PlayerService: PlayerServiceProtocol {
         playbackToken: AudioEnginePlaybackToken
     ) async {
         guard isCurrentEngineEvent(playbackToken) else { return }
-        let isLive = await MainActor.run { state.isLiveStream }
+        let engineSnapshot = await MainActor.run {
+            (isLive: state.isLiveStream, trackID: state.currentTrack?.id)
+        }
         guard isCurrentEngineEvent(playbackToken) else { return }
         let liveStationName: String?
-        if isLive {
+        if engineSnapshot.isLive {
             liveStationName = await MainActor.run { state.currentRadio?.name ?? "" }
             guard isCurrentEngineEvent(playbackToken) else { return }
         } else {
             liveStationName = nil
+        }
+        if currentSourceIsRemoteStream, let trackID = engineSnapshot.trackID {
+            networkReloadRequiredTrackID = trackID
         }
         playbackProgressTracker.breakContinuity()
         stopProgressTimer()
@@ -2585,6 +2959,14 @@ actor PlayerService: PlayerServiceProtocol {
             await handleLiveStreamFailure(stationName: liveStationName, error: nil)
         } else {
             await MainActor.run { state.playbackState = .error(.timeout) }
+            if let trackID = networkReloadRequiredTrackID,
+               latestNetworkPathEvent.isOnline {
+                armNetworkRecoveryProbe(
+                    trackID: trackID,
+                    delay: .milliseconds(750),
+                    requireStall: false
+                )
+            }
         }
     }
 

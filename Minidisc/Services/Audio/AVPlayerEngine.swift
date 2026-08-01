@@ -284,6 +284,10 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     func cancelPreload() {
         lock.lock()
         defer { lock.unlock() }
+        // A path change can arrive while the standby deck is already audible in a crossfade.
+        // Restore the active deck to full volume and stop the ramp before clearing standby;
+        // otherwise the orphaned timer would keep fading the only remaining deck to silence.
+        cancelOverlap()
         clearPreloadedDeck()
         currentItem?.forwardPlaybackEndTime = .invalid
     }

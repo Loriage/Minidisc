@@ -88,7 +88,8 @@ struct MinidiscApp: App {
                 // is corrected from its optimistic default before any view loads data.
                 newContainer.networkMonitor.start(
                     serverState: newContainer.serverState,
-                    streamSettings: newContainer.streamSettings
+                    streamSettings: newContainer.streamSettings,
+                    playerService: newContainer.playerService
                 )
                 await newContainer.nowPlayingService.start()
                 AppContainer.invalidateCoverArtCacheIfNeeded(artworkCache: newContainer.artworkImageCache)
@@ -138,7 +139,6 @@ struct MinidiscApp: App {
             }
             .task(id: container?.serverState.isOnline) {
                 guard let c = container, c.serverState.isOnline else { return }
-                await c.playerService.handleNetworkRestored()
                 await c.listenBrainzService.flushOfflineQueue()
             }
         }

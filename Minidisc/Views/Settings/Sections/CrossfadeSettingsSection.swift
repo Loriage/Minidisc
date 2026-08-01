@@ -38,7 +38,7 @@ struct CrossfadeSettingsSection: View {
                         Task { await container?.playerService.crossfadeSettingsDidChange() }
                     }
                 )) {
-                    Text("Keep album tracks back-to-back")
+                    Text("Disable for gapless albums")
                         .foregroundStyle(.primary)
                 }
                 .tint(Color(.systemGreen))
@@ -46,7 +46,7 @@ struct CrossfadeSettingsSection: View {
         } header: {
             Text("Crossfade")
         } footer: {
-            Text("Fades one track into the next over the set time. Set Off for no fade. Consecutive tracks from the same album are butted together instead, so albums that run continuously stay that way.")
+            Text("Fades one track into the next over the set time. Set Off for no fade. The toggle keeps gapless albums and live mixes seamless.")
         }
     }
 

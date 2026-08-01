@@ -1,6 +1,11 @@
 import Foundation
 
 nonisolated enum ReplayGainService {
+    private struct GainCandidate {
+        let gainDB: Double
+        let peakLinear: Double?
+    }
+
     static func gainDB(track: DisplayableSong, config: ReplayGainConfig) -> Float {
         computeGain(
             enabled: config.enabled,
@@ -34,42 +39,78 @@ nonisolated enum ReplayGainService {
     ) -> Float {
         guard enabled else { return 0.0 }
 
-        let selectedGain: Double?
-        let selectedPeak: Double?
+        let preferredGain: Double?
+        let preferredPeak: Double?
+        let alternateGain: Double?
+        let alternatePeak: Double?
         switch mode {
         case .track:
-            selectedGain = trackGain
-            selectedPeak = trackPeak
+            preferredGain = trackGain
+            preferredPeak = trackPeak
+            alternateGain = albumGain
+            alternatePeak = albumPeak
         case .album:
-            selectedGain = albumGain
-            selectedPeak = albumPeak
+            preferredGain = albumGain
+            preferredPeak = albumPeak
+            alternateGain = trackGain
+            alternatePeak = trackPeak
         }
 
-        // Fallback gain has no reliable peak metadata.
-        let gainDB: Double
-        let peakLinear: Double?
-        if let g = selectedGain {
-            gainDB = g
-            peakLinear = selectedPeak
-        } else if let fg = fallbackGain {
-            gainDB = fg
-            peakLinear = nil
+        // ReplayGain requires using the other standard gain when the requested mode is absent.
+        // OpenSubsonic's fallbackGain is only the final fallback when neither tag is usable.
+        guard let candidate = candidate(
+            preferredGain: preferredGain,
+            preferredPeak: preferredPeak,
+            alternateGain: alternateGain,
+            alternatePeak: alternatePeak,
+            fallbackGain: fallbackGain
+        ) else { return 0.0 }
+
+        let validBaseGain = finite(baseGain) ?? 0.0
+        let validPreAmp = preAmp.isFinite ? preAmp : 0.0
+        let totalDB = candidate.gainDB + validBaseGain + validPreAmp
+
+        let finalDB: Double
+        if preventClipping {
+            // The specification requires assuming full scale when peak metadata is absent or
+            // malformed. This keeps a positive gain or pre-amp from clipping an unknown source.
+            let peak = validPeak(candidate.peakLinear) ?? 1.0
+            let maximumSafeDB = -20.0 * log10(peak)
+            finalDB = min(totalDB, maximumSafeDB)
         } else {
-            return 0.0
+            finalDB = totalDB
         }
 
-        let totalDB = gainDB + (baseGain ?? 0.0) + preAmp
-        let gainLinear = pow(10.0, totalDB / 20.0)
-
-        let finalLinear: Double
-        if preventClipping, let peak = peakLinear, peak > 0 {
-            finalLinear = min(gainLinear, 1.0 / peak)
-        } else {
-            finalLinear = gainLinear
-        }
-
-        let finalDB = 20.0 * log10(max(finalLinear, 0.0001))
         return Float(finalDB.clamped(to: -96.0...24.0))
+    }
+
+    private nonisolated static func candidate(
+        preferredGain: Double?,
+        preferredPeak: Double?,
+        alternateGain: Double?,
+        alternatePeak: Double?,
+        fallbackGain: Double?
+    ) -> GainCandidate? {
+        if let gain = finite(preferredGain) {
+            return GainCandidate(gainDB: gain, peakLinear: preferredPeak)
+        }
+        if let gain = finite(alternateGain) {
+            return GainCandidate(gainDB: gain, peakLinear: alternatePeak)
+        }
+        if let gain = finite(fallbackGain) {
+            return GainCandidate(gainDB: gain, peakLinear: nil)
+        }
+        return nil
+    }
+
+    private nonisolated static func finite(_ value: Double?) -> Double? {
+        guard let value, value.isFinite else { return nil }
+        return value
+    }
+
+    private nonisolated static func validPeak(_ value: Double?) -> Double? {
+        guard let value = finite(value), value > 0 else { return nil }
+        return value
     }
 }
 

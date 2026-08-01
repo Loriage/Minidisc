@@ -225,7 +225,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "\"%1$@\" is already in \"%2$@\". Add it again?"
           }
         },
@@ -387,7 +387,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$@ — %2$@"
           }
         },
@@ -445,7 +445,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$@ · %2$lld/%3$lld tracks"
           }
         },
@@ -945,7 +945,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$lld hours %2$lld minutes listened"
           }
         },
@@ -1133,7 +1133,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$lld images · %2$@"
           }
         },
@@ -1841,7 +1841,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$lld tracks · %2$@"
           }
         },
@@ -2029,7 +2029,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "%1$lld/%2$lld tracks"
           }
         },
@@ -2799,59 +2799,6 @@
         }
       }
     },
-    "Add" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hinzufügen"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Προσθήκη"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Añadir"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ajouter"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aggiungi"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "追加"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新增"
-          }
-        }
-      }
-    },
     "Add a custom search provider to open releases in your service of choice. Without a provider, releases fall back to ListenBrainz." : {
       "localizations" : {
         "de" : {
@@ -3217,7 +3164,56 @@
       }
     },
     "Add Music" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Musik hinzufügen"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Προσθήκη μουσικής"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir música"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajouter de la musique"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiungi musica"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音楽を追加"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加音乐"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加入音樂"
+          }
+        }
+      }
     },
     "Add Provider" : {
       "localizations" : {
@@ -3272,7 +3268,56 @@
       }
     },
     "Add Selection" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auswahl hinzufügen"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Προσθήκη επιλογής"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir selección"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajouter la sélection"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiungi selezione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選択項目を追加"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加所选项目"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加入所選項目"
+          }
+        }
+      }
     },
     "Add Server" : {
       "localizations" : {
@@ -3379,7 +3424,56 @@
       }
     },
     "Add Songs" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titel hinzufügen"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Προσθήκη τραγουδιών"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir canciones"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajouter des morceaux"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiungi brani"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "曲を追加"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加歌曲"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "加入歌曲"
+          }
+        }
+      }
     },
     "Add to %@" : {
       "localizations" : {
@@ -4528,7 +4622,56 @@
       }
     },
     "Appearance" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erscheinungsbild"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Εμφάνιση"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apariencia"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apparence"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aspetto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "外観"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "外观"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "外觀"
+          }
+        }
+      }
     },
     "Application" : {
       "localizations" : {
@@ -5259,7 +5402,7 @@
       }
     },
     "Aurora" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5728,7 +5871,7 @@
       }
     },
     "Bloom" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9424,61 +9567,57 @@
         }
       }
     },
-    "Create" : {
-      "extractionState" : "stale",
+    "Create Playlist" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Erstellen"
+            "value" : "Playlist erstellen"
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Δημιουργία"
+            "value" : "Δημιουργία λίστας αναπαραγωγής"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Crear"
+            "value" : "Crear lista de reproducción"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Créer"
+            "value" : "Créer une playlist"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Crea"
+            "value" : "Crea playlist"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "作成"
+            "value" : "プレイリストを作成"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "创建"
+            "value" : "创建播放列表"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "建立"
+            "value" : "建立播放列表"
           }
         }
       }
-    },
-    "Create Playlist" : {
-
     },
     "Create playlists on your server to see them here." : {
       "localizations" : {
@@ -10312,55 +10451,54 @@
         }
       }
     },
-    "Disabled" : {
-      "extractionState" : "stale",
+    "Disable for gapless albums" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deaktiviert"
+            "value" : "Für lückenlose Alben deaktivieren"
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Απενεργοποιημένο"
+            "value" : "Απενεργοποίηση για άλμπουμ χωρίς κενά"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Desactivado"
+            "value" : "Desactivar para álbumes sin pausas"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Désactivé"
+            "value" : "Désactiver pour les albums sans blanc"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Disattivato"
+            "value" : "Disattiva per album senza pause"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無効"
+            "value" : "ギャップレスアルバムでは無効にする"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已禁用"
+            "value" : "对无缝专辑禁用"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已停用"
+            "value" : "為無間隙專輯停用"
           }
         }
       }
@@ -11525,7 +11663,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "Downloading %1$lld/%2$lld tracks"
           }
         },
@@ -11828,7 +11966,7 @@
       }
     },
     "Ember" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11928,59 +12066,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "空的播放列表"
-          }
-        }
-      }
-    },
-    "Enabled" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aktiviert"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ενεργοποιημένο"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Activado"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Activé"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Attivato"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "有効"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已启用"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已啟用"
           }
         }
       }
@@ -12349,107 +12434,54 @@
         }
       }
     },
-    "Fades one track into the next over the set time. Set Off for no fade. Consecutive tracks from the same album are butted together instead, so albums that run continuously stay that way." : {
+    "Fades one track into the next over the set time. Set Off for no fade. The toggle keeps gapless albums and live mixes seamless." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Blendet einen Titel über die eingestellte Dauer in den nächsten über. Auf Aus stellen, um nicht zu überblenden. Aufeinanderfolgende Titel desselben Albums werden stattdessen direkt aneinandergereiht, damit durchgehende Alben durchgehend bleiben."
+            "value" : "Blendet einen Titel über die eingestellte Dauer in den nächsten über. Auf Aus stellen für keinen Übergang. Die Option hält lückenlose Alben und Live-Mixe nahtlos."
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Κάνει fade ένα κομμάτι στο επόμενο για τον καθορισμένο χρόνο. Επιλέξτε Ανενεργό για κανένα fade. Τα διαδοχικά κομμάτια του ίδιου άλμπουμ ενώνονται απευθείας, ώστε τα άλμπουμ που παίζουν συνεχόμενα να παραμένουν έτσι."
+            "value" : "Κάνει ομαλή μετάβαση από το ένα κομμάτι στο επόμενο για τον καθορισμένο χρόνο. Ορίστε σε Ανενεργό για καμία μετάβαση. Η επιλογή διατηρεί αδιάκοπα τα άλμπουμ χωρίς κενά και τα ζωντανά μιξ."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Funde una pista con la siguiente durante el tiempo indicado. Selecciona Desactivado para no aplicar fundido. Las pistas consecutivas de un mismo álbum se encadenan directamente, para que los álbumes continuos sigan siéndolo."
+            "value" : "Funde una pista con la siguiente durante el tiempo establecido. Selecciona Desactivado para no aplicar fundido. La opción mantiene sin cortes los álbumes gapless y las mezclas en directo."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fond un morceau dans le suivant sur la durée définie. Réglez sur Désactivé pour supprimer le fondu. Les pistes qui se suivent sur un même album sont enchaînées sans fondu, pour que les albums continus le restent."
+            "value" : "Fond un morceau dans le suivant sur la durée définie. Réglez sur Désactivé pour supprimer le fondu. L'option préserve la continuité des albums sans blanc et des mixes live."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dissolve un brano nel successivo per la durata impostata. Imposta su Off per non applicare la dissolvenza. I brani consecutivi dello stesso album vengono invece concatenati, così gli album continui restano tali."
+            "value" : "Dissolve una traccia nella successiva per la durata impostata. Imposta su Off per nessuna dissolvenza. L'opzione mantiene senza interruzioni gli album gapless e i mix dal vivo."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "設定した長さで曲を次の曲へフェードします。フェードしない場合はオフにします。同じアルバムの連続する曲はフェードせずにそのままつなげるので、切れ目なく続くアルバムはそのまま再生されます。"
+            "value" : "設定した時間をかけて曲を次の曲へフェードします。フェードなしにするにはオフに設定します。この設定はギャップレスアルバムやライブミックスをシームレスに保ちます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在设定的时长内将一首曲目淡入下一首。设为关闭则不淡入淡出。同一专辑中相邻的曲目会直接相接，让连续播放的专辑保持连贯。"
+            "value" : "在设定的时间内将一首曲目淡入下一首。设为关闭则不淡入淡出。此开关可让无缝专辑和现场混音保持连贯。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在設定的長度內將一首曲目淡入下一首。設為關閉則不淡入淡出。同一專輯中相鄰的曲目會直接相接，讓連續播放的專輯保持連貫。"
-          }
-        }
-      }
-    },
-    "Failed" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fehlgeschlagen"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Απέτυχε"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fallido"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Échec"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Non riuscito"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "失敗"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "失败"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "失敗"
+            "value" : "在設定的時間內將一首曲目淡入下一首。設為關閉則不淡入淡出。此開關可讓無縫專輯和現場混音保持連貫。"
           }
         }
       }
@@ -15840,58 +15872,6 @@
         }
       }
     },
-    "Keep album tracks back-to-back" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Albumtitel direkt aneinanderreihen"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Διαδοχικά κομμάτια άλμπουμ χωρίς κενό"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Encadenar las pistas de un álbum"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Enchaîner les pistes d’un album"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Concatenare i brani di un album"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "アルバムの曲を続けて再生"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "专辑曲目无缝相接"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "專輯曲目無縫相接"
-          }
-        }
-      }
-    },
     "Keep Editing" : {
       "localizations" : {
         "de" : {
@@ -15997,7 +15977,7 @@
       }
     },
     "Lagoon" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -22446,59 +22426,6 @@
         }
       }
     },
-    "Now Playing" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aktuelle Wiedergabe"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Αναπαράγεται τώρα"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reproduciendo"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "En cours de lecture"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "In riproduzione"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "再生中"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在播放"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "現正播放"
-          }
-        }
-      }
-    },
     "Offline downloads" : {
       "localizations" : {
         "de" : {
@@ -23072,10 +22999,108 @@
       }
     },
     "Overrides the colour taken from the cover, here and anywhere else this appears." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Überschreibt die vom Cover übernommene Farbe – hier und überall sonst, wo dieses Element angezeigt wird."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Αντικαθιστά το χρώμα που λαμβάνεται από το εξώφυλλο, εδώ και οπουδήποτε αλλού εμφανίζεται αυτό το στοιχείο."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sustituye el color tomado de la portada, aquí y en cualquier otro lugar donde aparezca este elemento."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remplace la couleur extraite de la pochette, ici et partout où cet élément apparaît."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sostituisce il colore ricavato dalla copertina, qui e ovunque appaia questo elemento."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カバーから取得した色を、ここやこの項目が表示されるすべての場所で上書きします。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "覆盖从封面提取的颜色，并应用于此处及此项目出现的所有位置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "覆寫從封面擷取的顏色，並套用於此處及此項目出現的所有位置。"
+          }
+        }
+      }
     },
     "Overrides the colour taken from the cover, here and anywhere else this playlist appears." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Überschreibt die vom Cover übernommene Farbe – hier und überall sonst, wo diese Playlist angezeigt wird."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Αντικαθιστά το χρώμα που λαμβάνεται από το εξώφυλλο, εδώ και οπουδήποτε αλλού εμφανίζεται αυτή η λίστα αναπαραγωγής."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sustituye el color tomado de la portada, aquí y en cualquier otro lugar donde aparezca esta lista de reproducción."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remplace la couleur extraite de la pochette, ici et partout où cette playlist apparaît."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sostituisce il colore ricavato dalla copertina, qui e ovunque appaia questa playlist."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カバーから取得した色を、ここやこのプレイリストが表示されるすべての場所で上書きします。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "覆盖从封面提取的颜色，并应用于此处及此播放列表出现的所有位置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "覆寫從封面擷取的顏色，並套用於此處及此播放列表出現的所有位置。"
+          }
+        }
+      }
     },
     "Password" : {
       "localizations" : {
@@ -24070,7 +24095,56 @@
       }
     },
     "Playlist Order" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlist-Reihenfolge"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Σειρά λίστας αναπαραγωγής"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orden de la lista de reproducción"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordre de la playlist"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordine della playlist"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレイリストの順序"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放列表顺序"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放列表順序"
+          }
+        }
+      }
     },
     "Playlist Title" : {
       "localizations" : {
@@ -24489,7 +24563,7 @@
       }
     },
     "Prism" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -24953,59 +25027,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "佇列為空"
-          }
-        }
-      }
-    },
-    "Queue is empty" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Warteschlange ist leer"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Η ουρά είναι κενή"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La cola está vacía"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La file d'attente est vide"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La coda è vuota"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "キューは空です"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "队列为空"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "待播清單是空的"
           }
         }
       }
@@ -25791,7 +25812,56 @@
       }
     },
     "Remove %@" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ entfernen"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Αφαίρεση %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retirer %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rimuovi %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@を削除"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除%@"
+          }
+        }
+      }
     },
     "Remove %@?" : {
       "localizations" : {
@@ -26647,59 +26717,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重複"
-          }
-        }
-      }
-    },
-    "Repeat: %@" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wiederholen: %@"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Επανάληψη: %@"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Repetir: %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Répéter : %@"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ripeti: %@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "リピート: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重复：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重複播放：%@"
           }
         }
       }
@@ -29564,59 +29581,6 @@
         }
       }
     },
-    "Start playing music to see your queue here." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Musik abspielen, um die Warteschlange hier zu sehen."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ξεκινήστε την αναπαραγωγή μουσικής για να δείτε την ουρά σας εδώ."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Empieza a reproducir música para ver tu cola aquí."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lancez la lecture pour voir votre file d'attente ici."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Inizia a riprodurre musica per vedere la tua coda qui."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "音楽を再生すると、ここにキューが表示されます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "开始播放音乐即可在此查看你的队列。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "開始播放音樂即可在此看到你的待播清單。"
-          }
-        }
-      }
-    },
     "Started with %@ · Ended with %@" : {
       "localizations" : {
         "de" : {
@@ -29633,7 +29597,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "Started with %1$@ · Ended with %2$@"
           }
         },
@@ -30144,7 +30108,7 @@
       }
     },
     "Sunset" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -30249,7 +30213,56 @@
       }
     },
     "System follows your device's light or dark setting." : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System verwendet die Hell- oder Dunkel-Einstellung deines Geräts."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Το Σύστημα ακολουθεί τη φωτεινή ή σκοτεινή εμφάνιση της συσκευής σας."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sistema sigue el ajuste claro u oscuro de tu dispositivo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Système suit le réglage clair ou sombre de votre appareil."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sistema segue l'impostazione chiara o scura del dispositivo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「システム」はデバイスのライト／ダーク設定に従います。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“系统”会跟随设备的浅色或深色设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「系統」會跟隨裝置的淺色或深色設定。"
+          }
+        }
+      }
     },
     "Take a Photo" : {
       "localizations" : {
@@ -31734,7 +31747,56 @@
       }
     },
     "Theme" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Design"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Θέμα"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tema"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thème"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tema"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テーマ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主题"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主題"
+          }
+        }
+      }
     },
     "Theme colour" : {
       "localizations" : {
@@ -32621,7 +32683,56 @@
       }
     },
     "Title" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titel"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Τίτλος"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Título"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titre"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titolo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "タイトル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标题"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "標題"
+          }
+        }
+      }
     },
     "TLS certificate error." : {
       "localizations" : {
@@ -34593,7 +34704,7 @@
         },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
             "value" : "Unexpected error: %1$@ %2$lld."
           }
         },

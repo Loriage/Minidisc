@@ -1093,17 +1093,14 @@ actor PlayerService: PlayerServiceProtocol {
         appliedDB: Float,
         context: String
     ) {
-        let selectedGain = config.mode == .track
-            ? track.replayGainTrackGain
-            : track.replayGainAlbumGain
-        let selectedPeak = config.mode == .track
-            ? track.replayGainTrackPeak
-            : track.replayGainAlbumPeak
-        let gainDescription = selectedGain.map { String(format: "%.2f", $0) } ?? "missing"
-        let peakDescription = selectedPeak.map { String(format: "%.4f", $0) } ?? "missing"
+        let trackGainDescription = track.replayGainTrackGain.map { String(format: "%.2f", $0) } ?? "missing"
+        let albumGainDescription = track.replayGainAlbumGain.map { String(format: "%.2f", $0) } ?? "missing"
+        let trackPeakDescription = track.replayGainTrackPeak.map { String(format: "%.6f", $0) } ?? "missing"
+        let albumPeakDescription = track.replayGainAlbumPeak.map { String(format: "%.6f", $0) } ?? "missing"
+        let baseDescription = track.replayGainBaseGain.map { String(format: "%.2f", $0) } ?? "missing"
         let fallbackDescription = track.replayGainFallbackGain.map { String(format: "%.2f", $0) } ?? "missing"
         Logger.player.info(
-            "[REPLAYGAIN] context=\(context, privacy: .public) track='\(track.id, privacy: .public)' enabled=\(config.enabled, privacy: .public) mode=\(config.mode.rawValue, privacy: .public) selectedGain=\(gainDescription, privacy: .public)dB selectedPeak=\(peakDescription, privacy: .public) fallback=\(fallbackDescription, privacy: .public)dB preAmp=\(config.preAmp, format: .fixed(precision: 1))dB applied=\(appliedDB, format: .fixed(precision: 2))dB"
+            "[REPLAYGAIN] context=\(context, privacy: .public) track='\(track.id, privacy: .public)' enabled=\(config.enabled, privacy: .public) mode=\(config.mode.rawValue, privacy: .public) trackGain=\(trackGainDescription, privacy: .public)dB albumGain=\(albumGainDescription, privacy: .public)dB trackPeak=\(trackPeakDescription, privacy: .public) albumPeak=\(albumPeakDescription, privacy: .public) base=\(baseDescription, privacy: .public)dB fallback=\(fallbackDescription, privacy: .public)dB preAmp=\(config.preAmp, format: .fixed(precision: 1))dB applied=\(appliedDB, format: .fixed(precision: 2))dB"
         )
     }
 

@@ -18,7 +18,7 @@ final class LyricsViewModel {
     private(set) var isUserScrolling: Bool = false
 
     private var lyricsList: LyricsList?
-    private var trackingTimer: Timer?
+    private var trackingTask: Task<Void, Never>?
     private var resumeTask: Task<Void, Never>?
     private var isShown = false
 
@@ -42,6 +42,11 @@ final class LyricsViewModel {
         self.lyricsService = lyricsService
         self.playerService = playerService
         self.playerState = playerState
+    }
+
+    isolated deinit {
+        trackingTask?.cancel()
+        resumeTask?.cancel()
     }
 
     // MARK: - Load
@@ -105,7 +110,7 @@ final class LyricsViewModel {
         resumeTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(3))
             guard !Task.isCancelled else { return }
-            await MainActor.run { self?.isUserScrolling = false }
+            self?.isUserScrolling = false
         }
     }
 
@@ -155,9 +160,14 @@ final class LyricsViewModel {
     }
 
     private func startTimer() {
-        guard trackingTimer == nil else { return }
-        trackingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
+        guard trackingTask == nil else { return }
+        trackingTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .milliseconds(100))
+                } catch {
+                    return
+                }
                 guard let self else { return }
                 self.update(elapsedMs: Int(self.playerState.position * 1000))
             }
@@ -165,8 +175,8 @@ final class LyricsViewModel {
     }
 
     private func stopTimer() {
-        trackingTimer?.invalidate()
-        trackingTimer = nil
+        trackingTask?.cancel()
+        trackingTask = nil
     }
 
     // MARK: - Private helpers

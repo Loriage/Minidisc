@@ -8,8 +8,8 @@
 
 ## Screenshots
 
-| Home | Discover | Player | Album | Lidarr |
-|:----:|:--------:|:------:|:-----:|:------:|
+|                        Home                        |                        Discover                        |                        Player                        |                        Album                        |                           Lidarr                           |
+| :------------------------------------------------: | :----------------------------------------------------: | :--------------------------------------------------: | :-------------------------------------------------: | :--------------------------------------------------------: |
 | <img src="docs/screenshots/home.jpeg" width="150"> | <img src="docs/screenshots/discover.jpeg" width="150"> | <img src="docs/screenshots/player.jpeg" width="150"> | <img src="docs/screenshots/album.jpeg" width="150"> | <img src="docs/screenshots/lidarr-album.jpeg" width="150"> |
 
 ## What is Minidisc?
@@ -81,12 +81,12 @@ You need these items:
 Do these steps:
 
 1. Clone the repository and open the project.
-   ```bash
-   git clone https://github.com/Loriage/Minidisc.git
-   cd Minidisc
-   open Minidisc.xcodeproj
-   ```
-   Swift Package Manager gets the dependencies (SwiftSonic), so you do not have to do more setup.
+    ```bash
+    git clone https://github.com/Loriage/Minidisc.git
+    cd Minidisc
+    open Minidisc.xcodeproj
+    ```
+    Swift Package Manager gets the dependencies (SwiftSonic), so you do not have to do more setup.
 2. Select your team in **Signing & Capabilities**.
 3. Select an iOS 26 device or simulator.
 4. Build and run the app when you press Command-R.

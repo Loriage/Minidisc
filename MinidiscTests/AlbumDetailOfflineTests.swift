@@ -12,6 +12,7 @@ private final class ADLibraryStub: LibraryServiceProtocol {
     /// When set, `album(id:)` returns this instead of throwing — used to drive the
     /// empty-but-successful (200, no songs) path that the catch block can't catch.
     var albumResult: AlbumID3?
+    @MainActor
     func album(id: String) async throws -> AlbumID3 {
         if let albumResult { return albumResult }
         throw URLError(.notConnectedToInternet)

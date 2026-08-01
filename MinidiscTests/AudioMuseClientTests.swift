@@ -1,21 +1,32 @@
 import Testing
 import Foundation
+import Synchronization
 @testable import Minidisc
 
 /// Serves canned responses per path, and records the request bodies it saw.
-private final class StubProtocol: URLProtocol, @unchecked Sendable {
-    static let lock = NSLock()
-    nonisolated(unsafe) static var responses: [String: (status: Int, body: String)] = [:]
-    nonisolated(unsafe) static var bodies: [String: [String: Any]] = [:]
+private nonisolated final class StubProtocol: URLProtocol, @unchecked Sendable {
+    private struct StubbedResponse: Sendable {
+        let status: Int
+        let body: String
+    }
+
+    private struct State: Sendable {
+        var responses: [String: StubbedResponse] = [:]
+        var bodies: [String: Data] = [:]
+    }
+
+    private static let state = Mutex(State())
 
     static func reset() {
-        lock.withLock { responses = [:]; bodies = [:] }
+        state.withLock { $0 = State() }
     }
+
     static func stub(_ path: String, status: Int = 200, body: String) {
-        lock.withLock { responses[path] = (status, body) }
+        state.withLock { $0.responses[path] = StubbedResponse(status: status, body: body) }
     }
-    static func body(for path: String) -> [String: Any]? {
-        lock.withLock { bodies[path] }
+
+    static func requestBody(for path: String) -> Data? {
+        state.withLock { $0.bodies[path] }
     }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -34,11 +45,10 @@ private final class StubProtocol: URLProtocol, @unchecked Sendable {
                 data.append(buffer, count: read)
             }
             stream.close()
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                Self.lock.withLock { Self.bodies[path] = json }
-            }
+            Self.state.withLock { $0.bodies[path] = data }
         }
-        let stub = Self.lock.withLock { Self.responses[path] } ?? (404, "{}")
+        let stub = Self.state.withLock { $0.responses[path] }
+            ?? StubbedResponse(status: 404, body: "{}")
         let response = HTTPURLResponse(url: request.url!, statusCode: stub.status, httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(stub.body.utf8))
@@ -76,7 +86,9 @@ struct AudioMuseClientTests {
 
         _ = try await makeClient().search(query: "calm", limit: 5)
 
-        #expect(StubProtocol.body(for: "/api/clap/search")?["server"] as? String == "nav1")
+        let body = try #require(StubProtocol.requestBody(for: "/api/clap/search"))
+        let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(json["server"] as? String == "nav1")
     }
 
     @Test("internal ids are returned with their metadata, not dropped")

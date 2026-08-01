@@ -7,8 +7,7 @@ import SwiftSonic
 
 /// Records `search` calls and replays a configurable outcome.
 /// Every other endpoint is unused by SearchViewModel and throws.
-/// @MainActor (not an actor): the app module compiles with default MainActor
-/// isolation, so its unannotated service protocols are MainActor-isolated.
+/// Main-actor test double because the view model and its assertions are UI-isolated.
 @MainActor
 private final class SearchLibraryStub: LibraryServiceProtocol {
     enum Behavior {
@@ -19,6 +18,7 @@ private final class SearchLibraryStub: LibraryServiceProtocol {
     private(set) var searchCalls: [String] = []
     var behavior: Behavior = .succeed
 
+    @MainActor
     func search(_ query: String) async throws -> SearchResult3 {
         searchCalls.append(query)
         switch behavior {

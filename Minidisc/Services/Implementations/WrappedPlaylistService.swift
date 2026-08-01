@@ -29,6 +29,7 @@ nonisolated enum SyncResult: Sendable, Equatable {
     case updated(tracksCount: Int)
     case skippedNoData
     case serverError(String)
+    case cancelled
 }
 
 // MARK: - WrappedPlaylistService
@@ -81,6 +82,27 @@ actor WrappedPlaylistService {
         calendar: Calendar,
         currentDate: Date = Date()
     ) async -> SyncResult {
+        do {
+            return try await runYearlyPlaylistSyncIfNeededCancellable(
+                serverId: serverId,
+                calendar: calendar,
+                currentDate: currentDate
+            )
+        } catch is CancellationError {
+            return .cancelled
+        } catch {
+            return .serverError(error.localizedDescription)
+        }
+    }
+
+    /// Cancellation-preserving entry point used by BackgroundSyncCoordinator.
+    /// Completion markers are written only after the final cancellation check.
+    func runYearlyPlaylistSyncIfNeededCancellable(
+        serverId: String,
+        calendar: Calendar,
+        currentDate: Date = Date()
+    ) async throws -> SyncResult {
+        try Task.checkCancellation()
         let year = calendar.component(.year, from: currentDate)
         let currentYearMonth = YearMonth(year: year, month: calendar.component(.month, from: currentDate))
 
@@ -92,9 +114,11 @@ actor WrappedPlaylistService {
         Logger.wrapped.debug("[WRAPPED-SYNC] start year=\(year, privacy: .public) serverId=\(serverId, privacy: .public)")
 
         let tracks = await statsService.topTracks(forPeriod: .year(year), serverId: serverId, limit: 100, calendar: calendar)
+        try Task.checkCancellation()
         Logger.wrapped.debug("[WRAPPED-SYNC] top tracks count=\(tracks.count, privacy: .public)")
 
         guard !tracks.isEmpty else {
+            try Task.checkCancellation()
             preferences.setLastUpdatedMonth(currentYearMonth, serverId: serverId)
             Logger.wrapped.debug("[WRAPPED-SYNC] no data for year=\(year, privacy: .public) — skipped")
             return .skippedNoData
@@ -104,28 +128,38 @@ actor WrappedPlaylistService {
         do {
             client = try await makeClient()
         } catch {
+            if error is CancellationError { throw CancellationError() }
+            try Task.checkCancellation()
             Logger.wrapped.error("[WRAPPED-SYNC] client init failed: \(error, privacy: .public)")
             return .serverError(error.localizedDescription)
         }
+        try Task.checkCancellation()
 
         let pid: String
         do {
             pid = try await getOrCreatePlaylist(for: year, serverId: serverId, client: client)
         } catch {
+            if error is CancellationError { throw CancellationError() }
+            try Task.checkCancellation()
             Logger.wrapped.error("[WRAPPED-SYNC] getOrCreatePlaylist failed: \(error, privacy: .public)")
             return .serverError(error.localizedDescription)
         }
+        try Task.checkCancellation()
 
         let trackIds = tracks.map(\.trackId)
         do {
             try await replacePlaylistTracks(playlistId: pid, trackIds: trackIds, client: client)
         } catch {
+            if error is CancellationError { throw CancellationError() }
+            try Task.checkCancellation()
             Logger.wrapped.error("[WRAPPED-SYNC] replace playlist failed: \(error, privacy: .public)")
             return .serverError(error.localizedDescription)
         }
+        try Task.checkCancellation()
 
-        await uploadWrappedCover(year: year, playlistId: pid)
+        try await uploadWrappedCover(year: year, playlistId: pid)
 
+        try Task.checkCancellation()
         preferences.setLastUpdatedMonth(currentYearMonth, serverId: serverId)
         preferences.setLastWrappedYear(year, serverId: serverId)
         Logger.wrapped.info("[WRAPPED-SYNC] updated year=\(year, privacy: .public) tracks=\(tracks.count, privacy: .public) playlist=\(pid, privacy: .public)")
@@ -146,8 +180,22 @@ actor WrappedPlaylistService {
         calendar: Calendar,
         currentDate: Date = Date()
     ) async {
+        try? await handleYearTransitionIfNeededCancellable(
+            serverId: serverId,
+            calendar: calendar,
+            currentDate: currentDate
+        )
+    }
+
+    func handleYearTransitionIfNeededCancellable(
+        serverId: String,
+        calendar: Calendar,
+        currentDate: Date = Date()
+    ) async throws {
+        try Task.checkCancellation()
         let currentYear = calendar.component(.year, from: currentDate)
         if let last = preferences.lastWrappedYear(serverId: serverId), last >= currentYear { return }
+        try Task.checkCancellation()
         preferences.clearLastUpdatedMonth(serverId: serverId)
         preferences.setLastWrappedYear(currentYear, serverId: serverId)
         Logger.wrapped.info("Year marker → \(currentYear, privacy: .public) (serverId=\(serverId, privacy: .public))")
@@ -203,14 +251,17 @@ actor WrappedPlaylistService {
 
     // MARK: - Cover art upload
 
-    private func uploadWrappedCover(year: Int, playlistId: String) async {
+    private func uploadWrappedCover(year: Int, playlistId: String) async throws {
+        try Task.checkCancellation()
         guard let serverService else { return }
         let snapshot = await MainActor.run { serverService.state.activeServer }
+        try Task.checkCancellation()
         guard let snapshot, let baseURL = URL(string: snapshot.baseURL) else { return }
 
         let jpegData = await MainActor.run {
             WrappedCoverRenderer.generateCoverData(year: year)
         }
+        try Task.checkCancellation()
         guard let jpegData else {
             Logger.wrapped.warning("[WRAPPED] Cover generation failed for \(year, privacy: .public)")
             return
@@ -231,8 +282,11 @@ actor WrappedPlaylistService {
                 imageData: jpegData,
                 mimeType: "image/jpeg"
             )
+            try Task.checkCancellation()
             Logger.wrapped.info("[WRAPPED] Cover uploaded for \(year, privacy: .public) playlist")
         } catch {
+            if error is CancellationError { throw CancellationError() }
+            try Task.checkCancellation()
             Logger.wrapped.warning("[WRAPPED] Cover upload failed — \(error, privacy: .public)")
         }
     }
@@ -257,12 +311,14 @@ actor WrappedPlaylistService {
     // MARK: - Get-or-create annual playlist
 
     private func getOrCreatePlaylist(for year: Int, serverId: String, client: any PlaylistSyncClient) async throws -> String {
+        try Task.checkCancellation()
         let name = "Minidisc Wrapped \(year)"
         // Fetch the live list first and trust the cached id ONLY if it is still on the server.
         // A cached id that points to a deleted playlist (server rebuilt, or the user removed it)
         // would otherwise be handed straight to the replace, which writes into nothing. This is the
         // only path where getOrCreatePlaylist runs — once a month — so the extra fetch is cheap.
         let playlists = try await client.getPlaylists(username: nil)
+        try Task.checkCancellation()
 
         if let cached = preferences.playlistId(year: year, serverId: serverId),
            playlists.contains(where: { $0.id == cached }) {
@@ -276,6 +332,7 @@ actor WrappedPlaylistService {
         }
 
         let created = try await client.createPlaylist(name: name, playlistId: nil, songIds: [])
+        try Task.checkCancellation()
         preferences.setPlaylistId(created.id, year: year, serverId: serverId)
         Logger.wrapped.info("Created '\(name, privacy: .public)' id=\(created.id, privacy: .public) (serverId=\(serverId, privacy: .public))")
         return created.id

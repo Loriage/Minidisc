@@ -44,14 +44,18 @@ private final class VMKeychain: KeychainServiceProtocol {
 }
 
 @MainActor
-private func makeComponents() -> (ListenBrainzSettingsViewModel, VMTransport, UserDefaults) {
+private func makeComponents() -> (ListenBrainzSettingsViewModel, VMTransport, String) {
     let transport = VMTransport()
     let keychain = VMKeychain()
-    let defaults = UserDefaults(suiteName: "test.vmtest.\(UUID().uuidString)")!
+    let defaultsSuiteName = "test.vmtest.\(UUID().uuidString)"
     let client = ListenBrainzClient(transport: transport)
-    let service = ListenBrainzService(client: client, keychain: keychain, userDefaults: defaults)
+    let service = ListenBrainzService(
+        client: client,
+        keychain: keychain,
+        userDefaults: UserDefaults(suiteName: defaultsSuiteName)!
+    )
     let vm = ListenBrainzSettingsViewModel(service: service)
-    return (vm, transport, defaults)
+    return (vm, transport, defaultsSuiteName)
 }
 
 // MARK: - Tests

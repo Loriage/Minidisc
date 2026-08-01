@@ -3,7 +3,7 @@ import Foundation
 @testable import Minidisc
 
 @Suite("LidarrQueueItem — queue payload")
-struct LidarrQueueItemTests {
+nonisolated struct LidarrQueueItemTests {
     private func item(_ fields: String) throws -> LidarrQueueItem {
         let json = "{ \"id\": 1, \(fields) }"
         return try JSONDecoder().decode(LidarrQueueItem.self, from: Data(json.utf8))

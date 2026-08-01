@@ -113,6 +113,7 @@ struct LocalArtistDataTests {
 private final class ARLibraryStub: LibraryServiceProtocol {
     /// When set, `artist(id:)` returns this instead of throwing — drives the empty-but-successful path.
     var artistResult: ArtistID3?
+    @MainActor
     func artist(id: String) async throws -> ArtistID3 {
         if let artistResult { return artistResult }
         throw URLError(.notConnectedToInternet)

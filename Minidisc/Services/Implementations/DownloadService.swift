@@ -3,6 +3,175 @@ import SwiftData
 import SwiftSonic
 import OSLog
 
+/// Coordinates one physical transfer per key while keeping cancellation scoped to each caller.
+///
+/// Each caller awaits its own continuation. This matters because cancelling a task that is awaiting
+/// another unstructured task does not wake that waiter. The physical transfer is cancelled only
+/// when its final waiter leaves, or through an explicit keyed/global cancellation.
+actor SharedDownloadTaskCoordinator {
+    private struct Entry {
+        let id: UUID
+        let task: Task<Void, Never>
+        var waiters: [UUID: CheckedContinuation<Void, any Error>]
+    }
+
+    private struct WaiterCountObserver {
+        let target: Int
+        let continuation: CheckedContinuation<Void, Never>
+    }
+
+    private var entries: [String: Entry] = [:]
+    private var waiterCountObservers: [String: [WaiterCountObserver]] = [:]
+    private var idleObservers: [String: [CheckedContinuation<Void, Never>]] = [:]
+
+    func run(
+        key: String,
+        operation: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        try Task.checkCancellation()
+
+        let entryID: UUID
+        if let existing = entries[key] {
+            entryID = existing.id
+        } else {
+            let id = UUID()
+            let task = Task<Void, Never> {
+                let result: Result<Void, any Error>
+                do {
+                    try await operation()
+                    result = .success(())
+                } catch {
+                    result = .failure(error)
+                }
+                self.complete(key: key, entryID: id, result: result)
+            }
+            entries[key] = Entry(id: id, task: task, waiters: [:])
+            entryID = id
+        }
+
+        let waiterID = UUID()
+        try await withTaskCancellationHandler(operation: {
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, any Error>) in
+                guard var entry = entries[key], entry.id == entryID else {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                entry.waiters[waiterID] = continuation
+                entries[key] = entry
+                resumeSatisfiedWaiterCountObservers(for: key)
+
+                // Cancellation can race between the check above and continuation registration.
+                if Task.isCancelled {
+                    cancelWaiter(key: key, entryID: entryID, waiterID: waiterID)
+                }
+            }
+        }, onCancel: {
+            Task {
+                await self.cancelWaiter(key: key, entryID: entryID, waiterID: waiterID)
+            }
+        })
+    }
+
+    func contains(_ key: String) -> Bool {
+        entries[key] != nil
+    }
+
+    func cancel(key: String) {
+        entries[key]?.task.cancel()
+    }
+
+    func cancelAllAndWait() async {
+        let tasks = entries.values.map(\.task)
+        tasks.forEach { $0.cancel() }
+        for task in tasks {
+            await task.value
+        }
+    }
+
+    /// Deterministic synchronization seams for the cancellation tests.
+    func waiterCount(for key: String) -> Int {
+        entries[key]?.waiters.count ?? 0
+    }
+
+    func waitUntilWaiterCount(_ target: Int, for key: String) async {
+        guard (entries[key]?.waiters.count ?? 0) < target else { return }
+        await withCheckedContinuation { continuation in
+            waiterCountObservers[key, default: []].append(
+                WaiterCountObserver(target: target, continuation: continuation)
+            )
+        }
+    }
+
+    func waitUntilIdle(for key: String) async {
+        guard entries[key] != nil else { return }
+        await withCheckedContinuation { continuation in
+            idleObservers[key, default: []].append(continuation)
+        }
+    }
+
+    private func cancelWaiter(key: String, entryID: UUID, waiterID: UUID) {
+        guard var entry = entries[key],
+              entry.id == entryID,
+              let continuation = entry.waiters.removeValue(forKey: waiterID)
+        else {
+            return
+        }
+
+        continuation.resume(throwing: CancellationError())
+        if entry.waiters.isEmpty {
+            // Retire before cancellation unwinds. Otherwise a new caller can
+            // attach to the already-cancelled physical transfer in this window.
+            entries.removeValue(forKey: key)
+            resumeObserversAfterEntryRetired(for: key)
+            entry.task.cancel()
+        } else {
+            entries[key] = entry
+        }
+    }
+
+    private func complete(
+        key: String,
+        entryID: UUID,
+        result: Result<Void, any Error>
+    ) {
+        guard let entry = entries[key], entry.id == entryID else { return }
+        entries.removeValue(forKey: key)
+
+        for continuation in entry.waiters.values {
+            continuation.resume(with: result)
+        }
+        resumeObserversAfterEntryRetired(for: key)
+    }
+
+    private func resumeObserversAfterEntryRetired(for key: String) {
+        waiterCountObservers.removeValue(forKey: key)?.forEach {
+            $0.continuation.resume()
+        }
+        idleObservers.removeValue(forKey: key)?.forEach { $0.resume() }
+    }
+
+    private func resumeSatisfiedWaiterCountObservers(for key: String) {
+        guard let observers = waiterCountObservers[key] else { return }
+        let count = entries[key]?.waiters.count ?? 0
+        var remaining: [WaiterCountObserver] = []
+        for observer in observers {
+            if count >= observer.target {
+                observer.continuation.resume()
+            } else {
+                remaining.append(observer)
+            }
+        }
+        waiterCountObservers[key] = remaining.isEmpty ? nil : remaining
+    }
+}
+
+nonisolated enum DownloadCancellationPolicy {
+    static func shouldPropagate(parentTaskIsCancelled: Bool, removingAll: Bool) -> Bool {
+        parentTaskIsCancelled || removingAll
+    }
+}
+
 // TODO(v1.x): switch to background URLSession with resume-after-kill support.
 // v1 uses foreground URLSession — the user must keep the app open during download.
 actor DownloadService: DownloadServiceProtocol {
@@ -13,8 +182,7 @@ actor DownloadService: DownloadServiceProtocol {
     private let offlineLibraryReader: OfflineLibraryReader
     private let offlineRemovalCoordinator: OfflineLibraryRemovalCoordinator
     private var progressContinuation: AsyncStream<[DownloadProgress]>.Continuation?
-    /// Keyed by "songId::serverId" to allow per-track cancellation.
-    private var inFlightTasks: [String: Task<Void, Error>] = [:]
+    private let transferCoordinator = SharedDownloadTaskCoordinator()
     private var activeAlbumDownloads: Set<String> = []
     private var activePlaylistDownloads: Set<String> = []
     private var isRemovingAllDownloads = false
@@ -51,10 +219,16 @@ actor DownloadService: DownloadServiceProtocol {
             downloadsDirectory: downloadsDirectory
         )
 
-        // AsyncStream.init closure is called synchronously — cont is guaranteed set before init returns.
-        var cont: AsyncStream<[DownloadProgress]>.Continuation!
-        progressStream = AsyncStream<[DownloadProgress]> { cont = $0 }
-        progressContinuation = cont
+        // Progress is advisory UI state. Bound the buffer so an absent or slow consumer cannot retain
+        // every event for the lifetime of the service.
+        let progressChannel = AsyncStream<[DownloadProgress]>.makeStream(
+            bufferingPolicy: .bufferingNewest(16)
+        )
+        progressStream = progressChannel.stream
+        progressContinuation = progressChannel.continuation
+        progressChannel.continuation.onTermination = { @Sendable [weak self] _ in
+            Task { await self?.progressStreamDidTerminate() }
+        }
     }
 
     // MARK: - Lookup
@@ -173,34 +347,32 @@ actor DownloadService: DownloadServiceProtocol {
     // MARK: - Single track download
 
     func download(song: Song, serverId: UUID) async throws {
-        guard !isRemovingAllDownloads else { throw CancellationError() }
+        try checkDownloadCancellation()
         guard await !isDownloaded(songId: song.id, serverId: serverId) else {
             Logger.download.debug("Song '\(song.id, privacy: .public)' already downloaded — skipping.")
             return
         }
-        guard !isRemovingAllDownloads else { throw CancellationError() }
+        try checkDownloadCancellation()
 
         let key = taskKey(songId: song.id, serverId: serverId)
         // Every caller must observe the real result. Returning immediately used to make
         // overlapping album/playlist requests count a still-running (or later failing)
         // transfer as a success.
-        if let existing = inFlightTasks[key] {
-            try await existing.value
-            return
+        try await transferCoordinator.run(key: key) {
+            try await self._downloadSong(song, serverId: serverId)
         }
-
-        let task = Task<Void, Error> {
-            try await self._downloadSong(song, serverId: serverId, key: key)
-        }
-        inFlightTasks[key] = task
-        try await task.value
     }
 
-    private func _downloadSong(_ song: Song, serverId: UUID, key: String) async throws {
-        defer { inFlightTasks.removeValue(forKey: key) }
-
+    private func _downloadSong(_ song: Song, serverId: UUID) async throws {
+        try checkDownloadCancellation()
+        // A caller can observe a stale preflight miss while this actor is re-entrant and a previous
+        // transfer commits. Recheck inside the physical operation before touching the network.
+        guard await !isDownloaded(songId: song.id, serverId: serverId) else { return }
+        try checkDownloadCancellation()
         let creds = try await serverService.activeCredentials()
+        try checkDownloadCancellation()
         let client = try await serverService.makeSwiftSonicClient()
+        try checkDownloadCancellation()
         guard let streamURL = client.streamURL(id: song.id) else {
             throw MinidiscError.mediaNotFound(songId: song.id)
         }
@@ -211,6 +383,7 @@ actor DownloadService: DownloadServiceProtocol {
         emit(progress: DownloadProgress(songId: song.id, serverId: serverId, progress: 0, totalBytes: nil, receivedBytes: 0))
 
         let (tempURL, response) = try await downloadSession.download(for: request)
+        try checkDownloadCancellation()
 
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? -1
@@ -241,12 +414,19 @@ actor DownloadService: DownloadServiceProtocol {
         let ext = sniffed?.rawValue ?? song.suffix ?? mimeType.split(separator: "/").last.map(String.init) ?? "bin"
         let relativePath = "\(serverId.uuidString)/\(song.id).\(ext)"
         let fileURL = downloadsDirectory.appendingPathComponent(relativePath)
+        var incompleteFileURL: URL?
+        defer {
+            if let incompleteFileURL {
+                try? FileManager.default.removeItem(at: incompleteFileURL)
+            }
+        }
 
         try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         if FileManager.default.fileExists(atPath: fileURL.path) {
             try FileManager.default.removeItem(at: fileURL)
         }
         try FileManager.default.moveItem(at: tempURL, to: fileURL)
+        incompleteFileURL = fileURL
 
         // Faststart-remux non-faststart m4a in place so it keeps a streamable faststart layout
         // (lossless passthrough; no-op for every other format). MUST run before the fileSize
@@ -255,6 +435,7 @@ actor DownloadService: DownloadServiceProtocol {
         // Logged for every outcome, not just .remuxed: knowing the remuxer ran and decided to do
         // nothing is what distinguishes "the file was already fine" from "the remuxer never fired".
         let remuxOutcome = await AudioFaststartRemuxer().remuxToFaststartIfNeeded(at: fileURL, container: sniffed?.rawValue)
+        try checkDownloadCancellation()
         Logger.download.info("Remux outcome v\(AudioFaststartRemuxer.diagnosticsVersion) for '\(song.id, privacy: .public)' (suffix: \(song.suffix ?? "nil", privacy: .public)): \(String(describing: remuxOutcome), privacy: .public)")
 
         // Capture only Sendable values for the MainActor closure.
@@ -284,11 +465,15 @@ actor DownloadService: DownloadServiceProtocol {
         if let cid = coverArtId {
             do {
                 try await _downloadCoverArt(id: cid)
+            } catch let cancellation as CancellationError {
+                throw cancellation
             } catch {
+                try checkDownloadCancellation()
                 Logger.download.error("Cover art download failed for song '\(songId, privacy: .public)' (coverArtId: \(cid, privacy: .public)): \(error, privacy: .public)")
             }
         }
 
+        try checkDownloadCancellation()
         await MainActor.run {
             let record = DownloadedTrack(
                 songId: songId,
@@ -320,6 +505,7 @@ actor DownloadService: DownloadServiceProtocol {
                 Logger.download.error("DownloadService: track record save failed for '\(songId, privacy: .public)' — \(error)")
             }
         }
+        incompleteFileURL = nil
 
         emit(progress: DownloadProgress(songId: song.id, serverId: serverId, progress: 1.0, totalBytes: fileSize, receivedBytes: fileSize))
         Logger.download.info("Downloaded '\(song.id, privacy: .public)' (\(fileSize) bytes)")
@@ -328,8 +514,8 @@ actor DownloadService: DownloadServiceProtocol {
     // MARK: - Album download
 
     func download(album: AlbumID3, serverId: UUID) async throws {
+        try checkDownloadCancellation()
         guard let songs = album.song else { return }
-        guard !isRemovingAllDownloads else { throw CancellationError() }
         activeAlbumDownloads.insert(album.id)
         defer { activeAlbumDownloads.remove(album.id) }
         let total = songs.count
@@ -337,49 +523,51 @@ actor DownloadService: DownloadServiceProtocol {
         let aid = album.id
 
         let maxConcurrent = 3
-        await withTaskGroup(of: Bool.self) { group in
+        try await withThrowingTaskGroup(of: Bool.self) { group in
+            defer { group.cancelAll() }
             var iterator = songs.makeIterator()
 
             for _ in 0..<maxConcurrent {
+                try checkDownloadCancellation()
                 guard let song = iterator.next() else { break }
                 group.addTask {
-                    do {
-                        try await self.download(song: song, serverId: serverId)
-                        return true
-                    } catch {
-                        Logger.download.error("Failed song '\(song.id, privacy: .public)' in album '\(aid, privacy: .public)': \(error, privacy: .public)")
-                        return false
-                    }
+                    try await self.downloadAlbumTrackBestEffort(
+                        song,
+                        albumId: aid,
+                        serverId: serverId
+                    )
                 }
             }
 
-            for await didSucceed in group {
+            while let didSucceed = try await group.next() {
+                try checkDownloadCancellation()
                 if didSucceed { succeeded += 1 }
-                if !isRemovingAllDownloads, let song = iterator.next() {
+                if let song = iterator.next() {
                     group.addTask {
-                        do {
-                            try await self.download(song: song, serverId: serverId)
-                            return true
-                        } catch {
-                            Logger.download.error("Failed song '\(song.id, privacy: .public)' in album '\(aid, privacy: .public)': \(error, privacy: .public)")
-                            return false
-                        }
+                        try await self.downloadAlbumTrackBestEffort(
+                            song,
+                            albumId: aid,
+                            serverId: serverId
+                        )
                     }
                 }
             }
         }
-        guard !isRemovingAllDownloads else { throw CancellationError() }
+        try checkDownloadCancellation()
 
         var localCoverPath: String? = nil
         if let coverArtId = album.coverArt {
             do {
                 try await _downloadCoverArt(id: coverArtId)
                 localCoverPath = coverArtId
+            } catch let cancellation as CancellationError {
+                throw cancellation
             } catch {
+                try checkDownloadCancellation()
                 Logger.download.error("Cover art download failed for album '\(album.id, privacy: .public)' (coverArtId: \(coverArtId, privacy: .public)): \(error, privacy: .public)")
             }
         }
-        guard !isRemovingAllDownloads else { throw CancellationError() }
+        try checkDownloadCancellation()
 
         let albumId = album.id
         let albumName = album.name
@@ -427,7 +615,7 @@ actor DownloadService: DownloadServiceProtocol {
     // MARK: - Playlist download
 
     func download(playlist: PlaylistWithSongs, serverId: UUID) async throws {
-        guard !isRemovingAllDownloads else { throw CancellationError() }
+        try checkDownloadCancellation()
         let songs = playlist.entry ?? []
         let total = songs.count
         let pid = playlist.id
@@ -435,36 +623,39 @@ actor DownloadService: DownloadServiceProtocol {
         defer { activePlaylistDownloads.remove(playlist.id) }
 
         let maxConcurrent = 3
-        await withTaskGroup(of: Void.self) { group in
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            defer { group.cancelAll() }
             var iterator = songs.makeIterator()
 
             for _ in 0..<maxConcurrent {
+                try checkDownloadCancellation()
                 guard let song = iterator.next() else { break }
                 group.addTask {
-                    do {
-                        try await self.download(song: song, serverId: serverId)
-                    } catch {
-                        Logger.download.error("Failed song '\(song.id, privacy: .public)' in playlist '\(pid, privacy: .public)': \(error, privacy: .public)")
-                    }
+                    try await self.downloadPlaylistTrackBestEffort(
+                        song,
+                        playlistId: pid,
+                        serverId: serverId
+                    )
                 }
             }
 
-            for await _ in group {
-                if !isRemovingAllDownloads, let song = iterator.next() {
+            while try await group.next() != nil {
+                try checkDownloadCancellation()
+                if let song = iterator.next() {
                     group.addTask {
-                        do {
-                            try await self.download(song: song, serverId: serverId)
-                        } catch {
-                            Logger.download.error("Failed song '\(song.id, privacy: .public)' in playlist '\(pid, privacy: .public)': \(error, privacy: .public)")
-                        }
+                        try await self.downloadPlaylistTrackBestEffort(
+                            song,
+                            playlistId: pid,
+                            serverId: serverId
+                        )
                     }
                 }
             }
         }
-        guard !isRemovingAllDownloads else { throw CancellationError() }
+        try checkDownloadCancellation()
 
         let downloadedIds = await downloadedSongIds(serverId: serverId)
-        guard !isRemovingAllDownloads else { throw CancellationError() }
+        try checkDownloadCancellation()
         let succeededIds = songs.filter { downloadedIds.contains($0.id) }.map(\.id)
 
         var localCoverPath: String? = nil
@@ -472,11 +663,14 @@ actor DownloadService: DownloadServiceProtocol {
             do {
                 try await _downloadCoverArt(id: coverArtId)
                 localCoverPath = coverArtId
+            } catch let cancellation as CancellationError {
+                throw cancellation
             } catch {
+                try checkDownloadCancellation()
                 Logger.download.error("Cover art download failed for playlist '\(playlist.id, privacy: .public)' (coverArtId: \(coverArtId, privacy: .public)): \(error, privacy: .public)")
             }
         }
-        guard !isRemovingAllDownloads else { throw CancellationError() }
+        try checkDownloadCancellation()
 
         let playlistId = playlist.id
         let playlistName = playlist.name
@@ -525,7 +719,7 @@ actor DownloadService: DownloadServiceProtocol {
     }
 
     func isDownloading(songId: String, serverId: UUID) async -> Bool {
-        inFlightTasks[taskKey(songId: songId, serverId: serverId)] != nil
+        await transferCoordinator.contains(taskKey(songId: songId, serverId: serverId))
     }
 
     func isDownloadingAlbum(_ albumId: String) async -> Bool {
@@ -540,10 +734,7 @@ actor DownloadService: DownloadServiceProtocol {
 
     func cancelDownload(songId: String, serverId: UUID) async {
         let key = taskKey(songId: songId, serverId: serverId)
-        inFlightTasks[key]?.cancel()
-        // _downloadSong owns removal in its defer. Removing here opened a race where an
-        // immediate retry installed a new task, then the cancelled old task's defer removed
-        // the new entry and made cancellation/deduplication state lie.
+        await transferCoordinator.cancel(key: key)
     }
 
     // MARK: - Remove
@@ -565,19 +756,81 @@ actor DownloadService: DownloadServiceProtocol {
         isRemovingAllDownloads = true
         defer { isRemovingAllDownloads = false }
 
-        let tasks = Array(inFlightTasks.values)
-        tasks.forEach { $0.cancel() }
-        for task in tasks {
-            _ = try? await task.value
-        }
+        await transferCoordinator.cancelAllAndWait()
 
         try await offlineRemovalCoordinator.removeAll()
     }
 
     // MARK: - Helpers
 
+    private func checkDownloadCancellation() throws {
+        try Task.checkCancellation()
+        guard !isRemovingAllDownloads else { throw CancellationError() }
+    }
+
+    private func downloadAlbumTrackBestEffort(
+        _ song: Song,
+        albumId: String,
+        serverId: UUID
+    ) async throws -> Bool {
+        try checkDownloadCancellation()
+        do {
+            try await download(song: song, serverId: serverId)
+            try checkDownloadCancellation()
+            return true
+        } catch is CancellationError {
+            guard !DownloadCancellationPolicy.shouldPropagate(
+                parentTaskIsCancelled: Task.isCancelled,
+                removingAll: isRemovingAllDownloads
+            ) else {
+                throw CancellationError()
+            }
+            Logger.download.debug(
+                "Cancelled song '\(song.id, privacy: .public)' in album '\(albumId, privacy: .public)'"
+            )
+            return false
+        } catch {
+            try checkDownloadCancellation()
+            Logger.download.error(
+                "Failed song '\(song.id, privacy: .public)' in album '\(albumId, privacy: .public)': \(error, privacy: .public)"
+            )
+            return false
+        }
+    }
+
+    private func downloadPlaylistTrackBestEffort(
+        _ song: Song,
+        playlistId: String,
+        serverId: UUID
+    ) async throws {
+        try checkDownloadCancellation()
+        do {
+            try await download(song: song, serverId: serverId)
+            try checkDownloadCancellation()
+        } catch is CancellationError {
+            guard !DownloadCancellationPolicy.shouldPropagate(
+                parentTaskIsCancelled: Task.isCancelled,
+                removingAll: isRemovingAllDownloads
+            ) else {
+                throw CancellationError()
+            }
+            Logger.download.debug(
+                "Cancelled song '\(song.id, privacy: .public)' in playlist '\(playlistId, privacy: .public)'"
+            )
+        } catch {
+            try checkDownloadCancellation()
+            Logger.download.error(
+                "Failed song '\(song.id, privacy: .public)' in playlist '\(playlistId, privacy: .public)': \(error, privacy: .public)"
+            )
+        }
+    }
+
     private func taskKey(songId: String, serverId: UUID) -> String {
         "\(songId)::\(serverId.uuidString)"
+    }
+
+    private func progressStreamDidTerminate() {
+        progressContinuation = nil
     }
 
     private func emit(progress: DownloadProgress) {
@@ -587,6 +840,7 @@ actor DownloadService: DownloadServiceProtocol {
     /// Downloads a cover art image to `coverArtsDirectory/<id>`. No-op if the file already exists.
     /// Throws on network or write error — callers must catch and treat as best-effort.
     private func _downloadCoverArt(id: String) async throws {
+        try checkDownloadCancellation()
         let fileURL = coverArtsDirectory.appendingPathComponent(id)
         guard !FileManager.default.fileExists(atPath: fileURL.path) else {
             Logger.download.debug("Cover art '\(id, privacy: .public)' already on disk — skipping.")
@@ -594,7 +848,9 @@ actor DownloadService: DownloadServiceProtocol {
         }
 
         let creds = try await serverService.activeCredentials()
+        try checkDownloadCancellation()
         let client = try await serverService.makeSwiftSonicClient()
+        try checkDownloadCancellation()
         guard let artURL = client.coverArtURL(id: id, size: 600) else {
             throw MinidiscError.mediaNotFound(songId: id)
         }
@@ -603,6 +859,7 @@ actor DownloadService: DownloadServiceProtocol {
         for (k, v) in creds.customHeaders { request.setValue(v, forHTTPHeaderField: k) }
 
         let (data, response) = try await downloadSession.data(for: request)
+        try checkDownloadCancellation()
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? -1
             struct HTTPError: Error & Sendable { let statusCode: Int }

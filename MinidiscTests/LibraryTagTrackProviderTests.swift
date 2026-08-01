@@ -5,7 +5,7 @@ import SwiftSonic
 
 /// Library stub for the mood providers. Internal so the sonic provider's tests can reuse it for
 /// the by-name resolution path.
-final class TagLibraryStub: LibraryServiceProtocol, @unchecked Sendable {
+nonisolated final class TagLibraryStub: LibraryServiceProtocol, @unchecked Sendable {
     private let lock = NSLock()
     private var _genreQueries: [String] = []
     private var _randomCalls = 0

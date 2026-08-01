@@ -10,7 +10,7 @@ nonisolated enum InstantMixSeed: Sendable, Hashable {
     case artist(id: String)
 }
 
-protocol LibraryServiceProtocol: AnyObject, Sendable {
+nonisolated protocol LibraryServiceProtocol: AnyObject, Sendable {
     func artists() async throws -> [ArtistIndex]
     func artist(id: String) async throws -> ArtistID3
     func album(id: String) async throws -> AlbumID3
@@ -137,14 +137,33 @@ extension LibraryServiceProtocol {
         }
         var picked: [DisplayableSong] = []
         var seen = excludedIds
-        let mix = (try? await instantMix(from: .song(id: seedTrackId), count: targetSize)) ?? []
+        let mix: [DisplayableSong]
+        do {
+            mix = try await instantMix(from: .song(id: seedTrackId), count: targetSize)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            mix = []
+        }
+        try Task.checkCancellation()
         for song in mix where !seen.contains(song.id) {
             picked.append(song)
             seen.insert(song.id)
         }
         // A short (or empty) similar set is topped up from the library heuristic.
         if picked.count < targetSize {
-            let backfill = (try? await similarBackfillQueue(targetSize: targetSize - picked.count, excludedIds: seen)) ?? []
+            let backfill: [DisplayableSong]
+            do {
+                backfill = try await similarBackfillQueue(
+                    targetSize: targetSize - picked.count,
+                    excludedIds: seen
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                backfill = []
+            }
+            try Task.checkCancellation()
             picked.append(contentsOf: backfill.filter { !seen.contains($0.id) })
         }
         return picked

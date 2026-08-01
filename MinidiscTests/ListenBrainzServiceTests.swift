@@ -51,12 +51,16 @@ private final class LBMockKeychain: KeychainServiceProtocol {
 private let keychainKey = "listenbrainz-username"
 private let defaultsKey = "app.minidisc.listenbrainz.isEnabled"
 
-private func makeComponents(transport: any ListenBrainzTransport) -> (ListenBrainzService, LBMockKeychain, UserDefaults) {
+private func makeComponents(transport: any ListenBrainzTransport) -> (ListenBrainzService, LBMockKeychain, String) {
     let client = ListenBrainzClient(transport: transport)
     let keychain = LBMockKeychain()
-    let defaults = UserDefaults(suiteName: "test.lb.\(UUID().uuidString)")!
-    let service = ListenBrainzService(client: client, keychain: keychain, userDefaults: defaults)
-    return (service, keychain, defaults)
+    let defaultsSuiteName = "test.lb.\(UUID().uuidString)"
+    let service = ListenBrainzService(
+        client: client,
+        keychain: keychain,
+        userDefaults: UserDefaults(suiteName: defaultsSuiteName)!
+    )
+    return (service, keychain, defaultsSuiteName)
 }
 
 // MARK: - enable() tests
@@ -68,7 +72,7 @@ struct ListenBrainzServiceEnableTests {
     func enableHappyPath() async throws {
         let transport = FlexibleTransport()
         transport.enqueue(status: 200)
-        let (service, keychain, defaults) = makeComponents(transport: transport)
+        let (service, keychain, defaultsSuiteName) = makeComponents(transport: transport)
 
         let initial = await service.currentSnapshot()
         #expect(initial.validationStatus == ValidationStatus.unknown)
@@ -83,14 +87,14 @@ struct ListenBrainzServiceEnableTests {
 
         let stored = try await keychain.retrieve(String.self, forKey: keychainKey)
         #expect(stored == "validuser")
-        #expect(defaults.bool(forKey: defaultsKey))
+        #expect(UserDefaults(suiteName: defaultsSuiteName)!.bool(forKey: defaultsKey))
     }
 
     @Test("user not found: stays disabled, username not persisted, status .invalid")
     func enableUserNotFound() async throws {
         let transport = FlexibleTransport()
         transport.enqueue(status: 404)
-        let (service, keychain, defaults) = makeComponents(transport: transport)
+        let (service, keychain, defaultsSuiteName) = makeComponents(transport: transport)
 
         do {
             try await service.enable(username: "ghostuser")
@@ -108,7 +112,7 @@ struct ListenBrainzServiceEnableTests {
 
         let stored = try await keychain.retrieve(String.self, forKey: keychainKey)
         #expect(stored == nil)
-        #expect(!defaults.bool(forKey: defaultsKey))
+        #expect(!UserDefaults(suiteName: defaultsSuiteName)!.bool(forKey: defaultsKey))
     }
 }
 
@@ -144,7 +148,7 @@ struct ListenBrainzServiceClearTests {
     func clearCredentialsPurgesAll() async throws {
         let transport = FlexibleTransport()
         transport.enqueue(status: 200)
-        let (service, keychain, defaults) = makeComponents(transport: transport)
+        let (service, keychain, defaultsSuiteName) = makeComponents(transport: transport)
 
         try await service.enable(username: "clearme")
         await service.clearCredentials()
@@ -156,7 +160,7 @@ struct ListenBrainzServiceClearTests {
 
         let stored = try await keychain.retrieve(String.self, forKey: keychainKey)
         #expect(stored == nil)
-        #expect(!defaults.bool(forKey: defaultsKey))
+        #expect(!UserDefaults(suiteName: defaultsSuiteName)!.bool(forKey: defaultsKey))
     }
 }
 

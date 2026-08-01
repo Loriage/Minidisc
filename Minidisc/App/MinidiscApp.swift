@@ -9,51 +9,44 @@ struct MinidiscApp: App {
     @State private var container: AppContainer?
     @Environment(\.scenePhase) private var scenePhase
 
-    // Statics for BGTask handler access — set once after AppContainer init.
-    // nonisolated(unsafe) is intentional: the BGTask closure runs off-actor;
-    // these are written once on MainActor and read in a non-isolated context.
-    nonisolated(unsafe) private static var _bgTaskService: WrappedPlaylistService?
-    nonisolated(unsafe) private static var _bgTaskServerState: ServerState?
-    nonisolated(unsafe) private static var _bgTaskMoodService: MoodPlaylistService?
+    private nonisolated static let backgroundSyncCoordinator = BackgroundSyncCoordinator()
 
     init() {
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: "app.minidisc.wrapped.monthly-update",
-            using: nil
-        ) { task in
-            guard let processingTask = task as? BGProcessingTask,
-                  let service = MinidiscApp._bgTaskService,
-                  let serverState = MinidiscApp._bgTaskServerState else {
-                task.setTaskCompleted(success: false)
-                return
-            }
-            let workTask = Task {
-                let serverId = await MainActor.run { serverState.activeServer?.id.uuidString }
-                guard let serverId else {
-                    processingTask.setTaskCompleted(success: false)
-                    return
+            using: nil,
+            launchHandler: Self.handleWrappedUpdateBackgroundTask
+        )
+    }
+
+    /// `BGTaskScheduler` invokes a handler registered with `queue: nil` on a framework-owned queue.
+    /// Keeping the handler outside the default-MainActor `App` context prevents Swift 6 from
+    /// inserting a main-executor precondition at the callback entry point.
+    private nonisolated static func handleWrappedUpdateBackgroundTask(_ task: BGTask) {
+        guard let processingTask = task as? BGProcessingTask else {
+            task.setTaskCompleted(success: false)
+            return
+        }
+        let completion = BackgroundTaskCompletion(task: processingTask)
+        let workTask = Task {
+            let syncSucceeded = await backgroundSyncCoordinator.run(calendar: .current)
+            let expired = Task.isCancelled
+            _ = completion.complete(success: syncSucceeded && !expired) {
+                if expired {
+                    Logger.wrapped.warning("BGTask expired — rescheduling for tomorrow")
                 }
-                let result = await service.runYearlyPlaylistSyncIfNeeded(serverId: serverId, calendar: .current)
-                Logger.wrapped.info("BGTask result: \(String(describing: result), privacy: .public)")
-                // Mood playlists ride along on this task rather than declaring a second identifier:
-                // it already wakes roughly daily, which is the right granularity for "has Wednesday
-                // passed yet", and a new identifier would need an Info.plist entry to match.
-                if let moods = MinidiscApp._bgTaskMoodService {
-                    let moodResult = await moods.runWeeklySyncIfNeeded(serverId: serverId, calendar: .current)
-                    Logger.moodPlaylists.info("BGTask result: \(String(describing: moodResult), privacy: .public)")
-                }
-                processingTask.setTaskCompleted(success: true)
-                MinidiscApp.scheduleWrappedUpdate()
+                scheduleWrappedUpdate()
             }
-            processingTask.expirationHandler = {
-                workTask.cancel()
-                Logger.wrapped.warning("BGTask expired — rescheduling for tomorrow")
-                MinidiscApp.scheduleWrappedUpdate()
-            }
+        }
+        processingTask.expirationHandler = {
+            // The work task completes the BGTask after its waiter has been removed
+            // from the coordinator. This preserves an in-flight cold-start waiter,
+            // while still cancelling the physical run when this was the last waiter.
+            workTask.cancel()
         }
     }
 
-    static func scheduleWrappedUpdate() {
+    nonisolated static func scheduleWrappedUpdate() {
         let request = BGProcessingTaskRequest(identifier: "app.minidisc.wrapped.monthly-update")
         request.requiresNetworkConnectivity = true
         request.earliestBeginDate = Date().addingTimeInterval(24 * 3600)
@@ -93,25 +86,53 @@ struct MinidiscApp: App {
                 await newContainer.setup()
                 // Start reachability before the UI is interactive so serverState.isOnline
                 // is corrected from its optimistic default before any view loads data.
-                newContainer.networkMonitor.start(serverState: newContainer.serverState)
+                newContainer.networkMonitor.start(
+                    serverState: newContainer.serverState,
+                    streamSettings: newContainer.streamSettings
+                )
                 await newContainer.nowPlayingService.start()
                 AppContainer.invalidateCoverArtCacheIfNeeded(artworkCache: newContainer.artworkImageCache)
-                AppContainer.sweepLegacyCoverArtFiles()
-                Task { await AppContainer.migrateAudioExtensionsIfNeeded(modelContainer: newContainer.modelContainer, audioStreamCache: newContainer.audioStreamCache) }
-                Task { await AppContainer.migrateM4AFaststartIfNeeded(modelContainer: newContainer.modelContainer) }
+                if let sweepTask = AppContainer.sweepLegacyCoverArtFiles() {
+                    newContainer.retainLifecycleTask(sweepTask)
+                }
+                let modelContainer = newContainer.modelContainer
+                let audioStreamCache = newContainer.audioStreamCache
+                newContainer.retainLifecycleTask(Task { [modelContainer, audioStreamCache] in
+                    await AppContainer.migrateAudioExtensionsIfNeeded(
+                        modelContainer: modelContainer,
+                        audioStreamCache: audioStreamCache
+                    )
+                })
+                newContainer.retainLifecycleTask(Task { [modelContainer] in
+                    await AppContainer.migrateM4AFaststartIfNeeded(
+                        modelContainer: modelContainer
+                    )
+                })
                 container = newContainer
                 // loadPersistedState must complete before restoreSession so the active
                 // server is known when prepareCurrentTrackForRestoration resolves the URL.
                 await newContainer.serverService.loadPersistedState()
                 await newContainer.playerService.restoreSession()
-                Task { await runCoverArtGarbageCollection(container: newContainer) }
-                // Cold start fallback: primary trigger for Wrapped updates (BGTask is best-effort).
-                // Fire-and-forget — must never block app launch.
-                Task { await runWrappedUpdate(container: newContainer) }
-                Task { await runMoodUpdate(container: newContainer) }
-                MinidiscApp._bgTaskService = newContainer.wrappedPlaylistService
-                MinidiscApp._bgTaskServerState = newContainer.serverState
-                MinidiscApp._bgTaskMoodService = newContainer.moodPlaylistService
+                let downloadService = newContainer.downloadService
+                newContainer.retainLifecycleTask(Task { [modelContainer, downloadService] in
+                    await runCoverArtGarbageCollection(
+                        modelContainer: modelContainer,
+                        downloadService: downloadService
+                    )
+                })
+                await MinidiscApp.backgroundSyncCoordinator.configure(
+                    wrappedService: newContainer.wrappedPlaylistService,
+                    moodService: newContainer.moodPlaylistService,
+                    serverState: newContainer.serverState
+                )
+                // Cold start and BGProcessing share one deduplicated coordinator run.
+                // This task captures only the process-lifetime coordinator, avoiding a
+                // container → lifecycle task → container retention cycle.
+                newContainer.retainLifecycleTask(Task {
+                    _ = await BackgroundActivity.run("playlist-sync") {
+                        await MinidiscApp.backgroundSyncCoordinator.run(calendar: .current)
+                    }
+                })
                 MinidiscApp.scheduleWrappedUpdate()
                 Logger.boot.info("App services ready")
             }
@@ -146,8 +167,11 @@ struct MinidiscApp: App {
     // MARK: - Cover art garbage collection
 
     @MainActor
-    private func runCoverArtGarbageCollection(container: AppContainer) async {
-        let context = container.modelContainer.mainContext
+    private func runCoverArtGarbageCollection(
+        modelContainer: ModelContainer,
+        downloadService: any DownloadServiceProtocol
+    ) async {
+        let context = modelContainer.mainContext
         var referencedIds: Set<String> = []
 
         let albums = (try? context.fetch(FetchDescriptor<DownloadedAlbum>())) ?? []
@@ -170,33 +194,7 @@ struct MinidiscApp: App {
             if let id = item.coverArtId { referencedIds.insert(id) }
         }
 
-        await container.downloadService.garbageCollectOrphanedCovers(referencedIds: referencedIds)
+        await downloadService.garbageCollectOrphanedCovers(referencedIds: referencedIds)
     }
 
-    // MARK: - Wrapped update
-
-    @MainActor
-    private func runWrappedUpdate(container: AppContainer) async {
-        guard let serverId = container.serverState.activeServer?.id.uuidString else { return }
-        await container.wrappedPlaylistService.handleYearTransitionIfNeeded(serverId: serverId, calendar: .current)
-        let result = await container.wrappedPlaylistService.runYearlyPlaylistSyncIfNeeded(serverId: serverId, calendar: .current)
-        Logger.wrapped.info("Cold start result: \(String(describing: result), privacy: .public)")
-    }
-
-    // MARK: - Mood playlists
-
-    /// Cold-start catch-up for the weekly mood refresh. This, not the BGTask, is what users
-    /// actually experience: iOS grants background time at its own discretion, so the refresh lands
-    /// on the first launch on or after Wednesday. A no-op on every other launch.
-    @MainActor
-    private func runMoodUpdate(container: AppContainer) async {
-        guard let serverId = container.serverState.activeServer?.id.uuidString else { return }
-        // Wrapped in a background assertion because this is the one path that can start with
-        // nothing playing: without it, backgrounding the app a second after launch freezes the sync
-        // mid-flight. Progress is per-mood, so an interrupted run still resumes where it stopped.
-        let result = await BackgroundActivity.run("mood-playlists") {
-            await container.moodPlaylistService.runWeeklySyncIfNeeded(serverId: serverId, calendar: .current)
-        }
-        Logger.moodPlaylists.info("Cold start result: \(String(describing: result), privacy: .public)")
-    }
 }

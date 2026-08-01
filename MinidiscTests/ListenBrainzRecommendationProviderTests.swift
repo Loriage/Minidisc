@@ -140,7 +140,9 @@ private final class PRLibraryConfigurableStub: LibraryServiceProtocol {
     func smartShuffleQueue(targetSize: Int) async throws -> [DisplayableSong] { throw URLError(.unknown) }
     func similarBackfillQueue(targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong] { throw URLError(.unknown) }
     func getArtistInfo(forArtistID artistID: String, count: Int) async throws -> ArtistInfo { throw URLError(.unknown) }
+    @MainActor
     func getArtistMBID(forArtistID artistID: String) async throws -> String? { try mbidResult.get() }
+    @MainActor
     func findArtist(byName name: String) async -> ArtistID3? { artistsByName[name] }
     func topSongs(artist: String, count: Int) async throws -> [DisplayableSong] { [] }
     func instantMix(from seed: InstantMixSeed, count: Int) async throws -> [DisplayableSong] { [] }

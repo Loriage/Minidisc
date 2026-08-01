@@ -14,31 +14,43 @@ import UIKit
 /// rather than per run.
 nonisolated enum BackgroundActivity {
 
-    /// MainActor reference box so the expiration handler reads the final task id
-    /// without capturing a local `var` that is mutated after the closure is formed.
     @MainActor
-    private final class TaskIDBox {
-        var id: UIBackgroundTaskIdentifier = .invalid
+    private final class Assertion {
+        private var identifier: UIBackgroundTaskIdentifier = .invalid
+        private var ended = false
+
+        func begin(name: String) {
+            identifier = UIApplication.shared.beginBackgroundTask(withName: name) { [weak self] in
+                Logger.boot.warning("[BACKGROUND] '\(name, privacy: .public)' ran out of time — suspending")
+                self?.end()
+            }
+        }
+
+        func end() {
+            guard !ended else { return }
+            ended = true
+            guard identifier != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(identifier)
+            identifier = .invalid
+        }
     }
 
     /// Runs `operation` inside a background task assertion.
     static func run<T: Sendable>(_ name: String, operation: @Sendable () async -> T) async -> T {
-        let identifier = await MainActor.run {
-            // The expiration handler must end the assertion: iOS terminates the app outright if the
-            // time runs out with the task still open. The work itself is left to be suspended, which
-            // is exactly what would have happened without the assertion at all.
-            let box = TaskIDBox()
-            box.id = UIApplication.shared.beginBackgroundTask(withName: name) {
-                Logger.boot.warning("[BACKGROUND] '\(name, privacy: .public)' ran out of time — suspending")
-                if box.id != .invalid { UIApplication.shared.endBackgroundTask(box.id) }
-            }
-            return box.id
+        let assertion = await MainActor.run {
+            let assertion = Assertion()
+            assertion.begin(name: name)
+            return assertion
         }
-        defer {
-            if identifier != .invalid {
-                Task { @MainActor in UIApplication.shared.endBackgroundTask(identifier) }
+
+        return await withTaskCancellationHandler {
+            let result = await operation()
+            await assertion.end()
+            return result
+        } onCancel: {
+            Task { @MainActor in
+                assertion.end()
             }
         }
-        return await operation()
     }
 }

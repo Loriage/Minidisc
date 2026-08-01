@@ -11,11 +11,11 @@ nonisolated enum MoodCycle {
     }
 }
 
-nonisolated struct MoodPreferences: Sendable {
-    private nonisolated(unsafe) let userDefaults: UserDefaults
+nonisolated final class MoodPreferences: Sendable {
+    private let userDefaults: LockedUserDefaults
 
     init(userDefaults: UserDefaults = .standard) {
-        self.userDefaults = userDefaults
+        self.userDefaults = LockedUserDefaults(userDefaults)
     }
 
     private static func cycleKey(_ mood: Mood, _ serverId: String) -> String {
@@ -73,7 +73,8 @@ nonisolated struct MoodPreferences: Sendable {
     }
 
     func lastSource(serverId: String) -> MoodSourceKind? {
-        userDefaults.string(forKey: Self.lastSourceKey(serverId)).flatMap(MoodSourceKind.init(rawValue:))
+        userDefaults.string(forKey: Self.lastSourceKey(serverId))
+            .flatMap(MoodSourceKind.init(rawValue:))
     }
 
     func setLastSource(_ kind: MoodSourceKind, serverId: String) {
@@ -81,19 +82,22 @@ nonisolated struct MoodPreferences: Sendable {
     }
 
     func markAllDue(serverId: String) {
-        for mood in Mood.allCases {
-            userDefaults.removeObject(forKey: Self.cycleKey(mood, serverId))
-        }
-        userDefaults.removeObject(forKey: Self.lastAttemptKey(serverId))
+        userDefaults.removeObjects(forKeys:
+            Mood.allCases.map { Self.cycleKey($0, serverId) }
+                + [Self.lastAttemptKey(serverId)]
+        )
     }
 
     func reset(serverId: String) {
-        for mood in Mood.allCases {
-            userDefaults.removeObject(forKey: Self.cycleKey(mood, serverId))
-            userDefaults.removeObject(forKey: Self.playlistIdKey(mood, serverId))
-            userDefaults.removeObject(forKey: Self.coverKey(mood, serverId))
+        let moodKeys = Mood.allCases.flatMap {
+            [
+                Self.cycleKey($0, serverId),
+                Self.playlistIdKey($0, serverId),
+                Self.coverKey($0, serverId),
+            ]
         }
-        userDefaults.removeObject(forKey: Self.lastAttemptKey(serverId))
-        userDefaults.removeObject(forKey: Self.lastSourceKey(serverId))
+        userDefaults.removeObjects(forKeys:
+            moodKeys + [Self.lastAttemptKey(serverId), Self.lastSourceKey(serverId)]
+        )
     }
 }

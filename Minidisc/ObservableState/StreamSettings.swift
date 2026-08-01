@@ -1,5 +1,4 @@
 import Foundation
-import Network
 import Observation
 
 /// User-configurable live-stream quality, split by the current network so cellular data can stay
@@ -11,9 +10,9 @@ import Observation
 final class StreamSettings {
     @ObservationIgnored private var _wifiQuality: StreamQuality
     @ObservationIgnored private var _cellularQuality: StreamQuality
+    @ObservationIgnored private let defaults: UserDefaults
     /// Latest connection type from the path monitor. Read on demand, so it needn't be observable.
     @ObservationIgnored private var isCellular = false
-    @ObservationIgnored private let monitor = NWPathMonitor()
 
     var wifiQuality: StreamQuality {
         get {
@@ -22,7 +21,7 @@ final class StreamSettings {
         }
         set {
             withMutation(keyPath: \.wifiQuality) { _wifiQuality = newValue }
-            UserDefaults.standard.set(newValue.rawValue, forKey: Self.wifiKey)
+            defaults.set(newValue.rawValue, forKey: Self.wifiKey)
         }
     }
 
@@ -33,7 +32,7 @@ final class StreamSettings {
         }
         set {
             withMutation(keyPath: \.cellularQuality) { _cellularQuality = newValue }
-            UserDefaults.standard.set(newValue.rawValue, forKey: Self.cellularKey)
+            defaults.set(newValue.rawValue, forKey: Self.cellularKey)
         }
     }
 
@@ -48,20 +47,17 @@ final class StreamSettings {
     /// Pre-split single-quality key; used to seed both tiers on upgrade.
     private static let legacyKey = "minidisc.stream.quality"
 
-    init() {
-        let legacy = UserDefaults.standard.string(forKey: Self.legacyKey)
-        let wifiRaw = UserDefaults.standard.string(forKey: Self.wifiKey) ?? legacy
-        let cellularRaw = UserDefaults.standard.string(forKey: Self.cellularKey) ?? legacy
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        let legacy = defaults.string(forKey: Self.legacyKey)
+        let wifiRaw = defaults.string(forKey: Self.wifiKey) ?? legacy
+        let cellularRaw = defaults.string(forKey: Self.cellularKey) ?? legacy
         _wifiQuality = StreamQuality(rawValue: wifiRaw ?? "") ?? Self.defaultWifiQuality
         _cellularQuality = StreamQuality(rawValue: cellularRaw ?? "") ?? Self.defaultCellularQuality
-        startMonitoring()
     }
 
-    private func startMonitoring() {
-        monitor.pathUpdateHandler = { [weak self] path in
-            let cellular = path.usesInterfaceType(.cellular)
-            Task { @MainActor [weak self] in self?.isCellular = cellular }
-        }
-        monitor.start(queue: DispatchQueue(label: "minidisc.network.monitor"))
+    /// Fed by the app-wide NetworkMonitor so connectivity is observed by a single system monitor.
+    func networkPathDidChange(isCellular: Bool) {
+        self.isCellular = isCellular
     }
 }

@@ -456,7 +456,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				MARKETING_VERSION = 26.8.1;
+				MARKETING_VERSION = 26.8.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nohitdev.minidisc;
 				PRODUCT_NAME = Minidisc;
 				SDKROOT = iphoneos;
@@ -505,7 +505,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				MARKETING_VERSION = 26.8.1;
+				MARKETING_VERSION = 26.8.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nohitdev.minidisc;
 				PRODUCT_NAME = Minidisc;
 				SDKROOT = iphoneos;

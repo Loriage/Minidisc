@@ -2,6 +2,8 @@ import SwiftUI
 import SwiftSonic
 
 struct WrappedTopArtistsSection: View {
+    private static let maxConcurrentArtworkLoads = 4
+
     let artists: [TopArtistEntry]
 
     @Environment(\.appContainer) private var container
@@ -108,23 +110,64 @@ struct WrappedTopArtistsSection: View {
             .foregroundStyle(.secondary)
     }
 
+    @MainActor
     private func preloadColors() async {
         let topArtists = Array(artists.prefix(10))
+        let expectedArtistIds = topArtists.map(\.artistId)
         var colors: [String: Color] = [:]
         var images: [String: PlatformImage] = [:]
-        await withTaskGroup(of: (String, Color).self) { group in
-            for artist in topArtists {
-                let artistId = artist.artistId
-                group.addTask { @MainActor [artworkImageCache, dominantColorExtractor] in
-                    let image = await artworkImageCache.load(coverArtId: artistId)
-                    let color = dominantColorExtractor.dominantColor(for: artistId, image: image)
-                    return (artistId, color)
-                }
-            }
-            for await (id, color) in group {
-                colors[id] = color
+
+        for artist in topArtists {
+            if let cachedColor = dominantColorExtractor.cachedColor(for: artist.artistId) {
+                colors[artist.artistId] = cachedColor
             }
         }
+
+        await withTaskGroup(of: WrappedArtistArtworkResult.self) { group in
+            var iterator = topArtists.makeIterator()
+
+            for _ in 0..<min(Self.maxConcurrentArtworkLoads, topArtists.count) {
+                guard let artist = iterator.next() else { break }
+                let artistId = artist.artistId
+                group.addTask { [artworkImageCache] in
+                    await Self.loadArtworkResult(
+                        artistId: artistId,
+                        artworkImageCache: artworkImageCache
+                    )
+                }
+            }
+
+            while let result = await group.next() {
+                guard !Task.isCancelled else {
+                    group.cancelAll()
+                    continue
+                }
+
+                // Re-check the cache on MainActor so an override applied while the
+                // image was loading always wins over the extracted average color.
+                colors[result.artistId] =
+                    dominantColorExtractor.cachedColor(for: result.artistId)
+                    ?? dominantColorExtractor.storeColor(
+                        packed: result.packedColor,
+                        for: result.artistId
+                    )
+
+                if let artist = iterator.next() {
+                    let artistId = artist.artistId
+                    group.addTask { [artworkImageCache] in
+                        await Self.loadArtworkResult(
+                            artistId: artistId,
+                            artworkImageCache: artworkImageCache
+                        )
+                    }
+                }
+            }
+        }
+
+        guard !Task.isCancelled,
+              expectedArtistIds == Array(artists.prefix(10)).map(\.artistId)
+        else { return }
+
         for artist in topArtists {
             if let image = artworkImageCache.cached(for: artist.artistId) {
                 images[artist.artistId] = image
@@ -133,4 +176,22 @@ struct WrappedTopArtistsSection: View {
         dominantColors = colors
         coverImages = images
     }
+
+    private nonisolated static func loadArtworkResult(
+        artistId: String,
+        artworkImageCache: ArtworkImageCache
+    ) async -> WrappedArtistArtworkResult {
+        guard !Task.isCancelled else {
+            return WrappedArtistArtworkResult(artistId: artistId, packedColor: nil)
+        }
+
+        let image = await artworkImageCache.load(coverArtId: artistId)
+        let packedColor = image.flatMap(DominantColorExtractor.packedAverageColor(from:))
+        return WrappedArtistArtworkResult(artistId: artistId, packedColor: packedColor)
+    }
+}
+
+private nonisolated struct WrappedArtistArtworkResult: Sendable {
+    let artistId: String
+    let packedColor: Int?
 }

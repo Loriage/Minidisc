@@ -47,7 +47,8 @@ struct LidarrArtistSearchView: View {
             .navigationBarTitleDisplayModeInline()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+                    Button("Close", systemImage: "xmark") { dismiss() }
+                        .tint(.primary)
                 }
             }
             .searchable(text: $query, prompt: "Artist name")

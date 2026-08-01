@@ -17,16 +17,14 @@ actor FavoritesService: FavoritesServiceProtocol {
 
     // MARK: - Query
 
-    // Safe: only called from @MainActor views; assumeIsolated matches all real call sites.
-    nonisolated func isFavorite(itemType: FavoriteType, itemId: String) -> Bool {
+    @MainActor
+    func isFavorite(itemType: FavoriteType, itemId: String) -> Bool {
         let compositeId = "\(itemType.rawValue):\(itemId)"
         var descriptor = FetchDescriptor<FavoriteRecord>(
             predicate: #Predicate<FavoriteRecord> { $0.id == compositeId }
         )
         descriptor.fetchLimit = 1
-        return MainActor.assumeIsolated {
-            (try? modelContainer.mainContext.fetchCount(descriptor)) ?? 0 > 0
-        }
+        return (try? modelContainer.mainContext.fetchCount(descriptor)) ?? 0 > 0
     }
 
     // MARK: - Star

@@ -34,6 +34,57 @@ private final class CountingFetcher: ExternalArtworkFetcher {
     private func increment() { callCount += 1 }
 }
 
+private actor DelayedCountingFetcher: ExternalArtworkFetcher {
+    private var callCount = 0
+    private let data: Data
+    private let delay: Duration
+
+    init(data: Data, delay: Duration) {
+        self.data = data
+        self.delay = delay
+    }
+
+    func fetchData(from url: URL) async throws -> Data {
+        callCount += 1
+        try await Task.sleep(for: delay)
+        return data
+    }
+
+    func calls() -> Int {
+        callCount
+    }
+}
+
+private actor ControlledArtworkFetcher: ExternalArtworkFetcher {
+    private var continuation: CheckedContinuation<Data, Error>?
+    private var callCount = 0
+    private var returnCount = 0
+
+    func fetchData(from url: URL) async throws -> Data {
+        callCount += 1
+        let data = try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation
+        }
+        returnCount += 1
+        return data
+    }
+
+    func complete(with data: Data) {
+        continuation?.resume(returning: data)
+        continuation = nil
+    }
+
+    func calls() -> Int { callCount }
+    func returns() -> Int { returnCount }
+}
+
+private actor CompletionProbe {
+    private var completed = false
+
+    func markCompleted() { completed = true }
+    func isCompleted() -> Bool { completed }
+}
+
 // MARK: - Helpers
 
 private func makeTempDir() throws -> URL {
@@ -46,9 +97,26 @@ private func makeCache(
     dir: URL,
     fetcher: (any ExternalArtworkFetcher)? = nil,
     ttl: TimeInterval = 90 * 24 * 3600,
-    maxSizeBytes: Int64 = 100 * 1024 * 1024
+    maxSizeBytes: Int64 = 100 * 1024 * 1024,
+    maxMemoryEntries: Int = 30
 ) -> ExternalArtworkCache {
-    ExternalArtworkCache(cacheDirectory: dir, fetcher: fetcher, ttl: ttl, maxSizeBytes: maxSizeBytes)
+    ExternalArtworkCache(
+        cacheDirectory: dir,
+        fetcher: fetcher,
+        ttl: ttl,
+        maxSizeBytes: maxSizeBytes,
+        maxMemoryEntries: maxMemoryEntries
+    )
+}
+
+private func eventually(
+    _ condition: @escaping @Sendable () async -> Bool
+) async -> Bool {
+    for _ in 0..<200 {
+        if await condition() { return true }
+        try? await Task.sleep(for: .milliseconds(2))
+    }
+    return false
 }
 
 // MARK: - Tests
@@ -68,6 +136,91 @@ struct ExternalArtworkCacheTests {
         _ = await cache.image(for: testURL)   // memory hit
 
         #expect(fetcher.callCount == 1)
+    }
+
+    @Test("concurrent requests for one URL share disk and network work")
+    func concurrentRequestsShareOnePipeline() async throws {
+        let dir = try makeTempDir()
+        let fetcher = DelayedCountingFetcher(
+            data: validImageData,
+            delay: .milliseconds(50)
+        )
+        let cache = makeCache(dir: dir, fetcher: fetcher)
+
+        async let first = cache.image(for: testURL)
+        async let second = cache.image(for: testURL)
+        async let third = cache.image(for: testURL)
+        async let fourth = cache.image(for: testURL)
+        let images = await [first, second, third, fourth]
+
+        #expect(images.allSatisfy { $0 != nil })
+        let callCount = await fetcher.calls()
+        #expect(callCount == 1)
+        let files = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        #expect(files.count == 1)
+    }
+
+    @Test("cancelling one waiter returns promptly without cancelling shared work")
+    func cancellingOneWaiterKeepsSharedPipelineAlive() async throws {
+        let dir = try makeTempDir()
+        let fetcher = ControlledArtworkFetcher()
+        let cache = makeCache(dir: dir, fetcher: fetcher)
+        let cancellationProbe = CompletionProbe()
+
+        let first = Task { await cache.image(for: testURL) }
+        #expect(await eventually { await fetcher.calls() == 1 })
+        let cancelled = Task {
+            let result = await cache.image(for: testURL)
+            await cancellationProbe.markCompleted()
+            return result
+        }
+        #expect(await eventually { await cache.inFlightWaiterCount(for: testURL) == 2 })
+
+        cancelled.cancel()
+        #expect(await eventually { await cancellationProbe.isCompleted() })
+        #expect(await fetcher.calls() == 1)
+
+        await fetcher.complete(with: validImageData)
+        #expect(await cancelled.value == nil)
+        #expect(await first.value != nil)
+        #expect(await fetcher.calls() == 1)
+    }
+
+    @Test("clearing memory invalidates an uncooperative in-flight fetch")
+    func clearMemoryPreventsStaleCommit() async throws {
+        let dir = try makeTempDir()
+        let fetcher = ControlledArtworkFetcher()
+        let cache = makeCache(dir: dir, fetcher: fetcher)
+
+        let load = Task { await cache.image(for: testURL) }
+        #expect(await eventually { await fetcher.calls() == 1 })
+        await cache.clearMemoryCache()
+        #expect(await load.value == nil)
+
+        // The fetcher intentionally ignores task cancellation. Its late response must not
+        // repopulate memory after clearMemoryCache().
+        await fetcher.complete(with: validImageData)
+        #expect(await eventually { await fetcher.returns() == 1 })
+        #expect(await eventually { await cache.completedLoadCount() == 1 })
+        #expect(await cache.isStoredInMemory(testURL) == false)
+    }
+
+    @Test("memory LRU keeps a touched entry and evicts the true oldest")
+    func memoryLRUEvictsTrueOldest() async throws {
+        let dir = try makeTempDir()
+        let fetcher = CountingFetcher(data: validImageData)
+        let cache = makeCache(dir: dir, fetcher: fetcher, maxMemoryEntries: 2)
+        let secondURL = URL(string: "https://example.com/second.jpg")!
+        let thirdURL = URL(string: "https://example.com/third.jpg")!
+
+        _ = await cache.image(for: testURL)
+        _ = await cache.image(for: secondURL)
+        _ = await cache.image(for: testURL)
+        _ = await cache.image(for: thirdURL)
+
+        #expect(await cache.isStoredInMemory(testURL))
+        #expect(await cache.isStoredInMemory(secondURL) == false)
+        #expect(await cache.isStoredInMemory(thirdURL))
     }
 
     // MARK: Disk cache

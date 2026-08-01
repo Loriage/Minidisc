@@ -10,13 +10,27 @@ nonisolated enum AudioEngineState: Equatable, Sendable {
     case error
 }
 
+/// Stable identity of one physical item loaded by an `AudioEngine`.
+///
+/// A track id is not sufficient here: the same song can legitimately appear twice in a queue, and
+/// AVFoundation may deliver an already-queued callback after a newer item has replaced it. The token
+/// lets the orchestration layer reject those stale state/error/end events without guessing from song
+/// metadata.
+nonisolated struct AudioEnginePlaybackToken: Hashable, Sendable {
+    let rawValue: UInt64
+
+    init(rawValue: UInt64) {
+        self.rawValue = rawValue
+    }
+}
+
 /// Events an `AudioEngine` reports back. Called on the engine's callback thread; a consumer that is an
 /// actor hops to its executor itself (as `PlayerService` does today).
 nonisolated protocol AudioEngineDelegate: AnyObject, Sendable {
-    func audioEngineDidChangeState(_ state: AudioEngineState)
+    func audioEngineDidChangeState(_ state: AudioEngineState, playbackToken: AudioEnginePlaybackToken)
     /// The current track finished on its own (end of file), not by a user stop/skip.
-    func audioEngineDidReachEndOfTrack()
-    func audioEngineDidError(_ message: String)
+    func audioEngineDidReachEndOfTrack(playbackToken: AudioEnginePlaybackToken)
+    func audioEngineDidError(_ message: String, playbackToken: AudioEnginePlaybackToken)
 }
 
 /// The low-level audio player `PlayerService` drives. All the queue, now-playing, crossfade, and
@@ -27,7 +41,9 @@ nonisolated protocol AudioEngineDelegate: AnyObject, Sendable {
 nonisolated protocol AudioEngine: AnyObject, Sendable {
     var delegate: AudioEngineDelegate? { get set }
 
-    func play(trackID: String, url: URL, headers: [String: String])
+    /// Starts or adopts an item and returns the identity attached to all callbacks for that load.
+    @discardableResult
+    func play(trackID: String, url: URL, headers: [String: String]) -> AudioEnginePlaybackToken
     func pause()
     func resume()
     func stop()

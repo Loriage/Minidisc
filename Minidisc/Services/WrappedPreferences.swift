@@ -41,11 +41,11 @@ nonisolated struct YearMonth: Comparable, Hashable, Sendable, CustomStringConver
 /// Thin UserDefaults wrapper for Wrapped playlist service state.
 /// All keys are namespaced under "minidisc.wrapped." and scoped per-server.
 /// Thread-safe: UserDefaults is documented thread-safe for get/set operations.
-nonisolated struct WrappedPreferences: Sendable {
-    private nonisolated(unsafe) let userDefaults: UserDefaults
+nonisolated final class WrappedPreferences: Sendable {
+    private let userDefaults: LockedUserDefaults
 
     init(userDefaults: UserDefaults = .standard) {
-        self.userDefaults = userDefaults
+        self.userDefaults = LockedUserDefaults(userDefaults)
     }
 
     private static func lastMonthKey(_ serverId: String) -> String {

@@ -13,6 +13,7 @@ nonisolated enum MoodSyncOutcome: Sendable, Equatable {
     /// An attempt was made too recently; backing off rather than retrying a dead endpoint.
     case throttled
     case finished(source: MoodSourceKind, refreshed: [Mood], kept: [Mood])
+    case cancelled
 }
 
 /// Why a single mood was left alone. Its previous playlist stays exactly as it was.
@@ -102,6 +103,31 @@ actor MoodPlaylistService {
         calendar: Calendar = .current,
         currentDate: Date = Date()
     ) async -> MoodSyncOutcome {
+        do {
+            return try await runWeeklySyncIfNeededCancellable(
+                serverId: serverId,
+                calendar: calendar,
+                currentDate: currentDate
+            )
+        } catch is CancellationError {
+            return .cancelled
+        } catch {
+            Logger.moodPlaylists.error(
+                "[MOOD-SYNC] unexpected failure: \(error, privacy: .public)"
+            )
+            return .cancelled
+        }
+    }
+
+    /// Cancellation-preserving entry point used by BackgroundSyncCoordinator.
+    /// A cancelled run never writes attempt/source markers after cancellation,
+    /// and each completed mood remains an independent durable unit of progress.
+    func runWeeklySyncIfNeededCancellable(
+        serverId: String,
+        calendar: Calendar = .current,
+        currentDate: Date = Date()
+    ) async throws -> MoodSyncOutcome {
+        try Task.checkCancellation()
         let cycle = MoodCycle.start(for: currentDate, calendar: calendar)
         let pending = Mood.allCases.filter { mood in
             guard let synced = preferences.syncedCycle(mood: mood, serverId: serverId) else { return true }
@@ -115,25 +141,34 @@ actor MoodPlaylistService {
             return .throttled
         }
 
-        guard let provider = await makeProvider() else { return .notConfigured }
-        preferences.setLastAttempt(currentDate, serverId: serverId)
+        let provider = await makeProvider()
+        try Task.checkCancellation()
+        guard let provider else { return .notConfigured }
 
         let playlists: any PlaylistSyncClient
         do {
             playlists = try await makePlaylistClient()
         } catch {
+            if error is CancellationError { throw CancellationError() }
+            try Task.checkCancellation()
             Logger.moodPlaylists.error("[MOOD-SYNC] no Subsonic client: \(error, privacy: .public)")
+            preferences.setLastAttempt(currentDate, serverId: serverId)
             return .finished(source: provider.kind, refreshed: [], kept: pending)
         }
+        try Task.checkCancellation()
 
         await provider.prepare()
+        try Task.checkCancellation()
 
         var refreshed: [Mood] = []
         var kept: [Mood] = []
         for mood in pending {
+            try Task.checkCancellation()
             do {
                 try await refresh(mood, serverId: serverId, cycle: cycle, provider: provider, playlists: playlists)
                 refreshed.append(mood)
+            } catch is CancellationError {
+                throw CancellationError()
             } catch let reason as MoodSkipReason {
                 kept.append(mood)
                 Logger.moodPlaylists.warning("[MOOD-SYNC] \(mood.rawValue, privacy: .public) kept its previous playlist: \(String(describing: reason), privacy: .public)")
@@ -143,7 +178,9 @@ actor MoodPlaylistService {
             }
         }
 
+        try Task.checkCancellation()
         Logger.moodPlaylists.info("[MOOD-SYNC] source=\(provider.kind.rawValue, privacy: .public) refreshed \(refreshed.count, privacy: .public)/\(pending.count, privacy: .public) — kept \(kept.map(\.rawValue).joined(separator: ","), privacy: .public)")
+        preferences.setLastAttempt(currentDate, serverId: serverId)
         preferences.setLastSource(provider.kind, serverId: serverId)
         return .finished(source: provider.kind, refreshed: refreshed, kept: kept)
     }
@@ -155,6 +192,7 @@ actor MoodPlaylistService {
     /// effect. Playlist ids are kept, so the existing playlists are rewritten in place.
     @discardableResult
     func rebuildNow(serverId: String, calendar: Calendar = .current, currentDate: Date = Date()) async -> MoodSyncOutcome {
+        guard !Task.isCancelled else { return .cancelled }
         preferences.markAllDue(serverId: serverId)
         return await runWeeklySyncIfNeeded(serverId: serverId, calendar: calendar, currentDate: currentDate)
     }
@@ -168,12 +206,16 @@ actor MoodPlaylistService {
         provider: any MoodTrackProvider,
         playlists: any PlaylistSyncClient
     ) async throws {
+        try Task.checkCancellation()
         let trackIds: [String]
         do {
             trackIds = try await provider.trackIds(for: mood, limit: Mood.trackCount)
         } catch {
+            if error is CancellationError { throw CancellationError() }
+            try Task.checkCancellation()
             throw MoodSkipReason.searchFailed(String(describing: error))
         }
+        try Task.checkCancellation()
         // An empty result is not a reason to empty the playlist — a sonic index may be rebuilding,
         // or the library may simply have no tagged tracks for this mood. Keep what is there.
         guard !trackIds.isEmpty else { throw MoodSkipReason.noResults }
@@ -181,12 +223,16 @@ actor MoodPlaylistService {
         let written: Int
         do {
             let playlistId = try await resolvePlaylistId(for: mood, serverId: serverId, client: playlists)
+            try Task.checkCancellation()
             // createPlaylist with a non-nil id replaces the whole track list in one call — no
             // read-modify-write, so the playlist is never briefly empty.
             let result = try await playlists.createPlaylist(name: nil, playlistId: playlistId, songIds: trackIds)
+            try Task.checkCancellation()
             written = result.songCount
             preferences.setPlaylistId(playlistId, mood: mood, serverId: serverId)
         } catch {
+            if error is CancellationError { throw CancellationError() }
+            try Task.checkCancellation()
             throw MoodSkipReason.playlistWriteFailed(String(describing: error))
         }
 
@@ -202,6 +248,7 @@ actor MoodPlaylistService {
             Logger.moodPlaylists.warning("[MOOD-SYNC] \(mood.rawValue, privacy: .public): server kept \(written, privacy: .public) of \(trackIds.count, privacy: .public) ids — the rest were unknown to it")
         }
 
+        try Task.checkCancellation()
         preferences.setSyncedCycle(cycle, mood: mood, serverId: serverId)
         Logger.moodPlaylists.info("[MOOD-SYNC] \(mood.rawValue, privacy: .public) refreshed — server stored \(written, privacy: .public) tracks")
 
@@ -210,7 +257,9 @@ actor MoodPlaylistService {
         if let applyCover, !preferences.hasCover(mood: mood, serverId: serverId) {
             let playlistId = preferences.playlistId(mood: mood, serverId: serverId)
             if let playlistId {
+                try Task.checkCancellation()
                 await applyCover(mood.gradientSpec, playlistId, mood.playlistName)
+                try Task.checkCancellation()
                 preferences.setHasCover(mood: mood, serverId: serverId)
             }
         }
@@ -221,11 +270,16 @@ actor MoodPlaylistService {
     /// The name lookup matters after a reinstall: UserDefaults is gone but the server playlists are
     /// not, and without it every reinstall would leave a second "Minidisc · Night" behind.
     private func resolvePlaylistId(for mood: Mood, serverId: String, client: any PlaylistSyncClient) async throws -> String {
+        try Task.checkCancellation()
         if let cached = preferences.playlistId(mood: mood, serverId: serverId) { return cached }
-        if let existing = try await client.getPlaylists(username: nil).first(where: { $0.name == mood.playlistName }) {
+        let playlists = try await client.getPlaylists(username: nil)
+        try Task.checkCancellation()
+        if let existing = playlists.first(where: { $0.name == mood.playlistName }) {
             return existing.id
         }
-        return try await client.createPlaylist(name: mood.playlistName, playlistId: nil, songIds: []).id
+        let created = try await client.createPlaylist(name: mood.playlistName, playlistId: nil, songIds: [])
+        try Task.checkCancellation()
+        return created.id
     }
 
     // MARK: - Read

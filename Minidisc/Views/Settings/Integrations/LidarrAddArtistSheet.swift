@@ -84,14 +84,16 @@ struct LidarrAddArtistSheet: View {
             .navigationBarTitleDisplayModeInline()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Close", systemImage: "xmark") { dismiss() }
+                        .tint(.primary)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
                         Task { await add() }
                     } label: {
-                        if isAdding { ProgressView() } else { Text("Add") }
+                        if isAdding { ProgressView() } else { Image(systemName: "checkmark") }
                     }
+                    .buttonStyle(.borderedProminent)
                     .disabled(!canAdd)
                 }
             }

@@ -201,12 +201,17 @@ struct LBSubmitListenTests {
 @Suite("ListenBrainzService — submission gating")
 struct LBSubmissionGatingTests {
 
-    private func makeService(transport: any ListenBrainzTransport) -> (ListenBrainzService, SubmitMockKeychain, UserDefaults) {
+    private func makeService(transport: any ListenBrainzTransport) -> (ListenBrainzService, SubmitMockKeychain, String) {
         let keychain = SubmitMockKeychain()
-        let defaults = UserDefaults(suiteName: "test.submit.\(UUID().uuidString)")!
+        let defaultsSuiteName = "test.submit.\(UUID().uuidString)"
         let tmpURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString + ".json")
-        let service = ListenBrainzService(client: ListenBrainzClient(transport: transport), keychain: keychain, userDefaults: defaults, queueFileURL: tmpURL)
-        return (service, keychain, defaults)
+        let service = ListenBrainzService(
+            client: ListenBrainzClient(transport: transport),
+            keychain: keychain,
+            userDefaults: UserDefaults(suiteName: defaultsSuiteName)!,
+            queueFileURL: tmpURL
+        )
+        return (service, keychain, defaultsSuiteName)
     }
 
     @Test("notifyTrackStarted is a no-op when scrobbling is not configured")

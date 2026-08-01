@@ -164,7 +164,12 @@ struct PlaylistGradientSpec: Codable, Equatable, Sendable {
         self.blue = rgb.blue
     }
 
-    init(shape: PlaylistGradientShape, red: Double, green: Double, blue: Double) {
+    /// Rebuilds the persistence-safe RGB payload without requiring the main actor.
+    ///
+    /// SwiftData synthesizes synchronous, nonisolated accessors for `@Model` types.
+    /// Keeping this initializer independent from SwiftUI lets those accessors restore
+    /// a frozen gradient without an actor hop.
+    nonisolated init(shape: PlaylistGradientShape, red: Double, green: Double, blue: Double) {
         self.shape = shape
         self.red = red
         self.green = green

@@ -21,6 +21,20 @@
                ReferencedContainer = "container:Minidisc.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "DBA4A7672F9BBFCC008BC5A9"
+               BuildableName = "MinidiscUITests.xctest"
+               BlueprintName = "MinidiscUITests"
+               ReferencedContainer = "container:Minidisc.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction

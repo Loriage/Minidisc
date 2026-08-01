@@ -43,6 +43,7 @@ final class AppContainer {
     let crossfadeSettings = CrossfadeSettings()
     let streamSettings = StreamSettings()
     let lidarrSettings: LidarrSettings
+    private var lifecycleTasks: [Task<Void, Never>] = []
 
     init(inMemory: Bool = false) throws {
         modelContainer = try ModelContainer.minidisc(inMemory: inMemory)
@@ -121,7 +122,11 @@ final class AppContainer {
         _player = player
         playerService = player
 
-        let nowPlaying = NowPlayingService(playerService: player, artworkImageCache: artworkImageCache)
+        let nowPlaying = NowPlayingService(
+            playerService: player,
+            artworkImageCache: artworkImageCache,
+            presenter: NowPlayingCenterPresenter()
+        )
         nowPlayingService = nowPlaying
 
         favoritesService = FavoritesService(libraryService: library, serverState: serverState, modelContainer: modelContainer)
@@ -130,17 +135,35 @@ final class AppContainer {
         let playlist = PlaylistService(serverService: server, modelContainer: modelContainer, downloadService: download)
         playlistService = playlist
 
-        Task { [playlist] in await playlist.retryMissingPlaylistDownloads() }
-
         let subsonicProvider = SubsonicRecommendationProvider(libraryService: library)
         let lbProvider = ListenBrainzRecommendationProvider(client: lbClient, service: lb, libraryService: library)
         recommendationService = RecommendationService(providers: [lbProvider, subsonicProvider])
 
         searchHistoryService = SearchHistoryService(container: modelContainer)
 
-        Task { await listenBrainzService.loadPersistedState() }
-        Task { await lidarrSettings.loadPersistedState() }
-        Task { await externalArtworkCache.runGarbageCollection() }
+        lifecycleTasks = [
+            Task { [playlist] in
+                guard !Task.isCancelled else { return }
+                await playlist.retryMissingPlaylistDownloads()
+            },
+            Task { [lb] in
+                guard !Task.isCancelled else { return }
+                await lb.loadPersistedState()
+            },
+            Task { [lidarrSettings] in
+                guard !Task.isCancelled else { return }
+                await lidarrSettings.loadPersistedState()
+            },
+            Task { [externalArtworkCache] in
+                guard !Task.isCancelled else { return }
+                await externalArtworkCache.runGarbageCollection()
+            },
+        ]
+    }
+
+    isolated deinit {
+        lifecycleTasks.forEach { $0.cancel() }
+        networkMonitor.stop()
     }
 
     /// Awaited by MinidiscApp's `.task` before the UI appears, ensuring
@@ -150,6 +173,12 @@ final class AppContainer {
         await _player.setNowPlayingService(nowPlayingService)
         await nowPlayingService.setFavoritesService(favoritesService)
         await _player.crossfadeSettingsDidChange()
+    }
+
+    /// Keeps deliberate long-lived startup work owned by the service graph so it
+    /// can be cancelled if the graph is ever replaced or torn down.
+    func retainLifecycleTask(_ task: Task<Void, Never>) {
+        lifecycleTasks.append(task)
     }
 }
 
@@ -232,10 +261,11 @@ extension AppContainer {
     /// longer reads them (since the legacy fallback was removed), but they still
     /// waste disk space and could confuse future disk-hit logic. Deleting them here
     /// forces a clean re-download at the correct tier size.
-    static func sweepLegacyCoverArtFiles() {
-        guard !UserDefaults.standard.bool(forKey: artworkLegacySweepKey) else { return }
+    @discardableResult
+    static func sweepLegacyCoverArtFiles() -> Task<Void, Never>? {
+        guard !UserDefaults.standard.bool(forKey: artworkLegacySweepKey) else { return nil }
 
-        Task.detached(priority: .utility) {
+        return Task.detached(priority: .utility) {
             let fm = FileManager.default
             guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
             let coverArtsDir = docs.appendingPathComponent("app.minidisc/coverarts", isDirectory: true)
@@ -244,6 +274,7 @@ extension AppContainer {
 
             var deletedCount = 0
             for fileURL in items {
+                guard !Task.isCancelled else { return }
                 let name = fileURL.lastPathComponent
                 // Keep files that have a tier suffix; delete untagged legacy files.
                 guard !name.contains("@thumb") && !name.contains("@hero") else { continue }

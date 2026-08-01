@@ -8,6 +8,9 @@ import SwiftSonic
 @Observable
 @MainActor
 final class PlayerState {
+    /// Internal identity of the current queue session. Async producers verify it
+    /// before committing results so an old session cannot append into a replacement.
+    @ObservationIgnored var queueGeneration: UInt64 = 0
     var currentTrack: DisplayableSong?
     var queue: [DisplayableSong] = []
     var currentIndex: Int = 0

@@ -22,8 +22,10 @@ struct ExternalCoverView<Placeholder: View>: View {
         }
         .task(id: url) {
             image = nil
-            guard let url else { return }
-            image = await container?.externalArtworkCache.image(for: url)
+            guard let requestedURL = url else { return }
+            let loadedImage = await container?.externalArtworkCache.image(for: requestedURL)
+            guard !Task.isCancelled, requestedURL == url else { return }
+            image = loadedImage
         }
     }
 }

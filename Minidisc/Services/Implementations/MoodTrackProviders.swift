@@ -101,7 +101,8 @@ nonisolated struct LibraryTagTrackProvider: MoodTrackProvider {
     static let fallbackPoolSize = 500
 
     func trackIds(for mood: Mood, limit: Int) async throws -> [String] {
-        var candidates = await genreCandidates(for: mood)
+        try Task.checkCancellation()
+        var candidates = try await genreCandidates(for: mood)
         var source = "genres"
 
         // A library organised around genres this mood does not use — French rap where Night looks
@@ -109,9 +110,10 @@ nonisolated struct LibraryTagTrackProvider: MoodTrackProvider {
         // week. Falling back to a broad sample lets the MOOD and BPM tags decide on their own,
         // which is exactly the case those two signals exist for.
         if candidates.isEmpty {
-            candidates = await randomCandidates()
+            candidates = try await randomCandidates()
             source = "random pool"
         }
+        try Task.checkCancellation()
 
         let ranked = MoodTagMatcher.rank(candidates, for: mood, limit: limit)
         let withMoodTag = candidates.count { !$0.features.moods.isEmpty }
@@ -122,13 +124,28 @@ nonisolated struct LibraryTagTrackProvider: MoodTrackProvider {
         return ranked
     }
 
-    private func genreCandidates(for mood: Mood) async -> [(id: String, features: SongTagFeatures)] {
+    private func genreCandidates(
+        for mood: Mood
+    ) async throws -> [(id: String, features: SongTagFeatures)] {
         var seen = Set<String>()
         var candidates: [(id: String, features: SongTagFeatures)] = []
         for genre in MoodTagMatcher.genres(mood) {
+            try Task.checkCancellation()
             // A genre the library simply does not have is normal, not an error — skip and continue,
             // otherwise one absent genre would sink the whole mood.
-            guard let songs = try? await libraryService.songsByGenre(genre, count: Self.perGenreFetch) else { continue }
+            let songs: [Song]
+            do {
+                songs = try await libraryService.songsByGenre(
+                    genre,
+                    count: Self.perGenreFetch
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                try Task.checkCancellation()
+                continue
+            }
+            try Task.checkCancellation()
             for song in songs where seen.insert(song.id).inserted {
                 candidates.append((song.id, Self.features(of: song)))
             }
@@ -136,9 +153,17 @@ nonisolated struct LibraryTagTrackProvider: MoodTrackProvider {
         return candidates
     }
 
-    private func randomCandidates() async -> [(id: String, features: SongTagFeatures)] {
-        guard let songs = try? await libraryService.randomSongs(size: Self.fallbackPoolSize) else { return [] }
-        return songs.map { ($0.id, Self.features(of: $0)) }
+    private func randomCandidates() async throws -> [(id: String, features: SongTagFeatures)] {
+        do {
+            let songs = try await libraryService.randomSongs(size: Self.fallbackPoolSize)
+            try Task.checkCancellation()
+            return songs.map { ($0.id, Self.features(of: $0)) }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            try Task.checkCancellation()
+            return []
+        }
     }
 
     /// Reads both genre spellings: OpenSubsonic's `genres` array and the older single `genre`

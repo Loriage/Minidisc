@@ -126,7 +126,9 @@ actor LibraryService: LibraryServiceProtocol {
     // MARK: - Artist tracks
 
     func fetchAllTracks(forArtistID artistID: String) async throws -> [DisplayableSong] {
+        try Task.checkCancellation()
         let artistDetail = try await artist(id: artistID)
+        try Task.checkCancellation()
         let albums = (artistDetail.album ?? []).sorted { lhs, rhs in
             switch (lhs.year, rhs.year) {
             case let (y1?, y2?): return y1 > y2
@@ -139,26 +141,34 @@ actor LibraryService: LibraryServiceProtocol {
 
         var collected: [(index: Int, songs: [DisplayableSong])] = []
 
-        await withTaskGroup(of: (Int, [DisplayableSong]?).self) { group in
+        try await withThrowingTaskGroup(of: (Int, [DisplayableSong]?).self) { group in
+            defer { group.cancelAll() }
             var submitted = 0
 
             while submitted < min(5, albums.count) {
+                try Task.checkCancellation()
                 let i = submitted
                 let albumId = albums[i].id
-                group.addTask { await self.fetchAlbumTracks(albumId: albumId, index: i) }
+                group.addTask {
+                    try await self.fetchAlbumTracks(albumId: albumId, index: i)
+                }
                 submitted += 1
             }
 
-            while let (index, songs) = await group.next() {
+            while let (index, songs) = try await group.next() {
+                try Task.checkCancellation()
                 if let songs { collected.append((index, songs)) }
                 if submitted < albums.count {
                     let i = submitted
                     let albumId = albums[i].id
-                    group.addTask { await self.fetchAlbumTracks(albumId: albumId, index: i) }
+                    group.addTask {
+                        try await self.fetchAlbumTracks(albumId: albumId, index: i)
+                    }
                     submitted += 1
                 }
             }
         }
+        try Task.checkCancellation()
 
         guard !collected.isEmpty else {
             Logger.library.error("[ARTIST-TRACKS] all fetches failed artistId=\(artistID, privacy: .public)")
@@ -169,20 +179,28 @@ actor LibraryService: LibraryServiceProtocol {
         return collected.sorted { $0.index < $1.index }.flatMap { $0.songs }
     }
 
-    private func fetchAlbumTracks(albumId: String, index: Int) async -> (Int, [DisplayableSong]?) {
+    private func fetchAlbumTracks(albumId: String, index: Int) async throws -> (Int, [DisplayableSong]?) {
+        try Task.checkCancellation()
         do {
             let detail = try await album(id: albumId)
+            try Task.checkCancellation()
             let serverId = await MainActor.run { serverService.state.activeServer?.id }
+            try Task.checkCancellation()
             var songs: [DisplayableSong] = []
             for song in detail.song ?? [] {
+                try Task.checkCancellation()
                 var downloaded = false
                 if let serverId {
                     downloaded = await downloadService.isDownloaded(songId: song.id, serverId: serverId)
+                    try Task.checkCancellation()
                 }
                 songs.append(DisplayableSong(from: song, isDownloaded: downloaded))
             }
             return (index, songs)
+        } catch let cancellation as CancellationError {
+            throw cancellation
         } catch {
+            try Task.checkCancellation()
             Logger.library.error("[ARTIST-TRACKS] album \(albumId) fetch failed: \(error, privacy: .public)")
             return (index, nil)
         }
@@ -192,8 +210,16 @@ actor LibraryService: LibraryServiceProtocol {
 
     func scrobble(songId: String, submission: Bool) async {
         do {
-            try await client().scrobble(id: songId, submission: submission)
+            try Task.checkCancellation()
+            let subsonicClient = try await client()
+            try Task.checkCancellation()
+            try await subsonicClient.scrobble(id: songId, submission: submission)
+            try Task.checkCancellation()
             Logger.library.debug("Scrobbled '\(songId, privacy: .public)' submission=\(submission)")
+        } catch is CancellationError {
+            Logger.library.debug(
+                "Scrobble cancelled for '\(songId, privacy: .public)' submission=\(submission)"
+            )
         } catch {
             // Silent failure per Subsonic convention. Log at debug level only — scrobble errors
             // are common (network blips, auth races) and should never surface to the user.
@@ -287,17 +313,22 @@ actor LibraryService: LibraryServiceProtocol {
     }
 
     func similarBackfillQueue(targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong] {
+        try Task.checkCancellation()
         let isOnline = await MainActor.run { serverService.state.isOnline }
+        try Task.checkCancellation()
         guard isOnline else {
             // Offline: keep the downloads-only fallback, still honoring exclusions.
             let downloads = await offlineSmartShuffle(targetSize: targetSize + excludedIds.count)
+            try Task.checkCancellation()
             return Self.assembleBackfill(pool: downloads, excludedIds: excludedIds, targetSize: targetSize)
         }
         guard let serverId = await MainActor.run(body: { serverService.state.activeServer?.id }) else {
             return []
         }
+        try Task.checkCancellation()
 
         let recent = await statsService.recentEvents(limit: 20, serverId: serverId.uuidString)
+        try Task.checkCancellation()
         // Never re-serve what the user just heard.
         var excluded = excludedIds
         for event in recent { excluded.insert(event.trackId) }
@@ -310,14 +341,30 @@ actor LibraryService: LibraryServiceProtocol {
             // Deliberately NOT getTopSongs — popularity-backed per spec, empty on bare
             // self-hosted servers; kept out so the heuristic works everywhere.
             for artistId in seeds.artistIds {
-                if let tracks = try? await fetchAllTracks(forArtistID: artistId) {
+                try Task.checkCancellation()
+                do {
+                    let tracks = try await fetchAllTracks(forArtistID: artistId)
                     pool.append(contentsOf: tracks)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    // Best-effort: another seed or the random top-up can still fill the queue.
                 }
             }
             // Genre candidates from local tags.
             for genre in seeds.genres {
-                if let songs = try? await client().getSongsByGenre(genre, count: Self.backfillGenreFetchCount) {
+                try Task.checkCancellation()
+                do {
+                    let songs = try await client().getSongsByGenre(
+                        genre,
+                        count: Self.backfillGenreFetchCount
+                    )
+                    try Task.checkCancellation()
                     pool.append(contentsOf: songs.map { DisplayableSong(from: $0) })
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    // Best-effort: another seed or the random top-up can still fill the queue.
                 }
             }
         }
@@ -326,7 +373,15 @@ actor LibraryService: LibraryServiceProtocol {
 
         // Thin pool (small library, empty genres) or no history: top up with random.
         if result.count < targetSize {
-            let randomSongs = (try? await client().getRandomSongs(size: targetSize + excluded.count)) ?? []
+            let randomSongs: [Song]
+            do {
+                randomSongs = try await client().getRandomSongs(size: targetSize + excluded.count)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                randomSongs = []
+            }
+            try Task.checkCancellation()
             excluded.formUnion(result.map(\.id))
             let topUp = Self.assembleBackfill(
                 pool: randomSongs.map { DisplayableSong(from: $0) },
@@ -337,6 +392,7 @@ actor LibraryService: LibraryServiceProtocol {
         }
 
         Logger.library.debug("Similar backfill: \(result.count)/\(targetSize) tracks (seeds: \(seeds.artistIds.count) artists, \(seeds.genres.count) genres, recent: \(recent.count))")
+        try Task.checkCancellation()
         return result
     }
 
@@ -350,8 +406,10 @@ actor LibraryService: LibraryServiceProtocol {
         // Timing is logged at .info, on one line, because this is the latency the user actually feels:
         // nothing plays until the whole fan-out returns. The per-call spread of the fan-out is what
         // says whether the client-side parallelism survives on the server or re-serialises there.
+        try Task.checkCancellation()
         let tStart = Date()
         let c = try await client()
+        try Task.checkCancellation()
 
         // 1) Base similar songs from the seed. AudioMuse clusters tightly, so this alone tends to
         //    cover only one or two artists.
@@ -363,6 +421,7 @@ actor LibraryService: LibraryServiceProtocol {
         case .artist(let id):
             base = try await c.getSimilarSongs2(id: id, count: count)
         }
+        try Task.checkCancellation()
         let baseMs = Int(Date().timeIntervalSince(tBase) * 1000)
         guard !base.isEmpty else {
             Logger.library.info("[MIX-TIMING] base=\(baseMs, privacy: .public)ms → empty, aborting")
@@ -383,19 +442,35 @@ actor LibraryService: LibraryServiceProtocol {
         let tFan = Date()
         var expansions: [Song] = []
         var callMs: [Int] = []
-        await withTaskGroup(of: (Int, [Song]).self) { group in
+        try await withThrowingTaskGroup(of: (Int, [Song]).self) { group in
+            defer { group.cancelAll() }
             for aid in fanArtists {
+                try Task.checkCancellation()
                 group.addTask {
+                    try Task.checkCancellation()
                     let t = Date()
-                    let songs = (try? await c.getSimilarSongs2(id: aid, count: Self.instantMixFanOutCount)) ?? []
-                    return (Int(Date().timeIntervalSince(t) * 1000), songs)
+                    do {
+                        let songs = try await c.getSimilarSongs2(
+                            id: aid,
+                            count: Self.instantMixFanOutCount
+                        )
+                        try Task.checkCancellation()
+                        return (Int(Date().timeIntervalSince(t) * 1000), songs)
+                    } catch let cancellation as CancellationError {
+                        throw cancellation
+                    } catch {
+                        try Task.checkCancellation()
+                        return (Int(Date().timeIntervalSince(t) * 1000), [])
+                    }
                 }
             }
-            for await (ms, songs) in group {
+            for try await (ms, songs) in group {
+                try Task.checkCancellation()
                 callMs.append(ms)
                 expansions.append(contentsOf: songs)
             }
         }
+        try Task.checkCancellation()
         let fanMs = Int(Date().timeIntervalSince(tFan) * 1000)
 
         // 3) Merge + dedup by song id (base first so seed relevance leads).

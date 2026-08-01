@@ -3,11 +3,126 @@ import OSLog
 
 // MARK: - HTTP client protocol (testable)
 
-protocol ArtistImageHTTPClient: Sendable {
+nonisolated protocol ArtistImageHTTPClient: Sendable {
     func data(for request: URLRequest) async throws -> (Data, URLResponse)
 }
 
 extension URLSession: ArtistImageHTTPClient {}
+
+// MARK: - MusicBrainz rate limiter
+
+/// Grants one MusicBrainz request at a time, separated by `minimumInterval`.
+///
+/// Waiters are queued rather than assigned future timestamps. Removing a cancelled waiter therefore
+/// does not leave an unused reservation (and an unnecessary extra delay) in the schedule.
+actor MusicBrainzRateLimiter {
+    typealias Sleeper = @Sendable (Duration) async throws -> Void
+
+    private struct Waiter {
+        let id: UUID
+        let continuation: CheckedContinuation<Bool, Never>
+    }
+
+    private let minimumInterval: Duration
+    private let sleeper: Sleeper
+    private var permitAvailable = true
+    private var waiters: [Waiter] = []
+    private var cooldownTask: Task<Void, Never>?
+
+    init(
+        minimumInterval: Duration = .seconds(1),
+        sleeper: Sleeper? = nil
+    ) {
+        self.minimumInterval = minimumInterval
+        self.sleeper = sleeper ?? { duration in
+            try await Task.sleep(for: duration)
+        }
+    }
+
+    func waitForPermit() async throws {
+        try Task.checkCancellation()
+
+        if permitAvailable {
+            permitAvailable = false
+            startCooldown()
+            guard !Task.isCancelled else {
+                recoverGrantedPermit()
+                throw CancellationError()
+            }
+            return
+        }
+
+        let waiterID = UUID()
+        let granted = await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if Task.isCancelled {
+                    continuation.resume(returning: false)
+                } else {
+                    waiters.append(Waiter(id: waiterID, continuation: continuation))
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelWaiter(id: waiterID) }
+        }
+        guard granted else { throw CancellationError() }
+        guard !Task.isCancelled else {
+            recoverGrantedPermit()
+            throw CancellationError()
+        }
+    }
+
+    private func startCooldown() {
+        let minimumInterval = self.minimumInterval
+        let sleeper = self.sleeper
+        cooldownTask = Task { [weak self] in
+            do {
+                try await sleeper(minimumInterval)
+            } catch {
+                // A cancelled cooldown was deliberately replaced by recoverGrantedPermit(). Any
+                // other sleeper failure must still hand the permit on; otherwise one injected clock
+                // error wedges every future MusicBrainz request for the lifetime of the actor.
+                guard !Task.isCancelled else { return }
+                await self?.cooldownFinished()
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await self?.cooldownFinished()
+        }
+    }
+
+    private func cooldownFinished() {
+        cooldownTask = nil
+        guard !waiters.isEmpty else {
+            permitAvailable = true
+            return
+        }
+        let waiter = waiters.removeFirst()
+        waiter.continuation.resume(returning: true)
+        startCooldown()
+    }
+
+    private func cancelWaiter(id: UUID) {
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        waiters.remove(at: index).continuation.resume(returning: false)
+    }
+
+    private func recoverGrantedPermit() {
+        cooldownTask?.cancel()
+        cooldownTask = nil
+        guard !waiters.isEmpty else {
+            permitAvailable = true
+            return
+        }
+        let waiter = waiters.removeFirst()
+        waiter.continuation.resume(returning: true)
+        startCooldown()
+    }
+
+    /// Deterministic test seam.
+    func waitingCount() -> Int {
+        waiters.count
+    }
+}
 
 // MARK: - Actor
 
@@ -16,14 +131,36 @@ extension URLSession: ArtistImageHTTPClient {}
 /// (Subsonic provider, which does not supply MBIDs).
 /// Results are cached in-memory; concurrent requests for the same artist share a single Task.
 actor ExternalArtistImageResolver {
+    private enum CachedResolution {
+        case hit(URL)
+        case miss
+
+        var url: URL? {
+            switch self {
+            case .hit(let url): url
+            case .miss: nil
+            }
+        }
+    }
+
+    private struct InFlightEntry {
+        let id: UUID
+        let task: Task<Void, Never>
+        var waiters: [UUID: CheckedContinuation<URL?, Never>]
+    }
+
     private let httpClient: any ArtistImageHTTPClient
     /// Keys: "mbid:<mbid>" or "name:<normalized-name>"
-    private var cache: [String: URL?] = [:]
-    private var inflight: [String: Task<URL?, Never>] = [:]
-    private var lastMBRequest: Date = .distantPast
+    private var cache: [String: CachedResolution] = [:]
+    private var inflight: [String: InFlightEntry] = [:]
+    private let musicBrainzRateLimiter: MusicBrainzRateLimiter
 
-    init(httpClient: any ArtistImageHTTPClient = URLSession.shared) {
+    init(
+        httpClient: any ArtistImageHTTPClient = URLSession.shared,
+        minimumMBRequestInterval: Duration = .seconds(1)
+    ) {
         self.httpClient = httpClient
+        musicBrainzRateLimiter = MusicBrainzRateLimiter(minimumInterval: minimumMBRequestInterval)
     }
 
     // MARK: - Public API
@@ -56,18 +193,107 @@ actor ExternalArtistImageResolver {
         }
     }
 
+    /// Deterministic concurrency-test seam.
+    func inFlightWaiterCount(forArtistMBID mbid: String) -> Int {
+        inflight["mbid:\(mbid.trimmingCharacters(in: .whitespacesAndNewlines))"]?
+            .waiters.count ?? 0
+    }
+
     // MARK: - Cache / dedup helper
 
     private func resolve(key: String, work: @escaping @Sendable () async -> URL?) async -> URL? {
-        if let cached = cache[key] { return cached }
-        if let existing = inflight[key] { return await existing.value }
+        guard !Task.isCancelled else { return nil }
+        if let cached = cache[key] { return cached.url }
+        let waiterID = UUID()
+        if let existing = inflight[key] {
+            return await waitForResolution(
+                key: key,
+                requestID: existing.id,
+                waiterID: waiterID
+            )
+        }
 
-        let task = Task<URL?, Never> { await work() }
-        inflight[key] = task
-        let result = await task.value
+        let requestID = UUID()
+        let task = Task<Void, Never> { [weak self] in
+            let result = await work()
+            let wasCancelled = Task.isCancelled
+            await self?.completeResolution(
+                key: key,
+                requestID: requestID,
+                result: result,
+                wasCancelled: wasCancelled
+            )
+        }
+        inflight[key] = InFlightEntry(id: requestID, task: task, waiters: [:])
+        return await waitForResolution(
+            key: key,
+            requestID: requestID,
+            waiterID: waiterID
+        )
+    }
+
+    private func waitForResolution(
+        key: String,
+        requestID: UUID,
+        waiterID: UUID
+    ) async -> URL? {
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard var entry = inflight[key], entry.id == requestID else {
+                    continuation.resume(returning: Task.isCancelled ? nil : cache[key]?.url)
+                    return
+                }
+                entry.waiters[waiterID] = continuation
+                inflight[key] = entry
+                if Task.isCancelled {
+                    cancelResolutionWaiter(
+                        key: key,
+                        requestID: requestID,
+                        waiterID: waiterID
+                    )
+                }
+            }
+        } onCancel: {
+            Task {
+                await self.cancelResolutionWaiter(
+                    key: key,
+                    requestID: requestID,
+                    waiterID: waiterID
+                )
+            }
+        }
+    }
+
+    private func cancelResolutionWaiter(
+        key: String,
+        requestID: UUID,
+        waiterID: UUID
+    ) {
+        guard var entry = inflight[key],
+              entry.id == requestID,
+              let continuation = entry.waiters.removeValue(forKey: waiterID) else { return }
+        continuation.resume(returning: nil)
+        guard entry.waiters.isEmpty else {
+            inflight[key] = entry
+            return
+        }
         inflight.removeValue(forKey: key)
-        cache[key] = result
-        return result
+        entry.task.cancel()
+    }
+
+    private func completeResolution(
+        key: String,
+        requestID: UUID,
+        result: URL?,
+        wasCancelled: Bool
+    ) {
+        guard let entry = inflight[key], entry.id == requestID else { return }
+        inflight.removeValue(forKey: key)
+        if !wasCancelled {
+            cache[key] = result.map(CachedResolution.hit) ?? .miss
+        }
+        let resolvedResult = wasCancelled ? nil : result
+        entry.waiters.values.forEach { $0.resume(returning: resolvedResult) }
     }
 
     // MARK: - Pipeline stages
@@ -83,8 +309,6 @@ actor ExternalArtistImageResolver {
         let normalized = name.lowercased().trimmingCharacters(in: .whitespaces)
             .folding(options: .diacriticInsensitive, locale: .current)
 
-        await enforceMBRateLimit()
-
         var components = URLComponents(string: "https://musicbrainz.org/ws/2/artist")!
         components.queryItems = [
             URLQueryItem(name: "query", value: "artist:\"\(name)\""),
@@ -98,6 +322,7 @@ actor ExternalArtistImageResolver {
         req.timeoutInterval = 10
 
         do {
+            try await musicBrainzRateLimiter.waitForPermit()
             let (data, _) = try await httpClient.data(for: req)
             let decoded = try JSONDecoder().decode(MBsearchResponse.self, from: data)
             let artists = decoded.artists ?? []
@@ -119,15 +344,16 @@ actor ExternalArtistImageResolver {
             }
             Logger.artistArtwork.debug("MB search no match for '\(name, privacy: .public)' (best score=\(artists.first?.score ?? 0, privacy: .public))")
             return nil
+        } catch is CancellationError {
+            return nil
         } catch {
+            guard !Task.isCancelled else { return nil }
             Logger.artistArtwork.warning("MB search failed for '\(name, privacy: .public)': \(error, privacy: .public)")
             return nil
         }
     }
 
     private func fetchWikidataID(mbid: String) async -> String? {
-        await enforceMBRateLimit()
-
         guard let reqURL = URL(string: "https://musicbrainz.org/ws/2/artist/\(mbid)?inc=url-rels&fmt=json") else {
             Logger.artistArtwork.warning("fetchWikidataID: could not build URL for MBID=\(mbid, privacy: .public)")
             return nil
@@ -137,6 +363,7 @@ actor ExternalArtistImageResolver {
         req.timeoutInterval = 10
 
         do {
+            try await musicBrainzRateLimiter.waitForPermit()
             let (data, _) = try await httpClient.data(for: req)
             let decoded = try JSONDecoder().decode(MBartistResponse.self, from: data)
             let wikidataRel = decoded.relations?.first {
@@ -150,7 +377,10 @@ actor ExternalArtistImageResolver {
             }
             Logger.artistArtwork.debug("MBID=\(mbid, privacy: .public) → Wikidata=\(qid, privacy: .public)")
             return qid
+        } catch is CancellationError {
+            return nil
         } catch {
+            guard !Task.isCancelled else { return nil }
             Logger.artistArtwork.warning("MB fetch failed for MBID=\(mbid, privacy: .public): \(error, privacy: .public)")
             return nil
         }
@@ -174,18 +404,13 @@ actor ExternalArtistImageResolver {
             }
             Logger.artistArtwork.debug("Wikidata=\(wikidataID, privacy: .public) P18=\(p18, privacy: .public)")
             return p18
+        } catch is CancellationError {
+            return nil
         } catch {
+            guard !Task.isCancelled else { return nil }
             Logger.artistArtwork.warning("Wikidata fetch failed for \(wikidataID, privacy: .public): \(error, privacy: .public)")
             return nil
         }
-    }
-
-    private func enforceMBRateLimit() async {
-        let elapsed = Date().timeIntervalSince(lastMBRequest)
-        if elapsed < 1.0 {
-            try? await Task.sleep(nanoseconds: UInt64((1.0 - elapsed) * 1_000_000_000))
-        }
-        lastMBRequest = Date()
     }
 }
 

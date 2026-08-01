@@ -82,6 +82,13 @@ final class CoverRevalidationStore {
         scheduleSave()
     }
 
+    /// Forgets one cover after an explicit invalidation so a later fetch establishes a fresh
+    /// `Last-Modified` baseline instead of comparing against metadata for deleted bytes.
+    func remove(id: String) {
+        guard entries.removeValue(forKey: id) != nil else { return }
+        scheduleSave()
+    }
+
     /// Forgets everything — used by the version-bump cache wipe so stale metadata never outlives the
     /// images it described.
     func removeAll() {

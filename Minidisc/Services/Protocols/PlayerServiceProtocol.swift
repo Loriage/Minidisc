@@ -24,7 +24,9 @@ protocol PlayerServiceProtocol: AnyObject, Sendable {
     func removeFromQueue(at index: Int) async
     func moveInQueue(fromIndex: Int, toIndex: Int) async
     func restoreSession() async
-    func handleNetworkRestored() async
+    /// Invalidates network-bound playback resources after a meaningful path transition.
+    /// Generation zero is the launch baseline and is intentionally ignored by recovery logic.
+    func handleNetworkPathChanged(_ event: NetworkPathEvent) async
     /// Starts live stream playback of an Internet Radio Station.
     /// Clears the current queue's playing state but preserves the queue itself.
     func playRadio(_ station: InternetRadioStation) async throws

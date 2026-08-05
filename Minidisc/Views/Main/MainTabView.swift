@@ -2,7 +2,6 @@ import SwiftUI
 
 struct MainTabView: View {
     @Environment(\.appContainer) private var container
-    @Environment(\.colorScheme) private var colorScheme
     @State private var searchText = ""
     @State private var searchPath = NavigationPath()
     @State private var homePath = NavigationPath()
@@ -34,9 +33,12 @@ struct MainTabView: View {
             }
     }
 
+    // The accessory deliberately inherits the colour scheme the system gives its glass container instead of
+    // being pinned to the app's: the system flips that glass light or dark against whatever is behind it (a
+    // very dark page gets LIGHT glass), and the tab bar's own labels follow it. Pinning the app appearance
+    // here is what left the mini player's labels black on a dark playlist while the tab items went white.
     private var miniPlayer: some View {
         MiniPlayerAccessoryView(showingFullPlayer: $showingFullPlayer)
-            .environment(\.colorScheme, colorScheme)
             .minidiscMatchedTransitionSource(id: fullPlayerZoomID, in: playerZoom)
     }
 

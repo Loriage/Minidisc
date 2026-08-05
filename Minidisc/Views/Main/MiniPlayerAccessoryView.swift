@@ -4,7 +4,6 @@ import SwiftSonic
 struct MiniPlayerAccessoryView: View {
     @Binding var showingFullPlayer: Bool
     @Environment(\.appContainer) private var container
-    @Environment(\.colorScheme) private var colorScheme
     @State private var dragOffset: CGFloat = 0
     @State private var isAnimatingSwipe = false
 
@@ -13,6 +12,11 @@ struct MiniPlayerAccessoryView: View {
 
     // System-adaptive content colours so they read on the accessory's translucent glass over ANY backdrop
     // (dark on the light Home, light in dark mode) — an explicit black/white can't track what's behind it.
+    //
+    // They resolve against the scheme the system hands the glass container, which is why nothing pins
+    // \.colorScheme here or in MainTabView: the system already flips that glass against the backdrop (a very
+    // dark page gets LIGHT glass, and the tab bar's own labels turn black with it). Pinning the app's
+    // appearance overrode that flip and left these labels black on a dark playlist.
     private var typoColor: Color { .primary }
     private var typoSecondaryColor: Color { .secondary }
 
@@ -21,7 +25,6 @@ struct MiniPlayerAccessoryView: View {
             MiniPlayerPlacementReader { isInline in
                 playerContent(playerState, isInline: isInline)
             }
-            .environment(\.colorScheme, colorScheme)
         }
     }
 

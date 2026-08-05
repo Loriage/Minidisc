@@ -18,6 +18,17 @@ final class PlaylistListViewModel {
     /// kept in their own section rather than mixed into `playlists`.
     var bestOfPlaylists: [ArtistBestOf] = []
 
+    /// The newest album in the library. Stands in for the virtual "Recently Added" playlist: its presence
+    /// says the playlist has something to show, and its cover dresses the row — both for one cheap call,
+    /// where counting the tracks would mean fetching every one of them.
+    var newestAlbum: AlbumID3?
+
+    /// Loads the stand-in for the derived "Recently Added" playlist. Non-throwing like `loadBestOf()`:
+    /// a server that can't answer should cost the row, not the playlist list.
+    func loadRecentlyAdded() async {
+        newestAlbum = (try? await libraryService.recentlyAddedAlbums(size: 1))?.first
+    }
+
     /// Loads the derived best-of playlists. Independent of `load()` and deliberately non-throwing: a server
     /// that fails or doesn't answer getStarred2 should cost the user the "Made For You" section, not the
     /// playlist list.

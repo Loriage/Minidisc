@@ -41,6 +41,7 @@ struct PlaylistListView: View {
             guard container?.serverState.isOnline == true else { return }
             await viewModel?.load()
             await viewModel?.loadBestOf()
+            await viewModel?.loadRecentlyAdded()
         }
         // Deleting a playlist from a detail surface posts this — reload so the list reflects it on return,
         // without a blanket `.onAppear` reload (which would re-fetch on every navigation).
@@ -70,7 +71,7 @@ struct PlaylistListView: View {
                 subtitle: LocalizedStringKey(error.displayMessage),
                 action: .init(label: "Retry") { Task { await vm.load() } }
             )
-        } else if vm.playlists.isEmpty && vm.bestOfPlaylists.isEmpty {
+        } else if vm.playlists.isEmpty && !hasDerivedPlaylists(vm) {
             EmptyStateView(
                 systemImage: "list.bullet",
                 title: "No Playlists",
@@ -78,10 +79,17 @@ struct PlaylistListView: View {
             )
         } else {
             List {
-                // Derived from the user's stars, not stored on the server — hence its own section rather
-                // than being mixed in with the real playlists below.
-                if !vm.bestOfPlaylists.isEmpty {
+                // Derived from the library and the user's stars, not stored on the server — hence their own
+                // section rather than being mixed in with the real playlists below.
+                if hasDerivedPlaylists(vm) {
                     Section("Made For You") {
+                        if let newest = vm.newestAlbum {
+                            NavigationLink(value: HomeDestination.recentlyAdded(
+                                coverArtId: newest.coverArt ?? newest.id
+                            )) {
+                                RecentlyAddedPlaylistRow(coverArtId: newest.coverArt ?? newest.id)
+                            }
+                        }
                         ForEach(vm.bestOfPlaylists) { bestOf in
                             NavigationLink(value: HomeDestination.artistBestOf(
                                 artistId: bestOf.artistId,
@@ -95,7 +103,7 @@ struct PlaylistListView: View {
                 }
                 // Label the server playlists only when there's a derived section above to tell them apart
                 // from — on its own the header would just repeat the screen title.
-                if vm.bestOfPlaylists.isEmpty {
+                if !hasDerivedPlaylists(vm) {
                     serverPlaylistRows(vm)
                 } else if !vm.playlists.isEmpty {
                     Section("Playlists") { serverPlaylistRows(vm) }
@@ -105,8 +113,14 @@ struct PlaylistListView: View {
             .refreshable {
                 await vm.load()
                 await vm.loadBestOf()
+                await vm.loadRecentlyAdded()
             }
         }
+    }
+
+    /// True when the "Made For You" section has anything in it — Recently Added, a best-of, or both.
+    private func hasDerivedPlaylists(_ vm: PlaylistListViewModel) -> Bool {
+        vm.newestAlbum != nil || !vm.bestOfPlaylists.isEmpty
     }
 
     @ViewBuilder
@@ -194,6 +208,34 @@ private struct OnlinePlaylistRow: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Derived "Recently Added" row
+
+/// The virtual "Recently Added" playlist, wearing the newest album's cover. No context menu, for the same
+/// reason as `BestOfPlaylistRow`: there is nothing on the server to rename, delete, pin or download.
+private struct RecentlyAddedPlaylistRow: View {
+    let coverArtId: String
+
+    var body: some View {
+        HStack(spacing: MinidiscSpacing.m) {
+            CoverArtView(id: coverArtId, size: 112)
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Recently Added")
+                    .font(.minidiscCellTitle)
+                    .lineLimit(1)
+                // No track count: knowing it would mean fetching every album's tracks just to draw a row.
+                Text("The newest tracks in your library")
+                    .font(.minidiscCaption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, MinidiscSpacing.xs)
     }
 }
 

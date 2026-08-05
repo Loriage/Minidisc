@@ -178,6 +178,8 @@ struct LibraryView: View {
                 ArtistDetailView(artist: ArtistID3(id: id, name: name, coverArt: coverArtId))
             case .artistBestOf(let id, let name, let coverArtId):
                 ArtistBestOfView(artistId: id, artistName: name, coverArtId: coverArtId)
+            case .recentlyAdded(let coverArtId):
+                RecentlyAddedView(coverArtId: coverArtId)
             case .offlineArtist(let artist):
                 OfflineArtistAlbumsView(artist: artist)
             case .offlineAlbum(let album):

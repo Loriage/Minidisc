@@ -31,6 +31,15 @@ nonisolated protocol LibraryServiceProtocol: AnyObject, Sendable {
     func unstar(songIds: [String], albumIds: [String], artistIds: [String]) async throws
     func getStarred2() async throws -> Starred2
     func recentlyAddedAlbums(size: Int) async throws -> [AlbumID3]
+
+    /// The tracks of the `albumLimit` most recently added albums, flattened into one list — the virtual
+    /// "Recently Added" playlist. Subsonic has no track-level recency endpoint, so this composes
+    /// `recentlyAddedAlbums` with one `album(id:)` per album (5 in flight at most, as `fetchAllTracks` does).
+    ///
+    /// An album that fails to load costs its own tracks and nothing else; only a failure of the album LIST
+    /// itself throws.
+    func recentlyAddedTracks(albumLimit: Int, trackLimit: Int) async throws -> [Song]
+
     func allAlbums() async throws -> [AlbumID3]
 
     /// One page of the library's songs via search3's empty-query wildcard — Navidrome's only whole-library
@@ -127,6 +136,48 @@ nonisolated protocol LibraryServiceProtocol: AnyObject, Sendable {
 extension LibraryServiceProtocol {
     func genres() async throws -> [Genre] { [] }
     func albumsByGenre(_ genre: String, size: Int) async throws -> [AlbumID3] { [] }
+
+    /// Composition of `recentlyAddedAlbums` + `album(id:)` — the only way to reach tracks on a plain Subsonic
+    /// server. Lives here rather than in `LibraryService` because there is nothing server-specific to
+    /// customise: any conformer that can list its newest albums and open one gets the playlist for free.
+    func recentlyAddedTracks(albumLimit: Int, trackLimit: Int) async throws -> [Song] {
+        let albums = try await recentlyAddedAlbums(size: albumLimit)
+        guard !albums.isEmpty else { return [] }
+        try Task.checkCancellation()
+
+        // Bounded to 5 concurrent album fetches — the same ceiling `fetchAllTracks` holds home servers to.
+        let maxInFlight = 5
+        var collected: [(index: Int, songs: [Song])] = []
+        var submitted = 0
+
+        await withTaskGroup(of: (Int, [Song]).self) { group in
+            while submitted < min(maxInFlight, albums.count) {
+                let index = submitted
+                let albumId = albums[index].id
+                group.addTask { (index, await self.tracks(ofAlbum: albumId)) }
+                submitted += 1
+            }
+            while let entry = await group.next() {
+                collected.append(entry)
+                // Stop feeding the group once cancelled, but keep draining it so the group exits cleanly.
+                guard !Task.isCancelled, submitted < albums.count else { continue }
+                let index = submitted
+                let albumId = albums[index].id
+                group.addTask { (index, await self.tracks(ofAlbum: albumId)) }
+                submitted += 1
+            }
+        }
+        try Task.checkCancellation()
+
+        return RecentlyAdded.tracks(from: collected, limit: trackLimit)
+    }
+
+    /// One album's tracks, best-effort: an album the server can't serve contributes nothing instead of
+    /// failing the whole list.
+    private func tracks(ofAlbum albumId: String) async -> [Song] {
+        guard let detail = try? await album(id: albumId) else { return [] }
+        return detail.song ?? []
+    }
 
     /// Default composition of `instantMix` + `similarBackfillQueue` — conformers get the endless
     /// behaviour without changes, mirroring how Instant Mix itself degrades without a similarity

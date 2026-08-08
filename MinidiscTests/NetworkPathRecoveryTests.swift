@@ -150,3 +150,52 @@ struct PlaybackNetworkRecoveryPolicyTests {
         ) == .armAutomaticRecovery)
     }
 }
+
+@Suite("Playback network recovery retry budget")
+struct PlaybackNetworkRecoveryRetryBudgetTests {
+    @Test("recovery is bounded to three attempts for one track and path")
+    func boundedAttempts() {
+        var budget = PlaybackNetworkRecoveryAttemptBudget()
+
+        #expect(budget.beginAttempt(trackID: "track-a", pathGeneration: 4) == 1)
+        #expect(budget.beginAttempt(trackID: "track-a", pathGeneration: 4) == 2)
+        #expect(budget.beginAttempt(trackID: "track-a", pathGeneration: 4) == 3)
+        #expect(!budget.canAttempt(trackID: "track-a", pathGeneration: 4))
+        #expect(budget.beginAttempt(trackID: "track-a", pathGeneration: 4) == nil)
+    }
+
+    @Test("a new path generation receives a fresh budget")
+    func pathChangeResetsBudget() {
+        var budget = PlaybackNetworkRecoveryAttemptBudget()
+        for _ in 0..<PlaybackNetworkRecoveryAttemptBudget.maximumAttempts {
+            _ = budget.beginAttempt(trackID: "track-a", pathGeneration: 4)
+        }
+
+        #expect(budget.canAttempt(trackID: "track-a", pathGeneration: 5))
+        #expect(budget.beginAttempt(trackID: "track-a", pathGeneration: 5) == 1)
+    }
+
+    @Test("a new track receives a fresh budget")
+    func trackChangeResetsBudget() {
+        var budget = PlaybackNetworkRecoveryAttemptBudget()
+        for _ in 0..<PlaybackNetworkRecoveryAttemptBudget.maximumAttempts {
+            _ = budget.beginAttempt(trackID: "track-a", pathGeneration: 4)
+        }
+
+        #expect(budget.canAttempt(trackID: "track-b", pathGeneration: 4))
+        #expect(budget.beginAttempt(trackID: "track-b", pathGeneration: 4) == 1)
+    }
+
+    @Test("explicit Play can reset an exhausted budget")
+    func explicitReset() {
+        var budget = PlaybackNetworkRecoveryAttemptBudget()
+        for _ in 0..<PlaybackNetworkRecoveryAttemptBudget.maximumAttempts {
+            _ = budget.beginAttempt(trackID: "track-a", pathGeneration: 4)
+        }
+
+        budget.reset()
+
+        #expect(budget.attempts == 0)
+        #expect(budget.beginAttempt(trackID: "track-a", pathGeneration: 4) == 1)
+    }
+}

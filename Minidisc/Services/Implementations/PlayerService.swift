@@ -2928,6 +2928,9 @@ actor PlayerService: PlayerServiceProtocol {
             }
         case .buffering, .paused:
             playbackProgressTracker.breakContinuity()
+            if newState == .paused {
+                await resumeAfterNetworkPauseIfNeeded(playbackToken: playbackToken)
+            }
             await armRecoveryForUnexpectedEngineStall(playbackToken: playbackToken)
         case .stopped:
             playbackProgressTracker.breakContinuity()
@@ -2971,6 +2974,41 @@ actor PlayerService: PlayerServiceProtocol {
                 }
             }
         }
+    }
+
+    /// AVPlayer can report `.paused` for a remote item while its connection is being rebound to a
+    /// newly available network interface. The engine's playback intent is still active in that case,
+    /// so resume immediately and let the recovery probe handle a genuinely unavailable stream.
+    /// Explicit user pauses are excluded because they update `state.playbackState` before the engine
+    /// callback reaches this actor.
+    private func resumeAfterNetworkPauseIfNeeded(
+        playbackToken: AudioEnginePlaybackToken
+    ) async {
+        guard currentSourceIsRemoteStream,
+              latestNetworkPathEvent.isOnline else { return }
+        let snapshot = await MainActor.run {
+            (
+                playbackState: state.playbackState,
+                trackID: state.currentTrack?.id,
+                duration: state.duration
+            )
+        }
+        guard isCurrentEngineEvent(playbackToken),
+              snapshot.playbackState == .playing,
+              let trackID = snapshot.trackID,
+              networkReloadRequiredTrackID == trackID else { return }
+
+        let progress = engine.progress
+        if snapshot.duration > 0,
+           progress >= snapshot.duration - 1.5 {
+            // A pause at the end belongs to the normal queue transition, not network recovery.
+            return
+        }
+
+        engine.resume()
+        Logger.player.info(
+            "[NETWORK-RECOVERY] resumed transient pause track='\(trackID, privacy: .public)' at \(progress, format: .fixed(precision: 1))s"
+        )
     }
 
     private func armRecoveryForUnexpectedEngineStall(

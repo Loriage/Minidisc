@@ -28,6 +28,7 @@ final class NowPlayingCenterPresenter {
         let center = MPRemoteCommandCenter.shared()
 
         register(center.playCommand) { [weak playerService] _ in
+            Logger.nowPlaying.info("[AUDIO-INTENT] play origin=remote-command")
             Task(priority: .userInitiated) {
                 await playerService?.resume()
             }
@@ -35,6 +36,7 @@ final class NowPlayingCenterPresenter {
         }
 
         register(center.pauseCommand) { [weak playerService] _ in
+            Logger.nowPlaying.info("[AUDIO-INTENT] pause origin=remote-command")
             Task(priority: .userInitiated) {
                 await playerService?.pause()
             }
@@ -42,6 +44,7 @@ final class NowPlayingCenterPresenter {
         }
 
         register(center.togglePlayPauseCommand) { [weak playerService] _ in
+            Logger.nowPlaying.info("[AUDIO-INTENT] toggle origin=remote-command")
             Task(priority: .userInitiated) {
                 await playerService?.togglePlayPause()
             }

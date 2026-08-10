@@ -203,7 +203,6 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         applyDeckVolumes()
         beginPlaying()
         installReplayGainTapIfNeeded(context: activeContext, trackID: trackID)
-        installPeriodicObserver(on: activePlayer)
         return playbackToken
     }
 
@@ -235,6 +234,11 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         guard currentItem != nil else { return }
         if trackID == preloadedTrackID {
             pendingOverlap = crossfadeDuration
+            if crossfadeDuration > 0 {
+                installPeriodicObserver(on: activePlayer)
+            } else {
+                removePeriodicObserver()
+            }
             return
         }
         clearPreloadedDeck()
@@ -246,6 +250,11 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         preloadedTrackID = trackID
         preloadedPlaybackToken = makePlaybackToken()
         pendingOverlap = crossfadeDuration
+        if crossfadeDuration > 0 {
+            installPeriodicObserver(on: activePlayer)
+        } else {
+            removePeriodicObserver()
+        }
         standbyContext.gain = pow(10, replayGainDB / 20)
         applyDeckVolumes()
         installReplayGainTapIfNeeded(context: standbyContext, trackID: trackID)
@@ -401,9 +410,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     /// Watches the active deck's clock; when the remaining time enters the overlap window, starts
     /// the blend.
     private func installPeriodicObserver(on player: AVPlayer) {
-        if let periodicToken, let periodicOwner {
-            periodicOwner.removeTimeObserver(periodicToken)
-        }
+        removePeriodicObserver()
         periodicOwner = player
         periodicToken = player.addPeriodicTimeObserver(
             forInterval: CMTime(value: 1, timescale: 4),
@@ -411,6 +418,14 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         ) { [weak self] _ in
             self?.overlapTick()
         }
+    }
+
+    private func removePeriodicObserver() {
+        if let periodicToken, let periodicOwner {
+            periodicOwner.removeTimeObserver(periodicToken)
+        }
+        periodicToken = nil
+        periodicOwner = nil
     }
 
     func setTrackDuration(_ seconds: Double) {
@@ -633,10 +648,11 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
             activePlayer.play()
         }
         startWatchdog()
-        installPeriodicObserver(on: activePlayer)
+        removePeriodicObserver()
     }
 
     private func resetDecks() {
+        removePeriodicObserver()
         overlapTimer?.cancel()
         overlapTimer = nil
         isOverlapping = false
@@ -670,6 +686,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
 
     /// Clears only the standby role. Caller holds `lock`.
     private func clearPreloadedDeck() {
+        removePeriodicObserver()
         standbyStatusObserver?.invalidate()
         standbyStatusObserver = nil
         standbyPlayer.pause()

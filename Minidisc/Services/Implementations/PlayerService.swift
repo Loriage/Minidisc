@@ -35,6 +35,13 @@ private nonisolated enum AudioSessionInterruptionEvent: Sendable {
     }
 }
 
+/// Value-only route information extracted on NotificationCenter's delivery queue.
+/// `AVAudioSessionPortDescription` itself must not cross into the PlayerService actor.
+private nonisolated struct AudioRouteOutputSnapshot: Sendable, Equatable {
+    let uid: String
+    let portType: AVAudioSession.Port
+}
+
 nonisolated enum NetworkPlaybackRecoveryAction: Equatable, Sendable {
     /// No current finite network stream is affected.
     case none
@@ -42,6 +49,12 @@ nonisolated enum NetworkPlaybackRecoveryAction: Equatable, Sendable {
     case reloadOnResume
     /// The stream was expected to be active; a stalled/error callback may rebuild it automatically.
     case armAutomaticRecovery
+}
+
+nonisolated enum NetworkPlaybackProgressValidationOutcome: Equatable, Sendable {
+    case validated
+    case retry
+    case deferToEndOfTrack
 }
 
 /// Bounds automatic stream rebuilds without permanently wedging recovery after one early failure.
@@ -80,6 +93,16 @@ nonisolated struct PlaybackNetworkRecoveryAttemptBudget: Sendable {
 }
 
 actor PlayerService: PlayerServiceProtocol {
+    private struct PendingSystemResume {
+        let trackID: String
+        let playbackGeneration: UInt64
+        let transportIntentGeneration: UInt64
+        let startedAt: Date
+        var requiresPersonalRoute: Bool
+        var expectedPersonalRouteUIDs: Set<String>
+        var expectedPersonalPortTypes: Set<AVAudioSession.Port>
+    }
+
     nonisolated let state: PlayerState
 
     private let mediaResolver: any MediaResolverProtocol
@@ -109,8 +132,11 @@ actor PlayerService: PlayerServiceProtocol {
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
     private var sessionActivationRetryTask: Task<Void, Never>?
-    /// Prevents automatic resume on the built-in speaker after a route disconnect.
-    private var interruptionWasRouteDisconnect = false
+    private var isAudioSessionInterrupted = false
+    /// Keeps user playback intent distinct from a temporary iOS suspension. It is generation-bound,
+    /// so a later user pause, stop, skip or Play always wins over an automatic resume.
+    private var pendingSystemResume: PendingSystemResume?
+    private nonisolated static let personalRouteReconnectGrace: TimeInterval = 10
 
     private var endOfTrackEventsInProgress: Set<AudioEnginePlaybackToken> = []
     /// Makes resume restart at track zero after the queue completed.
@@ -124,6 +150,9 @@ actor PlayerService: PlayerServiceProtocol {
         return Float(UserDefaults.standard.double(forKey: "minidisc.lastVolume"))
     }
     private var positionSaveTask: Task<Void, Never>?
+    /// Last elapsed position sent to the system Now Playing center. Position updates are intentionally
+    /// throttled: the progress UI remains at 2 Hz, while lock-screen metadata only needs 1 Hz.
+    private var lastNowPlayingPushElapsed: TimeInterval?
     private var subsonicPlayingNowTask: Task<Void, Never>?
     private var playingNowTask: Task<Void, Never>?
     private var cacheDownloadTask: Task<Void, Never>?
@@ -135,9 +164,11 @@ actor PlayerService: PlayerServiceProtocol {
     private var latestNetworkPathEvent: NetworkPathEvent = .initial
     /// Track-specific marker: a Bool could accidentally survive a skip and rebuild the wrong item.
     private var networkReloadRequiredTrackID: String?
-    /// Only a rebuilt item's `.playing` callback may clear the network marker. The old buffered item
-    /// can also emit `.playing` after a path change and must not falsely validate the new route.
+    /// A rebuilt item is not trusted on its first `.playing`: Wi-Fi can be `satisfied` before the
+    /// server is actually reachable. The marker clears only after its playhead advances post-seek.
     private var networkRecoveryValidationToken: AudioEnginePlaybackToken?
+    private var networkRecoveryValidationTask: Task<Void, Never>?
+    private var networkRecoveryValidationGeneration: UInt64 = 0
     private var networkRecoveryTask: Task<Void, Never>?
     private var networkRecoveryTaskGeneration: UInt64 = 0
     /// Automatic retries are bounded per track/path. Manual Play resets the budget and remains
@@ -290,6 +321,28 @@ actor PlayerService: PlayerServiceProtocol {
         }
     }
 
+    nonisolated static func shouldReassertPlaybackOnOnlinePath(
+        sourceIsRemoteStream: Bool,
+        isOnline: Bool,
+        playbackState: PlaybackState,
+        position: TimeInterval,
+        duration: TimeInterval
+    ) -> Bool {
+        guard sourceIsRemoteStream, isOnline else { return false }
+        guard playbackState == .playing else { return false }
+        return duration <= 0 || position < duration - 1.5
+    }
+
+    nonisolated static func networkProgressValidationOutcome(
+        baseline: TimeInterval,
+        current: TimeInterval,
+        duration: TimeInterval
+    ) -> NetworkPlaybackProgressValidationOutcome {
+        if current > baseline + 0.1 { return .validated }
+        if duration > 0, current >= duration - 1.5 { return .deferToEndOfTrack }
+        return .retry
+    }
+
     private var currentSourceIsRemoteStream: Bool {
         if case .stream = currentSource { return true }
         return false
@@ -306,6 +359,8 @@ actor PlayerService: PlayerServiceProtocol {
         let generation = playbackGeneration
         let transportGeneration = transportIntentGeneration
         cancelNetworkRecoveryProbe()
+        cancelNetworkRecoveryValidation()
+        pendingSystemResume = nil
         let previousEnginePlayback = activeEnginePlayback
         defer {
             // Resolution can fail before the engine is replaced. Keep the still-audible item eligible
@@ -481,8 +536,10 @@ actor PlayerService: PlayerServiceProtocol {
         liveStreamStallTask?.cancel()
         liveStreamStallTask = nil
         currentSource = source
+        cancelNetworkRecoveryProbe()
+        cancelNetworkRecoveryValidation()
         networkReloadRequiredTrackID = nil
-        networkRecoveryValidationToken = nil
+        lastNowPlayingPushElapsed = nil
         networkRecoveryAttemptBudget.reset()
         pendingRestoreInfo = nil
         // Starting a new track can interrupt a muted parking play (end-of-queue rewind)
@@ -641,8 +698,10 @@ actor PlayerService: PlayerServiceProtocol {
         let generation = playbackGeneration
         let transportGeneration = transportIntentGeneration
         cancelNetworkRecoveryProbe()
+        cancelNetworkRecoveryValidation()
+        pendingSystemResume = nil
         networkReloadRequiredTrackID = nil
-        networkRecoveryValidationToken = nil
+        lastNowPlayingPushElapsed = nil
         networkRecoveryAttemptBudget.reset()
         let previousEnginePlayback = activeEnginePlayback
         defer {
@@ -715,6 +774,9 @@ actor PlayerService: PlayerServiceProtocol {
         liveStreamStallTask?.cancel()
         liveStreamStallTask = nil
         currentSource = source
+        cancelNetworkRecoveryProbe()
+        cancelNetworkRecoveryValidation()
+        networkReloadRequiredTrackID = nil
         pendingRestoreInfo = nil
         // Same recovery as startPlayback(): a radio start can interrupt a muted
         // parking play — cancel the deferred pause and unmute before playing.
@@ -1319,7 +1381,10 @@ actor PlayerService: PlayerServiceProtocol {
         transportIntentGeneration &+= 1
         let transportGeneration = transportIntentGeneration
         cancelNetworkRecoveryProbe()
+        cancelNetworkRecoveryValidation()
+        pendingSystemResume = nil
         isRestoringSession = false
+        Logger.player.info("[AUDIO-INTENT] pause origin=user-or-remote")
 
         await waitForTransitionCommit()
         guard transportGeneration == transportIntentGeneration, !Task.isCancelled else { return }
@@ -1347,6 +1412,9 @@ actor PlayerService: PlayerServiceProtocol {
         transportIntentGeneration &+= 1
         let transportGeneration = transportIntentGeneration
         cancelNetworkRecoveryProbe()
+        cancelNetworkRecoveryValidation()
+        pendingSystemResume = nil
+        Logger.player.info("[AUDIO-INTENT] play origin=user-or-system")
         // An explicit Play is a fresh user intent and must remain able to recover even when the
         // previous path already exhausted its automatic retry budget.
         networkRecoveryAttemptBudget.reset()
@@ -1497,8 +1565,9 @@ actor PlayerService: PlayerServiceProtocol {
         let generation = playbackGeneration
         let transportGeneration = transportIntentGeneration
         cancelNetworkRecoveryProbe()
+        cancelNetworkRecoveryValidation()
+        pendingSystemResume = nil
         networkReloadRequiredTrackID = nil
-        networkRecoveryValidationToken = nil
         networkRecoveryAttemptBudget.reset()
         await waitForTransitionCommit()
         guard isCurrentPlaybackIntent(
@@ -2060,7 +2129,7 @@ actor PlayerService: PlayerServiceProtocol {
         stopProgressTimer()
         currentSource = source
         networkReloadRequiredTrackID = nil
-        networkRecoveryValidationToken = nil
+        cancelNetworkRecoveryValidation()
         networkRecoveryAttemptBudget.reset()
         // Seek to saved position on first play; pause flag cleared in resume() when user
         // explicitly starts playback, or kept if user hasn't tapped play yet.
@@ -2138,7 +2207,7 @@ actor PlayerService: PlayerServiceProtocol {
 
         latestNetworkPathEvent = event
         cancelNetworkRecoveryProbe()
-        networkRecoveryValidationToken = nil
+        cancelNetworkRecoveryValidation()
         cancelPendingPrefetch()
         cancelPendingCacheDownload()
         // Drop the standby item immediately. It may be `.readyToPlay` while its HTTP connection is
@@ -2152,6 +2221,7 @@ actor PlayerService: PlayerServiceProtocol {
                 track: state.currentTrack,
                 playbackState: state.playbackState,
                 position: state.position,
+                duration: state.duration,
                 isAvailable: state.isPlaybackAvailable
             )
         }
@@ -2201,6 +2271,22 @@ actor PlayerService: PlayerServiceProtocol {
         case .error:
             armNetworkRecoveryProbe(trackID: track.id, delay: .seconds(1), requireStall: false)
         case .playing:
+            // The engine may have emitted `.paused` while the path was offline. NWPath returning
+            // online does not guarantee another KVO callback, so explicitly reassert the still-live
+            // user intent now. `play()` is idempotent if buffered audio never stopped.
+            if Self.shouldReassertPlaybackOnOnlinePath(
+                sourceIsRemoteStream: sourceIsRemote,
+                isOnline: event.isOnline,
+                playbackState: snapshot.playbackState,
+                position: snapshot.position,
+                duration: snapshot.duration
+            ) {
+                configureAudioSessionIfNeeded()
+                engine.resume()
+                Logger.player.info(
+                    "[NETWORK-RECOVERY] reasserted playback on online path track='\(track.id, privacy: .public)'"
+                )
+            }
             // A satisfied Wi-Fi path can be published before DNS, the proxy, or the media server is
             // usable. Keep the audible item and rebuild only if its playhead actually stops moving.
             armNetworkRecoveryProbe(trackID: track.id, delay: .seconds(2), requireStall: true)
@@ -2214,6 +2300,116 @@ actor PlayerService: PlayerServiceProtocol {
         networkRecoveryTask?.cancel()
         networkRecoveryTask = nil
         networkRecoveryTaskGeneration &+= 1
+    }
+
+    private func cancelNetworkRecoveryValidation() {
+        networkRecoveryValidationTask?.cancel()
+        networkRecoveryValidationTask = nil
+        networkRecoveryValidationGeneration &+= 1
+        networkRecoveryValidationToken = nil
+    }
+
+    /// A transient `.playing` is not enough to prove that a rebuilt HTTP item survived the new
+    /// interface. Validate actual playhead movement after the restore seek before clearing the marker.
+    private func armNetworkRecoveryValidation(
+        playbackToken: AudioEnginePlaybackToken,
+        trackID: String
+    ) {
+        guard networkRecoveryValidationTask == nil,
+              networkRecoveryValidationToken == playbackToken,
+              networkReloadRequiredTrackID == trackID else { return }
+
+        let validationGeneration = networkRecoveryValidationGeneration
+        let pathGeneration = latestNetworkPathEvent.generation
+        let expectedPlaybackGeneration = playbackGeneration
+        let expectedTransportGeneration = transportIntentGeneration
+        let baselineProgress = engine.progress
+
+        networkRecoveryValidationTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(2))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, let self else { return }
+            await self.performNetworkRecoveryValidation(
+                playbackToken: playbackToken,
+                trackID: trackID,
+                pathGeneration: pathGeneration,
+                expectedPlaybackGeneration: expectedPlaybackGeneration,
+                expectedTransportGeneration: expectedTransportGeneration,
+                validationGeneration: validationGeneration,
+                baselineProgress: baselineProgress
+            )
+        }
+    }
+
+    private func performNetworkRecoveryValidation(
+        playbackToken: AudioEnginePlaybackToken,
+        trackID: String,
+        pathGeneration: UInt64,
+        expectedPlaybackGeneration: UInt64,
+        expectedTransportGeneration: UInt64,
+        validationGeneration: UInt64,
+        baselineProgress: TimeInterval
+    ) async {
+        defer {
+            if validationGeneration == networkRecoveryValidationGeneration {
+                networkRecoveryValidationTask = nil
+            }
+        }
+        guard !Task.isCancelled,
+              validationGeneration == networkRecoveryValidationGeneration,
+              pathGeneration == latestNetworkPathEvent.generation,
+              latestNetworkPathEvent.isOnline,
+              expectedPlaybackGeneration == playbackGeneration,
+              expectedTransportGeneration == transportIntentGeneration,
+              networkRecoveryValidationToken == playbackToken,
+              networkReloadRequiredTrackID == trackID,
+              isCurrentEngineEvent(playbackToken) else { return }
+
+        let snapshot = await MainActor.run {
+            (trackID: state.currentTrack?.id, playbackState: state.playbackState, duration: state.duration)
+        }
+        guard !Task.isCancelled,
+              validationGeneration == networkRecoveryValidationGeneration,
+              isCurrentEngineEvent(playbackToken),
+              snapshot.trackID == trackID else { return }
+
+        guard snapshot.playbackState == .playing else {
+            // User/system pause wins. Keep the track marker so a later explicit Play opens a fresh item.
+            networkRecoveryValidationToken = nil
+            return
+        }
+
+        let progress = engine.progress
+        switch Self.networkProgressValidationOutcome(
+            baseline: baselineProgress,
+            current: progress,
+            duration: snapshot.duration
+        ) {
+        case .validated:
+            networkRecoveryValidationToken = nil
+            networkReloadRequiredTrackID = nil
+            networkRecoveryAttemptBudget.reset()
+            cancelNetworkRecoveryProbe()
+            Logger.player.info(
+                "[NETWORK-RECOVERY] rebuilt item validated by progress track='\(trackID, privacy: .public)'"
+            )
+            return
+        case .deferToEndOfTrack:
+            // Let the normal EOF transition own a clock parked at the end.
+            networkRecoveryValidationToken = nil
+            return
+        case .retry:
+            break
+        }
+
+        networkRecoveryValidationToken = nil
+        Logger.player.warning(
+            "[NETWORK-RECOVERY] rebuilt item did not advance track='\(trackID, privacy: .public)' — retrying"
+        )
+        armNetworkRecoveryProbe(trackID: trackID, delay: .milliseconds(250), requireStall: false)
     }
 
     private func armNetworkRecoveryProbe(
@@ -2308,8 +2504,11 @@ actor PlayerService: PlayerServiceProtocol {
 
         let currentProgress = engine.progress
         if requireStall, currentProgress > baselineProgress + 0.1 {
+            cancelNetworkRecoveryValidation()
+            networkReloadRequiredTrackID = nil
+            networkRecoveryAttemptBudget.reset()
             Logger.player.debug(
-                "[NETWORK-RECOVERY] probe recovered without reload track='\(trackID, privacy: .public)'"
+                "[NETWORK-RECOVERY] existing item validated on new path track='\(trackID, privacy: .public)'"
             )
             return
         }
@@ -2358,6 +2557,7 @@ actor PlayerService: PlayerServiceProtocol {
         stopProgressTimer()
         stopPositionSaveTimer()
         cancelPendingPrefetch()
+        cancelNetworkRecoveryValidation()
         engine.cancelPreload()
 
         let resumePosition = max(currentProgress, snapshot.position)
@@ -2405,7 +2605,7 @@ actor PlayerService: PlayerServiceProtocol {
         stopPositionSaveTimer()
         positionSaveTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(5))
+                try? await Task.sleep(for: .seconds(15))
                 guard !Task.isCancelled, let self else { break }
                 await self.performPositionSaveTick()
             }
@@ -2763,6 +2963,28 @@ actor PlayerService: PlayerServiceProtocol {
         return portTypes.contains(where: { personal.contains($0) })
     }
 
+    /// An ambiguous route notification must never manufacture a user pause. Suspend only when a
+    /// known personal output disappeared and iOS actually fell back to a non-personal route.
+    nonisolated static func shouldSuspendForRouteDisconnect(
+        previous: [AVAudioSession.Port],
+        current: [AVAudioSession.Port]
+    ) -> Bool {
+        !previous.isEmpty
+            && isPersonalAudioRoute(portTypes: previous)
+            && !isPersonalAudioRoute(portTypes: current)
+    }
+
+    /// Automatic route recovery is allowed only on a personal output compatible with the one that
+    /// disappeared. An explicit Play remains available if the user deliberately wants the speaker.
+    nonisolated static func canResumeOnPersonalRoute(
+        expected: [AVAudioSession.Port],
+        current: [AVAudioSession.Port]
+    ) -> Bool {
+        guard isPersonalAudioRoute(portTypes: current) else { return false }
+        let expectedPersonal = expected.filter { isPersonalAudioRoute(portTypes: [$0]) }
+        return expectedPersonal.isEmpty || current.contains(where: expectedPersonal.contains)
+    }
+
     // MARK: - Play-time accumulator
 
     private func accumulatePlaybackProgress(_ progress: TimeInterval) async {
@@ -2875,56 +3097,54 @@ actor PlayerService: PlayerServiceProtocol {
         guard isCurrentEngineEvent(playbackToken) else { return }
         switch newState {
         case .playing:
-            if networkRecoveryValidationToken == playbackToken {
-                networkRecoveryValidationToken = nil
-                let trackID = await MainActor.run { state.currentTrack?.id }
-                guard isCurrentEngineEvent(playbackToken) else { return }
-                if networkReloadRequiredTrackID == trackID {
-                    networkReloadRequiredTrackID = nil
-                    networkRecoveryAttemptBudget.reset()
-                    cancelNetworkRecoveryProbe()
+            if let info = pendingRestoreInfo {
+                pendingRestoreInfo = nil
+                // Seek while the engine is running. AVPlayer may still accept the request while its
+                // seekable ranges are being populated, so isSeekable is diagnostic rather than a gate.
+                if info.seekTime > 1 {
+                    let succeeded = await engine.seek(to: info.seekTime)
+                    guard isCurrentEngineEvent(playbackToken) else { return }
                     Logger.player.info(
-                        "[NETWORK-RECOVERY] rebuilt item validated track='\(trackID ?? "unknown", privacy: .public)'"
+                        "[RESTORE] seek target=\(info.seekTime, format: .fixed(precision: 3))s completed=\(succeeded, privacy: .public) landed=\(self.engine.progress, format: .fixed(precision: 3))s"
                     )
+                    playbackProgressTracker.setBaseline(engine.progress)
                 }
-            }
-            guard let info = pendingRestoreInfo else {
-                playbackProgressTracker.establishBaselineIfNeeded(engine.progress)
-                break
-            }
-            pendingRestoreInfo = nil
-            // Seek while the engine is running. AVPlayer may still accept the request while its
-            // seekable ranges are being populated, so isSeekable is diagnostic rather than a gate.
-            if info.seekTime > 1 {
-                let succeeded = await engine.seek(to: info.seekTime)
-                guard isCurrentEngineEvent(playbackToken) else { return }
-                Logger.player.info(
-                    "[RESTORE] seek target=\(info.seekTime, format: .fixed(precision: 3))s completed=\(succeeded, privacy: .public) landed=\(self.engine.progress, format: .fixed(precision: 3))s"
-                )
-                playbackProgressTracker.setBaseline(engine.progress)
-            }
-            guard info.pause else {
+                if info.pause {
+                    // Give processSeekTime() 150 ms to clear the render buffer and reopen
+                    // the HTTP connection at the correct byte offset before pausing.
+                    // Stored so resume() can cancel the deferred pause via task.cancel().
+                    restorePauseTask = Task {
+                        try? await Task.sleep(for: .milliseconds(150))
+                        guard !Task.isCancelled, self.isCurrentEngineEvent(playbackToken) else { return }
+                        self.restorePauseTask = nil
+                        self.engine.pause()
+                        self.engine.volume = self.restoredVolume
+                        self.isMutedForRestore = false
+                        await MainActor.run { self.state.playbackState = .paused }
+                        self.stopProgressTimer()
+                        self.isRestoringSession = false
+                        Logger.player.info("[RESTORE] seek landed — paused at \(self.engine.progress, format: .fixed(precision: 1))s")
+                    }
+                    break
+                }
                 if isMutedForRestore {
                     engine.volume = restoredVolume
                     isMutedForRestore = false
                 }
                 isRestoringSession = false
-                break
+            } else {
+                playbackProgressTracker.establishBaselineIfNeeded(engine.progress)
             }
-            // Give processSeekTime() 150 ms to clear the render buffer and reopen
-            // the HTTP connection at the correct byte offset before pausing.
-            // Stored so resume() can cancel the deferred pause via task.cancel().
-            restorePauseTask = Task {
-                try? await Task.sleep(for: .milliseconds(150))
-                guard !Task.isCancelled, self.isCurrentEngineEvent(playbackToken) else { return }
-                self.restorePauseTask = nil
-                self.engine.pause()
-                self.engine.volume = self.restoredVolume
-                self.isMutedForRestore = false
-                await MainActor.run { self.state.playbackState = .paused }
-                self.stopProgressTimer()
-                self.isRestoringSession = false
-                Logger.player.info("[RESTORE] seek landed — paused at \(self.engine.progress, format: .fixed(precision: 1))s")
+
+            if networkRecoveryValidationToken == playbackToken {
+                let trackID = await MainActor.run { state.currentTrack?.id }
+                guard isCurrentEngineEvent(playbackToken) else { return }
+                if let trackID, networkReloadRequiredTrackID == trackID {
+                    armNetworkRecoveryValidation(
+                        playbackToken: playbackToken,
+                        trackID: trackID
+                    )
+                }
             }
         case .buffering, .paused:
             playbackProgressTracker.breakContinuity()
@@ -2936,7 +3156,7 @@ actor PlayerService: PlayerServiceProtocol {
             playbackProgressTracker.breakContinuity()
         case .error:
             if networkRecoveryValidationToken == playbackToken {
-                networkRecoveryValidationToken = nil
+                cancelNetworkRecoveryValidation()
             }
             let engineSnapshot = await MainActor.run {
                 (isLive: state.isLiveStream, trackID: state.currentTrack?.id)
@@ -3033,7 +3253,7 @@ actor PlayerService: PlayerServiceProtocol {
     ) async {
         guard isCurrentEngineEvent(playbackToken) else { return }
         if networkRecoveryValidationToken == playbackToken {
-            networkRecoveryValidationToken = nil
+            cancelNetworkRecoveryValidation()
         }
         let engineSnapshot = await MainActor.run {
             (isLive: state.isLiveStream, trackID: state.currentTrack?.id)
@@ -3225,6 +3445,12 @@ actor PlayerService: PlayerServiceProtocol {
         }
         guard case .playing = playbackState, !isLiveStream, let songId else { return }
         guard elapsed >= 0, duration > 0 else { return }
+        if let last = lastNowPlayingPushElapsed,
+           elapsed >= last,
+           elapsed - last < 1.0 {
+            return
+        }
+        lastNowPlayingPushElapsed = elapsed
         await nowPlayingService?.pushPosition(
             elapsed: elapsed,
             rate: 1.0,
@@ -3308,11 +3534,18 @@ extension PlayerService {
                 guard let self else { return }
                 guard let reason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
                       let changeReason = AVAudioSession.RouteChangeReason(rawValue: reason) else { return }
-                // AVAudioSessionRouteDescription is not Sendable — extract the previous
-                // route's port types here on the main queue before hopping to the actor.
+                // AVAudioSessionRouteDescription is not Sendable — extract value-only route data
+                // here on the main queue before hopping to the actor.
                 let previousOutputs = (notification.userInfo?[AVAudioSessionRouteChangePreviousRouteKey]
-                    as? AVAudioSessionRouteDescription)?.outputs.map(\.portType) ?? []
-                Task { await self.handleRouteChange(changeReason, previousOutputs: previousOutputs) }
+                    as? AVAudioSessionRouteDescription)?.outputs.map {
+                        AudioRouteOutputSnapshot(uid: $0.uid, portType: $0.portType)
+                    } ?? []
+                Task {
+                    await self.handleRouteChange(
+                        changeReason,
+                        previousRouteOutputs: previousOutputs
+                    )
+                }
             }
         }
     }
@@ -3320,28 +3553,28 @@ extension PlayerService {
     private func handleAudioSessionInterruption(_ event: AudioSessionInterruptionEvent) async {
         switch event {
         case .began(let routeDisconnected):
-            // Record route-disconnect interruptions (AirPods in case) before any early
-            // return — .ended must never auto-resume those onto the built-in speaker.
-            interruptionWasRouteDisconnect = routeDisconnected
-            let isPlaying = await MainActor.run { state.playbackState == .playing }
-            guard isPlaying else { return }
-            playbackProgressTracker.breakContinuity()
-            engine.pause()
-            await MainActor.run { state.playbackState = .paused }
-            stopProgressTimer()
-            await saveSession()
-            Logger.player.info("[INTERRUPTION] began — paused playback")
+            isAudioSessionInterrupted = true
+            await suspendPlaybackForSystem(
+                reason: "interruption",
+                requiresPersonalRoute: routeDisconnected,
+                expectedRouteOutputs: []
+            )
+            Logger.player.info(
+                "[INTERRUPTION] began routeDisconnect=\(routeDisconnected, privacy: .public)"
+            )
 
         case .ended(let shouldResume):
-            let wasRouteDisconnect = interruptionWasRouteDisconnect
-            interruptionWasRouteDisconnect = false
-            Logger.player.info("[INTERRUPTION] ended — shouldResume=\(shouldResume, privacy: .public) routeDisconnect=\(wasRouteDisconnect, privacy: .public)")
-            if shouldResume && !wasRouteDisconnect {
-                await resume()
+            isAudioSessionInterrupted = false
+            let requiresPersonalRoute = pendingSystemResume?.requiresPersonalRoute == true
+            Logger.player.info(
+                "[INTERRUPTION] ended shouldResume=\(shouldResume, privacy: .public) requiresPersonalRoute=\(requiresPersonalRoute, privacy: .public)"
+            )
+            if shouldResume || requiresPersonalRoute {
+                await resumeSystemPauseIfEligible(trigger: "interruption-ended")
             } else {
+                pendingSystemResume = nil
                 Logger.player.info("[INTERRUPTION] ended — staying paused")
             }
-
         }
     }
 
@@ -3350,31 +3583,177 @@ extension PlayerService {
         _ reason: AVAudioSession.RouteChangeReason,
         previousOutputs: [AVAudioSession.Port] = []
     ) async {
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-            .map { $0.portType.rawValue }
-            .joined(separator: ",")
-        Logger.player.info("[ROUTE] routeChange reason=\(reason.logDescription, privacy: .public) outputs=[\(outputs, privacy: .public)]")
+        await handleRouteChange(
+            reason,
+            previousRouteOutputs: previousOutputs.map {
+                AudioRouteOutputSnapshot(uid: "", portType: $0)
+            }
+        )
+    }
+
+    private func handleRouteChange(
+        _ reason: AVAudioSession.RouteChangeReason,
+        previousRouteOutputs: [AudioRouteOutputSnapshot]
+    ) async {
+        let currentOutputs = currentAudioRouteOutputs()
+        let previousTypes = previousRouteOutputs.map(\.portType)
+        let currentTypes = currentOutputs.map(\.portType)
+        let outputDescription = currentTypes.map(\.rawValue).joined(separator: ",")
+        Logger.player.info(
+            "[ROUTE] routeChange reason=\(reason.logDescription, privacy: .public) outputs=[\(outputDescription, privacy: .public)]"
+        )
 
         switch reason {
         case .oldDeviceUnavailable:
-            // Personal listening device went away (AirPods in case, headphones unplugged).
-            // Do NOT gate on .playing — the routeDisconnected interruption (iOS 17+) may
-            // already have flipped playbackState to .paused while the engine and session
-            // are still primed to resume on the speaker. pause() is idempotent and also
-            // deactivates the session, which is what actually prevents speaker playback.
-            guard previousOutputs.isEmpty
-                || PlayerService.isPersonalAudioRoute(portTypes: previousOutputs) else { break }
-            let hasActiveTrack = await MainActor.run {
-                state.currentTrack != nil && state.playbackState != .idle
+            guard PlayerService.shouldSuspendForRouteDisconnect(
+                previous: previousTypes,
+                current: currentTypes
+            ) else {
+                Logger.player.info(
+                    "[ROUTE] ignored ambiguous/non-personal disconnect previousCount=\(previousTypes.count, privacy: .public)"
+                )
+                break
             }
-            if hasActiveTrack { await pause() }
+            await suspendPlaybackForSystem(
+                reason: "personal-route-disconnect",
+                requiresPersonalRoute: true,
+                expectedRouteOutputs: previousRouteOutputs
+            )
 
-        case .newDeviceAvailable, .routeConfigurationChange:
-            try? AVAudioSession.sharedInstance().setActive(true)
+        case .newDeviceAvailable, .routeConfigurationChange, .wakeFromSleep:
+            do {
+                try activateAudioSession()
+            } catch {
+                Logger.player.warning(
+                    "[ROUTE] audio-session activation failed during route recovery: \(error, privacy: .public)"
+                )
+            }
+            await resumeSystemPauseIfEligible(trigger: reason.logDescription)
 
         default:
             break
         }
+    }
+
+    private func currentAudioRouteOutputs() -> [AudioRouteOutputSnapshot] {
+        AVAudioSession.sharedInstance().currentRoute.outputs.map {
+            AudioRouteOutputSnapshot(uid: $0.uid, portType: $0.portType)
+        }
+    }
+
+    private func suspendPlaybackForSystem(
+        reason: String,
+        requiresPersonalRoute: Bool,
+        expectedRouteOutputs: [AudioRouteOutputSnapshot]
+    ) async {
+        let snapshot = await MainActor.run {
+            (trackID: state.currentTrack?.id, playbackState: state.playbackState)
+        }
+
+        if var pending = pendingSystemResume,
+           pending.playbackGeneration == playbackGeneration,
+           pending.transportIntentGeneration == transportIntentGeneration,
+           pending.trackID == snapshot.trackID {
+            pending.requiresPersonalRoute = pending.requiresPersonalRoute || requiresPersonalRoute
+            pending.expectedPersonalRouteUIDs.formUnion(
+                expectedRouteOutputs
+                    .filter { PlayerService.isPersonalAudioRoute(portTypes: [$0.portType]) }
+                    .map(\.uid)
+                    .filter { !$0.isEmpty }
+            )
+            pending.expectedPersonalPortTypes.formUnion(
+                expectedRouteOutputs
+                    .map(\.portType)
+                    .filter { PlayerService.isPersonalAudioRoute(portTypes: [$0]) }
+            )
+            pendingSystemResume = pending
+        } else {
+            pendingSystemResume = nil
+            guard snapshot.playbackState == .playing, let trackID = snapshot.trackID else { return }
+            pendingSystemResume = PendingSystemResume(
+                trackID: trackID,
+                playbackGeneration: playbackGeneration,
+                transportIntentGeneration: transportIntentGeneration,
+                startedAt: Date(),
+                requiresPersonalRoute: requiresPersonalRoute,
+                expectedPersonalRouteUIDs: Set(
+                    expectedRouteOutputs
+                        .filter { PlayerService.isPersonalAudioRoute(portTypes: [$0.portType]) }
+                        .map(\.uid)
+                        .filter { !$0.isEmpty }
+                ),
+                expectedPersonalPortTypes: Set(
+                    expectedRouteOutputs
+                        .map(\.portType)
+                        .filter { PlayerService.isPersonalAudioRoute(portTypes: [$0]) }
+                )
+            )
+        }
+
+        guard snapshot.playbackState == .playing else { return }
+        playbackProgressTracker.breakContinuity()
+        engine.pause()
+        await MainActor.run { state.playbackState = .paused }
+        stopProgressTimer()
+        stopPositionSaveTimer()
+        await pushPositionSnapshot(rate: 0)
+        await saveSession()
+        Logger.player.info(
+            "[AUDIO-INTENT] suspended origin=\(reason, privacy: .public) pendingResume=true"
+        )
+    }
+
+    private func resumeSystemPauseIfEligible(trigger: String) async {
+        guard !isAudioSessionInterrupted, let pending = pendingSystemResume else { return }
+
+        guard Date().timeIntervalSince(pending.startedAt) <= Self.personalRouteReconnectGrace else {
+            pendingSystemResume = nil
+            Logger.player.info("[AUDIO-INTENT] system resume expired trigger=\(trigger, privacy: .public)")
+            return
+        }
+
+        let snapshot = await MainActor.run {
+            (trackID: state.currentTrack?.id, playbackState: state.playbackState)
+        }
+        guard pending.playbackGeneration == playbackGeneration,
+              pending.transportIntentGeneration == transportIntentGeneration,
+              pending.trackID == snapshot.trackID,
+              snapshot.playbackState != .idle else {
+            pendingSystemResume = nil
+            return
+        }
+
+        if pending.requiresPersonalRoute {
+            let currentOutputs = currentAudioRouteOutputs()
+            let currentTypes = currentOutputs.map(\.portType)
+            guard PlayerService.canResumeOnPersonalRoute(
+                expected: Array(pending.expectedPersonalPortTypes),
+                current: currentTypes
+            ) else {
+                Logger.player.info(
+                    "[AUDIO-INTENT] waiting for personal route trigger=\(trigger, privacy: .public)"
+                )
+                return
+            }
+
+            if !pending.expectedPersonalRouteUIDs.isEmpty {
+                let currentPersonalUIDs = Set(
+                    currentOutputs
+                        .filter { PlayerService.isPersonalAudioRoute(portTypes: [$0.portType]) }
+                        .map(\.uid)
+                )
+                guard !pending.expectedPersonalRouteUIDs.isDisjoint(with: currentPersonalUIDs) else {
+                    Logger.player.info(
+                        "[AUDIO-INTENT] personal route differs from disconnected output — staying paused"
+                    )
+                    return
+                }
+            }
+        }
+
+        pendingSystemResume = nil
+        Logger.player.info("[AUDIO-INTENT] automatic resume trigger=\(trigger, privacy: .public)")
+        await resume()
     }
 }
 

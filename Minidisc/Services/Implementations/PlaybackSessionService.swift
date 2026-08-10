@@ -4,7 +4,7 @@ import OSLog
 
 /// Persists and restores playback sessions via SwiftData.
 ///
-/// Called by PlayerService on track changes and every 5 s during active playback,
+/// Called by PlayerService on track changes and every 15 s during active playback,
 /// and flushed in full when the app enters background.
 actor PlaybackSessionService {
     private let modelContainer: ModelContainer
@@ -33,7 +33,7 @@ actor PlaybackSessionService {
         Logger.session.debug("Session saved: track='\(playerState.currentTrack?.title ?? "nil", privacy: .private)', pos=\(playerState.currentPosition, format: .fixed(precision: 1), privacy: .public)s, queue=\(playerState.queue.count, privacy: .public) tracks")
     }
 
-    /// Lightweight position-only save — called every 5 s during active playback.
+    /// Lightweight position-only save — called every 15 s during active playback.
     func savePosition(_ position: TimeInterval) {
         guard let session = fetchSession() else { return }
         session.currentPosition = position

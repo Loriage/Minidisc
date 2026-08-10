@@ -147,7 +147,7 @@ final class LyricsViewModel {
         reconcileTracking()
     }
 
-    /// Single source of truth for the 10 Hz line-tracking timer: it runs ONLY while the lyrics are
+    /// Single source of truth for the 4 Hz line-tracking timer: it runs ONLY while the lyrics are
     /// visible AND playback is playing AND the current lyrics are time-synced. The timer is never started
     /// at init; it is torn down the instant any condition goes false (hide, pause, unsynced) so a paused or
     /// hidden player does no per-tick work. Idempotent — safe to call on any condition change.
@@ -164,7 +164,7 @@ final class LyricsViewModel {
         trackingTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 do {
-                    try await Task.sleep(for: .milliseconds(100))
+                    try await Task.sleep(for: .milliseconds(250))
                 } catch {
                     return
                 }

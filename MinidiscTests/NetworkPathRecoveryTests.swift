@@ -1,4 +1,5 @@
 import Testing
+import AVFAudio
 @testable import Minidisc
 
 @Suite("Network path generation")
@@ -197,5 +198,109 @@ struct PlaybackNetworkRecoveryRetryBudgetTests {
 
         #expect(budget.attempts == 0)
         #expect(budget.beginAttempt(trackID: "track-a", pathGeneration: 4) == 1)
+    }
+}
+
+@Suite("Playback handover reassertion")
+struct PlaybackHandoverReassertionTests {
+    @Test("online Wi-Fi reasserts a remote mid-track playback intent")
+    func remoteMidTrack() {
+        #expect(PlayerService.shouldReassertPlaybackOnOnlinePath(
+            sourceIsRemoteStream: true,
+            isOnline: true,
+            playbackState: .playing,
+            position: 42,
+            duration: 180
+        ))
+    }
+
+    @Test("user pause, offline path, local source and EOF never auto-resume")
+    func exclusions() {
+        #expect(!PlayerService.shouldReassertPlaybackOnOnlinePath(
+            sourceIsRemoteStream: true,
+            isOnline: true,
+            playbackState: .paused,
+            position: 42,
+            duration: 180
+        ))
+        #expect(!PlayerService.shouldReassertPlaybackOnOnlinePath(
+            sourceIsRemoteStream: true,
+            isOnline: false,
+            playbackState: .playing,
+            position: 42,
+            duration: 180
+        ))
+        #expect(!PlayerService.shouldReassertPlaybackOnOnlinePath(
+            sourceIsRemoteStream: false,
+            isOnline: true,
+            playbackState: .playing,
+            position: 42,
+            duration: 180
+        ))
+        #expect(!PlayerService.shouldReassertPlaybackOnOnlinePath(
+            sourceIsRemoteStream: true,
+            isOnline: true,
+            playbackState: .playing,
+            position: 179,
+            duration: 180
+        ))
+    }
+
+    @Test("a rebuilt item is trusted only after its playhead advances")
+    func progressValidation() {
+        #expect(PlayerService.networkProgressValidationOutcome(
+            baseline: 42,
+            current: 42.25,
+            duration: 180
+        ) == .validated)
+        #expect(PlayerService.networkProgressValidationOutcome(
+            baseline: 42,
+            current: 42.05,
+            duration: 180
+        ) == .retry)
+        #expect(PlayerService.networkProgressValidationOutcome(
+            baseline: 179,
+            current: 179,
+            duration: 180
+        ) == .deferToEndOfTrack)
+    }
+}
+
+@Suite("Personal audio route recovery")
+struct PersonalAudioRouteRecoveryTests {
+    @Test("an ambiguous previous route never manufactures a pause")
+    func ambiguousPreviousRoute() {
+        #expect(!PlayerService.shouldSuspendForRouteDisconnect(
+            previous: [],
+            current: [.builtInSpeaker]
+        ))
+    }
+
+    @Test("falling from AirPods to the speaker suspends playback")
+    func airPodsToSpeaker() {
+        #expect(PlayerService.shouldSuspendForRouteDisconnect(
+            previous: [.bluetoothA2DP],
+            current: [.builtInSpeaker]
+        ))
+    }
+
+    @Test("a personal route that remains available does not pause")
+    func personalRouteStillAvailable() {
+        #expect(!PlayerService.shouldSuspendForRouteDisconnect(
+            previous: [.bluetoothA2DP],
+            current: [.bluetoothA2DP]
+        ))
+    }
+
+    @Test("automatic recovery never resumes on the speaker")
+    func neverResumeOnSpeaker() {
+        #expect(!PlayerService.canResumeOnPersonalRoute(
+            expected: [.bluetoothA2DP],
+            current: [.builtInSpeaker]
+        ))
+        #expect(PlayerService.canResumeOnPersonalRoute(
+            expected: [.bluetoothA2DP],
+            current: [.bluetoothA2DP]
+        ))
     }
 }

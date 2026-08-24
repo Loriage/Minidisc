@@ -37,8 +37,8 @@ final class MockServerService: ServerServiceProtocol {
     func setAudioMuseConfig(serverId: UUID, urlString: String?, token: String?) async throws {}
     func testConnection() async throws {}
     func loadPersistedState() async {}
-    func makeSwiftSonicClient() async throws -> SwiftSonicClient { throw MinidiscError.notImplemented }
-    func activeCredentials() async throws -> ServerCredentials { throw MinidiscError.notImplemented }
+    func activeConnectionVersion() async -> ServerConnection.Version? { nil }
+    func activeConnection() async throws -> ServerConnection { throw MinidiscError.notImplemented }
 }
 
 // MARK: - Suite

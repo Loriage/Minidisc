@@ -369,16 +369,18 @@ actor DownloadService: DownloadServiceProtocol {
         // transfer commits. Recheck inside the physical operation before touching the network.
         guard await !isDownloaded(songId: song.id, serverId: serverId) else { return }
         try checkDownloadCancellation()
-        let creds = try await serverService.activeCredentials()
+        let connection = try await serverService.activeConnection()
         try checkDownloadCancellation()
-        let client = try await serverService.makeSwiftSonicClient()
+        let client = connection.makeSwiftSonicClient()
         try checkDownloadCancellation()
         guard let streamURL = client.streamURL(id: song.id) else {
             throw MinidiscError.mediaNotFound(songId: song.id)
         }
 
         var request = URLRequest(url: streamURL)
-        for (k, v) in creds.customHeaders { request.setValue(v, forHTTPHeaderField: k) }
+        for (key, value) in connection.authorizationHeaders(for: streamURL) {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
 
         emit(progress: DownloadProgress(songId: song.id, serverId: serverId, progress: 0, totalBytes: nil, receivedBytes: 0))
 
@@ -847,16 +849,18 @@ actor DownloadService: DownloadServiceProtocol {
             return
         }
 
-        let creds = try await serverService.activeCredentials()
+        let connection = try await serverService.activeConnection()
         try checkDownloadCancellation()
-        let client = try await serverService.makeSwiftSonicClient()
+        let client = connection.makeSwiftSonicClient()
         try checkDownloadCancellation()
         guard let artURL = client.coverArtURL(id: id, size: 600) else {
             throw MinidiscError.mediaNotFound(songId: id)
         }
 
         var request = URLRequest(url: artURL)
-        for (k, v) in creds.customHeaders { request.setValue(v, forHTTPHeaderField: k) }
+        for (key, value) in connection.authorizationHeaders(for: artURL) {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
 
         let (data, response) = try await downloadSession.data(for: request)
         try checkDownloadCancellation()

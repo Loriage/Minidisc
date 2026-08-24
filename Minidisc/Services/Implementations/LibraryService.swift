@@ -9,6 +9,7 @@ actor LibraryService: LibraryServiceProtocol {
     private let downloadService: any DownloadServiceProtocol
     private let statsService: StatsService
     private var cachedClient: SwiftSonicClient?
+    private var cachedConnectionVersion: ServerConnection.Version?
     private var artistNameIndex: [String: ArtistID3]?
     private var indexBuildTask: Task<Void, Never>?
     private var artistInfoCache: [String: ArtistInfo] = [:]
@@ -26,17 +27,20 @@ actor LibraryService: LibraryServiceProtocol {
     }
 
     private func client() async throws -> SwiftSonicClient {
-        // Fast path: cached client returned without touching the MainActor.
-        // The periodic player time observer fires on the MainActor every 0.5s during playback,
-        // so any await MainActor.run on the hot path causes multi-second stalls.
-        if let cached = cachedClient {
+        // ServerService owns the version on its actor, so this cache check never waits on MainActor.
+        let activeVersion = await serverService.activeConnectionVersion()
+        if let cached = cachedClient,
+           let activeVersion,
+           cachedConnectionVersion == activeVersion {
             Logger.library.debug("[CLIENT] cache hit")
             return cached
         }
-        Logger.library.debug("[CLIENT] cache miss → makeSwiftSonicClient")
-        let fresh = try await serverService.makeSwiftSonicClient()
-        Logger.library.debug("[CLIENT] ← makeSwiftSonicClient done")
+        Logger.library.debug("[CLIENT] cache miss → activeConnection")
+        let connection = try await serverService.activeConnection()
+        let fresh = connection.makeSwiftSonicClient()
+        Logger.library.debug("[CLIENT] ← activeConnection done")
         cachedClient = fresh
+        cachedConnectionVersion = connection.version
         artistInfoCache = [:]
         artistNameIndex = nil
         indexBuildTask = nil

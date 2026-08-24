@@ -9931,6 +9931,58 @@
         }
       }
     },
+    "Debug" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Debug"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Αποσφαλμάτωση"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Depuración"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Débogage"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Debug"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デバッグ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "调试"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "偵錯"
+          }
+        }
+      }
+    },
     "Delete" : {
       "localizations" : {
         "de" : {
@@ -18109,6 +18161,58 @@
         }
       }
     },
+    "Minidisc couldn't open its local data. You can try again without restarting the app." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc konnte seine lokalen Daten nicht öffnen. Du kannst es erneut versuchen, ohne die App neu zu starten."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Το Minidisc δεν μπόρεσε να ανοίξει τα τοπικά δεδομένα του. Μπορείτε να δοκιμάσετε ξανά χωρίς επανεκκίνηση της εφαρμογής."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc no ha podido abrir sus datos locales. Puedes volver a intentarlo sin reiniciar la app."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc n’a pas pu ouvrir ses données locales. Vous pouvez réessayer sans redémarrer l’app."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc non è riuscito ad aprire i dati locali. Puoi riprovare senza riavviare l’app."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidiscはローカルデータを開けませんでした。アプリを再起動せずに再試行できます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc 无法打开本地数据。你可以直接重试，无需重新启动 App。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc 無法開啟本機資料。你可以直接重試，無需重新啟動 App。"
+          }
+        }
+      }
+    },
     "Minidisc forgets the address and the API key. Your Lidarr instance is not changed." : {
       "localizations" : {
         "de" : {
@@ -23831,6 +23935,58 @@
         }
       }
     },
+    "Playback Diagnostics" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabediagnose"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Διαγνωστικά αναπαραγωγής"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnóstico de reproducción"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnostic de lecture"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnostica riproduzione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再生診断"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放诊断"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "播放診斷"
+          }
+        }
+      }
+    },
     "Playback failed. Please try again." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -26877,6 +27033,58 @@
         }
       }
     },
+    "Report Preview" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berichtsvorschau"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Προεπισκόπηση αναφοράς"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vista previa del informe"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aperçu du rapport"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anteprima del rapporto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "レポートのプレビュー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "报告预览"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "報告預覽"
+          }
+        }
+      }
+    },
     "Reset to cover colour" : {
       "localizations" : {
         "de" : {
@@ -28225,6 +28433,58 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "設定"
+          }
+        }
+      }
+    },
+    "Share Diagnostics" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnose teilen"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Κοινοποίηση διαγνωστικών"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compartir diagnóstico"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Partager le diagnostic"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Condividi diagnostica"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "診断情報を共有"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享诊断信息"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "分享診斷資訊"
           }
         }
       }
@@ -31170,6 +31430,58 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "操作已逾時。請檢查你的連線後再試一次。"
+          }
+        }
+      }
+    },
+    "The report excludes song metadata, complete server URLs, credentials, HTTP headers, and audio device names." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Bericht enthält keine Song-Metadaten, vollständigen Server-URLs, Zugangsdaten, HTTP-Header oder Namen von Audiogeräten."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Η αναφορά εξαιρεί μεταδεδομένα τραγουδιών, πλήρεις διευθύνσεις URL διακομιστή, διαπιστευτήρια, κεφαλίδες HTTP και ονόματα συσκευών ήχου."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El informe excluye los metadatos de las canciones, las URL completas del servidor, las credenciales, las cabeceras HTTP y los nombres de dispositivos de audio."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le rapport exclut les métadonnées des morceaux, les URL complètes du serveur, les identifiants, les en-têtes HTTP et les noms des appareils audio."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il rapporto esclude i metadati dei brani, gli URL completi del server, le credenziali, le intestazioni HTTP e i nomi dei dispositivi audio."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "レポートには、曲のメタデータ、完全なサーバーURL、認証情報、HTTPヘッダー、オーディオデバイス名は含まれません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "报告不包含歌曲元数据、完整的服务器 URL、凭据、HTTP 标头和音频设备名称。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "報告不包含歌曲中繼資料、完整的伺服器 URL、憑證、HTTP 標頭和音訊裝置名稱。"
           }
         }
       }

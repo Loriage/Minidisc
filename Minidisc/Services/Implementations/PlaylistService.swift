@@ -8,7 +8,7 @@ actor PlaylistService: PlaylistServiceProtocol {
     private let modelContainer: ModelContainer
     private let downloadService: DownloadService
     private var cachedClient: SwiftSonicClient?
-    private var cachedServerId: UUID?
+    private var cachedConnectionVersion: ServerConnection.Version?
 
     private var listCache: [Playlist]?
     private var detailCache: [String: PlaylistWithSongs] = [:]
@@ -22,28 +22,35 @@ actor PlaylistService: PlaylistServiceProtocol {
     // MARK: - Client
 
     private func client() async throws -> SwiftSonicClient {
-        let activeId = await MainActor.run { serverService.state.activeServer?.id }
-        if let cached = cachedClient, cachedServerId == activeId, activeId != nil {
+        let activeVersion = await serverService.activeConnectionVersion()
+        if let cached = cachedClient,
+           let activeVersion,
+           cachedConnectionVersion == activeVersion {
             return cached
         }
-        let fresh = try await serverService.makeSwiftSonicClient()
+        let connection = try await serverService.activeConnection()
+        let fresh = connection.makeSwiftSonicClient()
         cachedClient = fresh
-        cachedServerId = activeId
+        cachedConnectionVersion = connection.version
+        listCache = nil
+        detailCache = [:]
         return fresh
     }
 
     // MARK: - Read
 
     func listPlaylists() async throws -> [Playlist] {
+        let client = try await client()
         if let cached = listCache { return cached }
-        let playlists = try await client().getPlaylists()
+        let playlists = try await client.getPlaylists()
         listCache = playlists
         return playlists
     }
 
     func getPlaylist(id: String) async throws -> PlaylistWithSongs {
+        let client = try await client()
         if let cached = detailCache[id] { return cached }
-        let playlist = try await client().getPlaylist(id: id)
+        let playlist = try await client.getPlaylist(id: id)
         detailCache[id] = playlist
         return playlist
     }

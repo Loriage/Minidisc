@@ -78,6 +78,8 @@ nonisolated struct ServerSnapshot: Sendable, Equatable {
 final class ServerState {
     var servers: [ServerSnapshot] = []
     var activeServer: ServerSnapshot?
+    /// Mirrors ServerService's process-local cache key for diagnostics and UI consumers.
+    var activeConnectionVersion: ServerConnection.Version?
     var isConnected: Bool = false
     /// Updated by NetworkMonitor. False when NWPathMonitor reports no connectivity.
     var isOnline: Bool = true

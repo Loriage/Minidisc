@@ -17,9 +17,9 @@ struct SearchView: View {
     @Binding var searchQuery: String
     @Binding var path: NavigationPath
     @Environment(\.appContainer) private var container
+    @Environment(PlaylistAddition.self) private var playlistAddition
     @State private var viewModel: SearchViewModel?
     @Namespace private var albumZoomNamespace
-    @State private var songToAddToPlaylist: DisplayableSong?
 
     init(searchQuery: Binding<String>, path: Binding<NavigationPath>) {
         self._searchQuery = searchQuery
@@ -120,9 +120,6 @@ struct SearchView: View {
         .task(id: searchQuery) {
             await viewModel?.search(query: searchQuery)
         }
-        .sheet(item: $songToAddToPlaylist) { song in
-            AddToPlaylistSheet(song: song)
-        }
         .minidiscContentWidth()
     }
 
@@ -133,7 +130,7 @@ struct SearchView: View {
         if vm.isOffline {
             LocalSearchResultsSection(
                 query: searchQuery.trimmingCharacters(in: .whitespaces),
-                onAddToPlaylist: { s in songToAddToPlaylist = s }
+                onAddToPlaylist: playlistAddition.present
             )
         } else if vm.isSearching {
             HStack {
@@ -155,14 +152,14 @@ struct SearchView: View {
             // downloads are the only thing we can still answer with.
             LocalSearchResultsSection(
                 query: searchQuery.trimmingCharacters(in: .whitespaces),
-                onAddToPlaylist: { s in songToAddToPlaylist = s }
+                onAddToPlaylist: playlistAddition.present
             )
         } else if let results = vm.searchResults, hasAnyResults(results) {
             artistResultsSection(visibleArtists(from: results))
             albumResultsSection(results.album ?? [])
             SearchSongResultsSection(
                 songs: (results.song ?? []).map { DisplayableSong(from: $0) },
-                onAddToPlaylist: { s in songToAddToPlaylist = s }
+                onAddToPlaylist: playlistAddition.present
             )
         }
     }

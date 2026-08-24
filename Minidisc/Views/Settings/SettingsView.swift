@@ -526,10 +526,24 @@ private struct ApplicationSettingsView: View {
             } footer: {
                 Text("System follows your device's light or dark setting.")
             }
+            ApplicationDebugSection()
         }
         .formStyle(.grouped)
         .navigationTitle("Application")
         .navigationBarTitleDisplayModeInline()
+    }
+}
+
+private struct ApplicationDebugSection: View {
+    var body: some View {
+        Section("Debug") {
+            NavigationLink {
+                PlaybackDiagnosticsView()
+            } label: {
+                Label("Playback Diagnostics", systemImage: "waveform.badge.magnifyingglass")
+                    .foregroundStyle(.primary)
+            }
+        }
     }
 }
 
@@ -573,4 +587,3 @@ struct ApplicationSectionView: View {
         .tint(.primary)
     }
 }
-

@@ -53,6 +53,7 @@ struct AlbumDetailView: View {
     }
 
     @Environment(\.appContainer) private var container
+    @Environment(PlaylistAddition.self) private var playlistAddition
     @Environment(\.dismiss) private var dismiss
     @Environment(DominantColorExtractor.self) private var colorExtractor
     @Environment(ArtworkImageCache.self) private var artworkImageCache
@@ -61,7 +62,6 @@ struct AlbumDetailView: View {
     @State private var dominantColor: Color = .clear
     @State private var heroHeight: CGFloat = 680
     @State private var showDeleteAlert = false
-    @State private var songToAddToPlaylist: DisplayableSong?
     @State private var showThemeColorSheet = false
     @Query private var albumFavoriteMatches: [FavoriteRecord]
     @Query private var downloadedAlbumTracks: [DownloadedTrack]
@@ -191,7 +191,7 @@ struct AlbumDetailView: View {
                             onRemoveDownload: { songId in
                                 Task { try? await container?.downloadService.remove(songId: songId, serverId: serverId) }
                             },
-                            onAddToPlaylist: { song in songToAddToPlaylist = song }
+                            onAddToPlaylist: playlistAddition.present
                         )
                     }
                 }
@@ -208,9 +208,6 @@ struct AlbumDetailView: View {
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("The audio files will be deleted from this device.")
-        }
-        .sheet(item: $songToAddToPlaylist) { song in
-            AddToPlaylistSheet(song: song)
         }
         // Solid page color the cover melts into; the cover scrolls in the header (ImmersiveCoverHero).
         .background(bodyColor.ignoresSafeArea())

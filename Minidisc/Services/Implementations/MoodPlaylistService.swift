@@ -81,10 +81,10 @@ actor MoodPlaylistService {
     ) {
         self.preferences = preferences
         self.applyCover = coverApplier
-        self.makePlaylistClient = { try await serverService.makeSwiftSonicClient() }
+        self.makePlaylistClient = { try await serverService.activeConnection().makeSwiftSonicClient() }
         self.makeProvider = {
             if let urlString = await MainActor.run(body: { serverState.activeServer?.audioMuseURL }),
-               let credentials = try? await serverService.activeCredentials(),
+               let credentials = try? await serverService.activeConnection().credentials,
                let client = AudioMuseClient(urlString: urlString, token: credentials.audioMuseToken) {
                 return AudioMuseTrackProvider(client: client, resolver: SubsonicTrackResolver(libraryService: libraryService))
             }

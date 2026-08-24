@@ -26,7 +26,7 @@ actor LyricsService {
             return cached
         }
 
-        let client = try await serverService.makeSwiftSonicClient()
+        let client = try await serverService.activeConnection().makeSwiftSonicClient()
         let capabilities = try await client.loadCapabilities()
         guard capabilities.supports(.songLyrics) else {
             throw LyricsError.notSupportedByServer

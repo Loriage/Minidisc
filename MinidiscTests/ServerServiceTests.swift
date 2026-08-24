@@ -184,7 +184,7 @@ struct ServerServiceTests {
         )
 
         try await service.updateCustomHeaders(["X-New": "2"], forServer: id)
-        var credentials = try await service.activeCredentials()
+        var credentials = try await service.activeConnection().credentials
         #expect(credentials.audioMuseToken == "audiomuse-token")
         #expect(credentials.customHeaders == ["X-New": "2"])
 
@@ -196,10 +196,55 @@ struct ServerServiceTests {
             password: "new-password",
             customHeaders: ["X-Final": "3"]
         )
-        credentials = try await service.activeCredentials()
+        credentials = try await service.activeConnection().credentials
         #expect(credentials.audioMuseToken == "audiomuse-token")
         #expect(credentials.password == "new-password")
         #expect(credentials.customHeaders == ["X-Final": "3"])
+    }
+
+    @Test func activeConnectionVersionChangesWithActiveConfiguration() async throws {
+        let (service, state) = try makeService()
+        try await service.addServer(
+            displayName: "S",
+            baseURL: "https://s.example.com",
+            username: "u",
+            password: "p",
+            customHeaders: ["X-First": "1"]
+        )
+        let serverID = try #require(state.activeServer?.id)
+        let firstVersion = try #require(await service.activeConnectionVersion())
+
+        try await service.updateCustomHeaders(["X-Second": "2"], forServer: serverID)
+
+        let secondVersion = try #require(await service.activeConnectionVersion())
+        let connection = try await service.activeConnection()
+        #expect(secondVersion.serverID == serverID)
+        #expect(secondVersion.revision > firstVersion.revision)
+        #expect(connection.version == secondVersion)
+        #expect(connection.credentials.customHeaders == ["X-Second": "2"])
+        #expect(state.activeConnectionVersion == secondVersion)
+    }
+
+    @Test func activeConnectionDoesNotReconstructCredentialsFromKeychain() async throws {
+        let keychain = MockKeychain()
+        let (service, state) = try makeService(keychain: keychain)
+        try await service.addServer(
+            displayName: "S",
+            baseURL: "https://s.example.com",
+            username: "u",
+            password: "original",
+            customHeaders: ["X-Original": "1"]
+        )
+        let serverID = try #require(state.activeServer?.id)
+        try await keychain.store(
+            ServerCredentials(password: "replacement", customHeaders: ["X-Replacement": "2"]),
+            forKey: ServerCredentials.keychainKey(for: serverID)
+        )
+
+        let connection = try await service.activeConnection()
+
+        #expect(connection.credentials.password == "original")
+        #expect(connection.credentials.customHeaders == ["X-Original": "1"])
     }
 
     @Test func updateUnknownServer_rollsBackOrphanedCredentials() async throws {

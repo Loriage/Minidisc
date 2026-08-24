@@ -33,8 +33,13 @@ final class NetworkMonitor {
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "app.minidisc.network", qos: .utility)
     private let reducer = NetworkPathEventReducer()
+    private let playbackDiagnostics: PlaybackDiagnostics
     private var updateTask: Task<Void, Never>?
     private var updateContinuation: AsyncStream<NetworkPathEvent>.Continuation?
+
+    init(playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics()) {
+        self.playbackDiagnostics = playbackDiagnostics
+    }
 
     func start(
         serverState: ServerState,
@@ -49,6 +54,9 @@ final class NetworkMonitor {
         updateTask = Task { @MainActor in
             for await event in channel.stream {
                 guard !Task.isCancelled else { break }
+                playbackDiagnostics.record(
+                    .networkPathChanged(PlaybackDiagnostics.NetworkPath(event))
+                )
                 serverState.isOnline = event.descriptor.isOnline
                 serverState.isExpensive = event.descriptor.isExpensive
                 streamSettings.networkPathDidChange(isCellular: event.descriptor.isCellular)

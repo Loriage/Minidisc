@@ -17,8 +17,8 @@ final class MockLyricsServerService: ServerServiceProtocol {
     func setAudioMuseConfig(serverId: UUID, urlString: String?, token: String?) async throws {}
     func testConnection() async throws {}
     func testConnection(url: String, username: String, password: String, customHeaders: [String: String]) async throws {}
-    func makeSwiftSonicClient() async throws -> SwiftSonicClient { throw MinidiscError.notImplemented }
-    func activeCredentials() async throws -> ServerCredentials { throw MinidiscError.notImplemented }
+    func activeConnectionVersion() async -> ServerConnection.Version? { nil }
+    func activeConnection() async throws -> ServerConnection { throw MinidiscError.notImplemented }
     func loadPersistedState() async {}
 }
 

@@ -57,7 +57,7 @@ actor WrappedPlaylistService {
         self.statsService = statsService
         self.preferences = preferences
         self.serverService = serverService
-        self.makeClient = { try await serverService.makeSwiftSonicClient() }
+        self.makeClient = { try await serverService.activeConnection().makeSwiftSonicClient() }
     }
 
     /// Test init — accepts a pre-built client factory for full isolation.
@@ -268,12 +268,14 @@ actor WrappedPlaylistService {
         }
 
         do {
-            let creds = try await serverService.activeCredentials()
-            let api = NavidromeNativeAPI(transport: CustomHeadersTransport(headers: creds.customHeaders))
+            let connection = try await serverService.activeConnection()
+            let api = NavidromeNativeAPI(
+                transport: CustomHeadersTransport(headers: connection.credentials.customHeaders)
+            )
             let token = try await api.authenticate(
                 baseURL: baseURL,
                 username: snapshot.username,
-                password: creds.password
+                password: connection.credentials.password
             )
             try await api.uploadPlaylistCover(
                 baseURL: baseURL,

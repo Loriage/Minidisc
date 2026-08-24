@@ -24,7 +24,8 @@ final class AppContainer {
     let playlistService: any PlaylistServiceProtocol
     let radioService: any RadioServiceProtocol
     let toastService = ToastService()
-    let networkMonitor = NetworkMonitor()
+    let networkMonitor: NetworkMonitor
+    let playbackDiagnostics: PlaybackDiagnostics
     let sessionService: PlaybackSessionService
     let dominantColorExtractor = DominantColorExtractor()
     let artworkImageCache: ArtworkImageCache
@@ -45,7 +46,12 @@ final class AppContainer {
     let lidarrSettings: LidarrSettings
     private var lifecycleTasks: [Task<Void, Never>] = []
 
-    init(inMemory: Bool = false) throws {
+    init(
+        inMemory: Bool = false,
+        playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics()
+    ) throws {
+        self.playbackDiagnostics = playbackDiagnostics
+        networkMonitor = NetworkMonitor(playbackDiagnostics: playbackDiagnostics)
         modelContainer = try ModelContainer.minidisc(inMemory: inMemory)
         sessionService = PlaybackSessionService(modelContainer: try ModelContainer.session(inMemory: inMemory))
 
@@ -59,7 +65,13 @@ final class AppContainer {
         let stats = StatsService(modelContainer: modelContainer)
         statsService = stats
 
-        let server = ServerService(state: serverState, keychain: keychain, modelContainer: modelContainer, audioStreamCache: cache)
+        let server = ServerService(
+            state: serverState,
+            keychain: keychain,
+            modelContainer: modelContainer,
+            audioStreamCache: cache,
+            playbackDiagnostics: playbackDiagnostics
+        )
         serverService = server
         lyricsService = LyricsService(serverService: server, modelContainer: modelContainer)
         wrappedPlaylistService = WrappedPlaylistService(serverService: server, statsService: stats)
@@ -117,6 +129,7 @@ final class AppContainer {
             toastService: toastService,
             statsService: stats,
             listenBrainzService: lb,
+            playbackDiagnostics: playbackDiagnostics,
             engine: audioEngine
         )
         _player = player
@@ -173,6 +186,22 @@ final class AppContainer {
         await _player.setNowPlayingService(nowPlayingService)
         await nowPlayingService.setFavoritesService(favoritesService)
         await _player.crossfadeSettingsDidChange()
+    }
+
+    func makePlaybackDiagnosticsReport() -> String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
+        return playbackDiagnostics.makeReport(
+            context: PlaybackDiagnostics.ReportContext(
+                appVersion: version,
+                appBuild: build,
+                operatingSystem: ProcessInfo.processInfo.operatingSystemVersionString,
+                playbackStatus: PlaybackDiagnostics.PlaybackStatus(playerState.playbackState),
+                isPlaybackAvailable: playerState.isPlaybackAvailable,
+                networkPath: PlaybackDiagnostics.NetworkPath(serverState.networkPathEvent),
+                connectionVersion: serverState.activeConnectionVersion
+            )
+        )
     }
 
     /// Keeps deliberate long-lived startup work owned by the service graph so it

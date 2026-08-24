@@ -98,7 +98,7 @@ extension Color {
  │  MinidiscBorder                  │  #E8420E @ 18%   │  #FF6242 @ 22%    │
  └──────────────────────────────────┴──────────────────┴───────────────────┘
 
- NOTE — The "AccentColor" set mirrors MinidiscAccent so system components
- (toggles, sliders, links) inherit the brand color, and the app applies
- `.tint(MinidiscColors.accent)` at the WindowGroup root.
+ NOTE — The "AccentColor" set mirrors MinidiscAccent. Do not apply a tint at
+ the WindowGroup root: branded controls opt in locally, while secondary actions
+ and alerts keep their context-appropriate appearance.
  */

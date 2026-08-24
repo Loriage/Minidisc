@@ -44,7 +44,7 @@ struct AudioMuseSettingsView: View {
             guard !didLoad else { return }
             didLoad = true
             urlInput = activeServer?.audioMuseURL ?? ""
-            tokenInput = (try? await container?.serverService.activeCredentials())??.audioMuseToken ?? ""
+            tokenInput = (try? await container?.serverService.activeConnection())??.credentials.audioMuseToken ?? ""
             await loadLastRefresh()
         }
     }

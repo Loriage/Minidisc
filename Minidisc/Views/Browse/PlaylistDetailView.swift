@@ -72,6 +72,7 @@ struct PlaylistDetailView: View {
     }
 
     @Environment(\.appContainer) private var container
+    @Environment(PlaylistAddition.self) private var playlistAddition
     @Environment(\.dismiss) private var dismiss
     @Environment(DominantColorExtractor.self) private var colorExtractor
     @Environment(\.colorScheme) private var colorScheme
@@ -83,7 +84,6 @@ struct PlaylistDetailView: View {
     @State private var sortOrder: PlaylistSortOrder = .playlistOrder
     @State private var showDeleteAlert = false
     @State private var showAddMusic = false
-    @State private var songToAddToPlaylist: DisplayableSong?
 
     @State private var coverRefreshID = UUID()
 
@@ -251,7 +251,7 @@ struct PlaylistDetailView: View {
                         },
                         onRemove: removeTrack,
                         onContextRemove: removeTrack,
-                        onAddToPlaylist: { song in songToAddToPlaylist = song },
+                        onAddToPlaylist: playlistAddition.present,
                         rowBackground: bodyColor
                     )
 
@@ -278,9 +278,6 @@ struct PlaylistDetailView: View {
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("The audio files will be deleted from this device.")
-        }
-        .sheet(item: $songToAddToPlaylist) { song in
-            AddToPlaylistSheet(song: song)
         }
         .confirmationDialog("Cover Art", isPresented: $showImageOptions, titleVisibility: .visible) {
             Button("Choose from Library") {

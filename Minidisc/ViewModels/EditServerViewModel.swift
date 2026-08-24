@@ -52,7 +52,7 @@ final class EditServerViewModel {
         isLoadingCredentials = true
         defer { isLoadingCredentials = false }
         do {
-            let creds = try await serverService.activeCredentials()
+            let creds = try await serverService.activeConnection().credentials
             password = creds.password
             initialPassword = creds.password
             let pairs = creds.customHeaders

@@ -14,9 +14,8 @@ private struct QueueRow: View {
     var loadArtwork: Bool = true
 
     @Environment(\.appContainer) private var container
-    @Environment(ArtworkImageCache.self) private var artworkImageCache
+    @Environment(PlaylistAddition.self) private var playlistAddition
     @Environment(\.minidiscPlayingAccent) private var playingAccent
-    @State private var showAddToPlaylist = false
     @Query private var favoriteMatches: [FavoriteRecord]
 
     init(song: DisplayableSong, isCurrent: Bool, onRemove: (() -> Void)? = nil,
@@ -91,7 +90,7 @@ private struct QueueRow: View {
             Divider()
 
             Button {
-                showAddToPlaylist = true
+                playlistAddition.present(song)
             } label: {
                 Label("Add to Playlist...", systemImage: "music.note.list")
             }
@@ -124,10 +123,6 @@ private struct QueueRow: View {
             }
             }
             .tint(.primary)
-        }
-        .sheet(isPresented: $showAddToPlaylist) {
-            AddToPlaylistSheet(song: song)
-                .environment(artworkImageCache)
         }
     }
 }

@@ -3,9 +3,7 @@ import SwiftUI
 @Observable
 @MainActor
 final class FullPlayerViewModel {
-    var coverImage: PlatformImage? = nil
     var dominantColor: Color = .black
-    var isLightBackground: Bool = false
 
     private let session: URLSession = {
         let config = URLSessionConfiguration.default
@@ -13,16 +11,13 @@ final class FullPlayerViewModel {
         return URLSession(configuration: config)
     }()
 
-    var contentColor: Color { isLightBackground ? .black : .white }
-    var secondaryContentColor: Color { isLightBackground ? Color.black.opacity(0.7) : Color.white.opacity(0.7) }
-    var glassTint: Color { isLightBackground ? Color.black.opacity(0.1) : Color.white.opacity(0.15) }
+    var contentColor: Color { .white }
+    var secondaryContentColor: Color { Color.white.opacity(0.7) }
 
     func updateColors(for coverArtId: String?, colorExtractor: DominantColorExtractor, container: AppContainer?) async {
         guard let coverArtId else {
             withAnimation(.easeInOut(duration: 0.4)) {
-                coverImage = nil
                 dominantColor = .black
-                isLightBackground = false
             }
             return
         }
@@ -33,11 +28,10 @@ final class FullPlayerViewModel {
         if let cachedColor {
             withAnimation(.easeInOut(duration: 0.4)) {
                 dominantColor = cachedColor
-                isLightBackground = cachedColor.luminance > 0.6
             }
+            return
         }
-        // Then load the cover image — needed to extract the colour when it isn't cached, for the
-        // blurred wash. The iOS melt reads CoverArtView(id:) from the shared cache, not this image.
+        // Resolve the cover only when its color is not cached; the artwork view loads independently.
         let url: URL?
         if let localURL = await container?.downloadService.localCoverArtURL(forId: coverArtId) {
             url = localURL
@@ -46,16 +40,14 @@ final class FullPlayerViewModel {
         }
         guard let url, let (data, _) = try? await session.data(from: url) else { return }
         // Decode (+ average if not cached) OFF the main actor so a track change does not hitch the UI.
-        let processed: (image: PlatformImage, packed: Int?)? = await Task.detached(priority: .userInitiated) {
+        let packed: Int? = await Task.detached(priority: .userInitiated) { () -> Int? in
             guard let image = PlatformImage(data: data) else { return nil }
-            let packed = cachedColor == nil ? DominantColorExtractor.packedAverageColor(from: image) : nil
-            return (image, packed)
+            return DominantColorExtractor.packedAverageColor(from: image)
         }.value
-        guard let processed else { return }
-        let color = cachedColor ?? colorExtractor.storeColor(packed: processed.packed, for: coverArtId)
+        guard !Task.isCancelled, let packed else { return }
+        let color = colorExtractor.storeColor(packed: packed, for: coverArtId)
         withAnimation(.easeInOut(duration: 0.4)) {
             dominantColor = color
-            isLightBackground = color.luminance > 0.6
         }
     }
 }

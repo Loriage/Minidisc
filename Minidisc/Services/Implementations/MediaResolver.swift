@@ -49,7 +49,8 @@ actor MediaResolver: MediaResolverProtocol {
         // 4. Stream. Custom headers injected so AVPlayer reaches Cloudflare-protected hosts.
         // AVURLAssetHTTPHeaderFieldsKey is used at the PlayerService call site.
         // TODO(v1.x): trigger background cache write alongside the stream.
-        let client = try await serverService.makeSwiftSonicClient()
+        let connection = try await serverService.activeConnection()
+        let client = connection.makeSwiftSonicClient()
         // Live-stream quality: `.original` (default) streams the untouched file; a transcoded
         // option asks the server to re-encode to a lighter codec so on-device decode can't starve
         // the audio thread under a CPU spike (the crackle fix). The tier follows the current
@@ -67,9 +68,11 @@ actor MediaResolver: MediaResolverProtocol {
         ) else {
             throw MinidiscError.mediaNotFound(songId: songId)
         }
-        let creds = try await serverService.activeCredentials()
         Logger.resolver.debug("Resolved '\(songId, privacy: .public)' as stream.")
-        return .stream(streamURL, customHeaders: creds.customHeaders)
+        return .stream(
+            streamURL,
+            customHeaders: connection.authorizationHeaders(for: streamURL)
+        )
     }
 
     func resolveRadio(_ station: InternetRadioStation) async throws -> MediaSource {
@@ -84,31 +87,15 @@ actor MediaResolver: MediaResolverProtocol {
             throw MinidiscError.offlineUnavailable(songId: station.id)
         }
 
-        let activeServerURL = await MainActor.run {
-            serverState.activeServer.flatMap { URL(string: $0.baseURL) }
-        }
-        let customHeaders: [String: String]
-        if let activeServerURL, Self.isSameOrigin(url, activeServerURL) {
-            customHeaders = try await serverService.activeCredentials().customHeaders
-        } else {
-            // Internet-radio URLs commonly point at a third-party host. Cloudflare/access headers
-            // belong to the Subsonic origin and must never be forwarded across origins.
-            customHeaders = [:]
-        }
+        let connection = try await serverService.activeConnection()
+        // Internet-radio URLs commonly point at a third-party host. ServerConnection refuses to
+        // forward reverse-proxy authorization across origins.
+        let customHeaders = connection.authorizationHeaders(for: url)
         Logger.resolver.debug("Resolved radio '\(station.id, privacy: .public)' as live stream.")
         return .liveStream(url, customHeaders: customHeaders, stationId: station.id)
     }
 
     nonisolated static func isSameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
-        guard let lhsScheme = lhs.scheme?.lowercased(),
-              let rhsScheme = rhs.scheme?.lowercased(),
-              let lhsHost = lhs.host?.lowercased(),
-              let rhsHost = rhs.host?.lowercased() else { return false }
-        func effectivePort(_ url: URL, scheme: String) -> Int? {
-            url.port ?? (scheme == "https" ? 443 : scheme == "http" ? 80 : nil)
-        }
-        return lhsScheme == rhsScheme
-            && lhsHost == rhsHost
-            && effectivePort(lhs, scheme: lhsScheme) == effectivePort(rhs, scheme: rhsScheme)
+        ServerConnection.isSameOrigin(lhs, rhs)
     }
 }

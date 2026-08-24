@@ -4,8 +4,8 @@ import OSLog
 
 struct FavoritesView: View {
     @Environment(\.appContainer) private var container
+    @Environment(PlaylistAddition.self) private var playlistAddition
     @State private var viewModel: FavoritesViewModel?
-    @State private var songToAddToPlaylist: DisplayableSong?
 
     var body: some View {
         Group {
@@ -52,9 +52,6 @@ struct FavoritesView: View {
             }
             .listStyle(.plain)
             .refreshable { await vm.load() }
-            .sheet(item: $songToAddToPlaylist) { song in
-                AddToPlaylistSheet(song: song)
-            }
         }
     }
 
@@ -98,7 +95,7 @@ struct FavoritesView: View {
                 .padding(.vertical, 4)
 
                 ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
-                    SongRow(song: song, index: index + 1, showCoverArt: true, isFavorite: true, onAddToPlaylist: { s in songToAddToPlaylist = s })
+                    SongRow(song: song, index: index + 1, showCoverArt: true, isFavorite: true, onAddToPlaylist: playlistAddition.present)
                         .contentShape(Rectangle())
                         .onTapGesture {
                             Task {

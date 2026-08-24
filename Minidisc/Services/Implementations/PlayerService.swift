@@ -120,6 +120,7 @@ actor PlayerService: PlayerServiceProtocol {
     private let toastService: ToastService
     private let statsService: StatsService
     private let listenBrainzService: ListenBrainzService
+    private let playbackDiagnostics: PlaybackDiagnostics
 
     private let engine: AudioEngine
     private let engineBridge: AudioEngineBridge
@@ -223,6 +224,7 @@ actor PlayerService: PlayerServiceProtocol {
         toastService: ToastService,
         statsService: StatsService,
         listenBrainzService: ListenBrainzService,
+        playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics(),
         engine: AudioEngine
     ) {
         self.state = state
@@ -240,6 +242,7 @@ actor PlayerService: PlayerServiceProtocol {
         self.toastService = toastService
         self.statsService = statsService
         self.listenBrainzService = listenBrainzService
+        self.playbackDiagnostics = playbackDiagnostics
         let cacheConfig = URLSessionConfiguration.default
         cacheConfig.timeoutIntervalForRequest = 30
         cacheConfig.timeoutIntervalForResource = 300
@@ -348,10 +351,20 @@ actor PlayerService: PlayerServiceProtocol {
         return false
     }
 
+    private func diagnosticSourceKind(_ source: MediaSource) -> PlaybackDiagnostics.SourceKind {
+        switch source {
+        case .downloaded: .download
+        case .cached: .cache
+        case .stream: .remoteStream
+        case .liveStream: .liveStream
+        }
+    }
+
     // MARK: - Play
 
     func play(tracks: [DisplayableSong], startIndex: Int) async throws {
         guard tracks.indices.contains(startIndex) else { return }
+        playbackDiagnostics.record(.command(.play(queueCount: tracks.count, startIndex: startIndex)))
         queueBuildGeneration &+= 1
         stoppedAtEndOfQueue = false
         playbackGeneration &+= 1
@@ -411,6 +424,7 @@ actor PlayerService: PlayerServiceProtocol {
             transportIntentGeneration: transportGeneration
         ) else { return }
         await MainActor.run { state.playbackState = .loading }
+        playbackDiagnostics.record(.playbackStateChanged(.loading))
         guard isCurrentPlaybackIntent(
             playbackGeneration: generation,
             transportIntentGeneration: transportGeneration
@@ -442,6 +456,7 @@ actor PlayerService: PlayerServiceProtocol {
             Logger.player.debug("[TRANSITION] discarded stale resolved source for '\(song.id, privacy: .public)'")
             return
         }
+        playbackDiagnostics.record(.sourcePrepared(diagnosticSourceKind(source)))
 
         await startPlayback(
             tracks: tracks,
@@ -573,6 +588,7 @@ actor PlayerService: PlayerServiceProtocol {
             state.playbackState = .playing
             state.isPlaybackAvailable = true
         }
+        playbackDiagnostics.record(.playbackStateChanged(.playing))
         guard generation == playbackGeneration,
               transportGeneration == transportIntentGeneration else { return }
         // Give the engine the authoritative length — its own estimate drifts on transcoded streams,
@@ -617,7 +633,7 @@ actor PlayerService: PlayerServiceProtocol {
             if cacheFormat == .matchStream {
                 cacheStreamURL = streamURL
             } else {
-                cacheStreamURL = (try? await serverService.makeSwiftSonicClient())?.streamURL(
+                cacheStreamURL = (try? await serverService.activeConnection())?.makeSwiftSonicClient().streamURL(
                     id: songId,
                     maxBitRate: cacheFormat.subsonicMaxBitRate,
                     format: cacheFormat.subsonicFormat
@@ -651,7 +667,7 @@ actor PlayerService: PlayerServiceProtocol {
         ) else { return }
         let artworkHeaders: [String: String]
         do {
-            artworkHeaders = try await serverService.activeCredentials().customHeaders
+            artworkHeaders = try await serverService.activeConnection().credentials.customHeaders
         } catch {
             Logger.player.warning("[CREDENTIALS] activeCredentials failed, using empty headers: \(error, privacy: .public)")
             artworkHeaders = [:]
@@ -692,6 +708,7 @@ actor PlayerService: PlayerServiceProtocol {
     // MARK: - Live Stream
 
     func playRadio(_ station: InternetRadioStation) async throws {
+        playbackDiagnostics.record(.command(.playRadio))
         queueBuildGeneration &+= 1
         playbackGeneration &+= 1
         transportIntentGeneration &+= 1
@@ -724,6 +741,7 @@ actor PlayerService: PlayerServiceProtocol {
             playbackGeneration: generation,
             transportIntentGeneration: transportGeneration
         ) else { return }
+        playbackDiagnostics.record(.sourcePrepared(diagnosticSourceKind(source)))
 
         let codecResult = await checkCodecSupport(url: source.url, headers: source.customHeaders)
         guard isCurrentPlaybackIntent(
@@ -801,6 +819,7 @@ actor PlayerService: PlayerServiceProtocol {
             state.position = 0
             state.duration = 0
         }
+        playbackDiagnostics.record(.playbackStateChanged(.loading))
         guard isCurrentPlaybackIntent(
             playbackGeneration: generation,
             transportIntentGeneration: transportGeneration
@@ -821,6 +840,7 @@ actor PlayerService: PlayerServiceProtocol {
             state.playbackState = .playing
             state.isPlaybackAvailable = true
         }
+        playbackDiagnostics.record(.playbackStateChanged(.playing))
         guard generation == playbackGeneration,
               transportGeneration == transportIntentGeneration else { return }
 
@@ -832,7 +852,7 @@ actor PlayerService: PlayerServiceProtocol {
 
         let artworkHeaders: [String: String]
         do {
-            artworkHeaders = try await serverService.activeCredentials().customHeaders
+            artworkHeaders = try await serverService.activeConnection().credentials.customHeaders
         } catch {
             Logger.player.warning("[CREDENTIALS] activeCredentials failed, using empty headers: \(error, privacy: .public)")
             artworkHeaders = [:]
@@ -1377,6 +1397,7 @@ actor PlayerService: PlayerServiceProtocol {
     // MARK: - Pause / Resume
 
     func pause() async {
+        playbackDiagnostics.record(.command(.pause))
         queueBuildGeneration &+= 1
         transportIntentGeneration &+= 1
         let transportGeneration = transportIntentGeneration
@@ -1396,6 +1417,7 @@ actor PlayerService: PlayerServiceProtocol {
         // Flip the UI state BEFORE deactivating the audio session — setActive(false) routinely takes
         // hundreds of ms and used to hold the play/pause icon hostage behind it.
         await MainActor.run { state.playbackState = .paused }
+        playbackDiagnostics.record(.playbackStateChanged(.paused))
         guard transportGeneration == transportIntentGeneration, !Task.isCancelled else { return }
         sessionActivationRetryTask?.cancel()
         sessionActivationRetryTask = nil
@@ -1408,6 +1430,7 @@ actor PlayerService: PlayerServiceProtocol {
     }
 
     func resume() async {
+        playbackDiagnostics.record(.command(.resume))
         queueBuildGeneration &+= 1
         transportIntentGeneration &+= 1
         let transportGeneration = transportIntentGeneration
@@ -1488,6 +1511,7 @@ actor PlayerService: PlayerServiceProtocol {
             isMutedForRestore = false
         }
         await MainActor.run { state.playbackState = .playing }
+        playbackDiagnostics.record(.playbackStateChanged(.playing))
         guard transportGeneration == transportIntentGeneration, !Task.isCancelled else { return }
         configureAudioSessionIfNeeded()
         playbackProgressTracker.resume(at: engine.progress)
@@ -1559,6 +1583,7 @@ actor PlayerService: PlayerServiceProtocol {
     // MARK: - Stop
 
     func stop() async {
+        playbackDiagnostics.record(.command(.stop))
         queueBuildGeneration &+= 1
         playbackGeneration &+= 1
         transportIntentGeneration &+= 1
@@ -1697,6 +1722,7 @@ actor PlayerService: PlayerServiceProtocol {
     // MARK: - Skip
 
     func skipToNext() async throws {
+        playbackDiagnostics.record(.command(.next))
         guard await MainActor.run(body: { !state.isLiveStream }) else {
             Logger.player.debug("skipToNext ignored — live stream mode")
             return
@@ -1712,6 +1738,7 @@ actor PlayerService: PlayerServiceProtocol {
     }
 
     func skipToPrevious() async throws {
+        playbackDiagnostics.record(.command(.previous))
         guard await MainActor.run(body: { !state.isLiveStream }) else {
             Logger.player.debug("skipToPrevious ignored — live stream mode")
             return
@@ -2172,7 +2199,7 @@ actor PlayerService: PlayerServiceProtocol {
         ) else { return }
         let artworkHeaders: [String: String]
         do {
-            artworkHeaders = try await serverService.activeCredentials().customHeaders
+            artworkHeaders = try await serverService.activeConnection().credentials.customHeaders
         } catch {
             Logger.player.warning("[CREDENTIALS] activeCredentials failed, using empty headers: \(error, privacy: .public)")
             artworkHeaders = [:]
@@ -2262,6 +2289,14 @@ actor PlayerService: PlayerServiceProtocol {
         // Keep consuming any already-buffered audio while offline. The marker forces a fresh item
         // on explicit Resume, or arms recovery when AVPlayer later reports a real stall.
         networkReloadRequiredTrackID = track.id
+        playbackDiagnostics.record(
+            .networkRecovery(
+                .marked(
+                    pathGeneration: event.generation,
+                    automatic: action == .armAutomaticRecovery
+                )
+            )
+        )
         Logger.player.info(
             "[NETWORK-RECOVERY] path generation=\(event.generation, privacy: .public) online=\(event.isOnline, privacy: .public) marked track='\(track.id, privacy: .public)'"
         )
@@ -2283,6 +2318,9 @@ actor PlayerService: PlayerServiceProtocol {
             ) {
                 configureAudioSessionIfNeeded()
                 engine.resume()
+                playbackDiagnostics.record(
+                    .networkRecovery(.playbackReasserted(pathGeneration: event.generation))
+                )
                 Logger.player.info(
                     "[NETWORK-RECOVERY] reasserted playback on online path track='\(track.id, privacy: .public)'"
                 )
@@ -2393,6 +2431,9 @@ actor PlayerService: PlayerServiceProtocol {
             networkReloadRequiredTrackID = nil
             networkRecoveryAttemptBudget.reset()
             cancelNetworkRecoveryProbe()
+            playbackDiagnostics.record(
+                .networkRecovery(.progressValidated(pathGeneration: pathGeneration))
+            )
             Logger.player.info(
                 "[NETWORK-RECOVERY] rebuilt item validated by progress track='\(trackID, privacy: .public)'"
             )
@@ -2406,6 +2447,9 @@ actor PlayerService: PlayerServiceProtocol {
         }
 
         networkRecoveryValidationToken = nil
+        playbackDiagnostics.record(
+            .networkRecovery(.progressStalled(pathGeneration: pathGeneration))
+        )
         Logger.player.warning(
             "[NETWORK-RECOVERY] rebuilt item did not advance track='\(trackID, privacy: .public)' — retrying"
         )
@@ -2422,6 +2466,9 @@ actor PlayerService: PlayerServiceProtocol {
             trackID: trackID,
             pathGeneration: pathGeneration
         ) else {
+            playbackDiagnostics.record(
+                .networkRecovery(.retryBudgetExhausted(pathGeneration: pathGeneration))
+            )
             Logger.player.warning(
                 "[NETWORK-RECOVERY] retry budget exhausted track='\(trackID, privacy: .public)' path=\(pathGeneration, privacy: .public)"
             )
@@ -2507,6 +2554,9 @@ actor PlayerService: PlayerServiceProtocol {
             cancelNetworkRecoveryValidation()
             networkReloadRequiredTrackID = nil
             networkRecoveryAttemptBudget.reset()
+            playbackDiagnostics.record(
+                .networkRecovery(.progressValidated(pathGeneration: pathGeneration))
+            )
             Logger.player.debug(
                 "[NETWORK-RECOVERY] existing item validated on new path track='\(trackID, privacy: .public)'"
             )
@@ -2517,11 +2567,21 @@ actor PlayerService: PlayerServiceProtocol {
             trackID: trackID,
             pathGeneration: pathGeneration
         ) else { return }
+        playbackDiagnostics.record(
+            .networkRecovery(
+                .attemptStarted(number: attempt, pathGeneration: pathGeneration)
+            )
+        )
 
         let freshSource: MediaSource
         do {
             freshSource = try await mediaResolver.resolve(songId: trackID, serverId: serverID)
         } catch {
+            playbackDiagnostics.record(
+                .networkRecovery(
+                    .sourceRefreshFailed(number: attempt, pathGeneration: pathGeneration)
+                )
+            )
             Logger.player.warning(
                 "[NETWORK-RECOVERY] source refresh attempt=\(attempt, privacy: .public) failed track='\(trackID, privacy: .public)': \(error, privacy: .public)"
             )
@@ -2594,6 +2654,11 @@ actor PlayerService: PlayerServiceProtocol {
         endTransitionCommit()
         ownsTransitionCommit = false
         await pushPositionSnapshot(rate: 1.0)
+        playbackDiagnostics.record(
+            .networkRecovery(
+                .itemRebuilt(number: attempt, pathGeneration: pathGeneration)
+            )
+        )
         Logger.player.info(
             "[NETWORK-RECOVERY] rebuild attempt=\(attempt, privacy: .public) track='\(trackID, privacy: .public)' at \(resumePosition, format: .fixed(precision: 1))s"
         )
@@ -3095,6 +3160,14 @@ actor PlayerService: PlayerServiceProtocol {
         playbackToken: AudioEnginePlaybackToken
     ) async {
         guard isCurrentEngineEvent(playbackToken) else { return }
+        let diagnosticState: PlaybackDiagnostics.EngineStatus = switch newState {
+        case .playing: .playing
+        case .buffering: .buffering
+        case .paused: .paused
+        case .stopped: .stopped
+        case .error: .error
+        }
+        playbackDiagnostics.record(.engineStateChanged(diagnosticState))
         switch newState {
         case .playing:
             if let info = pendingRestoreInfo {
@@ -3307,7 +3380,7 @@ actor PlayerService: PlayerServiceProtocol {
     // MARK: - Artwork / NowPlaying helpers
 
     private func resolveArtworkURL(for song: DisplayableSong) async -> URL? {
-        guard let client = try? await serverService.makeSwiftSonicClient() else { return nil }
+        guard let client = try? await serverService.activeConnection().makeSwiftSonicClient() else { return nil }
         let artId = song.coverArtId ?? song.id
         return client.coverArtURL(id: artId, size: 600)
     }
@@ -3553,6 +3626,9 @@ extension PlayerService {
     private func handleAudioSessionInterruption(_ event: AudioSessionInterruptionEvent) async {
         switch event {
         case .began(let routeDisconnected):
+            playbackDiagnostics.record(
+                .audioSession(.interruptionBegan(routeDisconnected: routeDisconnected))
+            )
             isAudioSessionInterrupted = true
             await suspendPlaybackForSystem(
                 reason: "interruption",
@@ -3564,6 +3640,9 @@ extension PlayerService {
             )
 
         case .ended(let shouldResume):
+            playbackDiagnostics.record(
+                .audioSession(.interruptionEnded(shouldResume: shouldResume))
+            )
             isAudioSessionInterrupted = false
             let requiresPersonalRoute = pendingSystemResume?.requiresPersonalRoute == true
             Logger.player.info(
@@ -3598,6 +3677,14 @@ extension PlayerService {
         let currentOutputs = currentAudioRouteOutputs()
         let previousTypes = previousRouteOutputs.map(\.portType)
         let currentTypes = currentOutputs.map(\.portType)
+        playbackDiagnostics.record(
+            .audioSession(
+                .routeChanged(
+                    reasonCode: reason.rawValue,
+                    outputs: Array(Set(currentTypes.map(Self.diagnosticAudioOutputKind)))
+                )
+            )
+        )
         let outputDescription = currentTypes.map(\.rawValue).joined(separator: ",")
         Logger.player.info(
             "[ROUTE] routeChange reason=\(reason.logDescription, privacy: .public) outputs=[\(outputDescription, privacy: .public)]"
@@ -3691,6 +3778,9 @@ extension PlayerService {
         }
 
         guard snapshot.playbackState == .playing else { return }
+        playbackDiagnostics.record(
+            .audioSession(.systemPauseArmed(requiresPersonalRoute: requiresPersonalRoute))
+        )
         playbackProgressTracker.breakContinuity()
         engine.pause()
         await MainActor.run { state.playbackState = .paused }
@@ -3752,8 +3842,26 @@ extension PlayerService {
         }
 
         pendingSystemResume = nil
+        playbackDiagnostics.record(.audioSession(.systemResumeAttempted))
         Logger.player.info("[AUDIO-INTENT] automatic resume trigger=\(trigger, privacy: .public)")
         await resume()
+    }
+
+    private nonisolated static func diagnosticAudioOutputKind(
+        _ port: AVAudioSession.Port
+    ) -> PlaybackDiagnostics.AudioOutputKind {
+        switch port {
+        case .airPlay: .airPlay
+        case .bluetoothA2DP: .bluetoothA2DP
+        case .bluetoothHFP: .bluetoothHFP
+        case .bluetoothLE: .bluetoothLE
+        case .builtInReceiver, .builtInSpeaker: .builtIn
+        case .carAudio: .carAudio
+        case .headphones, .headsetMic: .headphones
+        case .HDMI: .hdmi
+        case .usbAudio: .usb
+        default: .other
+        }
     }
 }
 

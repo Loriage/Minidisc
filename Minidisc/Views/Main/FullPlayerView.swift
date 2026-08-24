@@ -23,6 +23,27 @@ private struct PlayerThemeKey: Equatable {
     let override: Color?
 }
 
+private struct FullPlayerBackground: View {
+    let dominantColor: Color
+
+    var body: some View {
+        ZStack {
+            Color.black
+            dominantColor
+            LinearGradient(
+                stops: [
+                    .init(color: Color.black.opacity(0.34), location: 0),
+                    .init(color: Color.black.opacity(0.50), location: 0.48),
+                    .init(color: Color.black.opacity(0.68), location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .ignoresSafeArea()
+    }
+}
+
 struct FullPlayerView: View {
     @Environment(\.appContainer) private var container
     @Environment(DominantColorExtractor.self) private var colorExtractor
@@ -31,6 +52,7 @@ struct FullPlayerView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var vm = FullPlayerViewModel()
+    @State private var playlistAddition = PlaylistAddition()
     @State private var showLyrics = false
     @State private var surface: PlayerSurface = .player
     @State private var lyricsViewModel: LyricsViewModel?
@@ -39,11 +61,15 @@ struct FullPlayerView: View {
     // MARK: - Player layout
 
     private static let playerCoverSize: CGFloat = 340
-    private static let playerCoverHPadding: CGFloat = MinidiscSpacing.m
+    private static let playerCoverHPadding: CGFloat = MinidiscSpacing.xxl
+    private static let playerHorizontalPadding: CGFloat = MinidiscSpacing.xxxl
+    private static let playerTopGap: CGFloat = 36
     private static let playerCoverToTitleGap: CGFloat = MinidiscSpacing.xl
-    private static let playerControlsSpacing: CGFloat = MinidiscSpacing.l
+    private static let playerControlsSpacing: CGFloat = MinidiscSpacing.xl
 
     var body: some View {
+        @Bindable var playlistAddition = playlistAddition
+
         if let playerState = container?.playerState {
             let themeCoverId: String? = playerState.isLiveStream
                 ? playerState.currentRadio?.coverArt
@@ -70,6 +96,10 @@ struct FullPlayerView: View {
                     lyricsViewModel = newVM
                     await newVM.load()
                 }
+                .sheet(item: $playlistAddition.selectedSong) { song in
+                    AddToPlaylistSheet(song: song)
+                }
+                .environment(playlistAddition)
         }
     }
 
@@ -80,29 +110,27 @@ struct FullPlayerView: View {
             : (playerState.currentTrack?.coverArtId ?? playerState.currentTrack?.id ?? "")
         // Use the memoized color on the first frame while the view model catches up.
         let dominant = colorExtractor.cachedColor(for: coverArtId) ?? vm.dominantColor
-        let isPlaying = playerState.playbackState == .playing
         let showingQueue = isQueueVisible(playerState)
 
-        surfaceStack(playerState, coverArtId: coverArtId, isPlaying: isPlaying,
-                     showingQueue: showingQueue)
+        surfaceStack(playerState, coverArtId: coverArtId, showingQueue: showingQueue)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .minidiscContentWidth()
-            .environment(\.minidiscPlayingAccent, MinidiscColors.accentForeground(on: dominant))
+            .environment(\.colorScheme, .dark)
+            .environment(\.minidiscPlayingAccent, MinidiscColors.accent)
         .background {
-            ZStack {
-                Color.black
-                dominant
-            }
-            .ignoresSafeArea()
+            FullPlayerBackground(dominantColor: dominant)
         }
     }
 
     @ViewBuilder
-    private func surfaceStack(_ playerState: PlayerState, coverArtId: String, isPlaying: Bool,
-                              showingQueue: Bool) -> some View {
+    private func surfaceStack(
+        _ playerState: PlayerState,
+        coverArtId: String,
+        showingQueue: Bool
+    ) -> some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
-                flowGap((showLyrics || showingQueue) ? 44 : 0)
+                flowGap((showLyrics || showingQueue) ? 44 : Self.playerTopGap)
 
                 ZStack {
                     if showLyrics, let lyricsVM = lyricsViewModel {
@@ -129,9 +157,9 @@ struct FullPlayerView: View {
 
                     // Keep the cover mounted across player and queue for matched geometry.
                     if !showLyrics {
-                        flowingCover(playerState, coverArtId: coverArtId, isSource: !showingQueue)
+                        flowingCover(coverArtId: coverArtId, isSource: !showingQueue)
                             .allowsHitTesting(!showingQueue)
-                            .ignoresSafeArea(.container, edges: .top)
+                            .padding(.horizontal, showingQueue ? 0 : Self.playerCoverHPadding)
                             .transition(.opacity)
                     }
                 }
@@ -146,7 +174,7 @@ struct FullPlayerView: View {
                         contentColor: vm.contentColor,
                         secondaryContentColor: vm.secondaryContentColor
                     )
-                    .padding(.horizontal, MinidiscSpacing.l)
+                    .padding(.horizontal, Self.playerHorizontalPadding)
                 }
 
                 if !playerState.isLiveStream {
@@ -156,7 +184,7 @@ struct FullPlayerView: View {
                         contentColor: vm.contentColor,
                         secondaryContentColor: vm.secondaryContentColor
                     )
-                    .padding(.horizontal, MinidiscSpacing.l)
+                    .padding(.horizontal, Self.playerHorizontalPadding)
                     .padding(.top, MinidiscSpacing.m)
                     .disabled(!playerState.isPlaybackAvailable)
                     .opacity(playerState.isPlaybackAvailable ? 1.0 : 0.4)
@@ -173,7 +201,7 @@ struct FullPlayerView: View {
 
                 if dynamicTypeSize < .accessibility1 {
                     VolumeSection(contentColor: vm.contentColor, secondaryContentColor: vm.secondaryContentColor)
-                        .padding(.horizontal, MinidiscSpacing.l)
+                        .padding(.horizontal, Self.playerHorizontalPadding)
                         .padding(.top, Self.playerControlsSpacing)
                 }
 
@@ -188,7 +216,7 @@ struct FullPlayerView: View {
                 surface: $surface,
                 isLiveStream: playerState.isLiveStream,
                 secondaryContentColor: vm.secondaryContentColor,
-                accentColor: MinidiscColors.accentForeground(on: vm.dominantColor),
+                accentColor: MinidiscColors.accent,
                 playerState: playerState
             )
             .padding(.top, MinidiscSpacing.s)
@@ -203,41 +231,26 @@ struct FullPlayerView: View {
         Color.clear.frame(minHeight: floor, maxHeight: floor)
     }
 
-    private func flowingCover(_ playerState: PlayerState, coverArtId: String, isSource: Bool) -> some View {
+    private func flowingCover(coverArtId: String, isSource: Bool) -> some View {
         GeometryReader { geo in
-            let dominant = colorExtractor.cachedColor(for: coverArtId) ?? vm.dominantColor
+            let artworkSide = min(geo.size.width, geo.size.height)
             CoverArtView(id: coverArtId, size: 1000)
-                // A definite frame prevents the rasterized cover from reporting an unbounded ideal width.
-                .frame(width: isSource ? min(geo.size.width, geo.size.height) : nil, height: isSource ? min(geo.size.width, geo.size.height) * 1.20 : nil)
-                .clipShape(RoundedRectangle(cornerRadius: isSource ? 0 : MinidiscCornerRadius.standard))
-                .overlay {
-                    if isSource {
-                        ZStack {
-                            CoverArtView(id: coverArtId, size: 1000)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .blur(radius: 16)
-                                .clipped()
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .clear, location: 0.82),
-                                    .init(color: dominant, location: 1.0),
-                                ],
-                                startPoint: .top, endPoint: .bottom
-                            )
-                        }
-                        .mask(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .clear, location: 0.84),
-                                    .init(color: .black, location: 1.0),
-                                ],
-                                startPoint: .top, endPoint: .bottom
-                            )
-                        )
-                        .allowsHitTesting(false)
-                    }
-                }
+                .frame(
+                    width: isSource ? artworkSide : nil,
+                    height: isSource ? artworkSide : nil
+                )
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: isSource ? MinidiscCornerRadius.large : MinidiscCornerRadius.standard,
+                        style: .continuous
+                    )
+                )
                 .drawingGroup()
+                .shadow(
+                    color: isSource ? Color.black.opacity(0.28) : .clear,
+                    radius: 18,
+                    y: 10
+                )
                 .matchedGeometryEffect(id: "queueCover", in: morphNS, isSource: isSource)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
@@ -277,7 +290,7 @@ struct FullPlayerView: View {
                 loadArtwork: true
             )
             // The system reorder grip follows the cover luminance.
-            .environment(\.colorScheme, vm.isLightBackground ? .light : .dark)
+            .environment(\.colorScheme, .dark)
             .frame(maxWidth: .infinity, minHeight: 120, maxHeight: .infinity)
 
             queueStatusLine(playerState)
@@ -370,7 +383,7 @@ struct FullPlayerView: View {
                 secondaryContentColor: vm.secondaryContentColor,
                 loadArtwork: isQueueVisible(playerState)
             )
-            .environment(\.colorScheme, vm.isLightBackground ? .light : .dark)
+            .environment(\.colorScheme, .dark)
             .frame(maxWidth: .infinity, minHeight: 120, maxHeight: .infinity)
 
             queueStatusLine(playerState)
@@ -534,8 +547,7 @@ private struct TrackInfoSection: View {
     var compact: Bool = false
 
     @Query private var favoriteMatches: [FavoriteRecord]
-    @Environment(ArtworkImageCache.self) private var artworkImageCache
-    @State private var songToAddToPlaylist: DisplayableSong?
+    @Environment(PlaylistAddition.self) private var playlistAddition
     @State private var showAlbumSheet = false
 
     init(playerState: PlayerState, container: AppContainer?, contentColor: Color, secondaryContentColor: Color, compact: Bool = false) {
@@ -579,7 +591,7 @@ private struct TrackInfoSection: View {
                                     goToArtist()
                                 } label: {
                                     Text(artist)
-                                        .font(.subheadline)
+                                        .font(compact ? .subheadline : .title3)
                                         .foregroundStyle(secondaryContentColor)
                                         .lineLimit(1)
                                         .truncationMode(.tail)
@@ -635,7 +647,9 @@ private struct TrackInfoSection: View {
                         .disabled(playerState.currentTrack?.artist == nil || !isOnline)
                         Divider()
                         Button("Add to Playlist...", systemImage: "music.note.list") {
-                            songToAddToPlaylist = playerState.currentTrack
+                            if let track = playerState.currentTrack {
+                                playlistAddition.present(track)
+                            }
                         }
                         .disabled(!isOnline || playerState.currentTrack == nil)
                         Divider()
@@ -671,10 +685,6 @@ private struct TrackInfoSection: View {
                     AlbumDetailView(albumId: albumId, albumName: albumName, coverArtId: track.coverArtId)
                 }
             }
-        }
-        .sheet(item: $songToAddToPlaylist) { song in
-            AddToPlaylistSheet(song: song)
-                .environment(artworkImageCache)
         }
     }
 
@@ -782,7 +792,9 @@ private struct ScrubberTimeLabels: View {
                 .foregroundStyle(color)
                 .monospacedDigit()
             Spacer()
-            Text(Duration.seconds(max(effectiveDuration - shown, 0)).formatted(.time(pattern: .minuteSecond)))
+            Text(
+                verbatim: "-\(Duration.seconds(max(effectiveDuration - shown, 0)).formatted(.time(pattern: .minuteSecond)))"
+            )
                 .font(.minidiscCaption)
                 .foregroundStyle(color)
                 .monospacedDigit()

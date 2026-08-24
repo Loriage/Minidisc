@@ -1,5 +1,4 @@
 import Foundation
-import SwiftSonic
 
 protocol ServerServiceProtocol: AnyObject, Sendable {
     /// Observable UI state (MainActor-isolated). Access directly from SwiftUI views.
@@ -49,13 +48,12 @@ protocol ServerServiceProtocol: AnyObject, Sendable {
         customHeaders: [String: String]
     ) async throws
 
-    /// Returns a SwiftSonicClient configured with CustomHeadersTransport for the active server.
-    /// Callers must NOT cache this client — always request a fresh one to pick up config changes.
-    func makeSwiftSonicClient() async throws -> SwiftSonicClient
+    /// Returns the current process-local connection version without reading Keychain.
+    /// Long-lived clients use this as their cache key.
+    func activeConnectionVersion() async -> ServerConnection.Version?
 
-    /// Returns the stored credentials for the active server.
-    /// Used by MediaResolver and DownloadService to inject headers into AVPlayer / URLSession.
-    func activeCredentials() async throws -> ServerCredentials
+    /// Returns one process-local snapshot whose metadata and authorization share a revision.
+    func activeConnection() async throws -> ServerConnection
 
     /// Restores servers and activeServer from SwiftData + Keychain on app launch.
     /// Sets state.isLoadingPersistedState = false when complete (even on failure).

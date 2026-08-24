@@ -7,11 +7,12 @@ struct MainTabView: View {
     @State private var homePath = NavigationPath()
     @State private var selectedTab: AppTab = .home
     @State private var showingFullPlayer = false
+    @State private var playlistAddition = PlaylistAddition()
     @Namespace private var playerZoom
-    private let fullPlayerZoomID = "full-player"
     @AppStorage("minidisc.appTheme") private var theme: AppTheme = .system
 
     private enum AppTab: Hashable { case home, discover, library, lidarr, search }
+    private let fullPlayerZoomID = "full-player"
 
     private var lidarrConnected: Bool { container?.lidarrSettings.isConnected == true }
 
@@ -20,6 +21,8 @@ struct MainTabView: View {
     }
 
     var body: some View {
+        @Bindable var playlistAddition = playlistAddition
+
         tabs
             .tabBarMinimizeBehavior(.onScrollDown)
             // isEnabled at the modifier level — a conditional INSIDE the accessory builder
@@ -31,6 +34,10 @@ struct MainTabView: View {
                 FullPlayerView()
                     .minidiscZoomTransition(sourceID: fullPlayerZoomID, in: playerZoom)
             }
+            .sheet(item: $playlistAddition.selectedSong) { song in
+                AddToPlaylistSheet(song: song)
+            }
+            .environment(playlistAddition)
     }
 
     // The accessory deliberately inherits the colour scheme the system gives its glass container instead of

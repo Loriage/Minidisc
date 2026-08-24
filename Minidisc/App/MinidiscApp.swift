@@ -6,8 +6,10 @@ import BackgroundTasks
 
 @main
 struct MinidiscApp: App {
-    @State private var container: AppContainer?
+    @State private var launchState: AppLaunchState = .launching
+    @State private var launchAttempt = 1
     @Environment(\.scenePhase) private var scenePhase
+    private let playbackDiagnostics = PlaybackDiagnostics()
 
     private nonisolated static let backgroundSyncCoordinator = BackgroundSyncCoordinator()
 
@@ -55,113 +57,116 @@ struct MinidiscApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Group {
-                if let container {
-                    RootView()
-                        // .toastOverlay() must be the INNERMOST modifier: a toast pill now renders a
-                        // CoverArtView, which reads @Environment(ArtworkImageCache.self) / appContainer.
-                        // An overlay's content only inherits environments applied AFTER the overlay
-                        // modifier (envs applied to the primary content below it do NOT reach the
-                        // overlay's own view). So the env injections must sit below .toastOverlay().
-                        .toastOverlay()
-                        .environment(\.appContainer, container)
-                        .environment(container.dominantColorExtractor)
-                        .environment(container.artworkImageCache)
-                        .modelContainer(container.modelContainer)
-                        .environment(container.toastService)
-                } else {
-                    ProgressView()
+            AppLaunchContent(state: launchState, retryAction: retryLaunch)
+                .task(id: launchAttempt) {
+                    await launchIfNeeded()
                 }
-            }
-            .tint(MinidiscColors.accent)
-            .task {
-                guard container == nil else { return }
-                let newContainer: AppContainer
-                do {
-                    newContainer = try AppContainer()
-                } catch {
-                    Logger.boot.fault("AppContainer initialization failed: \(error, privacy: .public)")
-                    return
+                .task(id: activeContainer?.serverState.isOnline) {
+                    guard let container = activeContainer,
+                          container.serverState.isOnline else { return }
+                    await container.listenBrainzService.flushOfflineQueue()
                 }
-                await newContainer.setup()
-                // Start reachability before the UI is interactive so serverState.isOnline
-                // is corrected from its optimistic default before any view loads data.
-                newContainer.networkMonitor.start(
-                    serverState: newContainer.serverState,
-                    streamSettings: newContainer.streamSettings,
-                    playerService: newContainer.playerService
-                )
-                await newContainer.nowPlayingService.start()
-                AppContainer.invalidateCoverArtCacheIfNeeded(artworkCache: newContainer.artworkImageCache)
-                if let sweepTask = AppContainer.sweepLegacyCoverArtFiles() {
-                    newContainer.retainLifecycleTask(sweepTask)
-                }
-                let modelContainer = newContainer.modelContainer
-                let audioStreamCache = newContainer.audioStreamCache
-                newContainer.retainLifecycleTask(Task { [modelContainer, audioStreamCache] in
-                    await AppContainer.migrateAudioExtensionsIfNeeded(
-                        modelContainer: modelContainer,
-                        audioStreamCache: audioStreamCache
-                    )
-                })
-                newContainer.retainLifecycleTask(Task { [modelContainer] in
-                    await AppContainer.migrateM4AFaststartIfNeeded(
-                        modelContainer: modelContainer
-                    )
-                })
-                container = newContainer
-                // loadPersistedState must complete before restoreSession so the active
-                // server is known when prepareCurrentTrackForRestoration resolves the URL.
-                await newContainer.serverService.loadPersistedState()
-                await newContainer.playerService.restoreSession()
-                let downloadService = newContainer.downloadService
-                newContainer.retainLifecycleTask(Task { [modelContainer, downloadService] in
-                    await runCoverArtGarbageCollection(
-                        modelContainer: modelContainer,
-                        downloadService: downloadService
-                    )
-                })
-                await MinidiscApp.backgroundSyncCoordinator.configure(
-                    wrappedService: newContainer.wrappedPlaylistService,
-                    moodService: newContainer.moodPlaylistService,
-                    serverState: newContainer.serverState
-                )
-                // Cold start and BGProcessing share one deduplicated coordinator run.
-                // This task captures only the process-lifetime coordinator, avoiding a
-                // container → lifecycle task → container retention cycle.
-                newContainer.retainLifecycleTask(Task {
-                    _ = await BackgroundActivity.run("playlist-sync") {
-                        await MinidiscApp.backgroundSyncCoordinator.run(calendar: .current)
-                    }
-                })
-                MinidiscApp.scheduleWrappedUpdate()
-                Logger.boot.info("App services ready")
-            }
-            .task(id: container?.serverState.isOnline) {
-                guard let c = container, c.serverState.isOnline else { return }
-                await c.listenBrainzService.flushOfflineQueue()
-            }
         }
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .inactive, let c = container {
-                Task { await c.playerService.saveCurrentPosition() }
+            if newPhase == .inactive, let container = activeContainer {
+                Task { await container.playerService.saveCurrentPosition() }
                 Logger.session.info("App inactive — position flushed (iOS kill guard)")
             }
-            guard newPhase == .background, let c = container else { return }
-            guard c.playerState.currentRadio == nil, c.playerState.currentTrack != nil else {
+            guard newPhase == .background, let container = activeContainer else { return }
+            guard container.playerState.currentRadio == nil,
+                  container.playerState.currentTrack != nil else {
                 Logger.session.info("App backgrounded during radio — preserving the last music session")
                 return
             }
             let snapshot = SessionPayload(
-                currentIndex: c.playerState.currentIndex,
-                currentPosition: c.playerState.position,
-                queue: c.playerState.queue,
-                currentTrack: c.playerState.currentTrack,
-                repeatMode: c.playerState.repeatMode
+                currentIndex: container.playerState.currentIndex,
+                currentPosition: container.playerState.position,
+                queue: container.playerState.queue,
+                currentTrack: container.playerState.currentTrack,
+                repeatMode: container.playerState.repeatMode
             )
-            Task { await c.sessionService.save(playerState: snapshot) }
+            Task { await container.sessionService.save(playerState: snapshot) }
             Logger.session.info("App backgrounded — session flushed")
         }
+    }
+
+    private var activeContainer: AppContainer? {
+        guard case .ready(let container) = launchState else { return nil }
+        return container
+    }
+
+    private func retryLaunch() {
+        guard case .failed = launchState else { return }
+        launchState = .launching
+        launchAttempt += 1
+    }
+
+    private func launchIfNeeded() async {
+        guard case .launching = launchState else { return }
+        playbackDiagnostics.record(.application(.launchStarted(attempt: launchAttempt)))
+
+        let newContainer: AppContainer
+        do {
+            newContainer = try AppContainer(playbackDiagnostics: playbackDiagnostics)
+        } catch {
+            let failure = error as NSError
+            Logger.boot.fault(
+                "AppContainer initialization failed: domain=\(failure.domain, privacy: .public) code=\(failure.code, privacy: .public)"
+            )
+            playbackDiagnostics.record(.application(.launchFailed))
+            launchState = .failed
+            return
+        }
+
+        await newContainer.setup()
+        // Start reachability before the UI is interactive so serverState.isOnline
+        // is corrected from its optimistic default before any view loads data.
+        newContainer.networkMonitor.start(
+            serverState: newContainer.serverState,
+            streamSettings: newContainer.streamSettings,
+            playerService: newContainer.playerService
+        )
+        await newContainer.nowPlayingService.start()
+        AppContainer.invalidateCoverArtCacheIfNeeded(artworkCache: newContainer.artworkImageCache)
+        if let sweepTask = AppContainer.sweepLegacyCoverArtFiles() {
+            newContainer.retainLifecycleTask(sweepTask)
+        }
+        let modelContainer = newContainer.modelContainer
+        let audioStreamCache = newContainer.audioStreamCache
+        newContainer.retainLifecycleTask(Task { [modelContainer, audioStreamCache] in
+            await AppContainer.migrateAudioExtensionsIfNeeded(
+                modelContainer: modelContainer,
+                audioStreamCache: audioStreamCache
+            )
+        })
+        newContainer.retainLifecycleTask(Task { [modelContainer] in
+            await AppContainer.migrateM4AFaststartIfNeeded(modelContainer: modelContainer)
+        })
+        // The active server must be loaded before session restoration resolves its media URL.
+        await newContainer.serverService.loadPersistedState()
+        await newContainer.playerService.restoreSession()
+        let downloadService = newContainer.downloadService
+        newContainer.retainLifecycleTask(Task { [modelContainer, downloadService] in
+            await runCoverArtGarbageCollection(
+                modelContainer: modelContainer,
+                downloadService: downloadService
+            )
+        })
+        await MinidiscApp.backgroundSyncCoordinator.configure(
+            wrappedService: newContainer.wrappedPlaylistService,
+            moodService: newContainer.moodPlaylistService,
+            serverState: newContainer.serverState
+        )
+        // Cold start and BGProcessing share one deduplicated coordinator run.
+        newContainer.retainLifecycleTask(Task {
+            _ = await BackgroundActivity.run("playlist-sync") {
+                await MinidiscApp.backgroundSyncCoordinator.run(calendar: .current)
+            }
+        })
+        MinidiscApp.scheduleWrappedUpdate()
+        launchState = .ready(newContainer)
+        playbackDiagnostics.record(.application(.servicesReady))
+        Logger.boot.info("App services ready")
     }
 
     // MARK: - Cover art garbage collection
@@ -197,4 +202,52 @@ struct MinidiscApp: App {
         await downloadService.garbageCollectOrphanedCovers(referencedIds: referencedIds)
     }
 
+}
+
+private enum AppLaunchState {
+    case launching
+    case ready(AppContainer)
+    case failed
+}
+
+private struct AppLaunchContent: View {
+    let state: AppLaunchState
+    let retryAction: () -> Void
+
+    var body: some View {
+        switch state {
+        case .launching:
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        case .ready(let container):
+            RootView()
+                // Toast content renders cover art, so these environments must wrap the overlay too.
+                .toastOverlay()
+                .environment(\.appContainer, container)
+                .environment(container.dominantColorExtractor)
+                .environment(container.artworkImageCache)
+                .modelContainer(container.modelContainer)
+                .environment(container.toastService)
+
+        case .failed:
+            AppLaunchFailureView(retryAction: retryAction)
+        }
+    }
+}
+
+private struct AppLaunchFailureView: View {
+    let retryAction: () -> Void
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("Unable to Load", systemImage: "externaldrive.badge.exclamationmark")
+        } description: {
+            Text("Minidisc couldn't open its local data. You can try again without restarting the app.")
+        } actions: {
+            Button("Retry", action: retryAction)
+                .buttonStyle(.borderedProminent)
+                .tint(MinidiscColors.accent)
+        }
+    }
 }

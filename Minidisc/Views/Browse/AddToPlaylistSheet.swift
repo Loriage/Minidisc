@@ -76,6 +76,7 @@ struct AddToPlaylistSheet: View {
         } message: { dup in
             Text("\"\(dup.songName)\" is already in \"\(dup.playlistName)\". Add it again?")
         }
+        .tint(.primary)
     }
 
     @ViewBuilder

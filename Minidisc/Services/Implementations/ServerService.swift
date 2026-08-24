@@ -9,12 +9,24 @@ actor ServerService: ServerServiceProtocol {
     private let keychain: any KeychainServiceProtocol
     private let modelContainer: ModelContainer
     private let audioStreamCache: any AudioStreamCacheProtocol
+    private let playbackDiagnostics: PlaybackDiagnostics
+    private var activeServerSnapshot: ServerSnapshot?
+    private var activeConnectionSnapshot: ServerConnection?
+    private var connectionVersion: ServerConnection.Version?
+    private var nextConnectionRevision: UInt64 = 0
 
-    init(state: ServerState, keychain: any KeychainServiceProtocol, modelContainer: ModelContainer, audioStreamCache: any AudioStreamCacheProtocol) {
+    init(
+        state: ServerState,
+        keychain: any KeychainServiceProtocol,
+        modelContainer: ModelContainer,
+        audioStreamCache: any AudioStreamCacheProtocol,
+        playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics()
+    ) {
         self.state = state
         self.keychain = keychain
         self.modelContainer = modelContainer
         self.audioStreamCache = audioStreamCache
+        self.playbackDiagnostics = playbackDiagnostics
     }
 
     func addServer(
@@ -34,7 +46,7 @@ actor ServerService: ServerServiceProtocol {
         try await keychain.store(creds, forKey: credKey)
 
         do {
-            try await MainActor.run {
+            let activatedServer = try await MainActor.run {
                 let context = ModelContext(modelContainer)
                 let existingCount = (try? context.fetchCount(FetchDescriptor<ServerConfig>())) ?? 0
                 let isFirst = existingCount == 0
@@ -52,6 +64,10 @@ actor ServerService: ServerServiceProtocol {
                 if isFirst {
                     state.activeServer = snapshot
                 }
+                return isFirst ? snapshot : nil
+            }
+            if let activatedServer {
+                await publishConnectionChange(server: activatedServer, credentials: creds)
             }
         } catch {
             try? await keychain.delete(forKey: credKey)
@@ -62,7 +78,7 @@ actor ServerService: ServerServiceProtocol {
     func removeServer(id: UUID) async throws {
         let credKey = ServerCredentials.keychainKey(for: id)
 
-        try await MainActor.run {
+        let removedActiveServer = try await MainActor.run {
             let context = ModelContext(modelContainer)
             let descriptor = FetchDescriptor<ServerConfig>(
                 predicate: #Predicate { $0.id == id }
@@ -76,7 +92,13 @@ actor ServerService: ServerServiceProtocol {
             if state.activeServer?.id == id {
                 state.activeServer = nil
                 state.isConnected = false
+                return true
             }
+            return false
+        }
+
+        if removedActiveServer {
+            await publishConnectionRemoval()
         }
 
         // Best-effort: an orphaned Keychain entry is harmless if this fails.
@@ -84,7 +106,7 @@ actor ServerService: ServerServiceProtocol {
     }
 
     func setActiveServer(id: UUID) async throws {
-        let allServerIds = try await MainActor.run {
+        let (allServerIds, activeServer) = try await MainActor.run {
             let context = ModelContext(modelContainer)
             let all = try context.fetch(FetchDescriptor<ServerConfig>())
             guard let target = all.first(where: { $0.id == id }) else {
@@ -95,8 +117,14 @@ actor ServerService: ServerServiceProtocol {
             try context.save()
             state.activeServer = ServerSnapshot(from: target)
             state.isConnected = false
-            return all.map(\.id)
+            return (all.map(\.id), ServerSnapshot(from: target))
         }
+
+        let credentials = try? await keychain.retrieve(
+            ServerCredentials.self,
+            forKey: ServerCredentials.keychainKey(for: id)
+        )
+        await publishConnectionChange(server: activeServer, credentials: credentials)
 
         // Best-effort: clear the audio cache for every server that is no longer active.
         let othersToClean = allServerIds.filter { $0 != id }
@@ -122,6 +150,9 @@ actor ServerService: ServerServiceProtocol {
             audioMuseToken: existing.audioMuseToken
         )
         try await keychain.store(updated, forKey: credKey)
+        if let activeServerSnapshot, activeServerSnapshot.id == id {
+            await publishConnectionChange(server: activeServerSnapshot, credentials: updated)
+        }
     }
 
     func updateServer(
@@ -146,7 +177,7 @@ actor ServerService: ServerServiceProtocol {
         try await keychain.store(creds, forKey: credKey)
 
         do {
-            try await MainActor.run {
+            let updatedActiveServer: ServerSnapshot? = try await MainActor.run {
                 let context = ModelContext(modelContainer)
                 let descriptor = FetchDescriptor<ServerConfig>(predicate: #Predicate { $0.id == id })
                 guard let config = try context.fetch(descriptor).first else {
@@ -162,7 +193,12 @@ actor ServerService: ServerServiceProtocol {
                 }
                 if state.activeServer?.id == id {
                     state.activeServer = snapshot
+                    return snapshot
                 }
+                return nil
+            }
+            if let updatedActiveServer {
+                await publishConnectionChange(server: updatedActiveServer, credentials: creds)
             }
         } catch {
             // Restore the exact prior credential state. Besides avoiding a metadata/secret
@@ -178,13 +214,22 @@ actor ServerService: ServerServiceProtocol {
 
     func loadPersistedState() async {
         do {
-            let serverIDs = try await MainActor.run {
+            let (serverIDs, activeServer) = try await MainActor.run {
                 let context = ModelContext(modelContainer)
                 let configs = try context.fetch(FetchDescriptor<ServerConfig>())
                 state.servers = configs.map { ServerSnapshot(from: $0) }
                 state.activeServer = configs.first(where: { $0.isActive }).map { ServerSnapshot(from: $0) }
                 state.isLoadingPersistedState = false
-                return configs.map(\.id)
+                return (configs.map(\.id), state.activeServer)
+            }
+            if let activeServer {
+                let credentials = try? await keychain.retrieve(
+                    ServerCredentials.self,
+                    forKey: ServerCredentials.keychainKey(for: activeServer.id)
+                )
+                await publishConnectionChange(server: activeServer, credentials: credentials)
+            } else {
+                await publishConnectionRemoval()
             }
             await migrateCredentialsAccessibility(for: serverIDs)
         } catch {
@@ -212,7 +257,7 @@ actor ServerService: ServerServiceProtocol {
     }
 
     func testConnection() async throws {
-        let client = try await makeSwiftSonicClient()
+        let client = try await activeConnection().makeSwiftSonicClient()
         try await client.ping()
     }
 
@@ -245,42 +290,15 @@ actor ServerService: ServerServiceProtocol {
         }
     }
 
-    func makeSwiftSonicClient() async throws -> SwiftSonicClient {
-        let snapshot = await MainActor.run { state.activeServer }
-        Logger.server.debug("makeSwiftSonicClient — activeServer=\(String(describing: snapshot?.baseURL), privacy: .public)")
-        guard let snapshot else {
-            Logger.server.error("makeSwiftSonicClient: activeServer is nil → serverNotConfigured")
-            throw MinidiscError.serverNotConfigured
-        }
-
-        let creds = try await keychain.retrieve(
-            ServerCredentials.self,
-            forKey: ServerCredentials.keychainKey(for: snapshot.id)
-        )
-        guard let creds else { throw MinidiscError.serverNotConfigured }
-
-        guard let url = URL(string: snapshot.baseURL) else {
-            throw MinidiscError.invalidServerURL(snapshot.baseURL)
-        }
-
-        let transport = CustomHeadersTransport(headers: creds.customHeaders)
-        return SwiftSonicClient(
-            configuration: ServerConfiguration(serverURL: url, username: snapshot.username, password: creds.password),
-            transport: transport,
-            logSubsystem: "app.minidisc.server"
-        )
+    func activeConnectionVersion() async -> ServerConnection.Version? {
+        connectionVersion
     }
 
-    func activeCredentials() async throws -> ServerCredentials {
-        let snapshot = await MainActor.run { state.activeServer }
-        guard let snapshot else { throw MinidiscError.serverNotConfigured }
-
-        guard let creds = try await keychain.retrieve(
-            ServerCredentials.self,
-            forKey: ServerCredentials.keychainKey(for: snapshot.id)
-        ) else { throw MinidiscError.serverNotConfigured }
-
-        return creds
+    func activeConnection() async throws -> ServerConnection {
+        guard let activeConnectionSnapshot else {
+            throw MinidiscError.serverNotConfigured
+        }
+        return activeConnectionSnapshot
     }
 
     // MARK: - AudioMuse
@@ -309,7 +327,7 @@ actor ServerService: ServerServiceProtocol {
         )
 
         do {
-            try await MainActor.run {
+            let updatedActiveServer: ServerSnapshot? = try await MainActor.run {
                 let context = ModelContext(modelContainer)
                 let descriptor = FetchDescriptor<ServerConfig>(predicate: #Predicate { $0.id == serverId })
                 guard let config = try context.fetch(descriptor).first else {
@@ -323,7 +341,20 @@ actor ServerService: ServerServiceProtocol {
                 }
                 if state.activeServer?.id == serverId {
                     state.activeServer = snapshot
+                    return snapshot
                 }
+                return nil
+            }
+            if let updatedActiveServer {
+                let updatedCredentials = ServerCredentials(
+                    password: existing.password,
+                    customHeaders: existing.customHeaders,
+                    audioMuseToken: resolvedToken
+                )
+                await publishConnectionChange(
+                    server: updatedActiveServer,
+                    credentials: updatedCredentials
+                )
             }
         } catch {
             // The URL and its token are one logical setting. If SwiftData rejects the URL
@@ -335,6 +366,51 @@ actor ServerService: ServerServiceProtocol {
     }
 
     // MARK: - Private
+
+    private func publishConnectionChange(
+        server: ServerSnapshot,
+        credentials: ServerCredentials?
+    ) async {
+        nextConnectionRevision &+= 1
+        let version = ServerConnection.Version(
+            serverID: server.id,
+            revision: nextConnectionRevision
+        )
+        activeServerSnapshot = server
+        connectionVersion = version
+        activeConnectionSnapshot = credentials.flatMap { credentials in
+            try? ServerConnection(
+                version: version,
+                server: server,
+                credentials: credentials
+            )
+        }
+        await MainActor.run {
+            state.activeConnectionVersion = version
+        }
+
+        if let url = URL(string: server.baseURL) {
+            playbackDiagnostics.record(
+                .connectionChanged(
+                    version: version,
+                    endpoint: PlaybackDiagnostics.ServerEndpoint(
+                        url: url,
+                        customHeaderCount: credentials?.customHeaders.count
+                    )
+                )
+            )
+        }
+    }
+
+    private func publishConnectionRemoval() async {
+        activeServerSnapshot = nil
+        activeConnectionSnapshot = nil
+        connectionVersion = nil
+        await MainActor.run {
+            state.activeConnectionVersion = nil
+        }
+        playbackDiagnostics.record(.connectionRemoved)
+    }
 
     func mapToConnectionTestError(_ error: Error) -> ConnectionTestError {
         guard let sonic = error as? SwiftSonicError else {

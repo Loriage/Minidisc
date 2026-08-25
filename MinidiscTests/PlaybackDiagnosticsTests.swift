@@ -78,4 +78,26 @@ struct PlaybackDiagnosticsTests {
         #expect(report.contains("attempt=2"))
         #expect(report.contains("attempt=3"))
     }
+
+    @Test func launchFailureReportWorksBeforeNetworkAndServicesExist() {
+        let diagnostics = PlaybackDiagnostics(capacity: 4)
+        diagnostics.record(
+            .application(.launchFailed(errorDomain: "SwiftData", errorCode: 134060))
+        )
+
+        let report = diagnostics.makeReport(
+            context: PlaybackDiagnostics.ReportContext(
+                appVersion: "26.8.3",
+                appBuild: "25",
+                operatingSystem: "iOS",
+                playbackStatus: .idle,
+                isPlaybackAvailable: false,
+                networkPath: nil,
+                connectionVersion: nil
+            )
+        )
+
+        #expect(report.contains("Network: unavailable"))
+        #expect(report.contains("error-domain=SwiftData error-code=134060"))
+    }
 }

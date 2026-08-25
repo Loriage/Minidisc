@@ -354,18 +354,10 @@ private struct HomePinnedCard: View {
                 }
                 .aspectRatio(1, contentMode: .fit)
                 .minidiscMatchedTransitionSource(id: item.itemId, in: namespace)
-                Text(item.displayName)
-                    .font(.minidiscCaption)
-                    .fontWeight(.semibold)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if !item.displaySubtitle.isEmpty {
-                    Text(item.displaySubtitle)
-                        .font(.minidiscCaption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+                CoverCardMetadata(
+                    title: item.displayName,
+                    subtitle: item.displaySubtitle.isEmpty ? nil : item.displaySubtitle
+                )
             }
         }
         .buttonStyle(.plain)
@@ -474,18 +466,10 @@ private struct HomeDownloadedItemCard: View {
                     }
                 }
                 .aspectRatio(1, contentMode: .fit)
-                Text(item.name)
-                    .font(.minidiscCaption)
-                    .fontWeight(.semibold)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if !item.subtitle.isEmpty {
-                    Text(item.subtitle)
-                        .font(.minidiscCaption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+                CoverCardMetadata(
+                    title: item.name,
+                    subtitle: item.subtitle.isEmpty ? nil : item.subtitle
+                )
             }
         }
         .buttonStyle(.plain)
@@ -566,18 +550,7 @@ private struct HomeAlbumCell: View {
             }
             .aspectRatio(1, contentMode: .fit)
             .minidiscMatchedTransitionSource(id: album.id, in: namespace)
-            Text(album.name)
-                .font(.minidiscCaption)
-                .fontWeight(.semibold)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if let artist = album.artist {
-                Text(artist)
-                    .font(.minidiscCaption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+            CoverCardMetadata(title: album.name, subtitle: album.artist)
         }
         .task(id: album.id) {
             coverImage = await artworkImageCache.load(coverArtId: album.coverArt ?? album.id)

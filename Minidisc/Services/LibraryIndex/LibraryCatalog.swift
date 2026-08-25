@@ -34,6 +34,7 @@ actor LibraryCatalog {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
+            guard Self.canServeStaleData(after: error) else { throw error }
             remoteStatus = nil
             Logger.library.debug(
                 "Library index: scan status unavailable; using age-based refresh: \(error, privacy: .public)"
@@ -80,13 +81,19 @@ actor LibraryCatalog {
         try await synchronizer.refreshTracks(serverID: serverID)
     }
 
+    func refreshPlaylists() async throws -> [Playlist] {
+        let serverID = try await source.activeServerID()
+        try await synchronizer.refreshPlaylists(serverID: serverID)
+        return try await store.playlists(serverID: serverID)
+    }
+
     func search(_ query: String) async throws -> SearchResult3 {
         let serverID = try await source.activeServerID()
         let completion = try await store.status(for: serverID)
         let local = try await store.search(query, serverID: serverID)
         let isOnline = await source.isOnline()
 
-        if completion.isComplete, !local.isEmpty || !isOnline {
+        if completion.libraryIsComplete, !local.isEmpty || !isOnline {
             return try Self.searchResult(from: local)
         }
         guard isOnline else {
@@ -126,7 +133,7 @@ actor LibraryCatalog {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            guard !local.isEmpty else { throw error }
+            guard Self.canServeStaleData(after: error), !local.isEmpty else { throw error }
             Logger.library.info("Library index: serving partial local search after remote failure")
             return try Self.searchResult(from: local)
         }
@@ -149,7 +156,7 @@ actor LibraryCatalog {
             throw CancellationError()
         } catch {
             let fallback = try await store.artists(serverID: serverID)
-            if !fallback.isEmpty { return fallback }
+            if Self.canServeStaleData(after: error), !fallback.isEmpty { return fallback }
             throw error
         }
     }
@@ -185,7 +192,7 @@ actor LibraryCatalog {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            if let local { return local }
+            if Self.canServeStaleData(after: error), let local { return local }
             throw error
         }
     }
@@ -207,7 +214,7 @@ actor LibraryCatalog {
             throw CancellationError()
         } catch {
             let fallback = try await store.albums(serverID: serverID)
-            if !fallback.isEmpty { return fallback }
+            if Self.canServeStaleData(after: error), !fallback.isEmpty { return fallback }
             throw error
         }
     }
@@ -248,7 +255,7 @@ actor LibraryCatalog {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            if let local { return local }
+            if Self.canServeStaleData(after: error), let local { return local }
             throw error
         }
     }
@@ -270,7 +277,7 @@ actor LibraryCatalog {
             throw CancellationError()
         } catch {
             let local = try await store.recentlyAddedAlbums(serverID: serverID, limit: size)
-            if !local.isEmpty { return local }
+            if Self.canServeStaleData(after: error), !local.isEmpty { return local }
             throw error
         }
     }
@@ -302,8 +309,83 @@ actor LibraryCatalog {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            if !local.isEmpty { return local }
+            if Self.canServeStaleData(after: error), !local.isEmpty { return local }
             throw error
+        }
+    }
+
+    func playlists() async throws -> [Playlist] {
+        let serverID = try await source.activeServerID()
+        let local = try await store.playlists(serverID: serverID)
+        guard await source.isOnline() else {
+            if !local.isEmpty { return local }
+            throw URLError(.notConnectedToInternet)
+        }
+
+        do {
+            try await synchronizer.refreshPlaylists(serverID: serverID)
+            return try await store.playlists(serverID: serverID)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            let fallback = try await store.playlists(serverID: serverID)
+            if Self.canServeStaleData(after: error), !fallback.isEmpty { return fallback }
+            throw error
+        }
+    }
+
+    func playlist(id: String) async throws -> PlaylistWithSongs {
+        let serverID = try await source.activeServerID()
+        let local = try await store.playlist(id: id, serverID: serverID)
+        if let local, local.isCurrent { return local.playlist }
+        guard await source.isOnline() else {
+            if let local { return local.playlist }
+            throw URLError(.notConnectedToInternet)
+        }
+
+        do {
+            let remote = try await source.playlist(id: id, serverID: serverID)
+            do {
+                try await store.cachePlaylistDetail(remote, serverID: serverID)
+            } catch {
+                Logger.library.debug(
+                    "Library index: could not cache playlist detail: \(error, privacy: .public)"
+                )
+            }
+            return remote
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            if Self.canServeStaleData(after: error), let local { return local.playlist }
+            throw error
+        }
+    }
+
+    /// Records the values already confirmed by a successful mutation, then marks the list
+    /// generation incomplete so the next uncached list read reconciles server-owned fields.
+    func recordPlaylistMutation(
+        summary: Playlist?,
+        detail: PlaylistWithSongs?,
+        deletedID: String? = nil
+    ) async {
+        do {
+            let serverID = try await source.activeServerID()
+            if let summary {
+                try await store.cachePlaylistSummary(summary, serverID: serverID)
+            }
+            if let detail {
+                try await store.cachePlaylistDetail(detail, serverID: serverID)
+            }
+            if let deletedID {
+                try await store.removePlaylist(id: deletedID, serverID: serverID)
+            }
+            try await store.markPlaylistsIncomplete(serverID: serverID)
+        } catch {
+            // The server mutation already succeeded. A discardable index write must never turn
+            // that domain success into a user-visible failure.
+            Logger.library.debug(
+                "Library index: could not record playlist mutation: \(error, privacy: .public)"
+            )
         }
     }
 
@@ -330,20 +412,39 @@ actor LibraryCatalog {
         }
     }
 
+    nonisolated static func canServeStaleData(after error: any Error) -> Bool {
+        if error is LibraryIndexError { return true }
+        if let sonicError = error as? SwiftSonicError { return sonicError.isTransient }
+        guard let urlError = error as? URLError else { return false }
+        switch urlError.code {
+        case .notConnectedToInternet,
+             .networkConnectionLost,
+             .timedOut,
+             .cannotConnectToHost,
+             .dnsLookupFailed,
+             .cannotFindHost,
+             .dataNotAllowed,
+             .internationalRoamingOff:
+            return true
+        default:
+            return false
+        }
+    }
+
     private func shouldRefresh(
         status: LibraryIndexStatus,
         remoteStatus: LibraryRemoteScanStatus?,
         now: Date
     ) -> Bool {
-        guard let fullySyncedAt = status.fullySyncedAt else { return true }
+        guard let librarySyncedAt = status.librarySyncedAt else { return true }
 
         if let remoteCompletedAt = remoteStatus?.lastCompletedAt {
-            return remoteCompletedAt > fullySyncedAt
+            return remoteCompletedAt > librarySyncedAt
         }
 
         // Plain Subsonic servers often omit scan timestamps. A weekly fallback bounds
         // staleness without repeatedly walking very large libraries.
-        return now.timeIntervalSince(fullySyncedAt) >= Self.fallbackRefreshInterval
+        return now.timeIntervalSince(librarySyncedAt) >= Self.fallbackRefreshInterval
     }
 
     private static func indexName(for artistName: String) -> String {

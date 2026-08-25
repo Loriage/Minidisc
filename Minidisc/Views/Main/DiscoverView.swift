@@ -3,7 +3,6 @@ import SwiftSonic
 
 struct DiscoverView: View {
     @Environment(\.appContainer) private var container
-    @Environment(ArtworkImageCache.self) private var artworkImageCache
     @State private var vm: DiscoverViewModel?
     @Namespace private var recentlyPlayedNS
     @Namespace private var mostPlayedNS
@@ -34,7 +33,8 @@ struct DiscoverView: View {
                     internetRadioSection
                 }
             }
-            .padding(.vertical, MinidiscSpacing.m)
+            .padding(.top, MinidiscSpacing.m)
+            .padding(.bottom, MinidiscSpacing.miniPlayerBottomMargin)
         }
         .navigationTitle("Discover")
         .minidiscContentWidth()
@@ -49,19 +49,19 @@ struct DiscoverView: View {
             if allReleasesVM == nil {
                 allReleasesVM = AllFreshReleasesViewModel(recommendationService: container.recommendationService)
             }
+            await loadRadioStations(forceRefresh: false)
             await vm?.load()
             isListenBrainzConnected = await container.listenBrainzService.currentSnapshot().isEnabled
             await vm?.loadFreshReleases()
-            radioStations = (try? await container.radioService.listStations(forceRefresh: false)) ?? []
             guard let serverId = container.serverState.activeServer?.id.uuidString else { return }
             yearlyPlaylists = await container.wrappedPlaylistService.fetchYearlyPlaylists(serverId: serverId)
             await refreshMoods(serverId: serverId)
         }
         .refreshable {
+            await loadRadioStations(forceRefresh: true)
             await vm?.load(forceRefresh: true)
             isListenBrainzConnected = await container?.listenBrainzService.currentSnapshot().isEnabled ?? false
             await vm?.loadFreshReleases()
-            radioStations = (try? await container?.radioService.listStations(forceRefresh: true)) ?? []
         }
         .navigationDestination(for: AlbumRecommendation.self) { release in
             FreshReleaseDetailView(
@@ -74,8 +74,8 @@ struct DiscoverView: View {
             )
         }
         .navigationDestination(isPresented: $showAllFreshReleases) {
-            if let vm = allReleasesVM {
-                AllFreshReleasesView(vm: vm)
+            if let allReleasesVM {
+                AllFreshReleasesView(vm: allReleasesVM)
             }
         }
     }
@@ -138,27 +138,23 @@ struct DiscoverView: View {
     }
 
     private func recentlyPlayedSection(vm: DiscoverViewModel) -> some View {
-        section(title: "Recently Played") {
-            if vm.isInitialLoading {
-                skeletonScroll()
-            } else if vm.recentlyPlayed.isEmpty {
-                emptyStateMessage("No history yet — start playing some tracks.")
-            } else {
-                horizontalAlbumScroll(albums: vm.recentlyPlayed, namespace: recentlyPlayedNS)
-            }
-        }
+        DiscoverAlbumCarouselSection(
+            title: "Recently Played",
+            albums: vm.recentlyPlayed,
+            isLoading: vm.isInitialLoading,
+            emptyMessage: "No history yet — start playing some tracks.",
+            namespace: recentlyPlayedNS
+        )
     }
 
     private func mostPlayedSection(vm: DiscoverViewModel) -> some View {
-        section(title: "Most Played") {
-            if vm.isInitialLoading {
-                skeletonScroll()
-            } else if vm.mostPlayed.isEmpty {
-                emptyStateMessage("No frequent plays yet — your top tracks will appear here.")
-            } else {
-                horizontalAlbumScroll(albums: vm.mostPlayed, namespace: mostPlayedNS)
-            }
-        }
+        DiscoverAlbumCarouselSection(
+            title: "Most Played",
+            albums: vm.mostPlayed,
+            isLoading: vm.isInitialLoading,
+            emptyMessage: "No frequent plays yet — your top tracks will appear here.",
+            namespace: mostPlayedNS
+        )
     }
 
     private var smartShuffleSection: some View {
@@ -210,36 +206,41 @@ struct DiscoverView: View {
 
     private var wrappedSection: some View {
         VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
-            HStack {
-                Text("Wrapped")
-                    .font(.minidiscShelfTitle)
-                Spacer(minLength: 0)
-                NavigationLink {
-                    WrappedYearlyListView()
-                } label: {
-                    Text("See all")
-                        .font(.minidiscCaption)
-                        .foregroundStyle(Color.minidiscAccent)
-                }
-                .buttonStyle(.plain)
+            MinidiscCarouselHeaderLink(
+                "Wrapped",
+                itemCount: wrappedItems.count,
+                hasMore: true
+            ) {
+                WrappedYearlyListView()
             }
-            .padding(.horizontal, MinidiscSpacing.l)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: MinidiscSpacing.s) {
-                    ForEach(yearlyPlaylists) { playlist in
-                        WrappedYearlyCard(playlist: playlist)
-                    }
-                    if let year = currentYearCardYear {
-                        WrappedCurrentYearCard(year: year)
-                    }
-                    ForEach(currentYearMonths, id: \.month) { item in
-                        WrappedRecapMonthCard(period: .month(year: item.year, month: item.month))
+                    ForEach(Array(wrappedItems.prefix(MinidiscCarouselMetrics.previewLimit))) { item in
+                        switch item {
+                        case .yearly(let playlist):
+                            WrappedYearlyCard(playlist: playlist)
+                        case .currentYear(let year):
+                            WrappedCurrentYearCard(year: year)
+                        case .month(let year, let month):
+                            WrappedRecapMonthCard(period: .month(year: year, month: month))
+                        }
                     }
                 }
                 .padding(.horizontal, MinidiscSpacing.l)
             }
         }
+    }
+
+    private var wrappedItems: [WrappedCarouselItem] {
+        var items = yearlyPlaylists.map(WrappedCarouselItem.yearly)
+        if let year = currentYearCardYear {
+            items.append(.currentYear(year))
+        }
+        items.append(contentsOf: currentYearMonths.map {
+            .month(year: $0.year, month: $0.month)
+        })
+        return items
     }
 
     private var currentYearCardYear: Int? {
@@ -258,20 +259,13 @@ struct DiscoverView: View {
 
     private var internetRadioSection: some View {
         VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
-            HStack {
-                Text("Internet Radio")
-                    .font(.minidiscShelfTitle)
-                Spacer(minLength: 0)
-                NavigationLink {
-                    RadioListView()
-                } label: {
-                    Text("See all")
-                        .font(.minidiscCaption)
-                        .foregroundStyle(Color.minidiscAccent)
-                }
-                .buttonStyle(.plain)
+            MinidiscCarouselHeaderLink(
+                "Internet Radio",
+                itemCount: radioStations.count,
+                hasMore: true
+            ) {
+                RadioListView()
             }
-            .padding(.horizontal, MinidiscSpacing.l)
 
             if radioStations.isEmpty {
                 NavigationLink {
@@ -299,13 +293,23 @@ struct DiscoverView: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: MinidiscSpacing.s) {
-                        ForEach(radioStations, id: \.id) { station in
+                        ForEach(
+                            Array(radioStations.prefix(MinidiscCarouselMetrics.previewLimit)),
+                            id: \.id
+                        ) { station in
                             RadioCard(station: station)
                         }
                     }
                     .padding(.horizontal, MinidiscSpacing.l)
                 }
             }
+        }
+    }
+
+    private func loadRadioStations(forceRefresh: Bool) async {
+        guard let radioService = container?.radioService else { return }
+        if let stations = try? await radioService.listStations(forceRefresh: forceRefresh) {
+            radioStations = stations
         }
     }
 
@@ -317,31 +321,6 @@ struct DiscoverView: View {
                 .font(.minidiscShelfTitle)
                 .padding(.horizontal, MinidiscSpacing.l)
             content()
-        }
-    }
-
-    private func horizontalAlbumScroll(albums: [AlbumID3], namespace: Namespace.ID) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: MinidiscSpacing.s) {
-                ForEach(albums, id: \.id) { album in
-                    NavigationLink {
-                        AlbumDetailView(
-                            album: album,
-                            zoomSourceId: album.id,
-                            zoomNamespace: namespace,
-                            initialCoverImage: artworkImageCache.cachedImage(for: album.coverArt ?? album.id)
-                        )
-                    } label: {
-                        AlbumCard(album: album)
-                            .minidiscMatchedTransitionSource(id: album.id, in: namespace)
-                            .task(id: album.id) {
-                                await artworkImageCache.load(coverArtId: album.coverArt ?? album.id)
-                            }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, MinidiscSpacing.l)
         }
     }
 
@@ -379,12 +358,91 @@ struct DiscoverView: View {
         .padding(.horizontal, MinidiscSpacing.l)
     }
 
-    private func skeletonScroll() -> some View {
+}
+
+private enum WrappedCarouselItem: Identifiable {
+    case yearly(WrappedYearlyPlaylist)
+    case currentYear(Int)
+    case month(year: Int, month: Int)
+
+    var id: String {
+        switch self {
+        case .yearly(let playlist):
+            "yearly-\(playlist.id)"
+        case .currentYear(let year):
+            "current-\(year)"
+        case .month(let year, let month):
+            "month-\(year)-\(month)"
+        }
+    }
+}
+
+private struct DiscoverAlbumCarouselSection: View {
+    let title: LocalizedStringResource
+    let albums: [AlbumID3]
+    let isLoading: Bool
+    let emptyMessage: LocalizedStringResource
+    let namespace: Namespace.ID
+
+    @Environment(ArtworkImageCache.self) private var artworkImageCache
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
+            MinidiscCarouselHeaderLink(title, itemCount: albums.count) {
+                AlbumCarouselCollectionView(title, albums: albums)
+            }
+
+            if isLoading {
+                skeletonScroll
+            } else if albums.isEmpty {
+                Text(emptyMessage)
+                    .font(.minidiscCaption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, MinidiscSpacing.l)
+                    .padding(.horizontal, MinidiscSpacing.l)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: MinidiscSpacing.s) {
+                        ForEach(Array(albums.prefix(MinidiscCarouselMetrics.previewLimit))) { album in
+                            NavigationLink {
+                                AlbumDetailView(
+                                    album: album,
+                                    zoomSourceId: album.id,
+                                    zoomNamespace: namespace,
+                                    initialCoverImage: artworkImageCache.cachedImage(
+                                        for: album.coverArt ?? album.id
+                                    )
+                                )
+                            } label: {
+                                AlbumCard(album: album)
+                                    .minidiscMatchedTransitionSource(id: album.id, in: namespace)
+                                    .task(id: album.id) {
+                                        await artworkImageCache.load(
+                                            coverArtId: album.coverArt ?? album.id
+                                        )
+                                    }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, MinidiscSpacing.l)
+                }
+            }
+        }
+    }
+
+    private var skeletonScroll: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: MinidiscSpacing.s) {
                 ForEach(0..<6, id: \.self) { _ in
                     VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
-                        SkeletonBlock(width: 140, height: 140, cornerRadius: MinidiscCornerRadius.standard)
+                        SkeletonBlock(
+                            width: 140,
+                            height: 140,
+                            cornerRadius: MinidiscCornerRadius.standard
+                        )
                         SkeletonBlock(width: 110, height: 12)
                         SkeletonBlock(width: 80, height: 10)
                     }
@@ -394,15 +452,5 @@ struct DiscoverView: View {
             .padding(.horizontal, MinidiscSpacing.l)
         }
         .allowsHitTesting(false)
-    }
-
-    private func emptyStateMessage(_ text: LocalizedStringKey) -> some View {
-        Text(text)
-            .font(.minidiscCaption)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, MinidiscSpacing.l)
-            .padding(.horizontal, MinidiscSpacing.l)
     }
 }

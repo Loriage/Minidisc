@@ -18,11 +18,7 @@ struct MoodCard: View {
         } label: {
             VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
                 CoverArtCard(id: playlistId, size: cardSize, placeholderSystemImage: mood.symbolName)
-                Text(String(localized: mood.title))
-                    .font(.minidiscCaption)
-                    .fontWeight(.semibold)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                CoverCardMetadata(title: String(localized: mood.title))
             }
             .frame(width: cardSize, alignment: .leading)
         }

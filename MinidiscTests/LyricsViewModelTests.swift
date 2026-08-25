@@ -226,8 +226,12 @@ struct LyricsViewModelScrollTests {
         let (vm, _) = try makeViewModel()
         vm.userStartedScrolling()
         #expect(vm.isUserScrolling == true)
-        // Wait slightly over 5s for the Task.sleep to complete
-        try await Task.sleep(for: .seconds(5.1))
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(10))
+        while vm.isUserScrolling, clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(100))
+        }
         #expect(vm.isUserScrolling == false)
     }
 }

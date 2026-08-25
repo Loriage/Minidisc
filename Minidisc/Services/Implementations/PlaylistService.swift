@@ -7,16 +7,23 @@ actor PlaylistService: PlaylistServiceProtocol {
     private let serverService: any ServerServiceProtocol
     private let modelContainer: ModelContainer
     private let downloadService: DownloadService
+    private let libraryCatalog: LibraryCatalog
     private var cachedClient: SwiftSonicClient?
     private var cachedConnectionVersion: ServerConnection.Version?
 
     private var listCache: [Playlist]?
     private var detailCache: [String: PlaylistWithSongs] = [:]
 
-    init(serverService: any ServerServiceProtocol, modelContainer: ModelContainer, downloadService: DownloadService) {
+    init(
+        serverService: any ServerServiceProtocol,
+        modelContainer: ModelContainer,
+        downloadService: DownloadService,
+        libraryCatalog: LibraryCatalog
+    ) {
         self.serverService = serverService
         self.modelContainer = modelContainer
         self.downloadService = downloadService
+        self.libraryCatalog = libraryCatalog
     }
 
     // MARK: - Client
@@ -40,17 +47,17 @@ actor PlaylistService: PlaylistServiceProtocol {
     // MARK: - Read
 
     func listPlaylists() async throws -> [Playlist] {
-        let client = try await client()
+        _ = try await client()
         if let cached = listCache { return cached }
-        let playlists = try await client.getPlaylists()
+        let playlists = try await libraryCatalog.playlists()
         listCache = playlists
         return playlists
     }
 
     func getPlaylist(id: String) async throws -> PlaylistWithSongs {
-        let client = try await client()
+        _ = try await client()
         if let cached = detailCache[id] { return cached }
-        let playlist = try await client.getPlaylist(id: id)
+        let playlist = try await libraryCatalog.playlist(id: id)
         detailCache[id] = playlist
         return playlist
     }
@@ -59,12 +66,14 @@ actor PlaylistService: PlaylistServiceProtocol {
 
     @discardableResult
     func createPlaylist(name: String, description: String?) async throws -> PlaylistWithSongs {
-        let result = try await client().createPlaylist(name: name)
+        var result = try await client().createPlaylist(name: name)
         if let desc = description, !desc.isEmpty {
             try await client().updatePlaylist(id: result.id, comment: desc)
+            result = copying(result, comment: desc)
         }
         listCache = nil
         detailCache[result.id] = result
+        await recordSuccessfulMutation(id: result.id)
         Logger.playlist.info("Created playlist '\(name, privacy: .private)' id=\(result.id, privacy: .public)")
         return result
     }
@@ -99,6 +108,7 @@ actor PlaylistService: PlaylistServiceProtocol {
                 PlaylistCoverStore(modelContainer: container).remove(playlistId: id, serverId: serverId)
             }
         }
+        await libraryCatalog.recordPlaylistMutation(summary: nil, detail: nil, deletedID: id)
     }
 
     /// Strictly a "not found" server response (Subsonic error code 70 or HTTP 404) — makes deletePlaylist
@@ -128,6 +138,7 @@ actor PlaylistService: PlaylistServiceProtocol {
         }
         do {
             try await client().updatePlaylist(id: id, name: newName)
+            await recordSuccessfulMutation(id: id)
             Logger.playlist.info("Renamed playlist id=\(id, privacy: .public) to '\(newName, privacy: .private)'")
         } catch {
             listCache = previousList
@@ -143,6 +154,7 @@ actor PlaylistService: PlaylistServiceProtocol {
         }
         do {
             try await client().updatePlaylist(id: id, comment: description)
+            await recordSuccessfulMutation(id: id)
             Logger.playlist.info("Updated description for playlist id=\(id, privacy: .public)")
         } catch {
             detailCache[id] = previousDetail
@@ -168,6 +180,7 @@ actor PlaylistService: PlaylistServiceProtocol {
         }
         do {
             try await client().updatePlaylist(id: playlistId, songIdsToAdd: songs.map(\.id))
+            await recordSuccessfulMutation(id: playlistId)
             Logger.playlist.info("Added \(songs.count, privacy: .public) track(s) to playlist id=\(playlistId, privacy: .public)")
             await syncDownloadedPlaylistAfterAdd(playlistId: playlistId, addedSongs: songs)
         } catch {
@@ -201,6 +214,7 @@ actor PlaylistService: PlaylistServiceProtocol {
         }
         do {
             try await client().updatePlaylist(id: playlistId, songIndexesToRemove: indices)
+            await recordSuccessfulMutation(id: playlistId)
             Logger.playlist.info("Removed \(indices.count, privacy: .public) track(s) from playlist id=\(playlistId, privacy: .public)")
             await syncDownloadedPlaylistAfterRemove(playlistId: playlistId, removedSongIds: removedSongIds)
         } catch {
@@ -219,6 +233,7 @@ actor PlaylistService: PlaylistServiceProtocol {
         }
         do {
             try await client().createPlaylist(playlistId: playlistId, songIds: orderedSongIds)
+            await recordSuccessfulMutation(id: playlistId)
             Logger.playlist.info("Reordered tracks in playlist id=\(playlistId, privacy: .public)")
         } catch {
             detailCache[playlistId] = previousDetail
@@ -227,6 +242,13 @@ actor PlaylistService: PlaylistServiceProtocol {
     }
 
     // MARK: - Offline sync
+
+    private func recordSuccessfulMutation(id: String) async {
+        await libraryCatalog.recordPlaylistMutation(
+            summary: listCache?.first(where: { $0.id == id }),
+            detail: detailCache[id]
+        )
+    }
 
     private func syncDownloadedPlaylistAfterAdd(playlistId: String, addedSongs: [Song]) async {
         let serverId: UUID? = await MainActor.run { () -> UUID? in

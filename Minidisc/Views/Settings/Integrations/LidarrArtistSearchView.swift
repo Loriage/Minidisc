@@ -149,16 +149,10 @@ private struct LidarrArtistResultCell: View {
                 }
             }
 
-            Text(artist.artistName)
-                .font(.minidiscCaption)
-                .fontWeight(.semibold)
-                .lineLimit(1)
-            if let disambiguation = artist.disambiguation, !disambiguation.isEmpty {
-                Text(disambiguation)
-                    .font(.minidiscCaption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+            CoverCardMetadata(
+                title: artist.artistName,
+                subtitle: artist.disambiguation?.isEmpty == false ? artist.disambiguation : nil
+            )
         }
     }
 }

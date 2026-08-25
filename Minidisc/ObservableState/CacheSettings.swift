@@ -9,25 +9,30 @@ import Observation
 final class CacheSettings {
     // MARK: - Storage (observation ignored)
 
-    @ObservationIgnored private var _maxTracks: Int
+    @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private var _capacityMegabytes: Int
     @ObservationIgnored private var _cacheFormat: CacheFormat
     @ObservationIgnored private var _cacheOverCellular: Bool
     @ObservationIgnored private var _cacheArtwork: Bool
 
     // MARK: - Visible properties (manual observation hooks)
 
-    var maxTracks: Int {
+    var capacityMegabytes: Int {
         get {
-            access(keyPath: \.maxTracks)
-            return _maxTracks
+            access(keyPath: \.capacityMegabytes)
+            return _capacityMegabytes
         }
         set {
-            let clamped = max(Self.minMaxTracks, min(Self.maxMaxTracks, newValue))
-            withMutation(keyPath: \.maxTracks) {
-                _maxTracks = clamped
+            let normalized = Self.normalizedCapacity(newValue)
+            withMutation(keyPath: \.capacityMegabytes) {
+                _capacityMegabytes = normalized
             }
-            UserDefaults.standard.set(clamped, forKey: Self.maxTracksKey)
+            defaults.set(normalized, forKey: Self.capacityMegabytesKey)
         }
+    }
+
+    var capacityBytes: Int64 {
+        Int64(capacityMegabytes) * 1_000_000
     }
 
     var cacheFormat: CacheFormat {
@@ -39,7 +44,7 @@ final class CacheSettings {
             withMutation(keyPath: \.cacheFormat) {
                 _cacheFormat = newValue
             }
-            UserDefaults.standard.set(newValue.rawValue, forKey: Self.cacheFormatKey)
+            defaults.set(newValue.rawValue, forKey: Self.cacheFormatKey)
         }
     }
 
@@ -52,7 +57,7 @@ final class CacheSettings {
             withMutation(keyPath: \.cacheOverCellular) {
                 _cacheOverCellular = newValue
             }
-            UserDefaults.standard.set(newValue, forKey: Self.cacheOverCellularKey)
+            defaults.set(newValue, forKey: Self.cacheOverCellularKey)
         }
     }
 
@@ -66,37 +71,59 @@ final class CacheSettings {
             withMutation(keyPath: \.cacheArtwork) {
                 _cacheArtwork = newValue
             }
-            UserDefaults.standard.set(newValue, forKey: Self.cacheArtworkKey)
+            defaults.set(newValue, forKey: Self.cacheArtworkKey)
         }
     }
 
     // MARK: - Defaults & keys
 
-    static let defaultMaxTracks: Int = 10
-    static let minMaxTracks: Int = 1
-    static let maxMaxTracks: Int = 10
+    static let defaultCapacityMegabytes = 512
+    static let minCapacityMegabytes = 128
+    static let maxCapacityMegabytes = 2_048
+    static let capacityStepMegabytes = 128
     static let defaultFormat: CacheFormat = .matchStream
     static let defaultCacheOverCellular: Bool = false
     static let defaultCacheArtwork: Bool = true
 
-    private static let maxTracksKey = "minidisc.cache.maxTracks"
+    private static let capacityMegabytesKey = "minidisc.cache.capacityMegabytes"
+    private static let legacyMaxTracksKey = "minidisc.cache.maxTracks"
     private static let cacheFormatKey = "minidisc.cache.format"
     private static let cacheOverCellularKey = "minidisc.cache.cellular"
     private static let cacheArtworkKey = "minidisc.cache.artwork"
 
     // MARK: - Init
 
-    init() {
-        let loadedMaxTracks = UserDefaults.standard.integer(forKey: Self.maxTracksKey)
-        self._maxTracks = (loadedMaxTracks == 0)
-            ? Self.defaultMaxTracks
-            : max(Self.minMaxTracks, min(Self.maxMaxTracks, loadedMaxTracks))
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
 
-        let loadedFormatRaw = UserDefaults.standard.string(forKey: Self.cacheFormatKey)
+        if defaults.object(forKey: Self.capacityMegabytesKey) != nil {
+            self._capacityMegabytes = Self.normalizedCapacity(
+                defaults.integer(forKey: Self.capacityMegabytesKey)
+            )
+        } else if defaults.object(forKey: Self.legacyMaxTracksKey) != nil {
+            // The former count limit had no byte meaning. Sixty-four MB per track keeps the
+            // user's relative choice while moving to a predictable storage budget.
+            let migratedCapacity = Self.normalizedCapacity(
+                defaults.integer(forKey: Self.legacyMaxTracksKey) * 64
+            )
+            self._capacityMegabytes = migratedCapacity
+            defaults.set(migratedCapacity, forKey: Self.capacityMegabytesKey)
+        } else {
+            self._capacityMegabytes = Self.defaultCapacityMegabytes
+        }
+
+        let loadedFormatRaw = defaults.string(forKey: Self.cacheFormatKey)
         self._cacheFormat = CacheFormat(rawValue: loadedFormatRaw ?? "") ?? Self.defaultFormat
 
-        self._cacheOverCellular = UserDefaults.standard.bool(forKey: Self.cacheOverCellularKey)
+        self._cacheOverCellular = defaults.bool(forKey: Self.cacheOverCellularKey)
         // object(forKey:) so the default is true — bool(forKey:) would silently default to false.
-        self._cacheArtwork = UserDefaults.standard.object(forKey: Self.cacheArtworkKey) as? Bool ?? Self.defaultCacheArtwork
+        self._cacheArtwork = defaults.object(forKey: Self.cacheArtworkKey) as? Bool ?? Self.defaultCacheArtwork
+    }
+
+    private static func normalizedCapacity(_ value: Int) -> Int {
+        let clamped = max(minCapacityMegabytes, min(maxCapacityMegabytes, value))
+        let rounded = ((clamped + capacityStepMegabytes / 2) / capacityStepMegabytes)
+            * capacityStepMegabytes
+        return max(minCapacityMegabytes, min(maxCapacityMegabytes, rounded))
     }
 }

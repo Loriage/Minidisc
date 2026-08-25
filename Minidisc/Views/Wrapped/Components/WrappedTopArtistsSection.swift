@@ -66,12 +66,10 @@ struct WrappedTopArtistsSection: View {
                     rankBadge(artist.rank)
                         .padding(MinidiscSpacing.xs)
                 }
-                Text(artist.name)
-                    .font(.minidiscCellTitle)
-                    .lineLimit(1)
-                Text(artist.totalSecondsListened.wrappedCompactLabel())
-                    .font(.minidiscCaption)
-                    .foregroundStyle(.secondary)
+                CoverCardMetadata(
+                    title: artist.name,
+                    subtitle: artist.totalSecondsListened.wrappedCompactLabel()
+                )
             }
             .frame(width: cardWidth)
         }

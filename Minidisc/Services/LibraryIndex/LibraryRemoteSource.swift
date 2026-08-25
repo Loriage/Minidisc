@@ -18,6 +18,8 @@ nonisolated protocol LibraryRemoteSource: Sendable {
     func recentlyAddedAlbums(size: Int, serverID: UUID) async throws -> [AlbumID3]
     func albumsPage(offset: Int, count: Int, serverID: UUID) async throws -> [AlbumID3]
     func songsPage(offset: Int, count: Int, serverID: UUID) async throws -> [Song]
+    func playlists(serverID: UUID) async throws -> [Playlist]
+    func playlist(id: String, serverID: UUID) async throws -> PlaylistWithSongs
     func scanStatus(serverID: UUID) async throws -> LibraryRemoteScanStatus?
 }
 
@@ -82,6 +84,14 @@ actor SwiftSonicLibrarySource: LibraryRemoteSource {
             songCount: count,
             songOffset: offset
         ).song ?? []
+    }
+
+    func playlists(serverID: UUID) async throws -> [Playlist] {
+        try await client(for: serverID).getPlaylists()
+    }
+
+    func playlist(id: String, serverID: UUID) async throws -> PlaylistWithSongs {
+        try await client(for: serverID).getPlaylist(id: id)
     }
 
     func scanStatus(serverID: UUID) async throws -> LibraryRemoteScanStatus? {

@@ -15,6 +15,8 @@ private nonisolated struct StaticLibrarySource: LibraryRemoteSource {
     var artistIndexes: [ArtistIndex] = []
     var albumPages: [Int: [AlbumID3]] = [:]
     var songPages: [Int: [Song]] = [:]
+    var playlistSummaries: [Playlist] = []
+    var playlistDetails: [String: PlaylistWithSongs] = [:]
     var failingAlbumOffset: Int?
     var failingSongOffset: Int?
 
@@ -47,6 +49,11 @@ private nonisolated struct StaticLibrarySource: LibraryRemoteSource {
         if failingSongOffset == offset { throw LibrarySourceStubError.scheduledFailure }
         return songPages[offset] ?? []
     }
+    func playlists(serverID: UUID) async throws -> [Playlist] { playlistSummaries }
+    func playlist(id: String, serverID: UUID) async throws -> PlaylistWithSongs {
+        guard let playlist = playlistDetails[id] else { throw LibrarySourceStubError.unavailable }
+        return playlist
+    }
 }
 
 private actor CountingLibrarySource: LibraryRemoteSource {
@@ -73,6 +80,10 @@ private actor CountingLibrarySource: LibraryRemoteSource {
         throw LibrarySourceStubError.unavailable
     }
     func songsPage(offset: Int, count: Int, serverID: UUID) async throws -> [Song] {
+        throw LibrarySourceStubError.unavailable
+    }
+    func playlists(serverID: UUID) async throws -> [Playlist] { [] }
+    func playlist(id: String, serverID: UUID) async throws -> PlaylistWithSongs {
         throw LibrarySourceStubError.unavailable
     }
 
@@ -114,6 +125,10 @@ private actor PreparationLibrarySource: LibraryRemoteSource {
     func songsPage(offset: Int, count: Int, serverID: UUID) async throws -> [Song] {
         songCalls += 1
         return []
+    }
+    func playlists(serverID: UUID) async throws -> [Playlist] { [] }
+    func playlist(id: String, serverID: UUID) async throws -> PlaylistWithSongs {
+        throw LibrarySourceStubError.unavailable
     }
 
     func scanCounts() -> (artists: Int, albums: Int, songs: Int) {
@@ -165,6 +180,10 @@ private actor FreshnessLibrarySource: LibraryRemoteSource {
         if let trackPageDelay { try await Task.sleep(for: trackPageDelay) }
         return []
     }
+    func playlists(serverID: UUID) async throws -> [Playlist] { [] }
+    func playlist(id: String, serverID: UUID) async throws -> PlaylistWithSongs {
+        throw LibrarySourceStubError.unavailable
+    }
 
     func scanCounts() -> (artists: Int, albums: Int, songs: Int) {
         (artistCalls, albumCalls, songCalls)
@@ -174,6 +193,64 @@ private actor FreshnessLibrarySource: LibraryRemoteSource {
 @Suite("Persistent library index")
 @MainActor
 struct LibraryIndexTests {
+    @Test("the V1 library store migrates without losing indexed media")
+    func v1StoreMigratesToV2() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "MinidiscLibraryMigration-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let storeURL = directory.appending(path: "library.store")
+        let album = album(id: "preserved", name: "Preserved Album")
+        let payload = try JSONEncoder().encode(album)
+        let serverID = UUID()
+
+        do {
+            let schema = Schema(versionedSchema: LibraryIndexSchemaV1.self)
+            let configuration = ModelConfiguration(
+                "migration-test",
+                schema: schema,
+                url: storeURL,
+                cloudKitDatabase: .none
+            )
+            let container = try ModelContainer(for: schema, configurations: configuration)
+            let context = ModelContext(container)
+            context.insert(
+                IndexedAlbum(
+                    recordKey: "\(serverID.uuidString)|preserved",
+                    serverId: serverID,
+                    itemId: album.id,
+                    name: album.name,
+                    artistName: album.artist,
+                    artistId: album.artistId,
+                    searchText: LibraryIndexText.searchText(album.name, album.artist),
+                    sortName: LibraryIndexText.normalized(album.name),
+                    createdAt: album.created,
+                    generation: "v1",
+                    payload: payload
+                )
+            )
+            try context.save()
+        }
+
+        let schema = Schema(versionedSchema: LibraryIndexSchemaV2.self)
+        let configuration = ModelConfiguration(
+            "migration-test",
+            schema: schema,
+            url: storeURL,
+            cloudKitDatabase: .none
+        )
+        let container = try ModelContainer(
+            for: schema,
+            migrationPlan: LibraryIndexMigrationPlan.self,
+            configurations: configuration
+        )
+        let context = ModelContext(container)
+
+        #expect(try context.fetch(FetchDescriptor<IndexedAlbum>()).map(\.itemId) == [album.id])
+        #expect(try context.fetchCount(FetchDescriptor<IndexedPlaylist>()) == 0)
+    }
+
     @Test("a completed generation replaces stale rows and updates payloads")
     func completedGenerationReplacesStaleRows() async throws {
         let store = try makeStore()
@@ -299,6 +376,7 @@ struct LibraryIndexTests {
         #expect(!completion.artists)
         #expect(completion.albums)
         #expect(completion.tracks)
+        #expect(completion.playlists)
         let calls = await source.scanCounts()
         #expect(calls.artists == 1)
         #expect(calls.albums == 1)
@@ -366,15 +444,21 @@ struct LibraryIndexTests {
         let serverID = UUID()
         let source = FreshnessLibrarySource(
             serverID: serverID,
-            trackPageDelay: .seconds(2)
+            trackPageDelay: .seconds(60)
         )
         let synchronizer = LibraryIndexSynchronizer(source: source, store: store)
         let refresh = Task {
             try await synchronizer.refreshTracks(serverID: serverID)
         }
 
-        try await Task.sleep(for: .milliseconds(20))
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(5))
+        while await source.scanCounts().songs == 0, clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let scanStarted = await source.scanCounts().songs == 1
         refresh.cancel()
+        try #require(scanStarted)
 
         await #expect(throws: CancellationError.self) {
             try await refresh.value
@@ -433,6 +517,7 @@ struct LibraryIndexTests {
         try await store.complete(.tracks, serverID: serverID, generation: "empty")
         try await store.complete(.albums, serverID: serverID, generation: "empty")
         try await store.complete(.artists, serverID: serverID, generation: "empty")
+        try await store.complete(.playlists, serverID: serverID, generation: "empty")
         let source = CountingLibrarySource(serverID: serverID)
         let synchronizer = LibraryIndexSynchronizer(source: source, store: store)
         let catalog = LibraryCatalog(source: source, store: store, synchronizer: synchronizer)
@@ -488,6 +573,84 @@ struct LibraryIndexTests {
         #expect(!((try await store.status(for: serverID)).albums))
     }
 
+    @Test("playlist summaries and opened details remain available offline")
+    func playlistIndexSurvivesOffline() async throws {
+        let store = try makeStore()
+        let serverID = UUID()
+        let summary = playlist(id: "walk", name: "Dog walk", songCount: 1)
+        let secondSummary = playlist(id: "morning", name: "After walk", songCount: 2)
+        let detail = PlaylistWithSongs(
+            id: summary.id,
+            name: summary.name,
+            songCount: summary.songCount,
+            duration: summary.duration,
+            changed: summary.changed,
+            entry: [song(id: "track", title: "Outside")]
+        )
+        let onlineSource = StaticLibrarySource(
+            serverID: serverID,
+            playlistSummaries: [summary, secondSummary],
+            playlistDetails: [summary.id: detail]
+        )
+        let onlineSynchronizer = LibraryIndexSynchronizer(source: onlineSource, store: store)
+        let onlineCatalog = LibraryCatalog(
+            source: onlineSource,
+            store: store,
+            synchronizer: onlineSynchronizer
+        )
+
+        #expect(try await onlineCatalog.refreshPlaylists().map(\.id) == [summary.id, secondSummary.id])
+        #expect(try await onlineCatalog.playlist(id: summary.id).entry?.map(\.id) == ["track"])
+
+        let offlineSource = StaticLibrarySource(serverID: serverID, online: false)
+        let offlineCatalog = LibraryCatalog(
+            source: offlineSource,
+            store: store,
+            synchronizer: LibraryIndexSynchronizer(source: offlineSource, store: store)
+        )
+        #expect(try await offlineCatalog.playlists().map(\.id) == [summary.id, secondSummary.id])
+        #expect(try await offlineCatalog.playlist(id: summary.id).entry?.map(\.id) == ["track"])
+    }
+
+    @Test("an online playlist read refreshes a complete index and accepts an empty server list")
+    func onlinePlaylistReadCanClearIndex() async throws {
+        let store = try makeStore()
+        let serverID = UUID()
+        let populatedSource = StaticLibrarySource(
+            serverID: serverID,
+            playlistSummaries: [playlist(id: "old", name: "Old", songCount: 1)]
+        )
+        try await LibraryIndexSynchronizer(source: populatedSource, store: store)
+            .refreshPlaylists(serverID: serverID)
+        #expect(try await store.counts(for: serverID).playlists == 1)
+
+        let emptySource = StaticLibrarySource(serverID: serverID)
+        let catalog = LibraryCatalog(
+            source: emptySource,
+            store: store,
+            synchronizer: LibraryIndexSynchronizer(source: emptySource, store: store)
+        )
+
+        #expect(try await catalog.playlists().isEmpty)
+        #expect(try await store.counts(for: serverID).playlists == 0)
+    }
+
+    @Test("stale fallback accepts transient failures but exposes auth and configuration errors")
+    func staleFallbackClassificationIsNarrow() {
+        #expect(LibraryCatalog.canServeStaleData(after: URLError(.networkConnectionLost)))
+        #expect(LibraryCatalog.canServeStaleData(after: SwiftSonicError.httpError(
+            statusCode: 503,
+            endpoint: "getPlaylists",
+            serverHost: "music.example.com"
+        )))
+        #expect(!LibraryCatalog.canServeStaleData(after: SwiftSonicError.httpError(
+            statusCode: 401,
+            endpoint: "getPlaylists",
+            serverHost: "music.example.com"
+        )))
+        #expect(!LibraryCatalog.canServeStaleData(after: SwiftSonicError.invalidConfiguration("bad URL")))
+    }
+
     private func makeStore() throws -> LibraryIndexStore {
         LibraryIndexStore(modelContainer: try ModelContainer.libraryIndex(inMemory: true))
     }
@@ -500,6 +663,7 @@ struct LibraryIndexTests {
         try await store.complete(.artists, serverID: serverID, generation: "artists", syncedAt: date)
         try await store.complete(.albums, serverID: serverID, generation: "albums", syncedAt: date)
         try await store.complete(.tracks, serverID: serverID, generation: "tracks", syncedAt: date)
+        try await store.complete(.playlists, serverID: serverID, generation: "playlists", syncedAt: date)
     }
 
     private func song(
@@ -529,6 +693,16 @@ struct LibraryIndexTests {
             artist: "Adèle Castillon",
             artistId: "artist",
             year: 2026
+        )
+    }
+
+    private func playlist(id: String, name: String, songCount: Int) -> Playlist {
+        Playlist(
+            id: id,
+            name: name,
+            songCount: songCount,
+            duration: songCount * 200,
+            changed: Date(timeIntervalSince1970: 1_700_000_000)
         )
     }
 }

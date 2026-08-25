@@ -7,6 +7,7 @@ nonisolated enum LibraryIndexKind: String, Sendable {
     case artists
     case albums
     case tracks
+    case playlists
 }
 
 nonisolated enum LibraryIndexError: Error, Equatable, LocalizedError {
@@ -27,17 +28,25 @@ nonisolated struct LibraryIndexStatus: Sendable, Equatable {
     let artistsSyncedAt: Date?
     let albumsSyncedAt: Date?
     let tracksSyncedAt: Date?
+    let playlistsSyncedAt: Date?
 
     var artists: Bool { artistsSyncedAt != nil }
     var albums: Bool { albumsSyncedAt != nil }
     var tracks: Bool { tracksSyncedAt != nil }
+    var playlists: Bool { playlistsSyncedAt != nil }
 
-    var isComplete: Bool { artists && albums && tracks }
+    var libraryIsComplete: Bool { artists && albums && tracks }
+    var isComplete: Bool { libraryIsComplete && playlists }
+
+    var librarySyncedAt: Date? {
+        guard let artistsSyncedAt, let albumsSyncedAt, let tracksSyncedAt else { return nil }
+        return min(artistsSyncedAt, albumsSyncedAt, tracksSyncedAt)
+    }
 
     /// The oldest entity watermark is the point through which the whole index is known complete.
     var fullySyncedAt: Date? {
-        guard let artistsSyncedAt, let albumsSyncedAt, let tracksSyncedAt else { return nil }
-        return min(artistsSyncedAt, albumsSyncedAt, tracksSyncedAt)
+        guard let librarySyncedAt, let playlistsSyncedAt else { return nil }
+        return min(librarySyncedAt, playlistsSyncedAt)
     }
 }
 
@@ -45,6 +54,7 @@ nonisolated struct LibraryIndexCounts: Sendable, Equatable {
     let artists: Int
     let albums: Int
     let tracks: Int
+    let playlists: Int
 }
 
 nonisolated struct LibraryIndexSearchResults: Sendable {
@@ -53,6 +63,86 @@ nonisolated struct LibraryIndexSearchResults: Sendable {
     let songs: [Song]
 
     var isEmpty: Bool { artists.isEmpty && albums.isEmpty && songs.isEmpty }
+}
+
+nonisolated struct LibraryIndexedPlaylistDetail: Sendable {
+    let playlist: PlaylistWithSongs
+    let isCurrent: Bool
+}
+
+/// SwiftSonic intentionally exposes playlists as decode-only response types. This local boundary
+/// type preserves every field with Codable storage without widening the values to dictionaries.
+private nonisolated struct IndexedPlaylistPayload: Codable, Sendable {
+    let id: String
+    let name: String
+    let comment: String?
+    let owner: String?
+    let isPublic: Bool?
+    let songCount: Int
+    let duration: Int
+    let created: Date?
+    let changed: Date?
+    let coverArt: String?
+    let entry: [Song]?
+
+    init(_ playlist: Playlist) {
+        id = playlist.id
+        name = playlist.name
+        comment = playlist.comment
+        owner = playlist.owner
+        isPublic = playlist.isPublic
+        songCount = playlist.songCount
+        duration = playlist.duration
+        created = playlist.created
+        changed = playlist.changed
+        coverArt = playlist.coverArt
+        entry = nil
+    }
+
+    init(_ playlist: PlaylistWithSongs) {
+        id = playlist.id
+        name = playlist.name
+        comment = playlist.comment
+        owner = playlist.owner
+        isPublic = playlist.isPublic
+        songCount = playlist.songCount
+        duration = playlist.duration
+        created = playlist.created
+        changed = playlist.changed
+        coverArt = playlist.coverArt
+        entry = playlist.entry
+    }
+
+    var summary: Playlist {
+        Playlist(
+            id: id,
+            name: name,
+            songCount: songCount,
+            duration: duration,
+            comment: comment,
+            owner: owner,
+            isPublic: isPublic,
+            created: created,
+            changed: changed,
+            coverArt: coverArt
+        )
+    }
+
+    var detail: PlaylistWithSongs {
+        PlaylistWithSongs(
+            id: id,
+            name: name,
+            songCount: songCount,
+            duration: duration,
+            comment: comment,
+            owner: owner,
+            isPublic: isPublic,
+            created: created,
+            changed: changed,
+            coverArt: coverArt,
+            entry: entry
+        )
+    }
 }
 
 nonisolated enum LibraryIndexText {
@@ -71,7 +161,11 @@ nonisolated enum LibraryIndexText {
 /// Only immutable SwiftSonic values cross this actor's interface.
 actor LibraryIndexStore {
     private let modelContainer: ModelContainer
-    private let encoder = JSONEncoder()
+    private let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }()
     private let decoder = JSONDecoder()
     private var removedServerIDs: Set<UUID> = []
 
@@ -84,10 +178,12 @@ actor LibraryIndexStore {
     func status(for serverID: UUID) throws -> LibraryIndexStatus {
         let context = ModelContext(modelContainer)
         let state = try state(for: serverID, in: context)
+        let playlistState = try playlistState(for: serverID, in: context)
         return LibraryIndexStatus(
             artistsSyncedAt: state?.artistsSyncedAt,
             albumsSyncedAt: state?.albumsSyncedAt,
-            tracksSyncedAt: state?.tracksSyncedAt
+            tracksSyncedAt: state?.tracksSyncedAt,
+            playlistsSyncedAt: playlistState?.syncedAt
         )
     }
 
@@ -103,6 +199,9 @@ actor LibraryIndexStore {
             ),
             tracks: context.fetchCount(
                 FetchDescriptor<IndexedTrack>(predicate: #Predicate { $0.serverId == sid })
+            ),
+            playlists: context.fetchCount(
+                FetchDescriptor<IndexedPlaylist>(predicate: #Predicate { $0.serverId == sid })
             )
         )
     }
@@ -248,6 +347,118 @@ actor LibraryIndexStore {
         try context.save()
     }
 
+    func upsertPlaylists(
+        _ playlists: [Playlist],
+        serverID: UUID,
+        generation: String
+    ) throws {
+        guard !removedServerIDs.contains(serverID), !playlists.isEmpty else { return }
+        let context = ModelContext(modelContainer)
+
+        for (serverOrder, playlist) in playlists.enumerated() {
+            let key = Self.recordKey(serverID: serverID, itemID: playlist.id)
+            let payload = try encoder.encode(IndexedPlaylistPayload(playlist))
+            if let existing = try playlistRow(recordKey: key, in: context) {
+                existing.name = playlist.name
+                existing.sortName = LibraryIndexText.normalized(playlist.name)
+                existing.serverOrder = serverOrder
+                existing.generation = generation
+                existing.summaryPayload = payload
+            } else {
+                context.insert(
+                    IndexedPlaylist(
+                        recordKey: key,
+                        serverId: serverID,
+                        itemId: playlist.id,
+                        name: playlist.name,
+                        sortName: LibraryIndexText.normalized(playlist.name),
+                        serverOrder: serverOrder,
+                        generation: generation,
+                        summaryPayload: payload
+                    )
+                )
+            }
+        }
+        try context.save()
+    }
+
+    func cachePlaylistDetail(_ playlist: PlaylistWithSongs, serverID: UUID) throws {
+        guard !removedServerIDs.contains(serverID) else { return }
+        let context = ModelContext(modelContainer)
+        let key = Self.recordKey(serverID: serverID, itemID: playlist.id)
+        let detail = IndexedPlaylistPayload(playlist)
+        let summaryPayload = try encoder.encode(IndexedPlaylistPayload(detail.summary))
+        let detailPayload = try encoder.encode(detail)
+
+        if let existing = try playlistRow(recordKey: key, in: context) {
+            existing.name = playlist.name
+            existing.sortName = LibraryIndexText.normalized(playlist.name)
+            existing.summaryPayload = summaryPayload
+            existing.detailPayload = detailPayload
+            existing.detailSummaryPayload = summaryPayload
+        } else {
+            context.insert(
+                IndexedPlaylist(
+                    recordKey: key,
+                    serverId: serverID,
+                    itemId: playlist.id,
+                    name: playlist.name,
+                    sortName: LibraryIndexText.normalized(playlist.name),
+                    serverOrder: .max,
+                    generation: "opportunistic",
+                    summaryPayload: summaryPayload,
+                    detailPayload: detailPayload,
+                    detailSummaryPayload: summaryPayload
+                )
+            )
+        }
+        try context.save()
+    }
+
+    func cachePlaylistSummary(_ playlist: Playlist, serverID: UUID) throws {
+        guard !removedServerIDs.contains(serverID) else { return }
+        let context = ModelContext(modelContainer)
+        let key = Self.recordKey(serverID: serverID, itemID: playlist.id)
+        let summaryPayload = try encoder.encode(IndexedPlaylistPayload(playlist))
+
+        if let existing = try playlistRow(recordKey: key, in: context) {
+            existing.name = playlist.name
+            existing.sortName = LibraryIndexText.normalized(playlist.name)
+            existing.summaryPayload = summaryPayload
+        } else {
+            context.insert(
+                IndexedPlaylist(
+                    recordKey: key,
+                    serverId: serverID,
+                    itemId: playlist.id,
+                    name: playlist.name,
+                    sortName: LibraryIndexText.normalized(playlist.name),
+                    serverOrder: .max,
+                    generation: "opportunistic",
+                    summaryPayload: summaryPayload
+                )
+            )
+        }
+        try context.save()
+    }
+
+    func removePlaylist(id: String, serverID: UUID) throws {
+        let context = ModelContext(modelContainer)
+        let key = Self.recordKey(serverID: serverID, itemID: id)
+        if let row = try playlistRow(recordKey: key, in: context) {
+            context.delete(row)
+            try context.save()
+        }
+    }
+
+    func markPlaylistsIncomplete(serverID: UUID) throws {
+        let context = ModelContext(modelContainer)
+        if let state = try playlistState(for: serverID, in: context) {
+            state.syncedAt = nil
+            try context.save()
+        }
+    }
+
     func complete(
         _ kind: LibraryIndexKind,
         serverID: UUID,
@@ -275,6 +486,22 @@ actor LibraryIndexStore {
                 model: IndexedTrack.self,
                 where: #Predicate { $0.serverId == sid && $0.generation != completedGeneration }
             )
+        case .playlists:
+            try context.delete(
+                model: IndexedPlaylist.self,
+                where: #Predicate { $0.serverId == sid && $0.generation != completedGeneration }
+            )
+        }
+
+        if kind == .playlists {
+            let indexState = try playlistState(for: serverID, in: context) ?? {
+                let newState = PlaylistIndexState(serverId: serverID)
+                context.insert(newState)
+                return newState
+            }()
+            indexState.syncedAt = syncedAt
+            try context.save()
+            return
         }
 
         let indexState = try state(for: serverID, in: context) ?? {
@@ -286,6 +513,7 @@ actor LibraryIndexStore {
         case .artists: indexState.artistsSyncedAt = syncedAt
         case .albums: indexState.albumsSyncedAt = syncedAt
         case .tracks: indexState.tracksSyncedAt = syncedAt
+        case .playlists: break
         }
         try context.save()
     }
@@ -308,7 +536,9 @@ actor LibraryIndexStore {
         try context.delete(model: IndexedTrack.self, where: #Predicate { $0.serverId == sid })
         try context.delete(model: IndexedAlbum.self, where: #Predicate { $0.serverId == sid })
         try context.delete(model: IndexedArtist.self, where: #Predicate { $0.serverId == sid })
+        try context.delete(model: IndexedPlaylist.self, where: #Predicate { $0.serverId == sid })
         try context.delete(model: LibraryIndexState.self, where: #Predicate { $0.serverId == sid })
+        try context.delete(model: PlaylistIndexState.self, where: #Predicate { $0.serverId == sid })
         try context.save()
     }
 
@@ -436,11 +666,42 @@ actor LibraryIndexStore {
         return try songs(artistID: artistID, serverID: serverID, in: context)
     }
 
+    func playlists(serverID: UUID) throws -> [Playlist] {
+        let context = ModelContext(modelContainer)
+        let sid = serverID
+        let descriptor = FetchDescriptor<IndexedPlaylist>(
+            predicate: #Predicate { $0.serverId == sid },
+            sortBy: [SortDescriptor(\.serverOrder), SortDescriptor(\.sortName)]
+        )
+        return try context.fetch(descriptor).compactMap(decodePlaylist)
+    }
+
+    func playlist(id: String, serverID: UUID) throws -> LibraryIndexedPlaylistDetail? {
+        let context = ModelContext(modelContainer)
+        let key = Self.recordKey(serverID: serverID, itemID: id)
+        guard let row = try playlistRow(recordKey: key, in: context),
+              let detailPayload = row.detailPayload,
+              let playlist = decodePlaylistDetail(detailPayload, id: row.itemId) else { return nil }
+        return LibraryIndexedPlaylistDetail(
+            playlist: playlist,
+            isCurrent: row.detailSummaryPayload == row.summaryPayload
+        )
+    }
+
     // MARK: - Model lookup
 
     private func state(for serverID: UUID, in context: ModelContext) throws -> LibraryIndexState? {
         let sid = serverID
         var descriptor = FetchDescriptor<LibraryIndexState>(
+            predicate: #Predicate { $0.serverId == sid }
+        )
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
+    }
+
+    private func playlistState(for serverID: UUID, in context: ModelContext) throws -> PlaylistIndexState? {
+        let sid = serverID
+        var descriptor = FetchDescriptor<PlaylistIndexState>(
             predicate: #Predicate { $0.serverId == sid }
         )
         descriptor.fetchLimit = 1
@@ -464,6 +725,13 @@ actor LibraryIndexStore {
     private func artistRow(recordKey: String, in context: ModelContext) throws -> IndexedArtist? {
         let key = recordKey
         var descriptor = FetchDescriptor<IndexedArtist>(predicate: #Predicate { $0.recordKey == key })
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
+    }
+
+    private func playlistRow(recordKey: String, in context: ModelContext) throws -> IndexedPlaylist? {
+        let key = recordKey
+        var descriptor = FetchDescriptor<IndexedPlaylist>(predicate: #Predicate { $0.recordKey == key })
         descriptor.fetchLimit = 1
         return try context.fetch(descriptor).first
     }
@@ -525,6 +793,24 @@ actor LibraryIndexStore {
             return try decoder.decode(ArtistID3.self, from: row.payload)
         } catch {
             Logger.library.error("Library index: invalid artist payload id=\(row.itemId, privacy: .public)")
+            return nil
+        }
+    }
+
+    private func decodePlaylist(_ row: IndexedPlaylist) -> Playlist? {
+        do {
+            return try decoder.decode(IndexedPlaylistPayload.self, from: row.summaryPayload).summary
+        } catch {
+            Logger.library.error("Library index: invalid playlist payload id=\(row.itemId, privacy: .public)")
+            return nil
+        }
+    }
+
+    private func decodePlaylistDetail(_ payload: Data, id: String) -> PlaylistWithSongs? {
+        do {
+            return try decoder.decode(IndexedPlaylistPayload.self, from: payload).detail
+        } catch {
+            Logger.library.error("Library index: invalid playlist detail payload id=\(id, privacy: .public)")
             return nil
         }
     }

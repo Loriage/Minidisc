@@ -13,6 +13,12 @@ struct WrappedYearlyListView: View {
         playlists.contains { $0.year == currentYear }
     }
 
+    private var currentYearMonths: [(year: Int, month: Int)] {
+        let calendar = Calendar.current
+        let month = calendar.component(.month, from: Date())
+        return (1...month).reversed().map { (currentYear, $0) }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: MinidiscSpacing.l) {
@@ -32,6 +38,11 @@ struct WrappedYearlyListView: View {
                         }
                         ForEach(playlists) { playlist in
                             WrappedYearlyCard(playlist: playlist)
+                        }
+                        ForEach(currentYearMonths, id: \.month) { item in
+                            WrappedRecapMonthCard(
+                                period: .month(year: item.year, month: item.month)
+                            )
                         }
                     }
 

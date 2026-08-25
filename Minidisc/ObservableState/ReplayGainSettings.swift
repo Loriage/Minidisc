@@ -24,6 +24,7 @@ nonisolated struct ReplayGainConfig: Sendable {
 final class ReplayGainSettings {
     // MARK: - Storage (observation ignored)
 
+    @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var _enabled: Bool
     @ObservationIgnored private var _mode: ReplayGainMode
     @ObservationIgnored private var _preAmp: Double
@@ -40,7 +41,7 @@ final class ReplayGainSettings {
             withMutation(keyPath: \.enabled) {
                 _enabled = newValue
             }
-            UserDefaults.standard.set(newValue, forKey: Self.enabledKey)
+            defaults.set(newValue, forKey: Self.enabledKey)
         }
     }
 
@@ -53,7 +54,7 @@ final class ReplayGainSettings {
             withMutation(keyPath: \.mode) {
                 _mode = newValue
             }
-            UserDefaults.standard.set(newValue.rawValue, forKey: Self.modeKey)
+            defaults.set(newValue.rawValue, forKey: Self.modeKey)
         }
     }
 
@@ -67,7 +68,7 @@ final class ReplayGainSettings {
             withMutation(keyPath: \.preAmp) {
                 _preAmp = clamped
             }
-            UserDefaults.standard.set(clamped, forKey: Self.preAmpKey)
+            defaults.set(clamped, forKey: Self.preAmpKey)
         }
     }
 
@@ -80,7 +81,7 @@ final class ReplayGainSettings {
             withMutation(keyPath: \.preventClipping) {
                 _preventClipping = newValue
             }
-            UserDefaults.standard.set(newValue, forKey: Self.preventClippingKey)
+            defaults.set(newValue, forKey: Self.preventClippingKey)
         }
     }
 
@@ -107,21 +108,22 @@ final class ReplayGainSettings {
 
     // MARK: - Init
 
-    init() {
-        _enabled = UserDefaults.standard.bool(forKey: Self.enabledKey)
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        _enabled = defaults.bool(forKey: Self.enabledKey)
 
-        let modeRaw = UserDefaults.standard.string(forKey: Self.modeKey)
+        let modeRaw = defaults.string(forKey: Self.modeKey)
         _mode = ReplayGainMode(rawValue: modeRaw ?? "") ?? Self.defaultMode
 
-        if UserDefaults.standard.object(forKey: Self.preAmpKey) != nil {
-            let stored = UserDefaults.standard.double(forKey: Self.preAmpKey)
+        if defaults.object(forKey: Self.preAmpKey) != nil {
+            let stored = defaults.double(forKey: Self.preAmpKey)
             _preAmp = max(Self.minPreAmp, min(Self.maxPreAmp, stored))
         } else {
             _preAmp = Self.defaultPreAmp
         }
 
-        if UserDefaults.standard.object(forKey: Self.preventClippingKey) != nil {
-            _preventClipping = UserDefaults.standard.bool(forKey: Self.preventClippingKey)
+        if defaults.object(forKey: Self.preventClippingKey) != nil {
+            _preventClipping = defaults.bool(forKey: Self.preventClippingKey)
         } else {
             _preventClipping = Self.defaultPreventClipping
         }

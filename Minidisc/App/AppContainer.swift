@@ -8,7 +8,7 @@ import SwiftData
 final class AppContainer {
     let playerState = PlayerState()
     let serverState = ServerState()
-    let cacheSettings = CacheSettings()
+    let cacheSettings: CacheSettings
 
     let modelContainer: ModelContainer
     let libraryIndexStore: LibraryIndexStore
@@ -38,20 +38,26 @@ final class AppContainer {
     let lyricsService: LyricsService
     let recommendationService: RecommendationService
     let listenBrainzService: ListenBrainzService
-    let externalProvidersStore = ExternalProvidersStore()
+    let externalProvidersStore: ExternalProvidersStore
     let externalArtworkCache = ExternalArtworkCache()
     let externalArtistImageResolver = ExternalArtistImageResolver()
     let searchHistoryService: SearchHistoryService
-    let replayGainSettings = ReplayGainSettings()
-    let crossfadeSettings = CrossfadeSettings()
-    let streamSettings = StreamSettings()
+    let replayGainSettings: ReplayGainSettings
+    let crossfadeSettings: CrossfadeSettings
+    let streamSettings: StreamSettings
     let lidarrSettings: LidarrSettings
     private var lifecycleTasks: [Task<Void, Never>] = []
 
     init(
         inMemory: Bool = false,
-        playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics()
+        playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics(),
+        userDefaults: UserDefaults = .standard
     ) throws {
+        cacheSettings = CacheSettings(defaults: userDefaults)
+        externalProvidersStore = ExternalProvidersStore(defaults: userDefaults)
+        replayGainSettings = ReplayGainSettings(defaults: userDefaults)
+        crossfadeSettings = CrossfadeSettings(defaults: userDefaults)
+        streamSettings = StreamSettings(defaults: userDefaults)
         self.playbackDiagnostics = playbackDiagnostics
         networkMonitor = NetworkMonitor(playbackDiagnostics: playbackDiagnostics)
         modelContainer = try ModelContainer.minidisc(inMemory: inMemory)
@@ -62,9 +68,9 @@ final class AppContainer {
 
         let keychain = KeychainService()
         keychainService = keychain
-        lidarrSettings = LidarrSettings(keychain: keychain)
+        lidarrSettings = LidarrSettings(keychain: keychain, defaults: userDefaults)
 
-        let cache = AudioStreamCache(modelContainer: modelContainer, maxTracks: cacheSettings.maxTracks)
+        let cache = AudioStreamCache(modelContainer: modelContainer, maxBytes: cacheSettings.capacityBytes)
         audioStreamCache = cache
 
         let stats = StatsService(modelContainer: modelContainer)
@@ -165,7 +171,12 @@ final class AppContainer {
         favoritesService = FavoritesService(libraryService: library, serverState: serverState, modelContainer: modelContainer)
         let pin = PinService(modelContainer: modelContainer)
         pinService = pin
-        let playlist = PlaylistService(serverService: server, modelContainer: modelContainer, downloadService: download)
+        let playlist = PlaylistService(
+            serverService: server,
+            modelContainer: modelContainer,
+            downloadService: download,
+            libraryCatalog: catalog
+        )
         playlistService = playlist
 
         let subsonicProvider = SubsonicRecommendationProvider(libraryService: library)
@@ -269,7 +280,7 @@ extension ModelContainer {
     /// A discardable metadata index kept separate from downloads, playback history,
     /// and server configuration so rebuilding it cannot affect user-owned local data.
     static func libraryIndex(inMemory: Bool = false) throws -> ModelContainer {
-        let schema = Schema(versionedSchema: LibraryIndexSchemaV1.self)
+        let schema = Schema(versionedSchema: LibraryIndexSchemaV2.self)
         let config = ModelConfiguration(
             "minidisc-library-index",
             schema: schema,

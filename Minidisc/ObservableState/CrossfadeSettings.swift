@@ -16,6 +16,7 @@ nonisolated struct CrossfadeConfig: Sendable {
 final class CrossfadeSettings {
     // MARK: - Storage (observation ignored)
 
+    @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var _duration: Double
     @ObservationIgnored private var _disableForGapless: Bool
 
@@ -31,7 +32,7 @@ final class CrossfadeSettings {
             withMutation(keyPath: \.duration) {
                 _duration = clamped
             }
-            UserDefaults.standard.set(clamped, forKey: Self.durationKey)
+            defaults.set(clamped, forKey: Self.durationKey)
         }
     }
 
@@ -44,7 +45,7 @@ final class CrossfadeSettings {
             withMutation(keyPath: \.disableForGapless) {
                 _disableForGapless = newValue
             }
-            UserDefaults.standard.set(newValue, forKey: Self.disableForGaplessKey)
+            defaults.set(newValue, forKey: Self.disableForGaplessKey)
         }
     }
 
@@ -66,16 +67,17 @@ final class CrossfadeSettings {
 
     // MARK: - Init
 
-    init() {
-        if UserDefaults.standard.object(forKey: Self.durationKey) != nil {
-            let stored = UserDefaults.standard.double(forKey: Self.durationKey)
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        if defaults.object(forKey: Self.durationKey) != nil {
+            let stored = defaults.double(forKey: Self.durationKey)
             _duration = max(Self.minDuration, min(Self.maxDuration, stored))
         } else {
             _duration = Self.defaultDuration
         }
         // Default true: gapless albums should not be interrupted by a crossfade.
-        if UserDefaults.standard.object(forKey: Self.disableForGaplessKey) != nil {
-            _disableForGapless = UserDefaults.standard.bool(forKey: Self.disableForGaplessKey)
+        if defaults.object(forKey: Self.disableForGaplessKey) != nil {
+            _disableForGapless = defaults.bool(forKey: Self.disableForGaplessKey)
         } else {
             _disableForGapless = true
         }

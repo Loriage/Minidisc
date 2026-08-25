@@ -79,6 +79,15 @@ actor LibraryIndexSynchronizer {
                 if firstFailure == nil { firstFailure = error }
             }
         }
+        if status?.playlists != true {
+            do {
+                try await refreshPlaylists(serverID: serverID, sourceWatermark: sourceWatermark)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                if firstFailure == nil { firstFailure = error }
+            }
+        }
 
         if let firstFailure { throw firstFailure }
     }
@@ -147,6 +156,30 @@ actor LibraryIndexSynchronizer {
                 store: store,
                 serverID: serverID,
                 pageSize: pageSize,
+                sourceWatermark: sourceWatermark
+            )
+        }
+        inFlight[key] = task
+        defer { inFlight[key] = nil }
+        try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    func refreshPlaylists(serverID: UUID, sourceWatermark: Date? = nil) async throws {
+        let key = SyncKey(serverID: serverID, kind: .playlists)
+        if let existing = inFlight[key] {
+            return try await existing.value
+        }
+        let source = source
+        let store = store
+        let task = Task {
+            try await Self.syncPlaylists(
+                source: source,
+                store: store,
+                serverID: serverID,
                 sourceWatermark: sourceWatermark
             )
         }
@@ -273,6 +306,28 @@ actor LibraryIndexSynchronizer {
             syncedAt: completionDate(sourceWatermark: sourceWatermark)
         )
         Logger.library.info("Library index: tracks refreshed (\(seen.count, privacy: .public))")
+    }
+
+    private static func syncPlaylists(
+        source: any LibraryRemoteSource,
+        store: LibraryIndexStore,
+        serverID: UUID,
+        sourceWatermark: Date?
+    ) async throws {
+        try Task.checkCancellation()
+        let playlists = try await source.playlists(serverID: serverID)
+        try Task.checkCancellation()
+
+        let generation = UUID().uuidString
+        try await store.upsertPlaylists(playlists, serverID: serverID, generation: generation)
+        try Task.checkCancellation()
+        try await store.complete(
+            .playlists,
+            serverID: serverID,
+            generation: generation,
+            syncedAt: completionDate(sourceWatermark: sourceWatermark)
+        )
+        Logger.library.info("Library index: playlists refreshed (\(playlists.count, privacy: .public))")
     }
 
     private static func completionDate(sourceWatermark: Date?) -> Date {

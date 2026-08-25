@@ -10,7 +10,7 @@ nonisolated final class PlaybackDiagnostics: Sendable {
     enum ApplicationEvent: Sendable, Equatable {
         case launchStarted(attempt: Int)
         case servicesReady
-        case launchFailed
+        case launchFailed(errorDomain: String, errorCode: Int)
     }
 
     enum PlaybackCommand: Sendable, Equatable {
@@ -159,7 +159,7 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         let operatingSystem: String
         let playbackStatus: PlaybackStatus
         let isPlaybackAvailable: Bool
-        let networkPath: NetworkPath
+        let networkPath: NetworkPath?
         let connectionVersion: ServerConnection.Version?
     }
 
@@ -215,7 +215,7 @@ nonisolated final class PlaybackDiagnostics: Sendable {
             "App: \(context.appVersion) (\(context.appBuild))",
             "OS: \(context.operatingSystem)",
             "Playback: \(context.playbackStatus.rawValue), available=\(context.isPlaybackAvailable)",
-            "Network: \(Self.describe(context.networkPath))",
+            "Network: \(context.networkPath.map(Self.describe) ?? "unavailable")",
             "Connection: \(context.connectionVersion?.description ?? "none")",
             "Privacy: song metadata, full URLs, credentials, header names/values and route names are excluded.",
             "",
@@ -238,8 +238,8 @@ nonisolated final class PlaybackDiagnostics: Sendable {
             "app launch-started attempt=\(attempt)"
         case .application(.servicesReady):
             "app services-ready"
-        case .application(.launchFailed):
-            "app launch-failed"
+        case .application(.launchFailed(let domain, let code)):
+            "app launch-failed error-domain=\(domain) error-code=\(code)"
         case .connectionChanged(let version, let endpoint):
             "connection changed \(version) tls=\(endpoint.usesTLS) port=\(endpoint.port.map(String.init) ?? "default") host=\(endpoint.hostKind.rawValue)#\(endpoint.hostFingerprint) custom-header-count=\(endpoint.customHeaderCount.map(String.init) ?? "unknown")"
         case .connectionRemoved:

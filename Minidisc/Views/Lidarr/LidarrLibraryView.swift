@@ -213,16 +213,12 @@ private struct LidarrArtistCell: View {
                 }
             }
 
-            Text(artist.artistName)
-                .font(.minidiscCaption)
-                .fontWeight(.semibold)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Text(artist.statistics?.albumCount == 1 ? "1 album" : "\(artist.statistics?.albumCount ?? 0) albums")
-                .font(.minidiscCaption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            CoverCardMetadata(
+                title: artist.artistName,
+                subtitle: artist.statistics?.albumCount == 1
+                    ? String(localized: "1 album")
+                    : String(localized: "\(artist.statistics?.albumCount ?? 0) albums")
+            )
         }
     }
 }

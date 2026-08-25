@@ -27,7 +27,6 @@ final class HomeFeedViewModel {
         & ListeningHistoryBrowsing
         & GenreBrowsing
 
-    private static let maxTopPicks = 8
     private static let maxGenreShelves = 5
     private static let shelfSize = 20
 
@@ -52,8 +51,6 @@ final class HomeFeedViewModel {
 
             let picks = playlists
                 .sorted { ($0.changed ?? $0.created ?? .distantPast) > ($1.changed ?? $1.created ?? .distantPast) }
-                .prefix(Self.maxTopPicks)
-                .map { $0 }
 
             // Sequential on purpose: one getAlbumList2 per genre is light, and order stays stable.
             var shelves: [GenreShelf] = []

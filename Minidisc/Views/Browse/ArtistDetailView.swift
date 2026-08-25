@@ -582,15 +582,12 @@ struct ArtistDetailView: View {
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.large, style: .continuous))
-                Text(album.name)
-                    .font(.minidiscCellTitle)
-                    .foregroundStyle(headerTextColor)
-                    .lineLimit(1)
-                if let year = album.year {
-                    Text(verbatim: "\(year)")
-                        .font(.minidiscCaption)
-                        .foregroundStyle(headerSecondaryColor)
-                }
+                CoverCardMetadata(
+                    title: album.name,
+                    subtitle: album.year.map(String.init),
+                    titleColor: headerTextColor,
+                    secondaryColor: headerSecondaryColor
+                )
             }
             .frame(width: grid ? nil : 160, alignment: .leading)
             .frame(maxWidth: grid ? .infinity : nil, alignment: .leading)

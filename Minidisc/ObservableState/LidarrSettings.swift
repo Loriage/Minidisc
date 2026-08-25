@@ -16,6 +16,7 @@ nonisolated struct LidarrCredentials: Codable, Sendable {
 @MainActor
 final class LidarrSettings {
     @ObservationIgnored private let keychain: any KeychainServiceProtocol
+    @ObservationIgnored private let defaults: UserDefaults
 
     @ObservationIgnored private var _baseURL: String
     /// True when both a base URL and stored credentials are present. Drives the Settings status.
@@ -29,9 +30,10 @@ final class LidarrSettings {
     private static let baseURLKey = "app.minidisc.lidarr.baseURL"
     private static let credentialsKeychainKey = "app.minidisc.lidarr.credentials"
 
-    init(keychain: any KeychainServiceProtocol) {
+    init(keychain: any KeychainServiceProtocol, defaults: UserDefaults = .standard) {
         self.keychain = keychain
-        self._baseURL = UserDefaults.standard.string(forKey: Self.baseURLKey) ?? ""
+        self.defaults = defaults
+        self._baseURL = defaults.string(forKey: Self.baseURLKey) ?? ""
     }
 
     /// Reads back whether credentials are present, so `isConnected` is correct after a cold start.
@@ -53,14 +55,14 @@ final class LidarrSettings {
     func connect(baseURL: String, apiKey: String, headers: [String: String]) async throws {
         let trimmedURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         try await keychain.store(LidarrCredentials(apiKey: apiKey, headers: headers), forKey: Self.credentialsKeychainKey)
-        UserDefaults.standard.set(trimmedURL, forKey: Self.baseURLKey)
+        defaults.set(trimmedURL, forKey: Self.baseURLKey)
         withMutation(keyPath: \.baseURL) { _baseURL = trimmedURL }
         withMutation(keyPath: \.isConnected) { isConnected = true }
     }
 
     func disconnect() async {
         try? await keychain.delete(forKey: Self.credentialsKeychainKey)
-        UserDefaults.standard.removeObject(forKey: Self.baseURLKey)
+        defaults.removeObject(forKey: Self.baseURLKey)
         withMutation(keyPath: \.baseURL) { _baseURL = "" }
         withMutation(keyPath: \.isConnected) { isConnected = false }
     }

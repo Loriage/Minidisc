@@ -2,16 +2,15 @@ import Foundation
 import SwiftData
 import OSLog
 
-/// Streaming cache for recently-played tracks. Holds a sliding window of the N most-recently-cached tracks.
-/// FIFO eviction: when count exceeds the limit, the oldest by `cachedAt` is removed (file + record).
+/// Streaming cache for recently-played tracks. Holds a byte-bounded sliding window and evicts
+/// least-recently-used entries when the configured capacity is exceeded.
 ///
 /// Caches AUDIO BYTES ONLY. It holds no library metadata — no albums, artists, playlists or search
-/// results — and the app has no metadata cache at all: LibraryService goes to the server on every call.
-/// Nothing here makes the library browsable offline; only the downloads store does.
+/// results. The separate library index contains discardable metadata but never audio bytes.
 ///
 /// Distinct from DownloadService:
 /// - DownloadService → permanent, user-explicit, never auto-evicted, lives in Documents/.
-/// - AudioStreamCache → transient, automatic, evicted by FIFO, lives in Caches/.
+/// - AudioStreamCache → transient, automatic, evicted by LRU, lives in Caches/.
 ///
 /// Populated via the streaming hook in PlayerService. MediaResolver reads from this cache
 /// between permanent downloads and remote streaming.
@@ -19,15 +18,17 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
     private let modelContainer: ModelContainer
     private lazy var modelContext: ModelContext = ModelContext(modelContainer)
     private let cacheDirectory: URL
-    private(set) var maxTracks: Int
+    private(set) var maxBytes: Int64
 
-    nonisolated static let defaultMaxTracks: Int = 10
-    nonisolated static let minMaxTracks: Int = 1
-    nonisolated static let maxMaxTracks: Int = 10
+    nonisolated static let defaultMaxBytes: Int64 = 512 * 1_000_000
+    // The UI enforces a user-facing 128 MB minimum. Keeping the service minimum at one byte
+    // makes the byte-budget invariant independently testable and useful to non-UI callers.
+    nonisolated static let minMaxBytes: Int64 = 1
+    nonisolated static let maxMaxBytes: Int64 = 2_048 * 1_000_000
 
-    init(modelContainer: ModelContainer, maxTracks: Int = AudioStreamCache.defaultMaxTracks) {
+    init(modelContainer: ModelContainer, maxBytes: Int64 = AudioStreamCache.defaultMaxBytes) {
         self.modelContainer = modelContainer
-        self.maxTracks = max(Self.minMaxTracks, min(Self.maxMaxTracks, maxTracks))
+        self.maxBytes = max(Self.minMaxBytes, min(Self.maxMaxBytes, maxBytes))
 
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         self.cacheDirectory = caches.appendingPathComponent("app.minidisc/audio", isDirectory: true)
@@ -41,23 +42,22 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
 
     // MARK: - Configuration
 
-    /// Updates the maximum number of tracks held in cache. Triggers FIFO eviction if count exceeds
-    /// the new limit. Range is clamped to [1, 10].
-    func setMaxTracks(_ value: Int) async {
-        maxTracks = max(Self.minMaxTracks, min(Self.maxMaxTracks, value))
-        await evictToFitLimit()
+    /// Updates the byte capacity and immediately evicts least-recently-used entries if needed.
+    func setMaxBytes(_ value: Int64) async {
+        maxBytes = max(Self.minMaxBytes, min(Self.maxMaxBytes, value))
+        await evictToFitBudget()
     }
 
     // MARK: - Lookup
 
     func cachedURL(forSongId songId: String, serverId: UUID) async -> URL? {
-        var descriptor = FetchDescriptor<CachedTrack>(predicate: #Predicate { $0.songId == songId })
+        let sid = serverId
+        var descriptor = FetchDescriptor<CachedTrack>(
+            predicate: #Predicate { $0.songId == songId && $0.serverId == sid }
+        )
         descriptor.fetchLimit = 1
         let tracks = (try? modelContext.fetch(descriptor)) ?? []
-        let entry = tracks.first { $0.serverId == serverId }.map {
-            (filePath: $0.filePath, fileSize: $0.fileSize)
-        }
-        guard let entry else { return nil }
+        guard let entry = tracks.first else { return nil }
         let url = cacheDirectory.appendingPathComponent(entry.filePath)
         // Self-healing covers missing, empty, and size-mismatched files — a partial or
         // corrupt cache file must fall through to stream, never reach the player.
@@ -67,12 +67,18 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
             await invalidate(songId: songId, serverId: serverId)
             return nil
         }
+        entry.cachedAt = Date()
+        do {
+            try modelContext.save()
+        } catch {
+            Logger.cache.debug("AudioStreamCache: failed to persist LRU access — \(error)")
+        }
         return url
     }
 
     // MARK: - Storage
 
-    /// Moves a completed download into the cache. Upserts the SwiftData record, then runs FIFO eviction.
+    /// Moves a completed download into the cache. Upserts the SwiftData record, then runs LRU eviction.
     func store(fileAt sourceURL: URL, forSongId songId: String, serverId: UUID, mimeType: String) async throws -> URL {
         let ext = audioExtension(mimeType: mimeType)
         // Song IDs are server-controlled and may contain path separators. A generated basename keeps
@@ -93,23 +99,31 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
         }
 
         let previousPath: String?
+        let storedTrackID: UUID
         do {
-            let existing = try modelContext.fetch(FetchDescriptor<CachedTrack>(predicate: #Predicate { $0.songId == songId }))
-                .first { $0.serverId == serverId }
+            let sid = serverId
+            var descriptor = FetchDescriptor<CachedTrack>(
+                predicate: #Predicate { $0.songId == songId && $0.serverId == sid }
+            )
+            descriptor.fetchLimit = 1
+            let existing = try modelContext.fetch(descriptor).first
             previousPath = existing?.filePath
             if let existing {
                 existing.filePath = relativePath
                 existing.fileSize = fileSize
                 existing.mimeType = mimeType
                 existing.cachedAt = Date()
+                storedTrackID = existing.id
             } else {
-                modelContext.insert(CachedTrack(
+                let cachedTrack = CachedTrack(
                     songId: songId,
                     serverId: serverId,
                     filePath: relativePath,
                     fileSize: fileSize,
                     mimeType: mimeType
-                ))
+                )
+                modelContext.insert(cachedTrack)
+                storedTrackID = cachedTrack.id
             }
             try modelContext.save()
         } catch {
@@ -120,7 +134,9 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
             try? FileManager.default.removeItem(at: cacheDirectory.appendingPathComponent(previousPath))
         }
 
-        await evictToFitLimit()
+        // Preserve the just-written file so this method never returns a URL it evicted. A single
+        // unusually large track may temporarily exceed the soft budget until the next trim.
+        await evictToFitBudget(protecting: storedTrackID)
         Logger.cache.info("Cached '\(songId, privacy: .public)' (\(fileSize) bytes, \(mimeType, privacy: .public))")
         return fileURL
     }
@@ -141,23 +157,29 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
 
     // MARK: - Eviction
 
-    /// FIFO eviction: removes the oldest tracks (by cachedAt asc) until count <= maxTracks.
-    private func evictToFitLimit() async {
+    /// Removes least-recently-used tracks until their recorded byte total fits the budget.
+    private func evictToFitBudget(protecting protectedID: UUID? = nil) async {
         let descriptor = FetchDescriptor<CachedTrack>(sortBy: [SortDescriptor(\.cachedAt, order: .forward)])
         let allTracks = (try? modelContext.fetch(descriptor)) ?? []
-        let excess = allTracks.count - maxTracks
-        guard excess > 0 else { return }
-        let toEvict = allTracks.prefix(excess).map { ($0.filePath, $0.id) }
+        var remainingBytes = allTracks.reduce(Int64.zero) { $0 + max(0, $1.fileSize) }
+        guard remainingBytes > maxBytes else { return }
 
-        for (filePath, _) in toEvict {
+        var toEvict: [(filePath: String, id: UUID, fileSize: Int64)] = []
+        for track in allTracks where remainingBytes > maxBytes {
+            guard track.id != protectedID else { continue }
+            toEvict.append((track.filePath, track.id, track.fileSize))
+            remainingBytes -= max(0, track.fileSize)
+        }
+
+        for entry in toEvict {
             do {
-                try FileManager.default.removeItem(at: cacheDirectory.appendingPathComponent(filePath))
+                try FileManager.default.removeItem(at: cacheDirectory.appendingPathComponent(entry.filePath))
             } catch {
                 Logger.cache.debug("AudioStreamCache: evict removeItem failed — \(error)")
             }
         }
 
-        let recordIds = Set(toEvict.map { $0.1 })
+        let recordIds = Set(toEvict.map { $0.id })
         allTracks.filter { recordIds.contains($0.id) }.forEach { modelContext.delete($0) }
         do {
             try modelContext.save()
@@ -165,13 +187,22 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
             Logger.cache.debug("AudioStreamCache: evict save failed — \(error)")
         }
 
-        Logger.cache.info("Evicted \(toEvict.count) cache entries (FIFO, oldest first)")
+        Logger.cache.info("Evicted \(toEvict.count) least-recently-used cache entries")
+        if remainingBytes > maxBytes {
+            Logger.cache.warning(
+                "Newest cached track exceeds the configured byte budget (\(remainingBytes) > \(self.maxBytes))"
+            )
+        }
     }
 
     /// Manually invalidates a single entry (file + record). No-op if not cached.
     func invalidate(songId: String, serverId: UUID) async {
-        let tracks = (try? modelContext.fetch(FetchDescriptor<CachedTrack>(predicate: #Predicate { $0.songId == songId }))) ?? []
-        let matchingTracks = tracks.filter { $0.serverId == serverId }
+        let sid = serverId
+        let matchingTracks = (try? modelContext.fetch(
+            FetchDescriptor<CachedTrack>(
+                predicate: #Predicate { $0.songId == songId && $0.serverId == sid }
+            )
+        )) ?? []
         let filePath = matchingTracks.first?.filePath
         if let filePath {
             do {

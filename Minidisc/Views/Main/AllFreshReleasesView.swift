@@ -1,6 +1,5 @@
 import SwiftUI
 
-// Keep value-based NavigationPath routing here; item presentation duplicates nested pushes.
 struct AllFreshReleasesView: View {
     @Environment(\.appContainer) private var container
     let vm: AllFreshReleasesViewModel
@@ -32,16 +31,6 @@ struct AllFreshReleasesView: View {
         }
         .navigationTitle("Fresh Releases")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: AlbumRecommendation.self) { release in
-            FreshReleaseDetailView(
-                release: release,
-                providers: container?.externalProvidersStore.load() ?? []
-            )
-            .minidiscZoomTransition(
-                sourceID: release.id ?? "\(release.artistName)-\(release.title)",
-                in: releaseZoomNamespace
-            )
-        }
         .task { await vm.loadReleases() }
     }
 
@@ -53,7 +42,16 @@ struct AllFreshReleasesView: View {
             ForEach(vm.groupedReleases, id: \.month) { section in
                 Section(Self.monthFormatter.string(from: section.month)) {
                     ForEach(Array(section.items.enumerated()), id: \.offset) { _, release in
-                        NavigationLink(value: release) {
+                        NavigationLink {
+                            FreshReleaseDetailView(
+                                release: release,
+                                providers: container?.externalProvidersStore.load() ?? []
+                            )
+                            .minidiscZoomTransition(
+                                sourceID: release.id ?? "\(release.artistName)-\(release.title)",
+                                in: releaseZoomNamespace
+                            )
+                        } label: {
                             FreshReleaseRow(
                                 release: release,
                                 zoomSourceId: release.id ?? "\(release.artistName)-\(release.title)",

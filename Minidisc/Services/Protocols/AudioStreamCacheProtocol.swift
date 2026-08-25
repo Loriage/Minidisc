@@ -9,8 +9,8 @@ protocol AudioStreamCacheProtocol: AnyObject, Sendable {
     /// Moves a completed download into the cache without materialising the whole track in RAM.
     func store(fileAt sourceURL: URL, forSongId songId: String, serverId: UUID, mimeType: String) async throws -> URL
 
-    /// Updates the maximum number of cached tracks. Triggers FIFO eviction if current count exceeds the new limit.
-    func setMaxTracks(_ value: Int) async
+    /// Updates the cache byte capacity and evicts least-recently-used entries as needed.
+    func setMaxBytes(_ value: Int64) async
 
     /// Removes a single record and its file immediately (e.g. on stale-file detection).
     func invalidate(songId: String, serverId: UUID) async

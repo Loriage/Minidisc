@@ -7,6 +7,8 @@ import OSLog
 final class DiscoverViewModel {
     private let libraryService: any ListeningHistoryBrowsing
     private let recommendationService: RecommendationService
+    private let calendar: Calendar
+    private let now: @Sendable () -> Date
 
     // MARK: - State
 
@@ -17,9 +19,16 @@ final class DiscoverViewModel {
     private(set) var freshReleases: [AlbumRecommendation] = []
     private(set) var isLoadingFreshReleases: Bool = false
 
-    init(libraryService: any ListeningHistoryBrowsing, recommendationService: RecommendationService) {
+    init(
+        libraryService: any ListeningHistoryBrowsing,
+        recommendationService: RecommendationService,
+        calendar: Calendar = .current,
+        now: @escaping @Sendable () -> Date = { Date() }
+    ) {
         self.libraryService = libraryService
         self.recommendationService = recommendationService
+        self.calendar = calendar
+        self.now = now
     }
 
     // MARK: - Derived state
@@ -60,11 +69,31 @@ final class DiscoverViewModel {
     func loadFreshReleases() async {
         isLoadingFreshReleases = true
         defer { isLoadingFreshReleases = false }
+
+        let referenceDate = now()
+        guard let currentMonth = calendar.dateInterval(of: .month, for: referenceDate) else {
+            freshReleases = []
+            return
+        }
+        let elapsedDays = calendar.dateComponents(
+            [.day],
+            from: currentMonth.start,
+            to: referenceDate
+        ).day ?? 0
+
         do {
-            let fetched = try await recommendationService.freshReleases(limit: 10, daysWindow: 7)
-            freshReleases = fetched.sorted {
-                ($0.releaseDate ?? .distantPast) > ($1.releaseDate ?? .distantPast)
-            }
+            let fetched = try await recommendationService.freshReleases(
+                limit: .max,
+                daysWindow: max(1, elapsedDays + 1)
+            )
+            freshReleases = fetched
+                .filter { release in
+                    guard let releaseDate = release.releaseDate else { return false }
+                    return releaseDate >= currentMonth.start && releaseDate < currentMonth.end
+                }
+                .sorted {
+                    ($0.releaseDate ?? .distantPast) > ($1.releaseDate ?? .distantPast)
+                }
         } catch {
             Logger.discover.error("Failed to load fresh releases: \(error, privacy: .public)")
         }

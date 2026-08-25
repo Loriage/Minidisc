@@ -35,7 +35,7 @@ final class MockAudioStreamCache: AudioStreamCacheProtocol {
     func store(fileAt sourceURL: URL, forSongId songId: String, serverId: UUID, mimeType: String) async throws -> URL {
         struct MockError: Error {}; throw MockError()
     }
-    func setMaxTracks(_ value: Int) async {}
+    func setMaxBytes(_ value: Int64) async {}
     func invalidate(songId: String, serverId: UUID) async {}
     func clearAll() async {}
     func clearAllForServer(_ serverId: UUID) async {}

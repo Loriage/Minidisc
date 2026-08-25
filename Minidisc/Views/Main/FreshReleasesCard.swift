@@ -3,6 +3,8 @@ import SwiftUI
 /// Horizontal scroll card showing personalized fresh releases from ListenBrainz.
 /// Shows an empty state when releases are unavailable instead of collapsing.
 struct FreshReleasesCard: View {
+    private let cellWidth: CGFloat = 140
+
     let releases: [AlbumRecommendation]
     let isLoading: Bool
     let isListenBrainzConnected: Bool
@@ -12,35 +14,23 @@ struct FreshReleasesCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
-            HStack {
-                Text("Fresh Releases")
-                    .font(.minidiscShelfTitle)
-                Spacer(minLength: 0)
-                if !releases.isEmpty {
-                    Button(action: onSeeAll) {
-                        Text("See all")
-                            .font(.minidiscCaption)
-                            .foregroundStyle(Color.minidiscAccent)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, MinidiscSpacing.m)
+            freshReleasesHeader
 
             if isLoading {
                 skeletonScroll
             } else if !releases.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: MinidiscSpacing.s) {
-                        ForEach(Array(releases.enumerated()), id: \.offset) { _, release in
+                    LazyHStack(alignment: .top, spacing: MinidiscSpacing.s) {
+                        ForEach(releases, id: \.self) { release in
                             FreshReleaseAlbumCell(
                                 release: release,
                                 zoomSourceId: release.id ?? "\(release.artistName)-\(release.title)",
                                 zoomNamespace: zoomNamespace
                             )
-                            .frame(width: 140)
+                            .frame(width: cellWidth)
                         }
-                        seeAllCell
+                        FreshReleasesSeeAllCell(onSeeAll: onSeeAll)
+                            .frame(width: cellWidth)
                     }
                     .padding(.horizontal, MinidiscSpacing.m)
                 }
@@ -58,6 +48,29 @@ struct FreshReleasesCard: View {
         }
     }
 
+    @ViewBuilder
+    private var freshReleasesHeader: some View {
+        if releases.isEmpty {
+            MinidiscCarouselHeader(
+                "Fresh Releases",
+                showsChevron: false,
+                horizontalPadding: MinidiscSpacing.m
+            )
+            .accessibilityAddTraits(.isHeader)
+        } else {
+            Button(action: onSeeAll) {
+                MinidiscCarouselHeader(
+                    "Fresh Releases",
+                    showsChevron: true,
+                    horizontalPadding: MinidiscSpacing.m
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Fresh Releases")
+            .accessibilityHint("See all")
+        }
+    }
+
     private func emptyStatePlaceholder(icon: String, message: LocalizedStringKey) -> some View {
         VStack(spacing: MinidiscSpacing.s) {
             Image(systemName: icon)
@@ -70,35 +83,6 @@ struct FreshReleasesCard: View {
         }
         .frame(maxWidth: .infinity, minHeight: 168)
         .padding(.horizontal, MinidiscSpacing.m)
-    }
-
-    private var seeAllCell: some View {
-        Button(action: onSeeAll) {
-            VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
-                Color.clear
-                    .aspectRatio(1, contentMode: .fit)
-                    .overlay {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard, style: .continuous)
-                                .fill(Color.minidiscAccent.opacity(0.08))
-                            VStack(spacing: MinidiscSpacing.xs) {
-                                Image(systemName: "arrow.right.circle.fill")
-                                    .font(.title)
-                                    .foregroundStyle(Color.minidiscAccent)
-                                Text("See all")
-                                    .font(.minidiscCellTitle)
-                                    .foregroundStyle(Color.minidiscAccent)
-                            }
-                        }
-                    }
-                Text("Past 90 days")
-                    .font(.minidiscCaption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .frame(width: 140)
-        }
-        .buttonStyle(.plain)
     }
 
     private var skeletonScroll: some View {
@@ -116,6 +100,37 @@ struct FreshReleasesCard: View {
             .padding(.horizontal, MinidiscSpacing.m)
         }
         .allowsHitTesting(false)
+    }
+}
+
+private struct FreshReleasesSeeAllCell: View {
+    let onSeeAll: () -> Void
+
+    var body: some View {
+        Button(action: onSeeAll) {
+            VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
+                Color.clear
+                    .aspectRatio(1, contentMode: .fit)
+                    .overlay {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard, style: .continuous)
+                                .fill(Color.minidiscAccent.opacity(0.08))
+                            Image(systemName: "chevron.forward")
+                                .font(.title2.weight(.semibold))
+                                .foregroundStyle(Color.minidiscAccent)
+                                .frame(width: 44, height: 44)
+                        }
+                    }
+                Text("Past 90 days")
+                    .font(.minidiscCaption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("See all")
+        .accessibilityHint("Past 90 days")
     }
 }
 
@@ -153,21 +168,13 @@ struct FreshReleaseAlbumCell: View {
                 }
                 .minidiscCoverStyle()
 
-            Text(release.title)
-                .font(.minidiscCellTitle)
-                .lineLimit(1)
-
-            Text(release.artistName)
-                .font(.minidiscCaption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
-            if let date = release.releaseDate {
-                Text(Self.relativeFormatter.localizedString(for: date, relativeTo: Date()))
-                    .font(.minidiscCaption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+            CoverCardMetadata(
+                title: release.title,
+                subtitle: release.artistName,
+                detail: release.releaseDate.map {
+                    Self.relativeFormatter.localizedString(for: $0, relativeTo: Date())
+                }
+            )
         }
     }
 }

@@ -168,7 +168,7 @@ struct StorageSettingsView: View {
     private var cacheSettings: CacheSettings? { container?.cacheSettings }
 
     var body: some View {
-        let maxTracks = cacheSettings?.maxTracks ?? 10
+        let capacityBytes = cacheSettings?.capacityBytes ?? AudioStreamCache.defaultMaxBytes
 
         return Form {
             Section {
@@ -252,7 +252,7 @@ struct StorageSettingsView: View {
 
             Section {
                 LabeledContent {
-                    Text("\(ByteCountFormatter.string(fromByteCount: usedBytes, countStyle: .file)) · \(trackCount)/\(maxTracks) tracks")
+                    Text(verbatim: "\(ByteCountFormatter.string(fromByteCount: usedBytes, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: capacityBytes, countStyle: .file)) · \(trackCount)")
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 } label: {
@@ -263,16 +263,17 @@ struct StorageSettingsView: View {
                 if let cacheSettings {
                     Stepper(
                         value: Binding(
-                            get: { cacheSettings.maxTracks },
-                            set: { cacheSettings.maxTracks = max(1, min(10, $0)) }
+                            get: { cacheSettings.capacityMegabytes },
+                            set: { cacheSettings.capacityMegabytes = $0 }
                         ),
-                        in: 1...10
+                        in: CacheSettings.minCapacityMegabytes...CacheSettings.maxCapacityMegabytes,
+                        step: CacheSettings.capacityStepMegabytes
                     ) {
                         HStack {
-                            Text("Max tracks")
+                            Text("Size")
                                 .foregroundStyle(.primary)
                             Spacer()
-                            Text("\(maxTracks)")
+                            Text(ByteCountFormatter.string(fromByteCount: capacityBytes, countStyle: .file))
                                 .foregroundStyle(.secondary)
                                 .monospacedDigit()
                                 .font(.body.weight(.medium))
@@ -320,7 +321,7 @@ struct StorageSettingsView: View {
             } header: {
                 Text("Stream cache")
             } footer: {
-                Text("Keeps recently-played music for instant replay — the oldest track is replaced when the limit is reached.")
+                Text("Keeps recently-played music for instant replay. Least-recently-played tracks are removed when the size limit is reached.")
             }
 
             Section {
@@ -382,10 +383,10 @@ struct StorageSettingsView: View {
             await vm.loadData()
             await refreshUsage()
         }
-        .onChange(of: cacheSettings?.maxTracks) { _, newValue in
-            guard let newValue else { return }
+        .onChange(of: cacheSettings?.capacityMegabytes) { _, _ in
+            guard let capacityBytes = cacheSettings?.capacityBytes else { return }
             Task {
-                await container?.audioStreamCache.setMaxTracks(newValue)
+                await container?.audioStreamCache.setMaxBytes(capacityBytes)
                 await refreshUsage()
             }
         }

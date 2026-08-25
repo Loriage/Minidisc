@@ -13,17 +13,7 @@ struct AlbumCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
             CoverArtCard(id: album.coverArt ?? album.id, size: cardSize)
-            Text(album.name)
-                .font(.minidiscCaption)
-                .fontWeight(.semibold)
-                .lineLimit(1)
-                .truncationMode(.tail)
-            if let artist = album.artist {
-                Text(artist)
-                    .font(.minidiscCaption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+            CoverCardMetadata(title: album.name, subtitle: album.artist)
         }
         .frame(width: cardSize)
         .lazyCollectionContextMenu(

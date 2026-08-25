@@ -71,29 +71,69 @@ struct HomeView: View {
                 // pull-to-refresh inset math, stranding the ScrollView with a blank gap at the top.
                 VStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
                     if !vm.topPicks.isEmpty {
-                        HomeShelf(title: "Top Picks for You") {
-                            ForEach(vm.topPicks) { playlist in
+                        HomeShelf {
+                            MinidiscCarouselHeaderLink(
+                                "Top Picks for You",
+                                itemCount: vm.topPicks.count
+                            ) {
+                                PlaylistCarouselCollectionView(
+                                    "Top Picks for You",
+                                    playlists: vm.topPicks
+                                )
+                            }
+                        } content: {
+                            ForEach(Array(vm.topPicks.prefix(MinidiscCarouselMetrics.previewLimit))) { playlist in
                                 TopPickCard(playlist: playlist, namespace: homeZoomNamespace)
                             }
                         }
                     }
                     if !vm.recentlyPlayed.isEmpty {
-                        HomeShelf(title: "Recently Played") {
-                            ForEach(vm.recentlyPlayed) { album in
+                        HomeShelf {
+                            MinidiscCarouselHeaderLink(
+                                "Recently Played",
+                                itemCount: vm.recentlyPlayed.count
+                            ) {
+                                AlbumCarouselCollectionView(
+                                    "Recently Played",
+                                    albums: vm.recentlyPlayed
+                                )
+                            }
+                        } content: {
+                            ForEach(Array(vm.recentlyPlayed.prefix(MinidiscCarouselMetrics.previewLimit))) { album in
                                 HomeShelfAlbumCard(album: album)
                             }
                         }
                     }
                     if !vm.recentlyAdded.isEmpty {
-                        HomeShelf(title: "Recently Added") {
-                            ForEach(vm.recentlyAdded) { album in
+                        HomeShelf {
+                            MinidiscCarouselHeaderLink(
+                                "Recently Added",
+                                itemCount: vm.recentlyAdded.count
+                            ) {
+                                AlbumCarouselCollectionView(
+                                    "Recently Added",
+                                    albums: vm.recentlyAdded
+                                )
+                            }
+                        } content: {
+                            ForEach(Array(vm.recentlyAdded.prefix(MinidiscCarouselMetrics.previewLimit))) { album in
                                 HomeShelfAlbumCard(album: album)
                             }
                         }
                     }
                     ForEach(vm.genreShelves) { shelf in
-                        HomeShelf(title: LocalizedStringKey(stringLiteral: shelf.name)) {
-                            ForEach(shelf.albums) { album in
+                        HomeShelf {
+                            MinidiscCarouselHeaderLink(
+                                verbatim: shelf.name,
+                                itemCount: shelf.albums.count
+                            ) {
+                                AlbumCarouselCollectionView(
+                                    verbatim: shelf.name,
+                                    albums: shelf.albums
+                                )
+                            }
+                        } content: {
+                            ForEach(Array(shelf.albums.prefix(MinidiscCarouselMetrics.previewLimit))) { album in
                                 HomeShelfAlbumCard(album: album)
                             }
                         }
@@ -163,15 +203,13 @@ struct HomeView: View {
 // MARK: - Shelf container
 
 /// A titled, edge-to-edge horizontal shelf with view-aligned paging.
-private struct HomeShelf<Content: View>: View {
-    let title: LocalizedStringKey
+private struct HomeShelf<Header: View, Content: View>: View {
+    @ViewBuilder let header: () -> Header
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
-            Text(title)
-                .font(.minidiscShelfTitle)
-                .padding(.horizontal, MinidiscSpacing.l)
+            header()
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: MinidiscSpacing.m) {
                     content()
@@ -203,14 +241,10 @@ private struct TopPickCard: View {
                     size: side
                 )
                 .minidiscMatchedTransitionSource(id: playlist.id, in: namespace)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(playlist.name)
-                        .font(.minidiscCellTitle)
-                        .lineLimit(1)
-                    Text("\(playlist.songCount) tracks")
-                        .font(.minidiscCaption)
-                        .foregroundStyle(.secondary)
-                }
+                CoverCardMetadata(
+                    title: playlist.name,
+                    subtitle: String(localized: "\(playlist.songCount) tracks")
+                )
             }
             .frame(width: side, alignment: .leading)
         }
@@ -231,16 +265,7 @@ private struct HomeShelfAlbumCard: View {
                 CoverArtView(id: album.coverArt ?? album.id, size: Int(side * 2))
                     .frame(width: side, height: side)
                     .minidiscCoverStyle(cornerRadius: MinidiscCornerRadius.standard)
-                Text(album.name)
-                    .font(.minidiscCaption)
-                    .fontWeight(.semibold)
-                    .lineLimit(1)
-                if let artist = album.artist {
-                    Text(artist)
-                        .font(.minidiscCaption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+                CoverCardMetadata(title: album.name, subtitle: album.artist)
             }
             .frame(width: side, alignment: .leading)
         }

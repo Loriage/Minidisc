@@ -42,13 +42,7 @@ struct WrappedTopAlbumsSection: View {
                 rankBadge(album.rank)
                     .padding(MinidiscSpacing.xs)
             }
-            Text(album.title)
-                .font(.minidiscCellTitle)
-                .lineLimit(1)
-            Text(album.artistName)
-                .font(.minidiscCaption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            CoverCardMetadata(title: album.title, subtitle: album.artistName)
         }
     }
 

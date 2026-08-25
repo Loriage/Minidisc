@@ -44,23 +44,43 @@ private final class DVLibraryStub: ListeningHistoryBrowsing {
     func mostPlayedAlbums(size: Int) async throws -> [AlbumID3] { throw URLError(.unknown) }
 }
 
+private func dvCalendar() -> Calendar {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+    return calendar
+}
+
+private func dvDate(year: Int, month: Int, day: Int) -> Date {
+    dvCalendar().date(from: DateComponents(year: year, month: month, day: day)) ?? .distantPast
+}
+
 // MARK: - Tests
 
 @Suite("DiscoverViewModel — fresh releases")
 @MainActor
 struct DiscoverViewModelFreshReleasesTests {
 
-    private func makeVM(releases: [AlbumRecommendation] = [], shouldThrow: Bool = false) -> DiscoverViewModel {
+    private func makeVM(
+        releases: [AlbumRecommendation] = [],
+        shouldThrow: Bool = false,
+        referenceDate: Date = dvDate(year: 2026, month: 5, day: 25)
+    ) -> DiscoverViewModel {
         let provider = DVMockProvider(releases: releases, shouldThrow: shouldThrow)
         let service = RecommendationService(providers: [provider])
-        return DiscoverViewModel(libraryService: DVLibraryStub(), recommendationService: service)
+        return DiscoverViewModel(
+            libraryService: DVLibraryStub(),
+            recommendationService: service,
+            calendar: dvCalendar(),
+            now: { referenceDate }
+        )
     }
 
     @Test("happy path: provider results are stored in freshReleases")
     func happyPath() async {
         let releases = [
             AlbumRecommendation(id: "mbid-1", title: "Test Album", artistName: "Test Artist",
-                                releaseDate: nil, coverArtURL: nil, inLibrary: false)
+                                releaseDate: dvDate(year: 2026, month: 5, day: 10),
+                                coverArtURL: nil, inLibrary: false)
         ]
         let vm = makeVM(releases: releases)
         await vm.loadFreshReleases()
@@ -89,35 +109,60 @@ struct DiscoverViewModelFreshReleasesTests {
         #expect(!vm.isLoadingFreshReleases)
     }
 
-    @Test("limit: VM requests at most 10 releases from the service")
-    func limitCappedAt10() async {
-        let manyReleases = (0..<30).map {
+    @Test("all releases from the current month are kept without a ten-item cap")
+    func currentMonthIsNotCappedAt10() async {
+        let manyReleases = (0..<20).map {
             AlbumRecommendation(id: "id-\($0)", title: "Album \($0)", artistName: "Artist",
-                                releaseDate: nil, coverArtURL: nil, inLibrary: false)
+                                releaseDate: dvDate(year: 2026, month: 5, day: ($0 % 25) + 1),
+                                coverArtURL: nil, inLibrary: false)
         }
         let vm = makeVM(releases: manyReleases)
         await vm.loadFreshReleases()
-        #expect(vm.freshReleases.count == 10)
+        #expect(vm.freshReleases.count == 20)
     }
 
-    @Test("VM requests freshReleases with limit=10 and daysWindow=7")
-    func requestsCorrectLimitAndWindow() async {
+    @Test("only releases in the current calendar month are kept")
+    func filtersToCurrentCalendarMonth() async {
+        let releases = [
+            AlbumRecommendation(id: "previous", title: "Previous", artistName: "Artist",
+                                releaseDate: dvDate(year: 2026, month: 4, day: 30), coverArtURL: nil, inLibrary: false),
+            AlbumRecommendation(id: "current", title: "Current", artistName: "Artist",
+                                releaseDate: dvDate(year: 2026, month: 5, day: 1), coverArtURL: nil, inLibrary: false),
+            AlbumRecommendation(id: "future", title: "Future", artistName: "Artist",
+                                releaseDate: dvDate(year: 2026, month: 6, day: 1), coverArtURL: nil, inLibrary: false),
+            AlbumRecommendation(id: "unknown", title: "Unknown", artistName: "Artist",
+                                releaseDate: nil, coverArtURL: nil, inLibrary: false),
+        ]
+        let vm = makeVM(releases: releases)
+
+        await vm.loadFreshReleases()
+
+        #expect(vm.freshReleases.compactMap(\.id) == ["current"])
+    }
+
+    @Test("VM requests the elapsed current-month window without truncating results")
+    func requestsCurrentMonthWindow() async {
         let capturing = DVCapturingProvider()
         let service = RecommendationService(providers: [capturing])
-        let vm = DiscoverViewModel(libraryService: DVLibraryStub(), recommendationService: service)
+        let referenceDate = dvDate(year: 2026, month: 5, day: 25)
+        let vm = DiscoverViewModel(
+            libraryService: DVLibraryStub(),
+            recommendationService: service,
+            calendar: dvCalendar(),
+            now: { referenceDate }
+        )
         await vm.loadFreshReleases()
         let limit = capturing.capturedLimit
         let window = capturing.capturedDaysWindow
-        #expect(limit == 10)
-        #expect(window == 7)
+        #expect(limit == Int.max)
+        #expect(window == 25)
     }
 
     @Test("releases sorted by releaseDate descending after load")
     func sortedByDateDescending() async {
-        let cal = Calendar.current
-        let may10 = cal.date(from: DateComponents(year: 2026, month: 5, day: 10)) ?? Date()
-        let may1  = cal.date(from: DateComponents(year: 2026, month: 5, day: 1))  ?? Date()
-        let may20 = cal.date(from: DateComponents(year: 2026, month: 5, day: 20)) ?? Date()
+        let may10 = dvDate(year: 2026, month: 5, day: 10)
+        let may1 = dvDate(year: 2026, month: 5, day: 1)
+        let may20 = dvDate(year: 2026, month: 5, day: 20)
         let releases = [
             AlbumRecommendation(id: "a", title: "A", artistName: "X", releaseDate: may10, coverArtURL: nil, inLibrary: false),
             AlbumRecommendation(id: "b", title: "B", artistName: "X", releaseDate: may1,  coverArtURL: nil, inLibrary: false),

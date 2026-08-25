@@ -19,19 +19,10 @@ struct ArtistGridCard: View {
             }
             .aspectRatio(1, contentMode: .fit)
 
-            VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
-                Text(artist.name)
-                    .font(.minidiscCellTitle)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                if let count = artist.albumCount {
-                    Text("\(count) albums")
-                        .font(.minidiscCaption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
+            CoverCardMetadata(
+                title: artist.name,
+                subtitle: artist.albumCount.map { String(localized: "\($0) albums") }
+            )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

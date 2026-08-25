@@ -9,6 +9,7 @@ final class CachedTrack {
     var filePath: String        // relative to Caches/app.minidisc/audio/
     var fileSize: Int64
     var mimeType: String
+    /// Updated on insertion and every successful lookup; used as the LRU ordering key.
     var cachedAt: Date
 
     init(

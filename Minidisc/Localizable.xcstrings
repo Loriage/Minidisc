@@ -430,6 +430,7 @@
       }
     },
     "%@ · %lld/%lld tracks" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15976,54 +15977,54 @@
         }
       }
     },
-    "Keeps recently-played music for instant replay — the oldest track is replaced when the limit is reached." : {
+    "Keeps recently-played music for instant replay. Least-recently-played tracks are removed when the size limit is reached." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Behält kürzlich gespielte Musik für sofortiges Abspielen — der älteste Titel wird ersetzt, sobald das Limit erreicht ist."
+            "value" : "Behält kürzlich gespielte Musik für sofortiges Abspielen. Am längsten nicht abgespielte Titel werden entfernt, sobald das Größenlimit erreicht ist."
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Διατηρεί τη μουσική που αναπαράχθηκε πρόσφατα για άμεση αναπαραγωγή — το παλαιότερο κομμάτι αντικαθίσταται όταν συμπληρωθεί το όριο."
+            "value" : "Διατηρεί τη μουσική που αναπαράχθηκε πρόσφατα για άμεση αναπαραγωγή. Τα κομμάτια που έχουν να αναπαραχθούν περισσότερο αφαιρούνται όταν συμπληρωθεί το όριο μεγέθους."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conserva la música reproducida recientemente para reproducirla al instante; la pista más antigua se reemplaza al alcanzar el límite."
+            "value" : "Conserva la música reproducida recientemente para reproducirla al instante. Las pistas menos reproducidas recientemente se eliminan al alcanzar el límite de tamaño."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conserve la musique récemment écoutée pour une relecture instantanée — le titre le plus ancien est remplacé lorsque la limite est atteinte."
+            "value" : "Conserve la musique récemment écoutée pour une relecture instantanée. Les titres les moins récemment lus sont supprimés lorsque la limite de taille est atteinte."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mantiene la musica riprodotta di recente per un ascolto immediato: la traccia più vecchia viene sostituita al raggiungimento del limite."
+            "value" : "Mantiene la musica riprodotta di recente per un ascolto immediato. Le tracce riprodotte meno di recente vengono rimosse al raggiungimento del limite di dimensione."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "最近再生した曲をすぐに再生できるよう保持します。上限に達すると最も古い曲が置き換えられます。"
+            "value" : "最近再生した曲をすぐに再生できるよう保持します。サイズ上限に達すると、最後の再生が最も古い曲から削除されます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "保留最近播放的音乐以便即时重播——达到上限时会替换最早的曲目。"
+            "value" : "保留最近播放的音乐以便即时重播。达到大小上限时，会移除最久未播放的曲目。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "保留最近播放的音樂以便即時重播——達到上限時會替換最舊的曲目。"
+            "value" : "保留最近播放的音樂以便即時重播。達到大小上限時，會移除最久未播放的曲目。"
           }
         }
       }
@@ -17902,6 +17903,7 @@
       }
     },
     "Max tracks" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

@@ -21,19 +21,7 @@ struct AlbumGridCell: View {
             .aspectRatio(1, contentMode: .fit)
             .minidiscMatchedTransitionSource(id: zoomSourceId, in: zoomNamespace)
 
-            VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
-                Text(album.name)
-                    .font(.minidiscCellTitle)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                if let artist = album.artist {
-                    Text(artist)
-                        .font(.minidiscCaption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
+            CoverCardMetadata(title: album.name, subtitle: album.artist)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .lazyCollectionContextMenu(

@@ -127,8 +127,23 @@ struct MinidiscApp: App {
             Logger.boot.fault(
                 "AppContainer initialization failed: domain=\(failure.domain, privacy: .public) code=\(failure.code, privacy: .public)"
             )
-            playbackDiagnostics.record(.application(.launchFailed))
-            launchState = .failed
+            playbackDiagnostics.record(
+                .application(.launchFailed(errorDomain: failure.domain, errorCode: failure.code))
+            )
+            let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+            let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
+            let report = playbackDiagnostics.makeReport(
+                context: PlaybackDiagnostics.ReportContext(
+                    appVersion: version,
+                    appBuild: build,
+                    operatingSystem: ProcessInfo.processInfo.operatingSystemVersionString,
+                    playbackStatus: .idle,
+                    isPlaybackAvailable: false,
+                    networkPath: nil,
+                    connectionVersion: nil
+                )
+            )
+            launchState = .failed(diagnosticReport: report)
             return
         }
 
@@ -221,7 +236,7 @@ struct MinidiscApp: App {
 private enum AppLaunchState {
     case launching
     case ready(AppContainer)
-    case failed
+    case failed(diagnosticReport: String)
 }
 
 private struct AppLaunchContent: View {
@@ -244,13 +259,17 @@ private struct AppLaunchContent: View {
                 .modelContainer(container.modelContainer)
                 .environment(container.toastService)
 
-        case .failed:
-            AppLaunchFailureView(retryAction: retryAction)
+        case .failed(let diagnosticReport):
+            AppLaunchFailureView(
+                diagnosticReport: diagnosticReport,
+                retryAction: retryAction
+            )
         }
     }
 }
 
 private struct AppLaunchFailureView: View {
+    let diagnosticReport: String
     let retryAction: () -> Void
 
     var body: some View {
@@ -259,6 +278,12 @@ private struct AppLaunchFailureView: View {
         } description: {
             Text("Minidisc couldn't open its local data. You can try again without restarting the app.")
         } actions: {
+            ShareLink(item: diagnosticReport) {
+                Label("Share Diagnostics", systemImage: "square.and.arrow.up")
+            }
+            .buttonStyle(.bordered)
+            .tint(.primary)
+
             Button("Retry", action: retryAction)
                 .buttonStyle(.borderedProminent)
                 .tint(MinidiscColors.accent)

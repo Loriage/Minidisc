@@ -100,6 +100,29 @@ struct NetworkPathGenerationTests {
             supportsIPv6: false
         )).generation == 3)
     }
+
+    @Test("automatic indexing waits for a known unmetered path")
+    @MainActor
+    func automaticIndexingPathPolicy() {
+        let state = ServerState()
+        #expect(!state.libraryIndexPreparationSnapshot.automaticRefreshAllowed)
+
+        state.networkPathEvent = NetworkPathEvent(generation: 0, descriptor: descriptor())
+        state.hasObservedNetworkPath = true
+        #expect(state.libraryIndexPreparationSnapshot.automaticRefreshAllowed)
+
+        state.networkPathEvent = NetworkPathEvent(
+            generation: 1,
+            descriptor: descriptor(expensive: true, interfaces: [.cellular])
+        )
+        #expect(!state.libraryIndexPreparationSnapshot.automaticRefreshAllowed)
+
+        state.networkPathEvent = NetworkPathEvent(
+            generation: 2,
+            descriptor: descriptor(constrained: true)
+        )
+        #expect(!state.libraryIndexPreparationSnapshot.automaticRefreshAllowed)
+    }
 }
 
 @Suite("Playback network recovery policy")

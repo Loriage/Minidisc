@@ -39,7 +39,7 @@ final class ArtistDetailViewModel {
 
     private let artistName: String?
     private let artistId: String
-    private let libraryService: any LibraryServiceProtocol
+    private let libraryService: any ArtistBrowsing & StarredBrowsing & ArtistRecommendationBrowsing
     private let downloadService: any DownloadServiceProtocol
     private let recommendationService: RecommendationService
     private let imageResolver: ExternalArtistImageResolver
@@ -48,7 +48,7 @@ final class ArtistDetailViewModel {
     init(
         artistId: String,
         artistName: String? = nil,
-        libraryService: any LibraryServiceProtocol,
+        libraryService: any ArtistBrowsing & StarredBrowsing & ArtistRecommendationBrowsing,
         downloadService: any DownloadServiceProtocol,
         recommendationService: RecommendationService,
         imageResolver: ExternalArtistImageResolver,

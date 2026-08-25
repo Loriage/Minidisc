@@ -61,12 +61,15 @@ struct MinidiscApp: App {
                 .task(id: launchAttempt) {
                     await launchIfNeeded()
                 }
-                .task(id: activeContainer?.serverState.accessSnapshot) {
-                    guard let container = activeContainer,
-                          container.serverState.isOnline else { return }
+                .task(id: activeContainer?.serverState.libraryIndexPreparationSnapshot) {
+                    guard let container = activeContainer else { return }
+                    let snapshot = container.serverState.libraryIndexPreparationSnapshot
+                    guard snapshot.isOnline else { return }
                     await container.listenBrainzService.flushOfflineQueue()
                     do {
-                        try await container.libraryCatalog.prepare()
+                        try await container.libraryCatalog.prepare(
+                            automaticRefreshAllowed: snapshot.automaticRefreshAllowed
+                        )
                     } catch is CancellationError {
                         // The active server or connectivity changed.
                     } catch {

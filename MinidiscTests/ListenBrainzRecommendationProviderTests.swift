@@ -78,74 +78,28 @@ private struct PRNeverCalledTransport: ListenBrainzTransport {
 
 // Null library stub — safe defaults, never actually called in fresh releases tests.
 @MainActor
-private final class PRLibraryNullStub: LibraryServiceProtocol {
-    func artists() async throws -> [ArtistIndex] { throw URLError(.unknown) }
-    func artist(id: String) async throws -> ArtistID3 { throw URLError(.unknown) }
-    func album(id: String) async throws -> AlbumID3 { throw URLError(.unknown) }
-    func fetchAllTracks(forArtistID artistID: String) async throws -> [DisplayableSong] { throw URLError(.unknown) }
-    func playlists() async throws -> [Playlist] { throw URLError(.unknown) }
-    func playlist(id: String) async throws -> PlaylistWithSongs { throw URLError(.unknown) }
-    func search(_ query: String) async throws -> SearchResult3 { throw URLError(.unknown) }
-    func coverArtURL(id: String, size: Int?) async -> URL? { nil }
-    func streamURL(songId: String) async -> URL? { nil }
-    func star(songIds: [String], albumIds: [String], artistIds: [String]) async throws {}
-    func unstar(songIds: [String], albumIds: [String], artistIds: [String]) async throws {}
-    func getStarred2() async throws -> Starred2 { throw URLError(.unknown) }
-    func recentlyAddedAlbums(size: Int) async throws -> [AlbumID3] { throw URLError(.unknown) }
-    func allAlbums() async throws -> [AlbumID3] { throw URLError(.unknown) }
-    func allSongs(offset: Int, count: Int) async throws -> [Song] { [] }
-    func scrobble(songId: String, submission: Bool) async {}
-    func recentlyPlayedAlbums(size: Int) async throws -> [AlbumID3] { throw URLError(.unknown) }
-    func mostPlayedAlbums(size: Int) async throws -> [AlbumID3] { throw URLError(.unknown) }
-    func songsByGenre(_ genre: String, count: Int) async throws -> [Song] { [] }
-    func randomSongs(size: Int) async throws -> [Song] { throw URLError(.unknown) }
-    func smartShuffleQueue(targetSize: Int) async throws -> [DisplayableSong] { throw URLError(.unknown) }
-    func similarBackfillQueue(targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong] { throw URLError(.unknown) }
+private final class PRLibraryNullStub: ArtistRecommendationBrowsing {
     func getArtistInfo(forArtistID artistID: String, count: Int) async throws -> ArtistInfo { throw URLError(.unknown) }
     func getArtistMBID(forArtistID artistID: String) async throws -> String? { nil }
     func findArtist(byName name: String) async -> ArtistID3? { nil }
     func topSongs(artist: String, count: Int) async throws -> [DisplayableSong] { [] }
-    func instantMix(from seed: InstantMixSeed, count: Int) async throws -> [DisplayableSong] { [] }
 }
 
 // Configurable library stub for similar artists tests.
 @MainActor
-private final class PRLibraryConfigurableStub: LibraryServiceProtocol {
+private final class PRLibraryConfigurableStub: ArtistRecommendationBrowsing {
     private var mbidResult: Result<String?, Error> = .success(nil)
     private var artistsByName: [String: ArtistID3] = [:]
 
     func set(mbidResult: Result<String?, Error>) { self.mbidResult = mbidResult }
     func set(artistsByName: [String: ArtistID3]) { self.artistsByName = artistsByName }
 
-    func artists() async throws -> [ArtistIndex] { throw URLError(.unknown) }
-    func artist(id: String) async throws -> ArtistID3 { throw URLError(.unknown) }
-    func album(id: String) async throws -> AlbumID3 { throw URLError(.unknown) }
-    func fetchAllTracks(forArtistID artistID: String) async throws -> [DisplayableSong] { throw URLError(.unknown) }
-    func playlists() async throws -> [Playlist] { throw URLError(.unknown) }
-    func playlist(id: String) async throws -> PlaylistWithSongs { throw URLError(.unknown) }
-    func search(_ query: String) async throws -> SearchResult3 { throw URLError(.unknown) }
-    func coverArtURL(id: String, size: Int?) async -> URL? { nil }
-    func streamURL(songId: String) async -> URL? { nil }
-    func star(songIds: [String], albumIds: [String], artistIds: [String]) async throws {}
-    func unstar(songIds: [String], albumIds: [String], artistIds: [String]) async throws {}
-    func getStarred2() async throws -> Starred2 { throw URLError(.unknown) }
-    func recentlyAddedAlbums(size: Int) async throws -> [AlbumID3] { throw URLError(.unknown) }
-    func allAlbums() async throws -> [AlbumID3] { throw URLError(.unknown) }
-    func allSongs(offset: Int, count: Int) async throws -> [Song] { [] }
-    func scrobble(songId: String, submission: Bool) async {}
-    func recentlyPlayedAlbums(size: Int) async throws -> [AlbumID3] { throw URLError(.unknown) }
-    func mostPlayedAlbums(size: Int) async throws -> [AlbumID3] { throw URLError(.unknown) }
-    func songsByGenre(_ genre: String, count: Int) async throws -> [Song] { [] }
-    func randomSongs(size: Int) async throws -> [Song] { throw URLError(.unknown) }
-    func smartShuffleQueue(targetSize: Int) async throws -> [DisplayableSong] { throw URLError(.unknown) }
-    func similarBackfillQueue(targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong] { throw URLError(.unknown) }
     func getArtistInfo(forArtistID artistID: String, count: Int) async throws -> ArtistInfo { throw URLError(.unknown) }
     @MainActor
     func getArtistMBID(forArtistID artistID: String) async throws -> String? { try mbidResult.get() }
     @MainActor
     func findArtist(byName name: String) async -> ArtistID3? { artistsByName[name] }
     func topSongs(artist: String, count: Int) async throws -> [DisplayableSong] { [] }
-    func instantMix(from seed: InstantMixSeed, count: Int) async throws -> [DisplayableSong] { [] }
 }
 
 // MARK: - Fixtures
@@ -241,7 +195,7 @@ private func makeService(serviceTransport: any ListenBrainzTransport) -> ListenB
 private func makeProvider(
     providerTransport: any ListenBrainzTransport,
     service: ListenBrainzService,
-    libraryService: (any LibraryServiceProtocol)? = nil,
+    libraryService: (any ArtistRecommendationBrowsing)? = nil,
     cacheTTL: TimeInterval = 3600
 ) -> ListenBrainzRecommendationProvider {
     let client = ListenBrainzClient(transport: providerTransport)

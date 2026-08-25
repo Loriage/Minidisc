@@ -1,6 +1,11 @@
 import Foundation
 import SwiftSonic
 
+nonisolated struct LibraryRemoteScanStatus: Sendable, Equatable {
+    let isScanning: Bool
+    let lastCompletedAt: Date?
+}
+
 /// The server operations needed to populate and repair the persistent library index.
 /// A dedicated interface keeps synchronizer tests independent from the full playback library module.
 nonisolated protocol LibraryRemoteSource: Sendable {
@@ -13,6 +18,13 @@ nonisolated protocol LibraryRemoteSource: Sendable {
     func recentlyAddedAlbums(size: Int, serverID: UUID) async throws -> [AlbumID3]
     func albumsPage(offset: Int, count: Int, serverID: UUID) async throws -> [AlbumID3]
     func songsPage(offset: Int, count: Int, serverID: UUID) async throws -> [Song]
+    func scanStatus(serverID: UUID) async throws -> LibraryRemoteScanStatus?
+}
+
+extension LibraryRemoteSource {
+    /// Older Subsonic servers may not expose scan metadata. The catalogue then uses
+    /// its conservative time-based refresh policy instead.
+    func scanStatus(serverID: UUID) async throws -> LibraryRemoteScanStatus? { nil }
 }
 
 /// SwiftSonic adapter for index-oriented catalogue reads. It validates the active
@@ -70,6 +82,14 @@ actor SwiftSonicLibrarySource: LibraryRemoteSource {
             songCount: count,
             songOffset: offset
         ).song ?? []
+    }
+
+    func scanStatus(serverID: UUID) async throws -> LibraryRemoteScanStatus? {
+        let status = try await client(for: serverID).getScanStatus()
+        return LibraryRemoteScanStatus(
+            isScanning: status.scanning,
+            lastCompletedAt: status.lastScan
+        )
     }
 
     private func client(for expectedServerID: UUID) async throws -> SwiftSonicClient {

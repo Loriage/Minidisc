@@ -7,8 +7,11 @@ import SwiftSonic
 
 /// Serves a canned newest-album list and per-album track lists. Albums missing from `tracksPerAlbum`
 /// throw, standing in for one the server can't open.
-private nonisolated final class RALibraryStub: LibraryServiceProtocol, @unchecked Sendable {
-    private let lock = NSLock()
+private actor RALibraryStub:
+    AlbumBrowsing,
+    RecentlyAddedAlbumBrowsing,
+    RecentlyAddedTrackBrowsing
+{
     private var _albumFetches: [String] = []
     private var _listSizes: [Int] = []
 
@@ -19,17 +22,24 @@ private nonisolated final class RALibraryStub: LibraryServiceProtocol, @unchecke
     /// When true the album LIST itself fails — the one error that must not be swallowed.
     var listFails = false
 
-    var albumFetches: [String] { lock.withLock { _albumFetches } }
-    var listSizes: [Int] { lock.withLock { _listSizes } }
+    var albumFetches: [String] { _albumFetches }
+    var listSizes: [Int] { _listSizes }
+
+    func configure(newestAlbums: [AlbumID3], tracksPerAlbum: [String: [Song]]) {
+        self.newestAlbums = newestAlbums
+        self.tracksPerAlbum = tracksPerAlbum
+    }
+
+    func failAlbumList() { listFails = true }
 
     func recentlyAddedAlbums(size: Int) async throws -> [AlbumID3] {
-        lock.withLock { _listSizes.append(size) }
+        _listSizes.append(size)
         if listFails { throw URLError(.notConnectedToInternet) }
         return Array(newestAlbums.prefix(size))
     }
 
     func album(id: String) async throws -> AlbumID3 {
-        lock.withLock { _albumFetches.append(id) }
+        _albumFetches.append(id)
         guard let songs = tracksPerAlbum[id] else { throw URLError(.badServerResponse) }
         return album(id: id, songs: songs)
     }
@@ -38,32 +48,7 @@ private nonisolated final class RALibraryStub: LibraryServiceProtocol, @unchecke
         AlbumID3(id: id, name: id, songCount: songs.count, duration: 0, coverArt: "cover-\(id)", song: songs)
     }
 
-    // Unused by the recently-added composition.
-    func artists() async throws -> [ArtistIndex] { throw URLError(.unknown) }
-    func artist(id: String) async throws -> ArtistID3 { throw URLError(.unknown) }
-    func fetchAllTracks(forArtistID artistID: String) async throws -> [DisplayableSong] { [] }
-    func playlists() async throws -> [Playlist] { [] }
-    func playlist(id: String) async throws -> PlaylistWithSongs { throw URLError(.unknown) }
-    func search(_ query: String) async throws -> SearchResult3 { throw URLError(.unknown) }
-    func coverArtURL(id: String, size: Int?) async -> URL? { nil }
-    func streamURL(songId: String) async -> URL? { nil }
-    func star(songIds: [String], albumIds: [String], artistIds: [String]) async throws {}
-    func unstar(songIds: [String], albumIds: [String], artistIds: [String]) async throws {}
-    func getStarred2() async throws -> Starred2 { throw URLError(.unknown) }
     func allAlbums() async throws -> [AlbumID3] { [] }
-    func allSongs(offset: Int, count: Int) async throws -> [Song] { [] }
-    func scrobble(songId: String, submission: Bool) async {}
-    func recentlyPlayedAlbums(size: Int) async throws -> [AlbumID3] { [] }
-    func mostPlayedAlbums(size: Int) async throws -> [AlbumID3] { [] }
-    func randomSongs(size: Int) async throws -> [Song] { [] }
-    func songsByGenre(_ genre: String, count: Int) async throws -> [Song] { [] }
-    func smartShuffleQueue(targetSize: Int) async throws -> [DisplayableSong] { [] }
-    func similarBackfillQueue(targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong] { [] }
-    func getArtistInfo(forArtistID artistID: String, count: Int) async throws -> ArtistInfo { throw URLError(.unknown) }
-    func getArtistMBID(forArtistID artistID: String) async throws -> String? { nil }
-    func findArtist(byName name: String) async -> ArtistID3? { nil }
-    func topSongs(artist: String, count: Int) async throws -> [DisplayableSong] { [] }
-    func instantMix(from seed: InstantMixSeed, count: Int) async throws -> [DisplayableSong] { [] }
 }
 
 private func track(_ id: String) -> Song {
@@ -123,28 +108,26 @@ struct RecentlyAddedLibraryTests {
     @Test("the newest albums' tracks arrive as one album-ordered list")
     func tracksFollowAlbumOrder() async throws {
         let library = RALibraryStub()
-        library.newestAlbums = newest(["newest", "older", "oldest"])
-        library.tracksPerAlbum = [
+        await library.configure(newestAlbums: newest(["newest", "older", "oldest"]), tracksPerAlbum: [
             "newest": [track("n1"), track("n2")],
             "older": [track("o1")],
             "oldest": [track("z1")],
-        ]
+        ])
 
         let tracks = try await library.recentlyAddedTracks(albumLimit: 10, trackLimit: 100)
 
         #expect(tracks.map(\.id) == ["n1", "n2", "o1", "z1"])
-        #expect(library.listSizes == [10], "the album limit is what the server is asked for")
-        #expect(Set(library.albumFetches) == ["newest", "older", "oldest"])
+        #expect(await library.listSizes == [10], "the album limit is what the server is asked for")
+        #expect(Set(await library.albumFetches) == ["newest", "older", "oldest"])
     }
 
     @Test("an album the server can't open costs its own tracks, not the list")
     func oneFailingAlbumIsSkipped() async throws {
         let library = RALibraryStub()
-        library.newestAlbums = newest(["newest", "broken", "oldest"])
-        library.tracksPerAlbum = [
+        await library.configure(newestAlbums: newest(["newest", "broken", "oldest"]), tracksPerAlbum: [
             "newest": [track("n1")],
             "oldest": [track("z1")],
-        ]
+        ])
 
         let tracks = try await library.recentlyAddedTracks(albumLimit: 10, trackLimit: 100)
 
@@ -154,7 +137,7 @@ struct RecentlyAddedLibraryTests {
     @Test("a failing album LIST throws — there is nothing to show and no partial answer to give")
     func listFailurePropagates() async {
         let library = RALibraryStub()
-        library.listFails = true
+        await library.failAlbumList()
 
         await #expect(throws: URLError.self) {
             try await library.recentlyAddedTracks(albumLimit: 10, trackLimit: 100)
@@ -166,17 +149,16 @@ struct RecentlyAddedLibraryTests {
         let library = RALibraryStub()
 
         #expect(try await library.recentlyAddedTracks(albumLimit: 10, trackLimit: 100).isEmpty)
-        #expect(library.albumFetches.isEmpty)
+        #expect(await library.albumFetches.isEmpty)
     }
 
     @Test("the track limit caps the assembled list")
     func trackLimitApplies() async throws {
         let library = RALibraryStub()
-        library.newestAlbums = newest(["newest", "older"])
-        library.tracksPerAlbum = [
+        await library.configure(newestAlbums: newest(["newest", "older"]), tracksPerAlbum: [
             "newest": [track("n1"), track("n2")],
             "older": [track("o1")],
-        ]
+        ])
 
         let tracks = try await library.recentlyAddedTracks(albumLimit: 10, trackLimit: 2)
 
@@ -189,12 +171,14 @@ struct RecentlyAddedLibraryTests {
         // would silently truncate the playlist to the first window.
         let ids = (0..<12).map { "album-\($0)" }
         let library = RALibraryStub()
-        library.newestAlbums = newest(ids)
-        library.tracksPerAlbum = Dictionary(uniqueKeysWithValues: ids.map { ($0, [track("t-\($0)")]) })
+        await library.configure(
+            newestAlbums: newest(ids),
+            tracksPerAlbum: Dictionary(uniqueKeysWithValues: ids.map { ($0, [track("t-\($0)")]) })
+        )
 
         let tracks = try await library.recentlyAddedTracks(albumLimit: 20, trackLimit: 100)
 
         #expect(tracks.map(\.id) == ids.map { "t-\($0)" })
-        #expect(library.albumFetches.count == 12)
+        #expect(await library.albumFetches.count == 12)
     }
 }

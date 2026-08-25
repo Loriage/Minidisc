@@ -4,12 +4,12 @@ import SwiftSonic
 import OSLog
 
 actor FavoritesService: FavoritesServiceProtocol {
-    private let libraryService: any LibraryServiceProtocol
+    private let libraryService: any FavoriteEditing
     private nonisolated let serverState: ServerState
     nonisolated let modelContainer: ModelContainer
     private lazy var backgroundContext: ModelContext = ModelContext(modelContainer)
 
-    init(libraryService: any LibraryServiceProtocol, serverState: ServerState, modelContainer: ModelContainer) {
+    init(libraryService: any FavoriteEditing, serverState: ServerState, modelContainer: ModelContainer) {
         self.libraryService = libraryService
         self.serverState = serverState
         self.modelContainer = modelContainer

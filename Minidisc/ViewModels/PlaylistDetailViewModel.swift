@@ -18,7 +18,7 @@ final class PlaylistDetailViewModel {
 
     private(set) var playlistDetail: PlaylistWithSongs?
     private let playlistId: String
-    private let libraryService: any LibraryServiceProtocol
+    private let libraryService: any PlaylistBrowsing
     private let downloadService: any DownloadServiceProtocol
     private let playlistService: any PlaylistServiceProtocol
     private let toastService: ToastService
@@ -26,7 +26,7 @@ final class PlaylistDetailViewModel {
 
     init(
         playlistId: String,
-        libraryService: any LibraryServiceProtocol,
+        libraryService: any PlaylistBrowsing,
         downloadService: any DownloadServiceProtocol,
         playlistService: any PlaylistServiceProtocol,
         toastService: ToastService,

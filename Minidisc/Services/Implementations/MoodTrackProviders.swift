@@ -87,7 +87,7 @@ nonisolated struct AudioMuseTrackProvider: MoodTrackProvider {
 /// Candidates are gathered per mood by querying that mood's genres rather than by scanning the
 /// library, which keeps the cost to a handful of indexed server queries instead of a full walk.
 nonisolated struct LibraryTagTrackProvider: MoodTrackProvider {
-    let libraryService: any LibraryServiceProtocol
+    let libraryService: any MoodTrackSourcing
 
     /// Fetched per genre. Generous, because ranking then cuts it back hard — a wide net matters
     /// more than a cheap one here, and these are indexed lookups.

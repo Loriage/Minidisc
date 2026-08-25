@@ -5,7 +5,7 @@ import OSLog
 actor ListenBrainzRecommendationProvider: RecommendationProvider {
     private let client: ListenBrainzClient
     private let service: ListenBrainzService
-    private let libraryService: any LibraryServiceProtocol
+    private let libraryService: any ArtistRecommendationBrowsing
     private let cacheTTL: TimeInterval
 
     private struct CacheKey: Hashable {
@@ -34,7 +34,7 @@ actor ListenBrainzRecommendationProvider: RecommendationProvider {
     init(
         client: ListenBrainzClient,
         service: ListenBrainzService,
-        libraryService: any LibraryServiceProtocol,
+        libraryService: any ArtistRecommendationBrowsing,
         cacheTTL: TimeInterval = 6 * 3600
     ) {
         self.client = client

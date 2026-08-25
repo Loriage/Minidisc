@@ -22,13 +22,21 @@ final class HomeFeedViewModel {
 
     var isEmpty: Bool { topPicks.isEmpty && recentlyPlayed.isEmpty && recentlyAdded.isEmpty && genreShelves.isEmpty }
 
-    private let libraryService: any LibraryServiceProtocol
+    private let libraryService: any PlaylistBrowsing
+        & RecentlyAddedAlbumBrowsing
+        & ListeningHistoryBrowsing
+        & GenreBrowsing
 
     private static let maxTopPicks = 8
     private static let maxGenreShelves = 5
     private static let shelfSize = 20
 
-    init(libraryService: any LibraryServiceProtocol) {
+    init(
+        libraryService: any PlaylistBrowsing
+            & RecentlyAddedAlbumBrowsing
+            & ListeningHistoryBrowsing
+            & GenreBrowsing
+    ) {
         self.libraryService = libraryService
     }
 

@@ -3,9 +3,9 @@ import SwiftSonic
 import OSLog
 
 actor SubsonicRecommendationProvider: RecommendationProvider {
-    private let libraryService: any LibraryServiceProtocol
+    private let libraryService: any ArtistRecommendationBrowsing
 
-    init(libraryService: any LibraryServiceProtocol) {
+    init(libraryService: any ArtistRecommendationBrowsing) {
         self.libraryService = libraryService
     }
 

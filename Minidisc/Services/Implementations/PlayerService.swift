@@ -109,7 +109,10 @@ actor PlayerService: PlayerServiceProtocol {
     private let serverService: any ServerServiceProtocol
     private let sessionService: PlaybackSessionService
     private let artworkImageCache: ArtworkImageCache
-    private let libraryService: any LibraryServiceProtocol
+    private let libraryService: any AlbumBrowsing
+        & ArtistBrowsing
+        & PlaybackQueueBuilding
+        & PlaybackReporting
     private let audioStreamCache: any AudioStreamCacheProtocol
     private let downloadService: any DownloadServiceProtocol
     private let cacheSettings: CacheSettings
@@ -214,7 +217,10 @@ actor PlayerService: PlayerServiceProtocol {
         serverService: any ServerServiceProtocol,
         sessionService: PlaybackSessionService,
         artworkImageCache: ArtworkImageCache,
-        libraryService: any LibraryServiceProtocol,
+        libraryService: any AlbumBrowsing
+            & ArtistBrowsing
+            & PlaybackQueueBuilding
+            & PlaybackReporting,
         audioStreamCache: any AudioStreamCacheProtocol,
         downloadService: any DownloadServiceProtocol,
         cacheSettings: CacheSettings,

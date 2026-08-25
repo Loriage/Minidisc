@@ -20,12 +20,12 @@ final class RecentlyAddedViewModel {
     /// `DisplayableSong` can't be converted back.
     private var rawSongs: [Song] = []
 
-    private let libraryService: any LibraryServiceProtocol
+    private let libraryService: any RecentlyAddedTrackBrowsing
     private let downloadService: any DownloadServiceProtocol
     private let serverState: ServerState
 
     init(
-        libraryService: any LibraryServiceProtocol,
+        libraryService: any RecentlyAddedTrackBrowsing,
         downloadService: any DownloadServiceProtocol,
         serverState: ServerState
     ) {

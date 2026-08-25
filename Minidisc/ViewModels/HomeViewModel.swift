@@ -10,9 +10,9 @@ final class HomeViewModel {
     var isLoading = false
     var error: UserFacingError?
 
-    private let libraryService: any LibraryServiceProtocol
+    private let libraryService: any RecentlyAddedAlbumBrowsing & ListeningHistoryBrowsing
 
-    init(libraryService: any LibraryServiceProtocol) {
+    init(libraryService: any RecentlyAddedAlbumBrowsing & ListeningHistoryBrowsing) {
         self.libraryService = libraryService
     }
 

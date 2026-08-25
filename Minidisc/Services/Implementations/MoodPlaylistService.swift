@@ -75,7 +75,7 @@ actor MoodPlaylistService {
     init(
         serverService: any ServerServiceProtocol,
         serverState: ServerState,
-        libraryService: any LibraryServiceProtocol,
+        libraryService: any LibrarySearching & MoodTrackSourcing,
         coverApplier: (@Sendable (PlaylistGradientSpec, String, String) async -> Void)? = nil,
         preferences: MoodPreferences = MoodPreferences()
     ) {

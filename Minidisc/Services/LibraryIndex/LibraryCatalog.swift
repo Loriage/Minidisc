@@ -5,6 +5,8 @@ import SwiftSonic
 /// Local-first catalogue used by browsing and search. The server remains authoritative,
 /// but a completed index answers repeated reads without network access.
 actor LibraryCatalog {
+    private static let fallbackRefreshInterval: TimeInterval = 7 * 24 * 60 * 60
+
     private let source: any LibraryRemoteSource
     private let store: LibraryIndexStore
     private let synchronizer: LibraryIndexSynchronizer
@@ -19,9 +21,46 @@ actor LibraryCatalog {
         self.synchronizer = synchronizer
     }
 
-    func prepare() async throws {
+    /// Performs background index work only on a network path that the app has identified as
+    /// unmetered. Explicit pull-to-refresh operations remain available on every online path.
+    func prepare(automaticRefreshAllowed: Bool = true, now: Date = .now) async throws {
+        guard automaticRefreshAllowed else { return }
         let serverID = try await source.activeServerID()
-        try await synchronizer.prepare(serverID: serverID)
+        let status = try await store.status(for: serverID)
+        let remoteStatus: LibraryRemoteScanStatus?
+
+        do {
+            remoteStatus = try await source.scanStatus(serverID: serverID)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            remoteStatus = nil
+            Logger.library.debug(
+                "Library index: scan status unavailable; using age-based refresh: \(error, privacy: .public)"
+            )
+        }
+
+        // Reading while the server mutates its catalogue can mix two server generations.
+        // Keep the previous local generation and retry after a later launch, path change,
+        // or explicit refresh.
+        guard remoteStatus?.isScanning != true else {
+            Logger.library.debug("Library index: server scan in progress; automatic refresh deferred")
+            return
+        }
+
+        if !status.isComplete {
+            try await synchronizer.prepare(
+                serverID: serverID,
+                sourceWatermark: remoteStatus?.lastCompletedAt
+            )
+            return
+        }
+
+        guard shouldRefresh(status: status, remoteStatus: remoteStatus, now: now) else { return }
+        try await synchronizer.refreshAll(
+            serverID: serverID,
+            sourceWatermark: remoteStatus?.lastCompletedAt
+        )
     }
 
     func refreshAlbums() async throws -> [AlbumID3] {
@@ -43,7 +82,7 @@ actor LibraryCatalog {
 
     func search(_ query: String) async throws -> SearchResult3 {
         let serverID = try await source.activeServerID()
-        let completion = try await store.completion(for: serverID)
+        let completion = try await store.status(for: serverID)
         let local = try await store.search(query, serverID: serverID)
         let isOnline = await source.isOnline()
 
@@ -95,7 +134,7 @@ actor LibraryCatalog {
 
     func artists() async throws -> [ArtistIndex] {
         let serverID = try await source.activeServerID()
-        let completion = try await store.completion(for: serverID)
+        let completion = try await store.status(for: serverID)
         let local = try await store.artists(serverID: serverID)
         if completion.artists { return local }
         guard await source.isOnline() else {
@@ -117,7 +156,7 @@ actor LibraryCatalog {
 
     func artist(id: String) async throws -> ArtistID3 {
         let serverID = try await source.activeServerID()
-        let completion = try await store.completion(for: serverID)
+        let completion = try await store.status(for: serverID)
         let local = try await store.artist(id: id, serverID: serverID)
         if completion.artists && completion.albums, let local { return local }
         if !(await source.isOnline()) {
@@ -153,7 +192,7 @@ actor LibraryCatalog {
 
     func albums() async throws -> [AlbumID3] {
         let serverID = try await source.activeServerID()
-        let completion = try await store.completion(for: serverID)
+        let completion = try await store.status(for: serverID)
         let local = try await store.albums(serverID: serverID)
         if completion.albums { return local }
         guard await source.isOnline() else {
@@ -175,7 +214,7 @@ actor LibraryCatalog {
 
     func album(id: String) async throws -> AlbumID3 {
         let serverID = try await source.activeServerID()
-        let completion = try await store.completion(for: serverID)
+        let completion = try await store.status(for: serverID)
         let local = try await store.album(id: id, serverID: serverID)
         if completion.albums && completion.tracks,
            let local,
@@ -216,7 +255,7 @@ actor LibraryCatalog {
 
     func recentlyAddedAlbums(size: Int) async throws -> [AlbumID3] {
         let serverID = try await source.activeServerID()
-        let completion = try await store.completion(for: serverID)
+        let completion = try await store.status(for: serverID)
         if completion.albums {
             return try await store.recentlyAddedAlbums(serverID: serverID, limit: size)
         }
@@ -238,7 +277,7 @@ actor LibraryCatalog {
 
     func songs(offset: Int, count: Int) async throws -> [Song] {
         let serverID = try await source.activeServerID()
-        let completion = try await store.completion(for: serverID)
+        let completion = try await store.status(for: serverID)
         let local = try await store.songs(serverID: serverID, offset: offset, count: count)
         if completion.tracks || local.count == count { return local }
         if !(await source.isOnline()) {
@@ -271,7 +310,7 @@ actor LibraryCatalog {
     /// `nil` means the index is not complete enough to build an authoritative queue.
     func songs(artistID: String) async throws -> [Song]? {
         let serverID = try await source.activeServerID()
-        guard try await store.completion(for: serverID).tracks else { return nil }
+        guard try await store.status(for: serverID).tracks else { return nil }
         return try await store.songs(artistID: artistID, serverID: serverID)
     }
 
@@ -279,7 +318,7 @@ actor LibraryCatalog {
         do {
             let serverID = try await source.activeServerID()
             let local = try await store.artist(named: name, serverID: serverID)
-            let completion = try await store.completion(for: serverID)
+            let completion = try await store.status(for: serverID)
             if completion.artists || local != nil { return local }
             try await synchronizer.refreshArtists(serverID: serverID)
             return try await store.artist(named: name, serverID: serverID)
@@ -289,6 +328,22 @@ actor LibraryCatalog {
             Logger.library.debug("Library index: artist lookup failed: \(error, privacy: .public)")
             return nil
         }
+    }
+
+    private func shouldRefresh(
+        status: LibraryIndexStatus,
+        remoteStatus: LibraryRemoteScanStatus?,
+        now: Date
+    ) -> Bool {
+        guard let fullySyncedAt = status.fullySyncedAt else { return true }
+
+        if let remoteCompletedAt = remoteStatus?.lastCompletedAt {
+            return remoteCompletedAt > fullySyncedAt
+        }
+
+        // Plain Subsonic servers often omit scan timestamps. A weekly fallback bounds
+        // staleness without repeatedly walking very large libraries.
+        return now.timeIntervalSince(fullySyncedAt) >= Self.fallbackRefreshInterval
     }
 
     private static func indexName(for artistName: String) -> String {

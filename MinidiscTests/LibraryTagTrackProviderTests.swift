@@ -5,8 +5,7 @@ import SwiftSonic
 
 /// Library stub for the mood providers. Internal so the sonic provider's tests can reuse it for
 /// the by-name resolution path.
-nonisolated final class TagLibraryStub: LibraryServiceProtocol, @unchecked Sendable {
-    private let lock = NSLock()
+actor TagLibraryStub: LibrarySearching, MoodTrackSourcing {
     private var _genreQueries: [String] = []
     private var _randomCalls = 0
 
@@ -16,54 +15,33 @@ nonisolated final class TagLibraryStub: LibraryServiceProtocol, @unchecked Senda
     /// Songs returned by `search`, used by SubsonicTrackResolver.
     var searchResults: [Song] = []
     private var _searches: [String] = []
-    var searches: [String] { lock.withLock { _searches } }
+    var searches: [String] { _searches }
 
-    var genreQueries: [String] { lock.withLock { _genreQueries } }
-    var randomCalls: Int { lock.withLock { _randomCalls } }
+    var genreQueries: [String] { _genreQueries }
+    var randomCalls: Int { _randomCalls }
+
+    func setSongs(_ songs: [Song], forGenre genre: String) { songsPerGenre[genre] = songs }
+    func setRandomPool(_ songs: [Song]) { randomPool = songs }
+    func setSearchResults(_ songs: [Song]) { searchResults = songs }
 
     func songsByGenre(_ genre: String, count: Int) async throws -> [Song] {
-        lock.withLock { _genreQueries.append(genre) }
+        _genreQueries.append(genre)
         return songsPerGenre[genre] ?? []
     }
 
     func randomSongs(size: Int) async throws -> [Song] {
-        lock.withLock { _randomCalls += 1 }
+        _randomCalls += 1
         return randomPool
     }
 
     /// Used by SubsonicTrackResolver when the sonic provider falls back to matching by name.
     func search(_ query: String) async throws -> SearchResult3 {
-        lock.withLock { _searches.append(query) }
+        _searches.append(query)
         let songs = searchResults.map {
             #"{"id":"\#($0.id)","title":"\#($0.title)","artist":"\#($0.artist ?? "")","isDir":false}"#
         }
         return try JSONDecoder().decode(SearchResult3.self, from: Data(#"{"song":[\#(songs.joined(separator: ","))]}"#.utf8))
     }
-    // Unused by the providers.
-    func artists() async throws -> [ArtistIndex] { throw URLError(.unknown) }
-    func artist(id: String) async throws -> ArtistID3 { throw URLError(.unknown) }
-    func album(id: String) async throws -> AlbumID3 { throw URLError(.unknown) }
-    func fetchAllTracks(forArtistID artistID: String) async throws -> [DisplayableSong] { [] }
-    func playlists() async throws -> [Playlist] { [] }
-    func playlist(id: String) async throws -> PlaylistWithSongs { throw URLError(.unknown) }
-    func coverArtURL(id: String, size: Int?) async -> URL? { nil }
-    func streamURL(songId: String) async -> URL? { nil }
-    func star(songIds: [String], albumIds: [String], artistIds: [String]) async throws {}
-    func unstar(songIds: [String], albumIds: [String], artistIds: [String]) async throws {}
-    func getStarred2() async throws -> Starred2 { throw URLError(.unknown) }
-    func recentlyAddedAlbums(size: Int) async throws -> [AlbumID3] { [] }
-    func allAlbums() async throws -> [AlbumID3] { [] }
-    func allSongs(offset: Int, count: Int) async throws -> [Song] { [] }
-    func scrobble(songId: String, submission: Bool) async {}
-    func recentlyPlayedAlbums(size: Int) async throws -> [AlbumID3] { [] }
-    func mostPlayedAlbums(size: Int) async throws -> [AlbumID3] { [] }
-    func smartShuffleQueue(targetSize: Int) async throws -> [DisplayableSong] { [] }
-    func similarBackfillQueue(targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong] { [] }
-    func getArtistInfo(forArtistID artistID: String, count: Int) async throws -> ArtistInfo { throw URLError(.unknown) }
-    func getArtistMBID(forArtistID artistID: String) async throws -> String? { nil }
-    func findArtist(byName name: String) async -> ArtistID3? { nil }
-    func topSongs(artist: String, count: Int) async throws -> [DisplayableSong] { [] }
-    func instantMix(from seed: InstantMixSeed, count: Int) async throws -> [DisplayableSong] { [] }
 }
 
 /// Song is Decodable-only, so fixtures are built from JSON.
@@ -84,13 +62,13 @@ struct LibraryTagTrackProviderTests {
     @Test("genres present in the library are used directly")
     func genresAreUsedWhenPresent() async throws {
         let library = TagLibraryStub()
-        library.songsPerGenre["dance"] = [try song(id: "a", genre: "Dance", bpm: 130)]
+        await library.setSongs([try song(id: "a", genre: "Dance", bpm: 130)], forGenre: "dance")
         let provider = LibraryTagTrackProvider(libraryService: library)
 
         let ids = try await provider.trackIds(for: .energetic, limit: 10)
 
         #expect(ids == ["a"])
-        #expect(library.randomCalls == 0, "no need for the broad pool when genres answered")
+        #expect(await library.randomCalls == 0, "no need for the broad pool when genres answered")
     }
 
     @Test("a library with none of a mood's genres falls back to a broad sample")
@@ -99,25 +77,25 @@ struct LibraryTagTrackProviderTests {
         // absent and every genre query comes back empty. Before the fallback this produced nothing
         // at all, every week, forever.
         let library = TagLibraryStub()
-        library.randomPool = [
+        await library.setRandomPool([
             try song(id: "slow", bpm: 70),
             try song(id: "fast", bpm: 175),
-        ]
+        ])
         let provider = LibraryTagTrackProvider(libraryService: library)
 
         let ids = try await provider.trackIds(for: .night, limit: 10)
 
-        #expect(library.randomCalls == 1)
+        #expect(await library.randomCalls == 1)
         #expect(ids == ["slow"], "BPM alone should still separate a night track from a fast one")
     }
 
     @Test("the broad sample uses MOOD tags when there is no BPM")
     func fallbackUsesMoodTags() async throws {
         let library = TagLibraryStub()
-        library.randomPool = [
+        await library.setRandomPool([
             try song(id: "calm", moods: ["Calm"]),
             try song(id: "angry", moods: ["Aggressive"]),
-        ]
+        ])
         let provider = LibraryTagTrackProvider(libraryService: library)
 
         #expect(try await provider.trackIds(for: .night, limit: 10) == ["calm"])
@@ -127,7 +105,7 @@ struct LibraryTagTrackProviderTests {
     @Test("an untagged library yields nothing rather than something arbitrary")
     func untaggedLibraryYieldsNothing() async throws {
         let library = TagLibraryStub()
-        library.randomPool = [try song(id: "a"), try song(id: "b")]
+        await library.setRandomPool([try song(id: "a"), try song(id: "b")])
         let provider = LibraryTagTrackProvider(libraryService: library)
 
         // Empty is the correct answer: the sync treats it as a skip and leaves the previous
@@ -142,15 +120,15 @@ struct LibraryTagTrackProviderTests {
 
         _ = try await provider.trackIds(for: .workout, limit: 10)
 
-        #expect(library.genreQueries == MoodTagMatcher.genres(.workout))
+        #expect(await library.genreQueries == MoodTagMatcher.genres(.workout))
     }
 
     @Test("a track appearing under two of a mood's genres is only counted once")
     func duplicatesAreDeduped() async throws {
         let library = TagLibraryStub()
         let shared = try song(id: "dup", genre: "Ambient", bpm: 80)
-        library.songsPerGenre["ambient"] = [shared]
-        library.songsPerGenre["classical"] = [shared]
+        await library.setSongs([shared], forGenre: "ambient")
+        await library.setSongs([shared], forGenre: "classical")
         let provider = LibraryTagTrackProvider(libraryService: library)
 
         #expect(try await provider.trackIds(for: .night, limit: 10) == ["dup"])

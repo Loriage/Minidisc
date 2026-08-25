@@ -19,14 +19,14 @@ final class ArtistBestOfViewModel {
 
     private let artistId: String
     private let artistName: String
-    private let libraryService: any LibraryServiceProtocol
+    private let libraryService: any StarredBrowsing
     private let downloadService: any DownloadServiceProtocol
     private let serverState: ServerState
 
     init(
         artistId: String,
         artistName: String,
-        libraryService: any LibraryServiceProtocol,
+        libraryService: any StarredBrowsing,
         downloadService: any DownloadServiceProtocol,
         serverState: ServerState
     ) {

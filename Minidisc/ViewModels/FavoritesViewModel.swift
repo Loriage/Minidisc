@@ -10,9 +10,9 @@ final class FavoritesViewModel {
     var isLoading = false
     var error: UserFacingError?
 
-    private let libraryService: any LibraryServiceProtocol
+    private let libraryService: any StarredBrowsing
 
-    init(libraryService: any LibraryServiceProtocol) {
+    init(libraryService: any StarredBrowsing) {
         self.libraryService = libraryService
     }
 

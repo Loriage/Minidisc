@@ -13,7 +13,7 @@ private enum LibraryStubError: Error {
     case unavailable
 }
 
-private actor EndlessExtensionLibraryStub: LibraryServiceProtocol {
+private actor EndlessExtensionLibraryStub: PlaybackQueueBuilding {
     private let instantMixBehavior: LibraryStubBehavior
     private let backfillBehavior: LibraryStubBehavior
     private var backfillCalls = 0
@@ -55,33 +55,7 @@ private actor EndlessExtensionLibraryStub: LibraryServiceProtocol {
         }
     }
 
-    func artists() async throws -> [ArtistIndex] { [] }
-    func artist(id: String) async throws -> ArtistID3 { throw LibraryStubError.unavailable }
-    func album(id: String) async throws -> AlbumID3 { throw LibraryStubError.unavailable }
-    func fetchAllTracks(forArtistID artistID: String) async throws -> [DisplayableSong] { [] }
-    func playlists() async throws -> [Playlist] { [] }
-    func playlist(id: String) async throws -> PlaylistWithSongs { throw LibraryStubError.unavailable }
-    func search(_ query: String) async throws -> SearchResult3 { throw LibraryStubError.unavailable }
-    func coverArtURL(id: String, size: Int?) async -> URL? { nil }
-    func streamURL(songId: String) async -> URL? { nil }
-    func star(songIds: [String], albumIds: [String], artistIds: [String]) async throws {}
-    func unstar(songIds: [String], albumIds: [String], artistIds: [String]) async throws {}
-    func getStarred2() async throws -> Starred2 { throw LibraryStubError.unavailable }
-    func recentlyAddedAlbums(size: Int) async throws -> [AlbumID3] { [] }
-    func allAlbums() async throws -> [AlbumID3] { [] }
-    func allSongs(offset: Int, count: Int) async throws -> [Song] { [] }
-    func scrobble(songId: String, submission: Bool) async {}
-    func recentlyPlayedAlbums(size: Int) async throws -> [AlbumID3] { [] }
-    func mostPlayedAlbums(size: Int) async throws -> [AlbumID3] { [] }
-    func randomSongs(size: Int) async throws -> [Song] { [] }
-    func songsByGenre(_ genre: String, count: Int) async throws -> [Song] { [] }
     func smartShuffleQueue(targetSize: Int) async throws -> [DisplayableSong] { [] }
-    func getArtistInfo(forArtistID artistID: String, count: Int) async throws -> ArtistInfo {
-        throw LibraryStubError.unavailable
-    }
-    func getArtistMBID(forArtistID artistID: String) async throws -> String? { nil }
-    func findArtist(byName name: String) async -> ArtistID3? { nil }
-    func topSongs(artist: String, count: Int) async throws -> [DisplayableSong] { [] }
 }
 
 @Suite("Library cancellation propagation")

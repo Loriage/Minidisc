@@ -28,31 +28,51 @@ actor LibraryIndexSynchronizer {
         self.songPageSize = songPageSize
     }
 
-    func prepare(serverID: UUID) async throws {
-        let completion = try await store.completion(for: serverID)
+    func prepare(serverID: UUID, sourceWatermark: Date? = nil) async throws {
+        let status = try await store.status(for: serverID)
+        try await refreshMissing(
+            serverID: serverID,
+            status: status,
+            sourceWatermark: sourceWatermark
+        )
+    }
+
+    func refreshAll(serverID: UUID, sourceWatermark: Date? = nil) async throws {
+        try await refreshMissing(
+            serverID: serverID,
+            status: nil,
+            sourceWatermark: sourceWatermark
+        )
+    }
+
+    private func refreshMissing(
+        serverID: UUID,
+        status: LibraryIndexStatus?,
+        sourceWatermark: Date?
+    ) async throws {
         var firstFailure: (any Error)?
 
-        if !completion.artists {
+        if status?.artists != true {
             do {
-                try await refreshArtists(serverID: serverID)
+                try await refreshArtists(serverID: serverID, sourceWatermark: sourceWatermark)
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
                 firstFailure = error
             }
         }
-        if !completion.albums {
+        if status?.albums != true {
             do {
-                try await refreshAlbums(serverID: serverID)
+                try await refreshAlbums(serverID: serverID, sourceWatermark: sourceWatermark)
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
                 if firstFailure == nil { firstFailure = error }
             }
         }
-        if !completion.tracks {
+        if status?.tracks != true {
             do {
-                try await refreshTracks(serverID: serverID)
+                try await refreshTracks(serverID: serverID, sourceWatermark: sourceWatermark)
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
@@ -63,7 +83,7 @@ actor LibraryIndexSynchronizer {
         if let firstFailure { throw firstFailure }
     }
 
-    func refreshArtists(serverID: UUID) async throws {
+    func refreshArtists(serverID: UUID, sourceWatermark: Date? = nil) async throws {
         let key = SyncKey(serverID: serverID, kind: .artists)
         if let existing = inFlight[key] {
             return try await existing.value
@@ -71,14 +91,23 @@ actor LibraryIndexSynchronizer {
         let source = source
         let store = store
         let task = Task {
-            try await Self.syncArtists(source: source, store: store, serverID: serverID)
+            try await Self.syncArtists(
+                source: source,
+                store: store,
+                serverID: serverID,
+                sourceWatermark: sourceWatermark
+            )
         }
         inFlight[key] = task
         defer { inFlight[key] = nil }
-        try await task.value
+        try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
     }
 
-    func refreshAlbums(serverID: UUID) async throws {
+    func refreshAlbums(serverID: UUID, sourceWatermark: Date? = nil) async throws {
         let key = SyncKey(serverID: serverID, kind: .albums)
         if let existing = inFlight[key] {
             return try await existing.value
@@ -91,15 +120,20 @@ actor LibraryIndexSynchronizer {
                 source: source,
                 store: store,
                 serverID: serverID,
-                pageSize: pageSize
+                pageSize: pageSize,
+                sourceWatermark: sourceWatermark
             )
         }
         inFlight[key] = task
         defer { inFlight[key] = nil }
-        try await task.value
+        try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
     }
 
-    func refreshTracks(serverID: UUID) async throws {
+    func refreshTracks(serverID: UUID, sourceWatermark: Date? = nil) async throws {
         let key = SyncKey(serverID: serverID, kind: .tracks)
         if let existing = inFlight[key] {
             return try await existing.value
@@ -112,18 +146,24 @@ actor LibraryIndexSynchronizer {
                 source: source,
                 store: store,
                 serverID: serverID,
-                pageSize: pageSize
+                pageSize: pageSize,
+                sourceWatermark: sourceWatermark
             )
         }
         inFlight[key] = task
         defer { inFlight[key] = nil }
-        try await task.value
+        try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
     }
 
     private static func syncArtists(
         source: any LibraryRemoteSource,
         store: LibraryIndexStore,
-        serverID: UUID
+        serverID: UUID,
+        sourceWatermark: Date?
     ) async throws {
         try Task.checkCancellation()
         let previousCount = try await store.counts(for: serverID).artists
@@ -143,7 +183,12 @@ actor LibraryIndexSynchronizer {
         let generation = UUID().uuidString
         try await store.upsertArtists(artists, serverID: serverID, generation: generation)
         try Task.checkCancellation()
-        try await store.complete(.artists, serverID: serverID, generation: generation)
+        try await store.complete(
+            .artists,
+            serverID: serverID,
+            generation: generation,
+            syncedAt: completionDate(sourceWatermark: sourceWatermark)
+        )
         Logger.library.info("Library index: artists refreshed (\(artists.count, privacy: .public))")
     }
 
@@ -151,7 +196,8 @@ actor LibraryIndexSynchronizer {
         source: any LibraryRemoteSource,
         store: LibraryIndexStore,
         serverID: UUID,
-        pageSize: Int
+        pageSize: Int,
+        sourceWatermark: Date?
     ) async throws {
         let previousCount = try await store.counts(for: serverID).albums
         let generation = UUID().uuidString
@@ -176,7 +222,12 @@ actor LibraryIndexSynchronizer {
             throw LibraryIndexError.suspiciousEmptyResponse(.albums)
         }
         try Task.checkCancellation()
-        try await store.complete(.albums, serverID: serverID, generation: generation)
+        try await store.complete(
+            .albums,
+            serverID: serverID,
+            generation: generation,
+            syncedAt: completionDate(sourceWatermark: sourceWatermark)
+        )
         Logger.library.info("Library index: albums refreshed (\(seen.count, privacy: .public))")
     }
 
@@ -184,7 +235,8 @@ actor LibraryIndexSynchronizer {
         source: any LibraryRemoteSource,
         store: LibraryIndexStore,
         serverID: UUID,
-        pageSize: Int
+        pageSize: Int,
+        sourceWatermark: Date?
     ) async throws {
         let previousCount = try await store.counts(for: serverID).tracks
         let generation = UUID().uuidString
@@ -214,7 +266,17 @@ actor LibraryIndexSynchronizer {
             throw LibraryIndexError.suspiciousEmptyResponse(.tracks)
         }
         try Task.checkCancellation()
-        try await store.complete(.tracks, serverID: serverID, generation: generation)
+        try await store.complete(
+            .tracks,
+            serverID: serverID,
+            generation: generation,
+            syncedAt: completionDate(sourceWatermark: sourceWatermark)
+        )
         Logger.library.info("Library index: tracks refreshed (\(seen.count, privacy: .public))")
+    }
+
+    private static func completionDate(sourceWatermark: Date?) -> Date {
+        guard let sourceWatermark else { return .now }
+        return max(.now, sourceWatermark)
     }
 }

@@ -5,7 +5,7 @@ import OSLog
 @Observable
 @MainActor
 final class DiscoverViewModel {
-    private let libraryService: any LibraryServiceProtocol
+    private let libraryService: any ListeningHistoryBrowsing
     private let recommendationService: RecommendationService
 
     // MARK: - State
@@ -17,7 +17,7 @@ final class DiscoverViewModel {
     private(set) var freshReleases: [AlbumRecommendation] = []
     private(set) var isLoadingFreshReleases: Bool = false
 
-    init(libraryService: any LibraryServiceProtocol, recommendationService: RecommendationService) {
+    init(libraryService: any ListeningHistoryBrowsing, recommendationService: RecommendationService) {
         self.libraryService = libraryService
         self.recommendationService = recommendationService
     }

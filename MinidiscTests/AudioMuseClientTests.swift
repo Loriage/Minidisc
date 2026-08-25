@@ -164,7 +164,7 @@ struct AudioMuseClientTests {
         StubProtocol.stub("/api/servers", body: #"{"servers":[],"default_id":null}"#)
         StubProtocol.stub("/api/clap/search", body: #"{"results":[{"item_id":"fp_dead","title":"Tenere","author":"Tinariwen"}]}"#)
         let library = TagLibraryStub()
-        library.searchResults = [try song(id: "realId", title: "Tenere", artist: "Tinariwen")]
+        await library.setSearchResults([try song(id: "realId", title: "Tenere", artist: "Tinariwen")])
         let provider = AudioMuseTrackProvider(client: makeClient(), resolver: SubsonicTrackResolver(libraryService: library))
 
         #expect(try await provider.trackIds(for: .chill, limit: 5) == ["realId"])
@@ -211,12 +211,12 @@ struct AudioMuseClientTests {
         StubProtocol.stub("/api/clap/search",
                           body: #"{"results":[{"item_id":"fp_1","title":"Tenere","author":"Tinariwen"},{"item_id":"fp_2","title":"Tenere","author":"Tinariwen"}]}"#)
         let library = TagLibraryStub()
-        library.searchResults = [try song(id: "realId", title: "Tenere", artist: "Tinariwen")]
+        await library.setSearchResults([try song(id: "realId", title: "Tenere", artist: "Tinariwen")])
         let provider = AudioMuseTrackProvider(client: makeClient(), resolver: SubsonicTrackResolver(libraryService: library))
 
         _ = try await provider.trackIds(for: .chill, limit: 5)
 
-        #expect(library.searches.count == 1, "the same track must not be searched twice")
+        #expect(await library.searches.count == 1, "the same track must not be searched twice")
     }
 
     @Test("an unreachable host is a transport error, not a crash")

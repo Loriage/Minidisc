@@ -23,12 +23,22 @@ nonisolated enum LibraryIndexError: Error, Equatable, LocalizedError {
     }
 }
 
-nonisolated struct LibraryIndexCompletion: Sendable, Equatable {
-    let artists: Bool
-    let albums: Bool
-    let tracks: Bool
+nonisolated struct LibraryIndexStatus: Sendable, Equatable {
+    let artistsSyncedAt: Date?
+    let albumsSyncedAt: Date?
+    let tracksSyncedAt: Date?
+
+    var artists: Bool { artistsSyncedAt != nil }
+    var albums: Bool { albumsSyncedAt != nil }
+    var tracks: Bool { tracksSyncedAt != nil }
 
     var isComplete: Bool { artists && albums && tracks }
+
+    /// The oldest entity watermark is the point through which the whole index is known complete.
+    var fullySyncedAt: Date? {
+        guard let artistsSyncedAt, let albumsSyncedAt, let tracksSyncedAt else { return nil }
+        return min(artistsSyncedAt, albumsSyncedAt, tracksSyncedAt)
+    }
 }
 
 nonisolated struct LibraryIndexCounts: Sendable, Equatable {
@@ -71,13 +81,13 @@ actor LibraryIndexStore {
 
     // MARK: - State
 
-    func completion(for serverID: UUID) throws -> LibraryIndexCompletion {
+    func status(for serverID: UUID) throws -> LibraryIndexStatus {
         let context = ModelContext(modelContainer)
         let state = try state(for: serverID, in: context)
-        return LibraryIndexCompletion(
-            artists: state?.artistsSyncedAt != nil,
-            albums: state?.albumsSyncedAt != nil,
-            tracks: state?.tracksSyncedAt != nil
+        return LibraryIndexStatus(
+            artistsSyncedAt: state?.artistsSyncedAt,
+            albumsSyncedAt: state?.albumsSyncedAt,
+            tracksSyncedAt: state?.tracksSyncedAt
         )
     }
 
@@ -238,7 +248,12 @@ actor LibraryIndexStore {
         try context.save()
     }
 
-    func complete(_ kind: LibraryIndexKind, serverID: UUID, generation: String) throws {
+    func complete(
+        _ kind: LibraryIndexKind,
+        serverID: UUID,
+        generation: String,
+        syncedAt: Date = .now
+    ) throws {
         guard !removedServerIDs.contains(serverID) else { return }
         let context = ModelContext(modelContainer)
         let sid = serverID
@@ -267,11 +282,10 @@ actor LibraryIndexStore {
             context.insert(newState)
             return newState
         }()
-        let now = Date()
         switch kind {
-        case .artists: indexState.artistsSyncedAt = now
-        case .albums: indexState.albumsSyncedAt = now
-        case .tracks: indexState.tracksSyncedAt = now
+        case .artists: indexState.artistsSyncedAt = syncedAt
+        case .albums: indexState.albumsSyncedAt = syncedAt
+        case .tracks: indexState.tracksSyncedAt = syncedAt
         }
         try context.save()
     }

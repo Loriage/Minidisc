@@ -198,7 +198,7 @@ final class ArtworkImageCache {
 
     convenience init(
         downloadService: any DownloadServiceProtocol,
-        libraryService: any LibraryServiceProtocol,
+        libraryService: any ArtworkURLResolving,
         revalidationStore: CoverRevalidationStore = CoverRevalidationStore()
     ) {
         let config = URLSessionConfiguration.default

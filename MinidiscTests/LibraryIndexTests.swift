@@ -121,6 +121,56 @@ private actor PreparationLibrarySource: LibraryRemoteSource {
     }
 }
 
+private actor FreshnessLibrarySource: LibraryRemoteSource {
+    let serverID: UUID
+    let remoteScanStatus: LibraryRemoteScanStatus?
+    let trackPageDelay: Duration?
+    private var artistCalls = 0
+    private var albumCalls = 0
+    private var songCalls = 0
+
+    init(
+        serverID: UUID,
+        remoteScanStatus: LibraryRemoteScanStatus? = nil,
+        trackPageDelay: Duration? = nil
+    ) {
+        self.serverID = serverID
+        self.remoteScanStatus = remoteScanStatus
+        self.trackPageDelay = trackPageDelay
+    }
+
+    func activeServerID() async throws -> UUID { serverID }
+    func isOnline() async -> Bool { true }
+    func scanStatus(serverID: UUID) async throws -> LibraryRemoteScanStatus? { remoteScanStatus }
+    func search(_ query: String, serverID: UUID) async throws -> SearchResult3 {
+        throw LibrarySourceStubError.unavailable
+    }
+    func artists(serverID: UUID) async throws -> [ArtistIndex] {
+        artistCalls += 1
+        return []
+    }
+    func artist(id: String, serverID: UUID) async throws -> ArtistID3 {
+        throw LibrarySourceStubError.unavailable
+    }
+    func album(id: String, serverID: UUID) async throws -> AlbumID3 {
+        throw LibrarySourceStubError.unavailable
+    }
+    func recentlyAddedAlbums(size: Int, serverID: UUID) async throws -> [AlbumID3] { [] }
+    func albumsPage(offset: Int, count: Int, serverID: UUID) async throws -> [AlbumID3] {
+        albumCalls += 1
+        return []
+    }
+    func songsPage(offset: Int, count: Int, serverID: UUID) async throws -> [Song] {
+        songCalls += 1
+        if let trackPageDelay { try await Task.sleep(for: trackPageDelay) }
+        return []
+    }
+
+    func scanCounts() -> (artists: Int, albums: Int, songs: Int) {
+        (artistCalls, albumCalls, songCalls)
+    }
+}
+
 @Suite("Persistent library index")
 @MainActor
 struct LibraryIndexTests {
@@ -182,7 +232,7 @@ struct LibraryIndexTests {
 
         let ids = Set(try await store.songs(serverID: serverID, offset: 0, count: 10).map(\.id))
         #expect(ids == Set(["one", "two", "three"]))
-        #expect(try await store.completion(for: serverID).tracks)
+        #expect(try await store.status(for: serverID).tracks)
     }
 
     @Test("an unexpected empty server response cannot erase a non-empty index")
@@ -231,7 +281,7 @@ struct LibraryIndexTests {
         try await synchronizer.refreshTracks(serverID: serverID)
 
         #expect(try await store.songs(serverID: serverID, offset: 0, count: 10).map(\.id) == ["one", "two"])
-        #expect(try await store.completion(for: serverID).tracks)
+        #expect(try await store.status(for: serverID).tracks)
     }
 
     @Test("one failed entity scan does not block the other index generations")
@@ -245,7 +295,7 @@ struct LibraryIndexTests {
             try await synchronizer.prepare(serverID: serverID)
         }
 
-        let completion = try await store.completion(for: serverID)
+        let completion = try await store.status(for: serverID)
         #expect(!completion.artists)
         #expect(completion.albums)
         #expect(completion.tracks)
@@ -253,6 +303,83 @@ struct LibraryIndexTests {
         #expect(calls.artists == 1)
         #expect(calls.albums == 1)
         #expect(calls.songs == 1)
+    }
+
+    @Test("automatic preparation waits for an allowed network path")
+    func automaticPreparationCanBeDeferred() async throws {
+        let store = try makeStore()
+        let serverID = UUID()
+        let source = FreshnessLibrarySource(serverID: serverID)
+        let synchronizer = LibraryIndexSynchronizer(source: source, store: store)
+        let catalog = LibraryCatalog(source: source, store: store, synchronizer: synchronizer)
+
+        try await catalog.prepare(automaticRefreshAllowed: false)
+
+        #expect(await source.scanCounts() == (artists: 0, albums: 0, songs: 0))
+        #expect(!(try await store.status(for: serverID)).isComplete)
+    }
+
+    @Test("a newer completed server scan refreshes every index once")
+    func serverScanWatermarkRefreshesIndexOnce() async throws {
+        let store = try makeStore()
+        let serverID = UUID()
+        let previousSync = Date.now.addingTimeInterval(-3_600)
+        let remoteScan = Date.now.addingTimeInterval(3_600)
+        try await markComplete(store: store, serverID: serverID, at: previousSync)
+        let source = FreshnessLibrarySource(
+            serverID: serverID,
+            remoteScanStatus: LibraryRemoteScanStatus(
+                isScanning: false,
+                lastCompletedAt: remoteScan
+            )
+        )
+        let synchronizer = LibraryIndexSynchronizer(source: source, store: store)
+        let catalog = LibraryCatalog(source: source, store: store, synchronizer: synchronizer)
+
+        try await catalog.prepare()
+        #expect(await source.scanCounts() == (artists: 1, albums: 1, songs: 1))
+        let refreshedAt = try #require(try await store.status(for: serverID).fullySyncedAt)
+        #expect(refreshedAt >= remoteScan)
+
+        try await catalog.prepare()
+        #expect(await source.scanCounts() == (artists: 1, albums: 1, songs: 1))
+    }
+
+    @Test("servers without scan metadata use a conservative weekly refresh")
+    func missingScanMetadataUsesWeeklyFallback() async throws {
+        let store = try makeStore()
+        let serverID = UUID()
+        let previousSync = Date.now.addingTimeInterval(-8 * 24 * 60 * 60)
+        try await markComplete(store: store, serverID: serverID, at: previousSync)
+        let source = FreshnessLibrarySource(serverID: serverID)
+        let synchronizer = LibraryIndexSynchronizer(source: source, store: store)
+        let catalog = LibraryCatalog(source: source, store: store, synchronizer: synchronizer)
+
+        try await catalog.prepare()
+
+        #expect(await source.scanCounts() == (artists: 1, albums: 1, songs: 1))
+    }
+
+    @Test("cancelling the owner stops the physical index scan")
+    func cancellationStopsPhysicalScan() async throws {
+        let store = try makeStore()
+        let serverID = UUID()
+        let source = FreshnessLibrarySource(
+            serverID: serverID,
+            trackPageDelay: .seconds(2)
+        )
+        let synchronizer = LibraryIndexSynchronizer(source: source, store: store)
+        let refresh = Task {
+            try await synchronizer.refreshTracks(serverID: serverID)
+        }
+
+        try await Task.sleep(for: .milliseconds(20))
+        refresh.cancel()
+
+        await #expect(throws: CancellationError.self) {
+            try await refresh.value
+        }
+        #expect(!(try await store.status(for: serverID)).tracks)
     }
 
     @Test("completed local search avoids the server and preserves ReplayGain metadata")
@@ -358,11 +485,21 @@ struct LibraryIndexTests {
         )
 
         #expect(try await store.albums(serverID: serverID).map(\.id) == ["new"])
-        #expect(!((try await store.completion(for: serverID)).albums))
+        #expect(!((try await store.status(for: serverID)).albums))
     }
 
     private func makeStore() throws -> LibraryIndexStore {
         LibraryIndexStore(modelContainer: try ModelContainer.libraryIndex(inMemory: true))
+    }
+
+    private func markComplete(
+        store: LibraryIndexStore,
+        serverID: UUID,
+        at date: Date
+    ) async throws {
+        try await store.complete(.artists, serverID: serverID, generation: "artists", syncedAt: date)
+        try await store.complete(.albums, serverID: serverID, generation: "albums", syncedAt: date)
+        try await store.complete(.tracks, serverID: serverID, generation: "tracks", syncedAt: date)
     }
 
     private func song(

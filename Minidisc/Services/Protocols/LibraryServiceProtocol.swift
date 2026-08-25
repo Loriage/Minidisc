@@ -37,122 +37,95 @@ nonisolated protocol SongBrowsing: AnyObject, Sendable {
     func allSongs(offset: Int, count: Int) async throws -> [Song]
 }
 
+nonisolated protocol PlaylistBrowsing: AnyObject, Sendable {
+    func playlists() async throws -> [Playlist]
+    func playlist(id: String) async throws -> PlaylistWithSongs
+}
+
+nonisolated protocol StarredBrowsing: AnyObject, Sendable {
+    func getStarred2() async throws -> Starred2
+}
+
+nonisolated protocol FavoriteEditing: StarredBrowsing {
+    func star(songIds: [String], albumIds: [String], artistIds: [String]) async throws
+    func unstar(songIds: [String], albumIds: [String], artistIds: [String]) async throws
+}
+
+nonisolated protocol RecentlyAddedAlbumBrowsing: AnyObject, Sendable {
+    func recentlyAddedAlbums(size: Int) async throws -> [AlbumID3]
+}
+
+nonisolated protocol ListeningHistoryBrowsing: AnyObject, Sendable {
+    func recentlyPlayedAlbums(size: Int) async throws -> [AlbumID3]
+    func mostPlayedAlbums(size: Int) async throws -> [AlbumID3]
+}
+
+nonisolated protocol RecentlyAddedTrackBrowsing: AnyObject, Sendable {
+    /// Builds the virtual "Recently Added" playlist from the newest albums because
+    /// plain Subsonic has no track-level recency endpoint.
+    func recentlyAddedTracks(albumLimit: Int, trackLimit: Int) async throws -> [Song]
+}
+
+nonisolated protocol GenreBrowsing: AnyObject, Sendable {
+    func genres() async throws -> [Genre]
+    func albumsByGenre(_ genre: String, size: Int) async throws -> [AlbumID3]
+}
+
+nonisolated protocol MoodTrackSourcing: AnyObject, Sendable {
+    /// Keeps the raw OpenSubsonic mood and BPM tags used by the local mood matcher.
+    func songsByGenre(_ genre: String, count: Int) async throws -> [Song]
+    func randomSongs(size: Int) async throws -> [Song]
+}
+
+nonisolated protocol ArtistRecommendationBrowsing: AnyObject, Sendable {
+    /// May trigger external Last.fm/MusicBrainz work on some servers; the concrete service
+    /// applies a bounded timeout and caches results per active connection.
+    func getArtistInfo(forArtistID artistID: String, count: Int) async throws -> ArtistInfo
+    func getArtistMBID(forArtistID artistID: String) async throws -> String?
+    func findArtist(byName name: String) async -> ArtistID3?
+    func topSongs(artist: String, count: Int) async throws -> [DisplayableSong]
+}
+
+nonisolated protocol PlaybackQueueBuilding: AnyObject, Sendable {
+    /// Smart Shuffle is truly random online and limited to downloaded tracks offline.
+    func smartShuffleQueue(targetSize: Int) async throws -> [DisplayableSong]
+    /// Builds a best-effort similarity queue while excluding the current queue and recent listens.
+    func similarBackfillQueue(targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong]
+    func instantMix(from seed: InstantMixSeed, count: Int) async throws -> [DisplayableSong]
+    func endlessExtension(seedTrackId: String?, targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong]
+}
+
+nonisolated protocol PlaybackReporting: AnyObject, Sendable {
+    /// `submission: false` reports now-playing; `true` submits a completed listen.
+    /// Reporting failures never interrupt playback.
+    func scrobble(songId: String, submission: Bool) async
+}
+
+nonisolated protocol ArtworkURLResolving: AnyObject, Sendable {
+    func coverArtURL(id: String, size: Int?) async -> URL?
+}
+
 nonisolated protocol LibraryServiceProtocol:
     LibrarySearching,
     AlbumBrowsing,
     ArtistBrowsing,
     SongBrowsing,
-    AnyObject,
-    Sendable
+    PlaylistBrowsing,
+    FavoriteEditing,
+    RecentlyAddedAlbumBrowsing,
+    ListeningHistoryBrowsing,
+    RecentlyAddedTrackBrowsing,
+    GenreBrowsing,
+    MoodTrackSourcing,
+    ArtistRecommendationBrowsing,
+    PlaybackQueueBuilding,
+    PlaybackReporting,
+    ArtworkURLResolving
 {
-    func playlists() async throws -> [Playlist]
-    func playlist(id: String) async throws -> PlaylistWithSongs
-    func coverArtURL(id: String, size: Int?) async -> URL?
     func streamURL(songId: String) async -> URL?
-
-    func star(songIds: [String], albumIds: [String], artistIds: [String]) async throws
-    func unstar(songIds: [String], albumIds: [String], artistIds: [String]) async throws
-    func getStarred2() async throws -> Starred2
-    func recentlyAddedAlbums(size: Int) async throws -> [AlbumID3]
-
-    /// The tracks of the `albumLimit` most recently added albums, flattened into one list — the virtual
-    /// "Recently Added" playlist. Subsonic has no track-level recency endpoint, so this composes
-    /// `recentlyAddedAlbums` with one `album(id:)` per album (5 in flight at most, as `fetchAllTracks` does).
-    ///
-    /// An album that fails to load costs its own tracks and nothing else; only a failure of the album LIST
-    /// itself throws.
-    func recentlyAddedTracks(albumLimit: Int, trackLimit: Int) async throws -> [Song]
-
-    // MARK: - Discover
-
-    /// Notifies the server about playback activity. v1.3 uses both modes :
-    /// - `submission: false` → "now playing" notification, sent at track start
-    /// - `submission: true` → "completed play", sent after 30s of playback
-    ///
-    /// Errors are silenced — scrobble failures must not interrupt playback or surface to the user.
-    /// Network/auth errors are logged at debug level.
-    func scrobble(songId: String, submission: Bool) async
-
-    /// Recently played albums (Subsonic `getAlbumList2?type=recent`).
-    /// Granularity is album-level — Subsonic does not expose track-level history endpoints.
-    func recentlyPlayedAlbums(size: Int) async throws -> [AlbumID3]
-
-    /// Most played albums (Subsonic `getAlbumList2?type=frequent`).
-    func mostPlayedAlbums(size: Int) async throws -> [AlbumID3]
-
-    /// Random songs from the user's library. Used as the source pool for Smart Shuffle.
-    /// Server has no "exclude recently played" filter — filtering is done client-side by the consumer.
-    func randomSongs(size: Int) async throws -> [Song]
-
-    /// Raw `getSongsByGenre`, returning `Song` rather than `DisplayableSong` so callers keep the
-    /// OpenSubsonic `moods` and `bpm` tags — which is the whole point for the tag-based mood
-    /// fallback. Returns an empty array when the server has nothing under that genre.
-    func songsByGenre(_ genre: String, count: Int) async throws -> [Song]
-
-    /// The library's genres with album/song counts (`getGenres`). Drives the Home genre shelves.
-    func genres() async throws -> [Genre]
-
-    /// Albums tagged with a genre (`getAlbumList2?type=byGenre`).
-    func albumsByGenre(_ genre: String, size: Int) async throws -> [AlbumID3]
-
-    /// Builds a queue of tracks for Smart Shuffle ("Rediscover Your Library").
-    ///
-    /// Online: TRULY random — `getRandomSongs(targetSize)`, no recency weighting,
-    /// no `played` filtering (product rule since the queue-modes rework).
-    ///
-    /// Offline: returns a pure shuffle over downloaded tracks for the active server.
-    ///
-    /// May return fewer than `targetSize` tracks or an empty array if the library is too small.
-    /// Throws only on network/auth failures in the online path.
-    func smartShuffleQueue(targetSize: Int) async throws -> [DisplayableSong]
-
-    /// Builds the queue auto-extend backfill: tracks SIMILAR to the last 20 played
-    /// (≥30s listens), via an artist/genre heuristic that works on any self-hosted
-    /// server — artist discographies (getArtist→albums) + getSongsByGenre, never
-    /// popularity-backed endpoints.
-    ///
-    /// `excludedIds` (current queue) and the recent-20 track ids are never returned.
-    /// Degrades to pure random with no listening history or a thin pool; offline
-    /// falls back to downloaded tracks only.
-    func similarBackfillQueue(targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong]
-
-    // MARK: - Similar artists support
-
-    /// Returns raw `ArtistInfo` for the given Subsonic artist ID.
-    /// Results are cached in-memory for the lifetime of the active server connection.
-    /// A 15-second timeout guards against slow external lookups (Last.fm/MusicBrainz)
-    /// that some Subsonic server implementations trigger on `getArtistInfo`.
-    func getArtistInfo(forArtistID artistID: String, count: Int) async throws -> ArtistInfo
-
-    /// Returns the MusicBrainz ID for the given Subsonic artist ID.
-    /// Delegates to `getArtistInfo(forArtistID:count:)` and extracts `musicBrainzId`.
-    func getArtistMBID(forArtistID artistID: String) async throws -> String?
-
-    /// Returns the first library artist whose name matches case-insensitively.
-    /// Uses the persistent, server-scoped metadata index when available.
-    func findArtist(byName name: String) async -> ArtistID3?
-
-    /// The artist's top (most-played) songs via Subsonic `getTopSongs` (popularity/Last.fm-backed — may be
-    /// empty on bare self-hosted servers, in which case callers hide the section).
-    func topSongs(artist: String, count: Int) async throws -> [DisplayableSong]
-
-    /// Builds an Instant Mix from a seed via the Subsonic similarity endpoints (AudioMuse-AI plugin).
-    /// Returns an empty array when the server has no similarity data — callers surface `instantMixEmpty`.
-    /// Not gated on a capability: it simply calls the endpoint and lets an empty/failed result degrade.
-    func instantMix(from seed: InstantMixSeed, count: Int) async throws -> [DisplayableSong]
-
-    /// Builds the endless-play queue extension, seeded on the track playing now: a sonic Instant Mix
-    /// of `seedTrackId`, topped up from the `similarBackfillQueue` heuristic when the similar set is
-    /// short so the queue keeps growing. With no seed (or no similarity data), it falls back entirely
-    /// to that same heuristic. `excludedIds` (the current queue) is never returned.
-    func endlessExtension(seedTrackId: String?, targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong]
 }
 
-// Defaults so existing test doubles keep compiling without stubbing the Home genre shelves.
-extension LibraryServiceProtocol {
-    func genres() async throws -> [Genre] { [] }
-    func albumsByGenre(_ genre: String, size: Int) async throws -> [AlbumID3] { [] }
-
+extension RecentlyAddedTrackBrowsing where Self: RecentlyAddedAlbumBrowsing, Self: AlbumBrowsing {
     /// Composition of `recentlyAddedAlbums` + `album(id:)` — the only way to reach tracks on a plain Subsonic
     /// server. Lives here rather than in `LibraryService` because there is nothing server-specific to
     /// customise: any conformer that can list its newest albums and open one gets the playlist for free.
@@ -194,7 +167,9 @@ extension LibraryServiceProtocol {
         guard let detail = try? await album(id: albumId) else { return [] }
         return detail.song ?? []
     }
+}
 
+extension PlaybackQueueBuilding {
     /// Default composition of `instantMix` + `similarBackfillQueue` — conformers get the endless
     /// behaviour without changes, mirroring how Instant Mix itself degrades without a similarity
     /// service.

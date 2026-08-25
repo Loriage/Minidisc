@@ -79,6 +79,14 @@ nonisolated struct ServerAccessSnapshot: Sendable, Hashable {
     let isOnline: Bool
 }
 
+/// The state that decides whether a potentially large automatic index walk may start.
+/// Manual refreshes are intentionally independent from this snapshot.
+nonisolated struct LibraryIndexPreparationSnapshot: Sendable, Hashable {
+    let connectionVersion: ServerConnection.Version?
+    let isOnline: Bool
+    let automaticRefreshAllowed: Bool
+}
+
 /// Observable UI state for server connectivity. Updated by ServerService via MainActor.run.
 @Observable
 @MainActor
@@ -96,10 +104,25 @@ final class ServerState {
     /// Coherent path snapshot. Unlike `isOnline`, its generation also changes for a seamless
     /// Wi-Fi ↔ cellular handover where connectivity remains satisfied throughout.
     var networkPathEvent: NetworkPathEvent = .initial
+    /// Prevents the optimistic launch defaults from starting a full index walk before
+    /// NWPathMonitor identifies a cellular, hotspot, or Low Data Mode connection.
+    var hasObservedNetworkPath = false
     // Prevents OnboardingView flash before persisted state is restored on launch.
     var isLoadingPersistedState: Bool = true
 
     var accessSnapshot: ServerAccessSnapshot {
         ServerAccessSnapshot(connectionVersion: activeConnectionVersion, isOnline: isOnline)
+    }
+
+    var libraryIndexPreparationSnapshot: LibraryIndexPreparationSnapshot {
+        let path = networkPathEvent.descriptor
+        return LibraryIndexPreparationSnapshot(
+            connectionVersion: activeConnectionVersion,
+            isOnline: isOnline,
+            automaticRefreshAllowed: hasObservedNetworkPath
+                && path.isOnline
+                && !path.isExpensive
+                && !path.isConstrained
+        )
     }
 }

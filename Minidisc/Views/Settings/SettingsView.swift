@@ -461,12 +461,38 @@ private struct PlaybackSettingsView: View {
             } footer: {
                 Text("The server transcodes to the chosen tier for each network. Original streams your files untouched (lossless); a lighter tier saves cellular data and lowers decoding load. Applies to the next track.")
             }
+            if let lyrics = container?.lyricsSettings {
+                LyricsSettingsSection(settings: lyrics)
+            }
             ReplayGainSettingsSection()
             CrossfadeSettingsSection()
         }
         .formStyle(.grouped)
         .navigationTitle("Playback")
         .navigationBarTitleDisplayModeInline()
+    }
+}
+
+private struct LyricsSettingsSection: View {
+    @Bindable var settings: LyricsSettings
+
+    var body: some View {
+        Section {
+            Picker(selection: $settings.source) {
+                ForEach(LyricsSource.allCases) { source in
+                    Text(source.displayName).tag(source)
+                }
+            } label: {
+                Text("Lyrics source")
+                    .foregroundStyle(.primary)
+            }
+            .pickerStyle(.menu)
+            .tint(.secondary)
+        } header: {
+            Text("Lyrics")
+        } footer: {
+            Text("Auto checks Navidrome first and falls back to LRCLIB. LRCLIB requests include the track title, artist, album, and duration.")
+        }
     }
 }
 

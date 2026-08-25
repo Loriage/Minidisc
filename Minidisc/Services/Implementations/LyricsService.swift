@@ -10,44 +10,43 @@ import OSLog
 actor LyricsService {
     private let serverService: any ServerServiceProtocol
     private let modelContainer: ModelContainer
+    private let lrclibClient: any LRCLIBLyricsFetching
 
-    init(serverService: any ServerServiceProtocol, modelContainer: ModelContainer) {
+    init(
+        serverService: any ServerServiceProtocol,
+        modelContainer: ModelContainer,
+        lrclibClient: any LRCLIBLyricsFetching = LRCLIBClient()
+    ) {
         self.serverService = serverService
         self.modelContainer = modelContainer
+        self.lrclibClient = lrclibClient
     }
 
     // MARK: - Fetch
 
-    /// Returns lyrics for a song. Checks cache first; falls back to network on miss.
-    /// On network error, returns cached data if available (offline mode).
-    func fetchLyrics(forSongId songId: String, serverId: UUID) async throws -> LyricsList {
-        if let cached = await cachedLyrics(songId: songId, serverId: serverId) {
-            Logger.lyrics.debug("Cache hit — songId=\(songId, privacy: .public)")
-            return cached
-        }
-
-        let client = try await serverService.activeConnection().makeSwiftSonicClient()
-        let capabilities = try await client.loadCapabilities()
-        guard capabilities.supports(.songLyrics) else {
-            throw LyricsError.notSupportedByServer
-        }
-
-        do {
-            let list = try await client.getLyricsBySongId(id: songId)
-            guard !list.structuredLyrics.isEmpty else {
-                throw LyricsError.notFound
+    /// Returns lyrics from the configured source. Cache entries remain provider-specific so changing
+    /// the picker never leaks a response from a provider the user disabled.
+    func fetchLyrics(
+        for track: DisplayableSong,
+        serverId: UUID,
+        source: LyricsSource
+    ) async throws -> LyricsList {
+        switch source {
+        case .automatic:
+            do {
+                return try await fetchLyrics(for: track, serverId: serverId, provider: .navidrome)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                Logger.lyrics.info(
+                    "Navidrome lyrics unavailable; trying LRCLIB — songId=\(track.id, privacy: .public)"
+                )
+                return try await fetchLyrics(for: track, serverId: serverId, provider: .lrclib)
             }
-            await persistLyrics(list, songId: songId, serverId: serverId)
-            return list
-        } catch let error as LyricsError {
-            throw error
-        } catch {
-            if let cached = await cachedLyrics(songId: songId, serverId: serverId) {
-                Logger.lyrics.info("Network error, returning cached lyrics — songId=\(songId, privacy: .public)")
-                return cached
-            }
-            Logger.lyrics.error("Lyrics fetch failed — songId=\(songId, privacy: .public): \(error, privacy: .public)")
-            throw LyricsError.networkError(underlying: error.localizedDescription)
+        case .navidrome:
+            return try await fetchLyrics(for: track, serverId: serverId, provider: .navidrome)
+        case .lrclib:
+            return try await fetchLyrics(for: track, serverId: serverId, provider: .lrclib)
         }
     }
 
@@ -93,8 +92,118 @@ actor LyricsService {
 
     // MARK: - Private cache
 
-    private func cachedLyrics(songId: String, serverId: UUID) async -> LyricsList? {
-        let key = "\(serverId.uuidString):\(songId)"
+    private func fetchLyrics(
+        for track: DisplayableSong,
+        serverId: UUID,
+        provider: LyricsProvider
+    ) async throws -> LyricsList {
+        if let cached = await cachedLyrics(songId: track.id, serverId: serverId, provider: provider) {
+            Logger.lyrics.debug(
+                "Cache hit — provider=\(provider.rawValue, privacy: .public) songId=\(track.id, privacy: .public)"
+            )
+            return cached
+        }
+
+        let list: LyricsList
+        switch provider {
+        case .navidrome:
+            list = try await fetchNavidromeLyrics(songId: track.id)
+        case .lrclib:
+            list = try await fetchLRCLIBLyrics(for: track)
+        }
+
+        await persistLyrics(list, songId: track.id, serverId: serverId, provider: provider)
+        return list
+    }
+
+    private func fetchNavidromeLyrics(songId: String) async throws -> LyricsList {
+        do {
+            let client = try await serverService.activeConnection().makeSwiftSonicClient()
+            let capabilities = try await client.loadCapabilities()
+            guard capabilities.supports(.songLyrics) else {
+                throw LyricsError.notSupportedByServer
+            }
+
+            let list = try await client.getLyricsBySongId(id: songId)
+            guard !list.structuredLyrics.isEmpty else {
+                throw LyricsError.notFound
+            }
+            return list
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as LyricsError {
+            throw error
+        } catch {
+            Logger.lyrics.error(
+                "Navidrome lyrics fetch failed — songId=\(songId, privacy: .public): \(error, privacy: .public)"
+            )
+            throw LyricsError.networkError(underlying: error.localizedDescription)
+        }
+    }
+
+    private func fetchLRCLIBLyrics(for track: DisplayableSong) async throws -> LyricsList {
+        let title = track.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let artist = track.artist?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let album = track.albumName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, !artist.isEmpty else {
+            throw LyricsError.notFound
+        }
+
+        let record = try await lrclibClient.lyrics(for: LRCLIBTrackSignature(
+            title: title,
+            artist: artist,
+            album: album?.isEmpty == false ? album : nil,
+            duration: (1...3_600).contains(track.duration) ? track.duration : nil
+        ))
+        guard let list = Self.lyricsList(from: record) else {
+            throw LyricsError.notFound
+        }
+        return list
+    }
+
+    nonisolated static func lyricsList(from record: LRCLIBLyricsRecord) -> LyricsList? {
+        var entries: [StructuredLyrics] = []
+
+        if let synced = record.syncedLyrics,
+           let parsed = LRCParser.parse(synced) {
+            entries.append(StructuredLyrics(
+                lang: "und",
+                synced: true,
+                line: parsed.lines.map {
+                    Line(value: $0.value, start: $0.startMilliseconds)
+                },
+                offset: parsed.offsetMilliseconds
+            ))
+        }
+
+        if let plain = record.plainLyrics {
+            let lines = plain
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .map { Line(value: $0) }
+            if !lines.isEmpty {
+                entries.append(StructuredLyrics(lang: "und", synced: false, line: lines))
+            }
+        }
+
+        if entries.isEmpty, record.instrumental {
+            entries.append(StructuredLyrics(
+                lang: "und",
+                synced: false,
+                line: [Line(value: String(localized: "Instrumental"))]
+            ))
+        }
+
+        return entries.isEmpty ? nil : LyricsList(structuredLyrics: entries)
+    }
+
+    private func cachedLyrics(
+        songId: String,
+        serverId: UUID,
+        provider: LyricsProvider
+    ) async -> LyricsList? {
+        let key = CachedLyrics.key(songId: songId, serverId: serverId, provider: provider)
         let context = ModelContext(modelContainer)
         let descriptor = FetchDescriptor<CachedLyrics>(
             predicate: #Predicate { $0.compositeKey == key }
@@ -109,10 +218,15 @@ actor LyricsService {
         }
     }
 
-    private func persistLyrics(_ list: LyricsList, songId: String, serverId: UUID) async {
+    private func persistLyrics(
+        _ list: LyricsList,
+        songId: String,
+        serverId: UUID,
+        provider: LyricsProvider
+    ) async {
         let data = try? await MainActor.run { try JSONEncoder().encode(list) }
         guard let data else { return }
-        let key = "\(serverId.uuidString):\(songId)"
+        let key = CachedLyrics.key(songId: songId, serverId: serverId, provider: provider)
         let context = ModelContext(modelContainer)
         let descriptor = FetchDescriptor<CachedLyrics>(
             predicate: #Predicate { $0.compositeKey == key }
@@ -120,8 +234,15 @@ actor LyricsService {
         if let existing = (try? context.fetch(descriptor))?.first {
             context.delete(existing)
         }
-        context.insert(CachedLyrics(songId: songId, serverId: serverId, jsonPayload: data))
+        context.insert(CachedLyrics(
+            songId: songId,
+            serverId: serverId,
+            jsonPayload: data,
+            provider: provider
+        ))
         try? context.save()
-        Logger.lyrics.debug("Persisted lyrics — songId=\(songId, privacy: .public)")
+        Logger.lyrics.debug(
+            "Persisted lyrics — provider=\(provider.rawValue, privacy: .public) songId=\(songId, privacy: .public)"
+        )
     }
 }

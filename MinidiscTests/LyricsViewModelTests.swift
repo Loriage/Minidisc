@@ -67,8 +67,28 @@ private func makeViewModel(
     let playerState = PlayerState()
 
     let vm = LyricsViewModel(
-        songId: songId,
+        track: DisplayableSong(
+            id: songId,
+            title: "Test song",
+            artist: "Test artist",
+            albumId: "album-1",
+            albumName: "Test album",
+            artistId: "artist-1",
+            genre: nil,
+            duration: 180,
+            trackNumber: 1,
+            isDownloaded: false,
+            coverArtId: nil,
+            audioFormat: "FLAC",
+            replayGainTrackGain: nil,
+            replayGainTrackPeak: nil,
+            replayGainAlbumGain: nil,
+            replayGainAlbumPeak: nil,
+            replayGainBaseGain: nil,
+            replayGainFallbackGain: nil
+        ),
         serverId: serverId,
+        source: .navidrome,
         lyricsService: service,
         playerService: playerService,
         playerState: playerState

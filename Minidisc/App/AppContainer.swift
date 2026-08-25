@@ -35,6 +35,7 @@ final class AppContainer {
     private let _player: PlayerService
     let wrappedPlaylistService: WrappedPlaylistService
     let moodPlaylistService: MoodPlaylistService
+    let lyricsSettings: LyricsSettings
     let lyricsService: LyricsService
     let recommendationService: RecommendationService
     let listenBrainzService: ListenBrainzService
@@ -58,6 +59,7 @@ final class AppContainer {
         replayGainSettings = ReplayGainSettings(defaults: userDefaults)
         crossfadeSettings = CrossfadeSettings(defaults: userDefaults)
         streamSettings = StreamSettings(defaults: userDefaults)
+        lyricsSettings = LyricsSettings(defaults: userDefaults)
         self.playbackDiagnostics = playbackDiagnostics
         networkMonitor = NetworkMonitor(playbackDiagnostics: playbackDiagnostics)
         modelContainer = try ModelContainer.minidisc(inMemory: inMemory)

@@ -23,7 +23,7 @@ private final class SettingsKeychain: KeychainServiceProtocol {
 @Suite("Domain settings persistence")
 @MainActor
 struct DomainSettingsPersistenceTests {
-    @Test("ReplayGain and crossfade use the injected defaults suite")
+    @Test("Playback settings use the injected defaults suite")
     func playbackSettingsUseInjectedDefaults() {
         let (defaults, suiteName) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -38,6 +38,9 @@ struct DomainSettingsPersistenceTests {
         crossfade.duration = 5.5
         crossfade.disableForGapless = false
 
+        let lyrics = LyricsSettings(defaults: defaults)
+        lyrics.source = .lrclib
+
         let restoredReplayGain = ReplayGainSettings(defaults: defaults)
         #expect(restoredReplayGain.enabled)
         #expect(restoredReplayGain.mode == .album)
@@ -47,6 +50,9 @@ struct DomainSettingsPersistenceTests {
         let restoredCrossfade = CrossfadeSettings(defaults: defaults)
         #expect(restoredCrossfade.duration == 5.5)
         #expect(!restoredCrossfade.disableForGapless)
+
+        let restoredLyrics = LyricsSettings(defaults: defaults)
+        #expect(restoredLyrics.source == .lrclib)
     }
 
     @Test("the legacy track-count cache preference migrates to a byte capacity")

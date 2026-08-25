@@ -23,6 +23,12 @@ private struct PlayerThemeKey: Equatable {
     let override: Color?
 }
 
+private struct LyricsLoadKey: Equatable {
+    let trackID: String?
+    let source: LyricsSource
+    let isRequested: Bool
+}
+
 private struct FullPlayerBackground: View {
     let dominantColor: Color
 
@@ -71,6 +77,12 @@ struct FullPlayerView: View {
         @Bindable var playlistAddition = playlistAddition
 
         if let playerState = container?.playerState {
+            let lyricsSource = container?.lyricsSettings.source ?? .automatic
+            let lyricsLoadKey = LyricsLoadKey(
+                trackID: playerState.currentTrack?.id,
+                source: lyricsSource,
+                isRequested: showLyrics
+            )
             let themeCoverId: String? = playerState.isLiveStream
                 ? playerState.currentRadio?.coverArt
                 : (playerState.currentTrack?.coverArtId ?? playerState.currentTrack?.id)
@@ -78,8 +90,9 @@ struct FullPlayerView: View {
                 .task(id: PlayerThemeKey(coverId: themeCoverId, override: colorExtractor.colorOverride(for: themeCoverId ?? ""))) {
                     await vm.updateColors(for: themeCoverId, colorExtractor: colorExtractor, container: container)
                 }
-                .task(id: playerState.currentTrack?.id) {
-                    guard let track = playerState.currentTrack,
+                .task(id: lyricsLoadKey) {
+                    guard showLyrics,
+                          let track = playerState.currentTrack,
                           let serverId = container?.serverState.activeServer?.id,
                           let lyricsService = container?.lyricsService,
                           let playerService = container?.playerService else {
@@ -87,8 +100,9 @@ struct FullPlayerView: View {
                         return
                     }
                     let newVM = LyricsViewModel(
-                        songId: track.id,
+                        track: track,
                         serverId: serverId,
+                        source: lyricsSource,
                         lyricsService: lyricsService,
                         playerService: playerService,
                         playerState: playerState

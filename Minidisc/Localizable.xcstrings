@@ -5611,6 +5611,112 @@
         }
       }
     },
+    "Auto" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatisch"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Αυτόματα"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automático"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatique"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatico"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動"
+          }
+        }
+      }
+    },
+    "Auto checks Navidrome first and falls back to LRCLIB. LRCLIB requests include the track title, artist, album, and duration." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatisch prüft zuerst Navidrome und verwendet bei Bedarf LRCLIB. LRCLIB-Anfragen enthalten Titel, Interpret, Album und Dauer des Titels."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Η Αυτόματη επιλογή ελέγχει πρώτα το Navidrome και χρησιμοποιεί το LRCLIB ως εναλλακτική. Τα αιτήματα προς το LRCLIB περιλαμβάνουν τον τίτλο, τον καλλιτέχνη, το άλμπουμ και τη διάρκεια του κομματιού."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automático consulta primero Navidrome y recurre a LRCLIB. Las solicitudes a LRCLIB incluyen el título, el artista, el álbum y la duración de la canción."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le mode Automatique consulte d’abord Navidrome, puis LRCLIB en secours. Les requêtes LRCLIB incluent le titre, l’artiste, l’album et la durée du morceau."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatico controlla prima Navidrome e usa LRCLIB come alternativa. Le richieste LRCLIB includono titolo, artista, album e durata del brano."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動では最初にNavidromeを確認し、見つからない場合はLRCLIBを使用します。LRCLIBへのリクエストには曲名、アーティスト、アルバム、再生時間が含まれます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动模式会先检查 Navidrome，再回退到 LRCLIB。LRCLIB 请求会包含歌曲标题、艺人、专辑和时长。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動模式會先檢查 Navidrome，再改用 LRCLIB。LRCLIB 請求會包含歌曲標題、藝人、專輯和時長。"
+          }
+        }
+      }
+    },
     "Auto-extend with Smart Shuffle" : {
       "localizations" : {
         "de" : {
@@ -15561,6 +15667,59 @@
         }
       }
     },
+    "Instrumental" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instrumental"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ορχηστρικό"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instrumental"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instrumental"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Strumentale"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "インストゥルメンタル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "纯音乐"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "純音樂"
+          }
+        }
+      }
+    },
     "Integrations" : {
       "localizations" : {
         "de" : {
@@ -17590,6 +17749,112 @@
         }
       }
     },
+    "LRCLIB" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LRCLIB"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LRCLIB"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LRCLIB"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LRCLIB"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LRCLIB"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LRCLIB"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LRCLIB"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LRCLIB"
+          }
+        }
+      }
+    },
+    "LRCLIB is temporarily rate-limiting requests. Try again later." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LRCLIB begrenzt Anfragen vorübergehend. Versuche es später erneut."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Το LRCLIB περιορίζει προσωρινά τα αιτήματα. Δοκιμάστε ξανά αργότερα."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LRCLIB está limitando temporalmente las solicitudes. Inténtalo de nuevo más tarde."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LRCLIB limite temporairement les requêtes. Réessayez plus tard."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LRCLIB sta limitando temporaneamente le richieste. Riprova più tardi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LRCLIB が一時的にリクエストを制限しています。しばらくしてからもう一度お試しください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LRCLIB 暂时限制了请求频率。请稍后再试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LRCLIB 暫時限制了請求頻率。請稍後再試。"
+          }
+        }
+      }
+    },
     "Lyrics" : {
       "localizations" : {
         "de" : {
@@ -17690,6 +17955,59 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "不支援歌詞"
+          }
+        }
+      }
+    },
+    "Lyrics source" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Songtextquelle"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Πηγή στίχων"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fuente de letras"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Source des paroles"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fonte dei testi"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "歌詞ソース"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "歌词来源"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "歌詞來源"
           }
         }
       }

@@ -19,13 +19,21 @@ struct CachedLyricsTests {
         context.insert(CachedLyrics(songId: songId, serverId: serverId, jsonPayload: Data("{}".utf8)))
         try context.save()
 
-        let key = "\(serverId.uuidString):\(songId)"
+        let key = CachedLyrics.key(songId: songId, serverId: serverId, provider: .navidrome)
         let results = try context.fetch(
             FetchDescriptor<CachedLyrics>(predicate: #Predicate { $0.compositeKey == key })
         )
         #expect(results.count == 1)
         #expect(results.first?.songId == songId)
         #expect(results.first?.serverId == serverId)
+    }
+
+    @Test func providerKeysAreIndependent() {
+        let serverId = UUID()
+        let navidrome = CachedLyrics.key(songId: "song-abc", serverId: serverId, provider: .navidrome)
+        let lrclib = CachedLyrics.key(songId: "song-abc", serverId: serverId, provider: .lrclib)
+
+        #expect(navidrome != lrclib)
     }
 
     @Test func lyricsListRoundTrip() throws {

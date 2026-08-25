@@ -7,8 +7,9 @@ final class LyricsViewModel {
     private let lyricsService: LyricsService
     private let playerService: any PlayerServiceProtocol
     private let playerState: PlayerState
-    private let songId: String
+    private let track: DisplayableSong
     private let serverId: UUID
+    private let source: LyricsSource
 
     private(set) var state: State = .loading
     private(set) var currentLineIndex: Int?
@@ -31,14 +32,16 @@ final class LyricsViewModel {
     }
 
     init(
-        songId: String,
+        track: DisplayableSong,
         serverId: UUID,
+        source: LyricsSource,
         lyricsService: LyricsService,
         playerService: any PlayerServiceProtocol,
         playerState: PlayerState
     ) {
-        self.songId = songId
+        self.track = track
         self.serverId = serverId
+        self.source = source
         self.lyricsService = lyricsService
         self.playerService = playerService
         self.playerState = playerState
@@ -54,7 +57,11 @@ final class LyricsViewModel {
     func load() async {
         state = .loading
         do {
-            let list = try await lyricsService.fetchLyrics(forSongId: songId, serverId: serverId)
+            let list = try await lyricsService.fetchLyrics(
+                for: track,
+                serverId: serverId,
+                source: source
+            )
             lyricsList = list
             applyCurrentLanguage()
         } catch LyricsError.notSupportedByServer {

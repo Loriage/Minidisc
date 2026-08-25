@@ -9,6 +9,7 @@ actor ServerService: ServerServiceProtocol {
     private let keychain: any KeychainServiceProtocol
     private let modelContainer: ModelContainer
     private let audioStreamCache: any AudioStreamCacheProtocol
+    private let libraryIndexStore: LibraryIndexStore?
     private let playbackDiagnostics: PlaybackDiagnostics
     private var activeServerSnapshot: ServerSnapshot?
     private var activeConnectionSnapshot: ServerConnection?
@@ -20,12 +21,14 @@ actor ServerService: ServerServiceProtocol {
         keychain: any KeychainServiceProtocol,
         modelContainer: ModelContainer,
         audioStreamCache: any AudioStreamCacheProtocol,
+        libraryIndexStore: LibraryIndexStore? = nil,
         playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics()
     ) {
         self.state = state
         self.keychain = keychain
         self.modelContainer = modelContainer
         self.audioStreamCache = audioStreamCache
+        self.libraryIndexStore = libraryIndexStore
         self.playbackDiagnostics = playbackDiagnostics
     }
 
@@ -103,6 +106,18 @@ actor ServerService: ServerServiceProtocol {
 
         // Best-effort: an orphaned Keychain entry is harmless if this fails.
         try? await keychain.delete(forKey: credKey)
+
+        // The catalogue index is a discardable cache. A purge failure must not undo
+        // successful removal of the actual server configuration and credentials.
+        if let libraryIndexStore {
+            do {
+                try await libraryIndexStore.removeServer(id)
+            } catch {
+                Logger.library.warning(
+                    "Library index: failed to purge removed server: \(error, privacy: .public)"
+                )
+            }
+        }
     }
 
     func setActiveServer(id: UUID) async throws {
@@ -177,12 +192,13 @@ actor ServerService: ServerServiceProtocol {
         try await keychain.store(creds, forKey: credKey)
 
         do {
-            let updatedActiveServer: ServerSnapshot? = try await MainActor.run {
+            let (updatedActiveServer, libraryIdentityChanged): (ServerSnapshot?, Bool) = try await MainActor.run {
                 let context = ModelContext(modelContainer)
                 let descriptor = FetchDescriptor<ServerConfig>(predicate: #Predicate { $0.id == id })
                 guard let config = try context.fetch(descriptor).first else {
                     throw MinidiscError.serverNotFound(id: id)
                 }
+                let libraryIdentityChanged = config.baseURL != baseURL || config.username != username
                 config.displayName = displayName
                 config.baseURL = baseURL
                 config.username = username
@@ -193,9 +209,18 @@ actor ServerService: ServerServiceProtocol {
                 }
                 if state.activeServer?.id == id {
                     state.activeServer = snapshot
-                    return snapshot
+                    return (snapshot, libraryIdentityChanged)
                 }
-                return nil
+                return (nil, libraryIdentityChanged)
+            }
+            if libraryIdentityChanged, let libraryIndexStore {
+                do {
+                    try await libraryIndexStore.resetServer(id)
+                } catch {
+                    Logger.library.warning(
+                        "Library index: failed to reset changed server: \(error, privacy: .public)"
+                    )
+                }
             }
             if let updatedActiveServer {
                 await publishConnectionChange(server: updatedActiveServer, credentials: creds)

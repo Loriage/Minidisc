@@ -10,10 +10,20 @@ nonisolated enum InstantMixSeed: Sendable, Hashable {
     case artist(id: String)
 }
 
-nonisolated protocol LibraryServiceProtocol: AnyObject, Sendable {
+/// Focused seams for callers that consume only one catalogue capability. They keep
+/// view-model fakes small without splitting the concrete library implementation.
+nonisolated protocol LibrarySearching: AnyObject, Sendable {
+    func search(_ query: String) async throws -> SearchResult3
+}
+
+nonisolated protocol AlbumBrowsing: AnyObject, Sendable {
+    func album(id: String) async throws -> AlbumID3
+    func allAlbums() async throws -> [AlbumID3]
+}
+
+nonisolated protocol ArtistBrowsing: AnyObject, Sendable {
     func artists() async throws -> [ArtistIndex]
     func artist(id: String) async throws -> ArtistID3
-    func album(id: String) async throws -> AlbumID3
 
     /// Fetches every track from every album of the given artist.
     /// Albums are ordered most-recent first (by year); albums without a year come last (alphabetical).
@@ -21,9 +31,22 @@ nonisolated protocol LibraryServiceProtocol: AnyObject, Sendable {
     /// Individual album failures are logged and skipped (best-effort). Throws `MinidiscError.artistTracksUnavailable`
     /// only when every album fetch fails.
     func fetchAllTracks(forArtistID artistID: String) async throws -> [DisplayableSong]
+}
+
+nonisolated protocol SongBrowsing: AnyObject, Sendable {
+    func allSongs(offset: Int, count: Int) async throws -> [Song]
+}
+
+nonisolated protocol LibraryServiceProtocol:
+    LibrarySearching,
+    AlbumBrowsing,
+    ArtistBrowsing,
+    SongBrowsing,
+    AnyObject,
+    Sendable
+{
     func playlists() async throws -> [Playlist]
     func playlist(id: String) async throws -> PlaylistWithSongs
-    func search(_ query: String) async throws -> SearchResult3
     func coverArtURL(id: String, size: Int?) async -> URL?
     func streamURL(songId: String) async -> URL?
 
@@ -39,13 +62,6 @@ nonisolated protocol LibraryServiceProtocol: AnyObject, Sendable {
     /// An album that fails to load costs its own tracks and nothing else; only a failure of the album LIST
     /// itself throws.
     func recentlyAddedTracks(albumLimit: Int, trackLimit: Int) async throws -> [Song]
-
-    func allAlbums() async throws -> [AlbumID3]
-
-    /// One page of the library's songs via search3's empty-query wildcard — Navidrome's only whole-library
-    /// song enumeration (there is no dedicated endpoint). Returned in server order; callers page with
-    /// `offset`/`count` and sort client-side once loaded.
-    func allSongs(offset: Int, count: Int) async throws -> [Song]
 
     // MARK: - Discover
 
@@ -113,7 +129,7 @@ nonisolated protocol LibraryServiceProtocol: AnyObject, Sendable {
     func getArtistMBID(forArtistID artistID: String) async throws -> String?
 
     /// Returns the first library artist whose name matches case-insensitively.
-    /// Uses a lazy in-memory index built on first call; subsequent lookups are O(1).
+    /// Uses the persistent, server-scoped metadata index when available.
     func findArtist(byName name: String) async -> ArtistID3?
 
     /// The artist's top (most-played) songs via Subsonic `getTopSongs` (popularity/Last.fm-backed — may be

@@ -6,10 +6,9 @@ import SwiftSonic
 // MARK: - Counting stub
 
 /// Records `search` calls and replays a configurable outcome.
-/// Every other endpoint is unused by SearchViewModel and throws.
 /// Main-actor test double because the view model and its assertions are UI-isolated.
 @MainActor
-private final class SearchLibraryStub: LibraryServiceProtocol {
+private final class SearchLibraryStub: LibrarySearching {
     enum Behavior {
         case succeed
         case fail(any Error)
@@ -30,32 +29,6 @@ private final class SearchLibraryStub: LibraryServiceProtocol {
         }
     }
 
-    func artists() async throws -> [ArtistIndex] { throw URLError(.unknown) }
-    func artist(id: String) async throws -> ArtistID3 { throw URLError(.unknown) }
-    func album(id: String) async throws -> AlbumID3 { throw URLError(.unknown) }
-    func fetchAllTracks(forArtistID artistID: String) async throws -> [DisplayableSong] { throw URLError(.unknown) }
-    func playlists() async throws -> [Playlist] { throw URLError(.unknown) }
-    func playlist(id: String) async throws -> PlaylistWithSongs { throw URLError(.unknown) }
-    func coverArtURL(id: String, size: Int?) async -> URL? { nil }
-    func streamURL(songId: String) async -> URL? { nil }
-    func star(songIds: [String], albumIds: [String], artistIds: [String]) async throws { throw URLError(.unknown) }
-    func unstar(songIds: [String], albumIds: [String], artistIds: [String]) async throws { throw URLError(.unknown) }
-    func getStarred2() async throws -> Starred2 { throw URLError(.unknown) }
-    func recentlyAddedAlbums(size: Int) async throws -> [AlbumID3] { throw URLError(.unknown) }
-    func allAlbums() async throws -> [AlbumID3] { throw URLError(.unknown) }
-    func allSongs(offset: Int, count: Int) async throws -> [Song] { [] }
-    func scrobble(songId: String, submission: Bool) async {}
-    func recentlyPlayedAlbums(size: Int) async throws -> [AlbumID3] { throw URLError(.unknown) }
-    func mostPlayedAlbums(size: Int) async throws -> [AlbumID3] { throw URLError(.unknown) }
-    func songsByGenre(_ genre: String, count: Int) async throws -> [Song] { [] }
-    func randomSongs(size: Int) async throws -> [Song] { throw URLError(.unknown) }
-    func smartShuffleQueue(targetSize: Int) async throws -> [DisplayableSong] { throw URLError(.unknown) }
-    func similarBackfillQueue(targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong] { throw URLError(.unknown) }
-    func getArtistInfo(forArtistID artistID: String, count: Int) async throws -> ArtistInfo { throw URLError(.unknown) }
-    func getArtistMBID(forArtistID artistID: String) async throws -> String? { nil }
-    func findArtist(byName name: String) async -> ArtistID3? { nil }
-    func topSongs(artist: String, count: Int) async throws -> [DisplayableSong] { [] }
-    func instantMix(from seed: InstantMixSeed, count: Int) async throws -> [DisplayableSong] { [] }
 }
 
 // MARK: - Tests
@@ -92,8 +65,8 @@ struct SearchViewModelDebounceTests {
         #expect(vm.searchResults != nil)
     }
 
-    @Test("offline flags the local path and never reaches the server")
-    func offlineSkipsTheRequest() async throws {
+    @Test("offline search can be answered by the persistent catalogue index")
+    func offlineUsesTheCatalogueIndex() async throws {
         let stub = SearchLibraryStub()
         let state = ServerState()
         state.isOnline = false
@@ -101,16 +74,32 @@ struct SearchViewModelDebounceTests {
 
         await vm.search(query: "minidisc")
 
-        #expect(vm.isOffline)
-        #expect(stub.searchCalls.isEmpty)
-        #expect(vm.searchResults == nil)
+        #expect(vm.isOffline == false)
+        #expect(stub.searchCalls == ["minidisc"])
+        #expect(vm.searchResults != nil)
         #expect(vm.searchError == nil)
         #expect(vm.isSearching == false)
+    }
+
+    @Test("offline index miss falls back to downloaded tracks")
+    func offlineFailureUsesDownloadsFallback() async throws {
+        let stub = SearchLibraryStub()
+        stub.behavior = .fail(URLError(.notConnectedToInternet))
+        let state = ServerState()
+        state.isOnline = false
+        let vm = SearchViewModel(libraryService: stub, serverState: state)
+
+        await vm.search(query: "minidisc")
+
+        #expect(vm.isOffline)
+        #expect(vm.searchResults == nil)
+        #expect(vm.searchError == nil)
     }
 
     @Test("clearing the query drops the offline flag too")
     func clearingQueryResetsOfflineFlag() async throws {
         let stub = SearchLibraryStub()
+        stub.behavior = .fail(URLError(.notConnectedToInternet))
         let state = ServerState()
         state.isOnline = false
         let vm = SearchViewModel(libraryService: stub, serverState: state)
@@ -124,18 +113,20 @@ struct SearchViewModelDebounceTests {
     @Test("coming back online resumes server search")
     func backOnlineResumesServerSearch() async throws {
         let stub = SearchLibraryStub()
+        stub.behavior = .fail(URLError(.notConnectedToInternet))
         let state = ServerState()
         state.isOnline = false
         let vm = SearchViewModel(libraryService: stub, serverState: state)
 
         await vm.search(query: "minidisc")
-        #expect(stub.searchCalls.isEmpty)
+        #expect(stub.searchCalls == ["minidisc"])
 
         state.isOnline = true
+        stub.behavior = .succeed
         await vm.search(query: "minidisc")
 
         #expect(vm.isOffline == false)
-        #expect(stub.searchCalls == ["minidisc"])
+        #expect(stub.searchCalls == ["minidisc", "minidisc"])
     }
 
     @Test("empty or whitespace query clears state without any request")

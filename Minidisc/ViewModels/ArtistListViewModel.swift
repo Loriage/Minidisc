@@ -8,9 +8,9 @@ final class ArtistListViewModel {
     var isLoading = false
     var error: UserFacingError?
 
-    private let libraryService: any LibraryServiceProtocol
+    private let libraryService: any ArtistBrowsing
 
-    init(libraryService: any LibraryServiceProtocol) {
+    init(libraryService: any ArtistBrowsing) {
         self.libraryService = libraryService
     }
 

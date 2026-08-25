@@ -27,10 +27,9 @@ struct SongsListView: View {
                     .tint(.primary)
             }
         }
-        .task(id: container?.serverState.isOnline) {
+        .task(id: loadID) {
             guard let svc = container?.libraryService else { return }
             if viewModel == nil { viewModel = SongsListViewModel(libraryService: svc) }
-            guard container?.serverState.isOnline == true else { return }
             await viewModel?.load(sort: songSort)
         }
         .onChange(of: songSort) { _, newSort in
@@ -99,7 +98,7 @@ struct SongsListView: View {
                 }
             }
             .listStyle(.plain)
-            .refreshable { await vm.load(sort: songSort) }
+            .refreshable { await refresh(vm) }
             .safeAreaInset(edge: .trailing, spacing: 0) {
                 // The A–Z jump bar only makes sense when sorted by title.
                 if songSort == .title && songs.count >= 20 {
@@ -170,5 +169,16 @@ struct SongsListView: View {
                 Logger.player.error("[PLAYBACK] play failed: \(error, privacy: .public)")
             }
         }
+    }
+
+    private var loadID: ServerAccessSnapshot? {
+        container?.serverState.accessSnapshot
+    }
+
+    private func refresh(_ viewModel: SongsListViewModel) async {
+        if container?.serverState.isOnline == true {
+            try? await container?.libraryCatalog.refreshTracks()
+        }
+        await viewModel.load(sort: songSort)
     }
 }

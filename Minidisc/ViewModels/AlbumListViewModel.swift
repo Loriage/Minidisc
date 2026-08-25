@@ -9,9 +9,9 @@ final class AlbumListViewModel {
     var isLoading = false
     var error: UserFacingError?
 
-    private let libraryService: any LibraryServiceProtocol
+    private let libraryService: any AlbumBrowsing
 
-    init(libraryService: any LibraryServiceProtocol) {
+    init(libraryService: any AlbumBrowsing) {
         self.libraryService = libraryService
     }
 

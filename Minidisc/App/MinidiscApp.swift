@@ -61,10 +61,21 @@ struct MinidiscApp: App {
                 .task(id: launchAttempt) {
                     await launchIfNeeded()
                 }
-                .task(id: activeContainer?.serverState.isOnline) {
+                .task(id: activeContainer?.serverState.accessSnapshot) {
                     guard let container = activeContainer,
                           container.serverState.isOnline else { return }
                     await container.listenBrainzService.flushOfflineQueue()
+                    do {
+                        try await container.libraryCatalog.prepare()
+                    } catch is CancellationError {
+                        // The active server or connectivity changed.
+                    } catch {
+                        // The persistent cache remains usable; a later reconnect or manual
+                        // refresh retries only the entity scans that never completed.
+                        Logger.library.debug(
+                            "Library index preparation deferred: \(error, privacy: .public)"
+                        )
+                    }
                 }
         }
         .onChange(of: scenePhase) { _, newPhase in

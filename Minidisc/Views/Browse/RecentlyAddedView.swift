@@ -113,7 +113,12 @@ struct RecentlyAddedView: View {
         .ignoresSafeArea(.container, edges: .top)
         .minidiscHideTopScrollEdgeEffect()
         .background(bodyColor.ignoresSafeArea())
-        .refreshable { await viewModel?.load() }
+        .refreshable {
+            if container?.serverState.isOnline == true {
+                _ = try? await container?.libraryCatalog.refreshAlbums()
+            }
+            await viewModel?.load()
+        }
         .environment(\.colorScheme, theme.isThemed ? (theme.isLight ? .light : .dark) : colorScheme)
     }
 

@@ -35,10 +35,9 @@ struct ArtistListView: View {
                 .tint(.primary)
             }
         }
-        .task(id: container?.serverState.isOnline) {
+        .task(id: loadID) {
             guard let svc = container?.libraryService else { return }
             if viewModel == nil { viewModel = ArtistListViewModel(libraryService: svc) }
-            guard container?.serverState.isOnline == true else { return }
             await viewModel?.load()
         }
     }
@@ -95,7 +94,7 @@ struct ArtistListView: View {
                 }
             }
             .listStyle(.plain)
-            .refreshable { await vm.load() }
+            .refreshable { await refresh(vm) }
             .safeAreaInset(edge: .trailing, spacing: 0) {
                 if vm.indexes.count >= 5 {
                     AlphabetJumpBar(
@@ -120,7 +119,7 @@ struct ArtistListView: View {
             }
         }
         .listStyle(.plain)
-        .refreshable { await vm.load() }
+        .refreshable { await refresh(vm) }
     }
 
     /// Grid of artist avatars in the chosen order.
@@ -136,7 +135,18 @@ struct ArtistListView: View {
             }
             .padding(MinidiscSpacing.l)
         }
-        .refreshable { await vm.load() }
+        .refreshable { await refresh(vm) }
+    }
+
+    private var loadID: ServerAccessSnapshot? {
+        container?.serverState.accessSnapshot
+    }
+
+    private func refresh(_ viewModel: ArtistListViewModel) async {
+        if container?.serverState.isOnline == true {
+            _ = try? await container?.libraryCatalog.refreshArtists()
+        }
+        await viewModel.load()
     }
 }
 

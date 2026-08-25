@@ -20,14 +20,14 @@ final class AlbumDetailViewModel {
 
     private var loadedAlbum: AlbumID3?
     private let albumId: String
-    private let libraryService: any LibraryServiceProtocol
+    private let libraryService: any AlbumBrowsing
     private let downloadService: any DownloadServiceProtocol
     private let toastService: ToastService
     private let serverState: ServerState
 
     init(
         albumId: String,
-        libraryService: any LibraryServiceProtocol,
+        libraryService: any AlbumBrowsing,
         downloadService: any DownloadServiceProtocol,
         toastService: ToastService,
         serverState: ServerState

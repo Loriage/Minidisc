@@ -39,17 +39,13 @@ struct AlbumsListView: View {
                 .tint(.primary)
             }
         }
-        .task(id: container?.serverState.isOnline) {
+        .task(id: loadID) {
             Logger.boot.notice("🟢 AlbumsListView task fired — activeServer=\(String(describing: container?.serverState.activeServer?.baseURL), privacy: .public) isOnline=\(String(describing: container?.serverState.isOnline), privacy: .public)")
             guard let svc = container?.libraryService else {
                 Logger.boot.error("🔴 AlbumsListView: container?.libraryService is nil — skipping")
                 return
             }
             if viewModel == nil { viewModel = AlbumListViewModel(libraryService: svc) }
-            guard container?.serverState.isOnline == true else {
-                Logger.boot.notice("🟡 AlbumsListView: isOnline=false — skipping load")
-                return
-            }
             await viewModel?.load()
         }
     }
@@ -106,7 +102,7 @@ struct AlbumsListView: View {
                 .id(album.id)
             }
             .listStyle(.plain)
-            .refreshable { await vm.load() }
+            .refreshable { await refresh(vm) }
             .safeAreaInset(edge: .trailing, spacing: 0) {
                 // The A–Z jump bar only makes sense when sorted by name.
                 if albumSort == .name && albums.count >= 20 {
@@ -140,7 +136,18 @@ struct AlbumsListView: View {
             }
             .padding(MinidiscSpacing.l)
         }
-        .refreshable { await vm.load() }
+        .refreshable { await refresh(vm) }
+    }
+
+    private var loadID: ServerAccessSnapshot? {
+        container?.serverState.accessSnapshot
+    }
+
+    private func refresh(_ viewModel: AlbumListViewModel) async {
+        if container?.serverState.isOnline == true {
+            _ = try? await container?.libraryCatalog.refreshAlbums()
+        }
+        await viewModel.load()
     }
 
 }

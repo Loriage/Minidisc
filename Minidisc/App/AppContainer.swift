@@ -11,6 +11,8 @@ final class AppContainer {
     let cacheSettings = CacheSettings()
 
     let modelContainer: ModelContainer
+    let libraryIndexStore: LibraryIndexStore
+    let libraryCatalog: LibraryCatalog
     let keychainService: any KeychainServiceProtocol
     let serverService: any ServerServiceProtocol
     let libraryService: any LibraryServiceProtocol
@@ -53,6 +55,9 @@ final class AppContainer {
         self.playbackDiagnostics = playbackDiagnostics
         networkMonitor = NetworkMonitor(playbackDiagnostics: playbackDiagnostics)
         modelContainer = try ModelContainer.minidisc(inMemory: inMemory)
+        let libraryIndexContainer = try ModelContainer.libraryIndex(inMemory: inMemory)
+        let indexStore = LibraryIndexStore(modelContainer: libraryIndexContainer)
+        libraryIndexStore = indexStore
         sessionService = PlaybackSessionService(modelContainer: try ModelContainer.session(inMemory: inMemory))
 
         let keychain = KeychainService()
@@ -70,9 +75,18 @@ final class AppContainer {
             keychain: keychain,
             modelContainer: modelContainer,
             audioStreamCache: cache,
+            libraryIndexStore: indexStore,
             playbackDiagnostics: playbackDiagnostics
         )
         serverService = server
+        let librarySource = SwiftSonicLibrarySource(serverService: server)
+        let librarySynchronizer = LibraryIndexSynchronizer(source: librarySource, store: indexStore)
+        let catalog = LibraryCatalog(
+            source: librarySource,
+            store: indexStore,
+            synchronizer: librarySynchronizer
+        )
+        libraryCatalog = catalog
         lyricsService = LyricsService(serverService: server, modelContainer: modelContainer)
         wrappedPlaylistService = WrappedPlaylistService(serverService: server, statsService: stats)
         radioService = RadioService(serverService: server)
@@ -80,7 +94,13 @@ final class AppContainer {
         let download = DownloadService(serverService: server, modelContainer: modelContainer, toastService: toastService)
         downloadService = download
 
-        let library = LibraryService(serverService: server, modelContainer: modelContainer, downloadService: download, statsService: stats)
+        let library = LibraryService(
+            serverService: server,
+            modelContainer: modelContainer,
+            downloadService: download,
+            statsService: stats,
+            catalog: catalog
+        )
         libraryService = library
 
         artworkImageCache = ArtworkImageCache(downloadService: download, libraryService: library)
@@ -244,6 +264,22 @@ extension ModelContainer {
         let schema = Schema([PlaybackSession.self])
         let config = ModelConfiguration("minidisc-session", schema: schema, isStoredInMemoryOnly: inMemory)
         return try ModelContainer(for: schema, configurations: config)
+    }
+
+    /// A discardable metadata index kept separate from downloads, playback history,
+    /// and server configuration so rebuilding it cannot affect user-owned local data.
+    static func libraryIndex(inMemory: Bool = false) throws -> ModelContainer {
+        let schema = Schema(versionedSchema: LibraryIndexSchemaV1.self)
+        let config = ModelConfiguration(
+            "minidisc-library-index",
+            schema: schema,
+            isStoredInMemoryOnly: inMemory
+        )
+        return try ModelContainer(
+            for: schema,
+            migrationPlan: LibraryIndexMigrationPlan.self,
+            configurations: config
+        )
     }
 }
 

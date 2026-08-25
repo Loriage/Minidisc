@@ -17,14 +17,14 @@ final class SongsListViewModel {
 
     private var rawSongs: [Song] = []
     private var currentSort: SongSort = .title
-    private let libraryService: any LibraryServiceProtocol
+    private let libraryService: any SongBrowsing
 
     /// 1000/page keeps the number of round-trips low while staying responsive. The cap is only a backstop
     /// against a server that ignores `songOffset` (metadata is light, so memory isn't the limit).
     private static let pageSize = 1000
     private static let safetyCap = 200_000
 
-    init(libraryService: any LibraryServiceProtocol) {
+    init(libraryService: any SongBrowsing) {
         self.libraryService = libraryService
     }
 
@@ -74,8 +74,11 @@ final class SongsListViewModel {
     private func recomputeDisplay() async {
         let raw = rawSongs
         let sort = currentSort
-        displaySongs = await Task.detached(priority: .userInitiated) {
-            sort.sorted(raw).map { DisplayableSong(from: $0) }
-        }.value
+        displaySongs = await Self.sortedDisplaySongs(raw, sort: sort)
+    }
+
+    @concurrent
+    private static func sortedDisplaySongs(_ songs: [Song], sort: SongSort) async -> [DisplayableSong] {
+        sort.sorted(songs).map { DisplayableSong(from: $0) }
     }
 }

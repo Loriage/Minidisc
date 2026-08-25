@@ -11,11 +11,11 @@ import OSLog
 /// Resolutions are cached, hits and misses alike, because the same track routinely turns up in
 /// several moods and a miss is just as expensive to establish as a hit.
 actor SubsonicTrackResolver {
-    private let libraryService: any LibraryServiceProtocol
+    private let libraryService: any LibrarySearching
     private var resolved: [String: String] = [:]
     private var missed: Set<String> = []
 
-    init(libraryService: any LibraryServiceProtocol) {
+    init(libraryService: any LibrarySearching) {
         self.libraryService = libraryService
     }
 

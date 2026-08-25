@@ -8,22 +8,23 @@ actor LibraryService: LibraryServiceProtocol {
     private let modelContainer: ModelContainer
     private let downloadService: any DownloadServiceProtocol
     private let statsService: StatsService
+    private let catalog: LibraryCatalog
     private var cachedClient: SwiftSonicClient?
     private var cachedConnectionVersion: ServerConnection.Version?
-    private var artistNameIndex: [String: ArtistID3]?
-    private var indexBuildTask: Task<Void, Never>?
     private var artistInfoCache: [String: ArtistInfo] = [:]
 
     init(
         serverService: any ServerServiceProtocol,
         modelContainer: ModelContainer,
         downloadService: any DownloadServiceProtocol,
-        statsService: StatsService
+        statsService: StatsService,
+        catalog: LibraryCatalog
     ) {
         self.serverService = serverService
         self.modelContainer = modelContainer
         self.downloadService = downloadService
         self.statsService = statsService
+        self.catalog = catalog
     }
 
     private func client() async throws -> SwiftSonicClient {
@@ -42,28 +43,25 @@ actor LibraryService: LibraryServiceProtocol {
         cachedClient = fresh
         cachedConnectionVersion = connection.version
         artistInfoCache = [:]
-        artistNameIndex = nil
-        indexBuildTask = nil
         return fresh
     }
 
     func artists() async throws -> [ArtistIndex] {
-        try await client().getArtists()
+        try await catalog.artists()
     }
 
     func artist(id: String) async throws -> ArtistID3 {
         Logger.library.debug("[ARTIST] artist(id:) START id=\(id, privacy: .public)")
-        let c = try await client()
-        Logger.library.debug("[ARTIST] → client().getArtist")
+        Logger.library.debug("[ARTIST] → catalogue")
         let t0 = Date()
-        let result = try await c.getArtist(id: id)
+        let result = try await catalog.artist(id: id)
         let elapsed = String(format: "%.2f", Date().timeIntervalSince(t0))
-        Logger.library.debug("[ARTIST] ← client().getArtist done \(elapsed, privacy: .public)s")
+        Logger.library.debug("[ARTIST] ← catalogue done \(elapsed, privacy: .public)s")
         return result
     }
 
     func album(id: String) async throws -> AlbumID3 {
-        try await client().getAlbum(id: id)
+        try await catalog.album(id: id)
     }
 
     func playlists() async throws -> [Playlist] {
@@ -75,7 +73,7 @@ actor LibraryService: LibraryServiceProtocol {
     }
 
     func search(_ query: String) async throws -> SearchResult3 {
-        try await client().search3(query)
+        try await catalog.search(query)
     }
 
     func coverArtURL(id: String, size: Int?) async -> URL? {
@@ -101,36 +99,42 @@ actor LibraryService: LibraryServiceProtocol {
     }
 
     func recentlyAddedAlbums(size: Int) async throws -> [AlbumID3] {
-        try await client().getAlbumList2(type: .newest, size: size)
+        try await catalog.recentlyAddedAlbums(size: size)
     }
 
     func allAlbums() async throws -> [AlbumID3] {
-        Logger.library.info("allAlbums() called")
-        do {
-            let result = try await client().getAlbumList2(type: .alphabeticalByName, size: 500)
-            Logger.library.info("allAlbums() done — \(result.count, privacy: .public) items")
-            return result
-        } catch {
-            Logger.library.error("allAlbums() getAlbumList2 error: \(String(describing: error), privacy: .public)")
-            Logger.library.error("allAlbums() error type: \(type(of: error), privacy: .public)")
-            throw error
-        }
+        try await catalog.albums()
     }
 
     func allSongs(offset: Int, count: Int) async throws -> [Song] {
-        try await client().search3(
-            "",
-            artistCount: 0,
-            albumCount: 0,
-            songCount: count,
-            songOffset: offset
-        ).song ?? []
+        try await catalog.songs(offset: offset, count: count)
     }
 
     // MARK: - Artist tracks
 
     func fetchAllTracks(forArtistID artistID: String) async throws -> [DisplayableSong] {
         try Task.checkCancellation()
+        do {
+            if let indexedSongs = try await catalog.songs(artistID: artistID) {
+                let serverID = await MainActor.run { serverService.state.activeServer?.id }
+                let downloadedIDs = if let serverID {
+                    await downloadService.downloadedSongIds(serverId: serverID)
+                } else {
+                    Set<String>()
+                }
+                try Task.checkCancellation()
+                return indexedSongs.map {
+                    DisplayableSong(from: $0, isDownloaded: downloadedIDs.contains($0.id))
+                }
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            Logger.library.debug(
+                "[ARTIST-TRACKS] local index unavailable, falling back to server: \(error, privacy: .public)"
+            )
+        }
+
         let artistDetail = try await artist(id: artistID)
         try Task.checkCancellation()
         let albums = (artistDetail.album ?? []).sorted { lhs, rhs in
@@ -560,20 +564,7 @@ actor LibraryService: LibraryServiceProtocol {
     }
 
     func findArtist(byName name: String) async -> ArtistID3? {
-        if artistNameIndex == nil {
-            if indexBuildTask == nil {
-                Logger.library.debug("[FIND-ARTIST] index not built — starting build name=\(name, privacy: .public)")
-                indexBuildTask = Task { await self.buildArtistNameIndex() }
-            } else {
-                Logger.library.debug("[FIND-ARTIST] awaiting in-progress build name=\(name, privacy: .public)")
-            }
-            _ = await indexBuildTask?.value
-            indexBuildTask = nil
-        } else {
-            Logger.library.debug("[FIND-ARTIST] index ready entries=\(self.artistNameIndex?.count ?? 0, privacy: .public) name=\(name, privacy: .public)")
-        }
-        let normalized = Self.normalizeArtistName(name)
-        if let found = artistNameIndex?[normalized] {
+        if let found = await catalog.findArtist(byName: name) {
             Logger.library.debug("[FIND-ARTIST] FOUND '\(name, privacy: .public)' → id=\(found.id, privacy: .public)")
             return found
         }
@@ -581,27 +572,10 @@ actor LibraryService: LibraryServiceProtocol {
         return nil
     }
 
-    private func buildArtistNameIndex() async {
-        guard let indices = try? await artists() else { return }
-        let all = indices.flatMap { $0.artist }
-        var index: [String: ArtistID3] = [:]
-        index.reserveCapacity(all.count)
-        for (i, a) in all.enumerated() {
-            let key = Self.normalizeArtistName(a.name)
-            if index[key] == nil { index[key] = a }
-            if i % 200 == 0 && i > 0 { await Task.yield() }
-        }
-        artistNameIndex = index
-        Logger.library.info("[FIND-ARTIST] index built: \(all.count, privacy: .public) entries")
-    }
-
     /// Applies diacritics-insensitive folding, lowercasing, and whitespace trimming.
     /// `internal` so it is accessible from the test target via `@testable import`.
     nonisolated static func normalizeArtistName(_ name: String) -> String {
-        name
-            .folding(options: .diacriticInsensitive, locale: .current)
-            .lowercased()
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        LibraryIndexText.normalized(name)
     }
 
     private func offlineSmartShuffle(targetSize: Int) async -> [DisplayableSong] {

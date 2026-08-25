@@ -12,15 +12,14 @@ final class SearchViewModel {
     var searchResults: SearchResult3?
     var isSearching = false
     var searchError: UserFacingError?
-    /// True when the query was answered from downloads instead of the server. The view swaps in the
-    /// local results section on this flag — it deliberately does NOT read ServerState itself, because
-    /// any extra observation in SearchView's body re-triggers the navigation bug documented there.
+    /// True only when neither the persistent catalogue index nor the server could answer,
+    /// so the view falls back to downloaded tracks.
     var isOffline = false
 
-    private let libraryService: any LibraryServiceProtocol
+    private let libraryService: any LibrarySearching
     private let serverState: ServerState
 
-    init(libraryService: any LibraryServiceProtocol, serverState: ServerState) {
+    init(libraryService: any LibrarySearching, serverState: ServerState) {
         self.libraryService = libraryService
         self.serverState = serverState
     }
@@ -33,14 +32,6 @@ final class SearchViewModel {
             searchError = nil
             isSearching = false
             isOffline = false
-            return
-        }
-        guard serverState.isOnline else {
-            // No point debouncing a request we won't make; the view searches downloads instead.
-            searchResults = nil
-            searchError = nil
-            isSearching = false
-            isOffline = true
             return
         }
         isOffline = false
@@ -57,7 +48,13 @@ final class SearchViewModel {
         } catch where Self.isCancellation(error) {
             // Superseded by a newer query — not a user-facing error.
         } catch {
-            searchError = UserFacingError.from(error)
+            if serverState.isOnline {
+                searchError = UserFacingError.from(error)
+            } else {
+                searchResults = nil
+                searchError = nil
+                isOffline = true
+            }
         }
     }
 

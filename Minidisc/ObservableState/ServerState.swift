@@ -72,6 +72,13 @@ nonisolated struct ServerSnapshot: Sendable, Equatable {
     }
 }
 
+/// The typed state that determines whether a server-backed screen should retry a read.
+/// The connection version changes for server switches and credential or endpoint edits.
+nonisolated struct ServerAccessSnapshot: Sendable, Hashable {
+    let connectionVersion: ServerConnection.Version?
+    let isOnline: Bool
+}
+
 /// Observable UI state for server connectivity. Updated by ServerService via MainActor.run.
 @Observable
 @MainActor
@@ -91,4 +98,8 @@ final class ServerState {
     var networkPathEvent: NetworkPathEvent = .initial
     // Prevents OnboardingView flash before persisted state is restored on launch.
     var isLoadingPersistedState: Bool = true
+
+    var accessSnapshot: ServerAccessSnapshot {
+        ServerAccessSnapshot(connectionVersion: activeConnectionVersion, isOnline: isOnline)
+    }
 }

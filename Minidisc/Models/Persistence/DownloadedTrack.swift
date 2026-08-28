@@ -16,6 +16,7 @@ final class DownloadedTrack {
     var artist: String?
     var artistId: String?
     var album: String?
+    var discNumber: Int?
     var trackNumber: Int?
     var durationSeconds: Int?
     var coverArtId: String?
@@ -42,6 +43,7 @@ final class DownloadedTrack {
         artist: String? = nil,
         artistId: String? = nil,
         album: String? = nil,
+        discNumber: Int? = nil,
         trackNumber: Int? = nil,
         durationSeconds: Int? = nil,
         coverArtId: String? = nil,
@@ -66,6 +68,7 @@ final class DownloadedTrack {
         self.artist = artist
         self.artistId = artistId
         self.album = album
+        self.discNumber = discNumber
         self.trackNumber = trackNumber
         self.durationSeconds = durationSeconds
         self.coverArtId = coverArtId

@@ -6,8 +6,9 @@ import SwiftData
 /// Creates and wires the application's services.
 @MainActor
 final class AppContainer {
-    let playerState = PlayerState()
+    let playerState: PlayerState
     let serverState = ServerState()
+    let playbackPreferences: PlaybackPreferences
     let cacheSettings: CacheSettings
 
     let modelContainer: ModelContainer
@@ -54,6 +55,9 @@ final class AppContainer {
         playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics(),
         userDefaults: UserDefaults = .standard
     ) throws {
+        let playbackPreferences = PlaybackPreferences(defaults: userDefaults)
+        self.playbackPreferences = playbackPreferences
+        playerState = PlayerState(isAutoExtendEnabled: playbackPreferences.isAutoExtendEnabled)
         cacheSettings = CacheSettings(defaults: userDefaults)
         externalProvidersStore = ExternalProvidersStore(defaults: userDefaults)
         replayGainSettings = ReplayGainSettings(defaults: userDefaults)
@@ -151,6 +155,7 @@ final class AppContainer {
             audioStreamCache: cache,
             downloadService: download,
             cacheSettings: cacheSettings,
+            playbackPreferences: playbackPreferences,
             replayGainSettings: replayGainSettings,
             crossfadeSettings: crossfadeSettings,
             initialCrossfadeConfig: crossfadeSettings.config,

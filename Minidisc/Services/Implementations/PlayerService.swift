@@ -116,6 +116,7 @@ actor PlayerService: PlayerServiceProtocol {
     private let audioStreamCache: any AudioStreamCacheProtocol
     private let downloadService: any DownloadServiceProtocol
     private let cacheSettings: CacheSettings
+    private let playbackPreferences: PlaybackPreferences
     private let replayGainSettings: ReplayGainSettings
     private let crossfadeSettings: CrossfadeSettings
     private var crossfadeConfig = CrossfadeConfig(duration: 0, disableForGapless: true)
@@ -148,11 +149,6 @@ actor PlayerService: PlayerServiceProtocol {
     private var isRestoringSession = false
     private var restorePauseTask: Task<Void, Never>?
     private var isMutedForRestore = false
-    /// Uses 0.7 when no volume has ever been persisted.
-    nonisolated var restoredVolume: Float {
-        guard UserDefaults.standard.object(forKey: "minidisc.lastVolume") != nil else { return 0.7 }
-        return Float(UserDefaults.standard.double(forKey: "minidisc.lastVolume"))
-    }
     private var positionSaveTask: Task<Void, Never>?
     /// Last elapsed position sent to the system Now Playing center. Position updates are intentionally
     /// throttled: the progress UI remains at 2 Hz, while lock-screen metadata only needs 1 Hz.
@@ -164,6 +160,17 @@ actor PlayerService: PlayerServiceProtocol {
     private var prefetchScheduled = false
     /// Invalidates a preload resolution already suspended in MediaResolver when its context changes.
     private var prefetchGeneration: UInt64 = 0
+    /// Exact source already loaded by the standby deck. Keeping it beside the engine hand-off lets
+    /// a natural transition commit without asking the network to resolve the same song twice.
+    private struct PreparedNextPlayback: Sendable {
+        let trackID: String
+        let serverID: UUID
+        let source: MediaSource
+        let playbackGeneration: UInt64
+        let prefetchGeneration: UInt64
+        let expectedCurrentIndex: Int
+    }
+    private var preparedNextPlayback: PreparedNextPlayback?
     /// Latest coherent path observed from NetworkMonitor. Generation zero is the launch baseline.
     private var latestNetworkPathEvent: NetworkPathEvent = .initial
     /// Track-specific marker: a Bool could accidentally survive a skip and rebuild the wrong item.
@@ -206,8 +213,6 @@ actor PlayerService: PlayerServiceProtocol {
     /// Distinguishes an in-flight fetch from a later replacement. A cancelled server request may
     /// still return, so task cancellation alone is not enough to protect the replacement's handle.
     private var autoExtendFetchGeneration: UInt64 = 0
-    private nonisolated static let autoExtendUserDefaultsKey = "minidisc.player.autoExtendEnabled"
-
     private var playbackProgressTracker = PlaybackProgressTracker()
     private var wasTrackCompletedNaturally: Bool = false
 
@@ -224,6 +229,7 @@ actor PlayerService: PlayerServiceProtocol {
         audioStreamCache: any AudioStreamCacheProtocol,
         downloadService: any DownloadServiceProtocol,
         cacheSettings: CacheSettings,
+        playbackPreferences: PlaybackPreferences,
         replayGainSettings: ReplayGainSettings,
         crossfadeSettings: CrossfadeSettings,
         initialCrossfadeConfig: CrossfadeConfig,
@@ -242,6 +248,7 @@ actor PlayerService: PlayerServiceProtocol {
         self.audioStreamCache = audioStreamCache
         self.downloadService = downloadService
         self.cacheSettings = cacheSettings
+        self.playbackPreferences = playbackPreferences
         self.replayGainSettings = replayGainSettings
         self.crossfadeSettings = crossfadeSettings
         self.crossfadeConfig = initialCrossfadeConfig
@@ -369,6 +376,20 @@ actor PlayerService: PlayerServiceProtocol {
     // MARK: - Play
 
     func play(tracks: [DisplayableSong], startIndex: Int) async throws {
+        try await play(
+            tracks: tracks,
+            startIndex: startIndex,
+            preparedPlayback: nil,
+            engineTransition: nil
+        )
+    }
+
+    private func play(
+        tracks: [DisplayableSong],
+        startIndex: Int,
+        preparedPlayback: PreparedNextPlayback?,
+        engineTransition: AudioEngineTrackEnd?
+    ) async throws {
         guard tracks.indices.contains(startIndex) else { return }
         playbackDiagnostics.record(.command(.play(queueCount: tracks.count, startIndex: startIndex)))
         queueBuildGeneration &+= 1
@@ -438,22 +459,39 @@ actor PlayerService: PlayerServiceProtocol {
 
         let song = tracks[startIndex]
         let source: MediaSource
-        do {
-            source = try await mediaResolver.resolve(songId: song.id, serverId: serverId)
-        } catch let e as MinidiscError {
-            guard isCurrentPlaybackIntent(
-                playbackGeneration: generation,
-                transportIntentGeneration: transportGeneration
-            ) else { return }
-            await MainActor.run { state.playbackState = previousPlaybackState }
-            throw e
-        } catch {
-            guard isCurrentPlaybackIntent(
-                playbackGeneration: generation,
-                transportIntentGeneration: transportGeneration
-            ) else { return }
-            await MainActor.run { state.playbackState = previousPlaybackState }
-            throw error
+        if let preparedPlayback,
+           preparedPlayback.trackID == song.id,
+           preparedPlayback.serverID == serverId {
+            source = preparedPlayback.source
+            Logger.player.debug("[TRANSITION] adopting source prepared for '\(song.id, privacy: .public)'")
+        } else if let promoted = engineTransition?.promotedPlayback,
+                  promoted.trackID == song.id {
+            // Defensive fallback: the engine is already rendering this exact source. Local URLs are
+            // treated as cache entries; remote URLs retain the authorization headers used by AVPlayer.
+            source = promoted.sourceURL.isFileURL
+                ? .cached(promoted.sourceURL)
+                : .stream(promoted.sourceURL, customHeaders: promoted.sourceHeaders)
+            Logger.player.warning(
+                "[TRANSITION] prepared source metadata missing — adopting promoted engine source for '\(song.id, privacy: .public)'"
+            )
+        } else {
+            do {
+                source = try await mediaResolver.resolve(songId: song.id, serverId: serverId)
+            } catch let e as MinidiscError {
+                guard isCurrentPlaybackIntent(
+                    playbackGeneration: generation,
+                    transportIntentGeneration: transportGeneration
+                ) else { return }
+                await MainActor.run { state.playbackState = previousPlaybackState }
+                throw e
+            } catch {
+                guard isCurrentPlaybackIntent(
+                    playbackGeneration: generation,
+                    transportIntentGeneration: transportGeneration
+                ) else { return }
+                await MainActor.run { state.playbackState = previousPlaybackState }
+                throw error
+            }
         }
         guard isCurrentPlaybackIntent(
             playbackGeneration: generation,
@@ -472,7 +510,8 @@ actor PlayerService: PlayerServiceProtocol {
             serverId: serverId,
             isNewQueue: isNewQueue,
             generation: generation,
-            transportGeneration: transportGeneration
+            transportGeneration: transportGeneration,
+            engineTransition: engineTransition
         )
     }
 
@@ -484,7 +523,8 @@ actor PlayerService: PlayerServiceProtocol {
         serverId: UUID,
         isNewQueue: Bool,
         generation: UInt64,
-        transportGeneration: UInt64
+        transportGeneration: UInt64,
+        engineTransition: AudioEngineTrackEnd?
     ) async {
         await waitForTransitionCommit()
         guard isCurrentPlaybackIntent(
@@ -499,13 +539,15 @@ actor PlayerService: PlayerServiceProtocol {
             }
         }
 
-        await recordCurrentTrackPlayback(trigger: wasTrackCompletedNaturally ? "track_completed" : "user_skipped")
+        await recordCurrentTrackPlayback(
+            trigger: wasTrackCompletedNaturally ? "track_completed" : "user_skipped",
+            finalProgress: engineTransition?.endedPosition
+        )
         guard isCurrentPlaybackIntent(
             playbackGeneration: generation,
             transportIntentGeneration: transportGeneration
         ) else { return }
         wasTrackCompletedNaturally = false
-        playbackProgressTracker.startTrack()
 
         cancelPendingScrobble()
         cancelPendingCacheDownload()
@@ -569,7 +611,7 @@ actor PlayerService: PlayerServiceProtocol {
         restorePauseTask?.cancel()
         restorePauseTask = nil
         if isMutedForRestore {
-            engine.volume = restoredVolume
+            engine.volume = await playbackPreferences.restoredVolume
             isMutedForRestore = false
         }
 
@@ -587,10 +629,23 @@ actor PlayerService: PlayerServiceProtocol {
         )
 
         let duration = song.duration
+        let promotedPlayback = engineTransition?.promotedPlayback.flatMap {
+            $0.playbackToken == playbackToken && $0.trackID == song.id ? $0 : nil
+        }
+        let initialPosition = promotedPlayback?.position ?? 0
+        if let promotedPlayback {
+            playbackProgressTracker.startTrack(
+                at: promotedPlayback.startedAt,
+                baseline: promotedPlayback.position,
+                accumulatedTime: promotedPlayback.audibleDuration
+            )
+        } else {
+            playbackProgressTracker.startTrack()
+        }
         await MainActor.run {
             state.currentTrack = song
             state.duration = duration
-            state.position = 0
+            state.position = initialPosition
             state.playbackState = .playing
             state.isPlaybackAvailable = true
         }
@@ -616,8 +671,11 @@ actor PlayerService: PlayerServiceProtocol {
         subsonicPlayingNowTask = Task { [libraryService] in
             await libraryService.scrobble(songId: songId, submission: false)
         }
+        let playingNowDelay = max(0, 3 - (promotedPlayback?.audibleDuration ?? 0))
         playingNowTask = Task { [listenBrainzService, weak self] in
-            try? await Task.sleep(for: .seconds(3))
+            if playingNowDelay > 0 {
+                try? await Task.sleep(for: .seconds(playingNowDelay))
+            }
             guard !Task.isCancelled, let self else { return }
             let stillActive = await MainActor.run {
                 self.state.playbackState == .playing && self.state.currentTrack?.id == song.id
@@ -682,12 +740,13 @@ actor PlayerService: PlayerServiceProtocol {
             playbackGeneration: generation,
             transportIntentGeneration: transportGeneration
         ) else { return }
+        let snapshotPosition = max(initialPosition, engine.progress)
         let snapshot = NowPlayingSnapshot(
             title: song.title,
             artist: song.artist,
             album: song.albumName,
             duration: duration,
-            position: 0,
+            position: snapshotPosition,
             playbackRate: 1.0,
             artworkURL: artworkURL,
             artworkHeaders: artworkHeaders,
@@ -807,7 +866,7 @@ actor PlayerService: PlayerServiceProtocol {
         restorePauseTask?.cancel()
         restorePauseTask = nil
         if isMutedForRestore {
-            engine.volume = restoredVolume
+            engine.volume = await playbackPreferences.restoredVolume
             isMutedForRestore = false
         }
 
@@ -1098,7 +1157,7 @@ actor PlayerService: PlayerServiceProtocol {
                 Logger.player.info("[INSTANT-MIX] built mix discarded — queue was replaced during commit")
                 return
             }
-            UserDefaults.standard.set(true, forKey: Self.autoExtendUserDefaultsKey)
+            await playbackPreferences.setAutoExtendEnabled(true)
             await saveSession()
             guard appendedCount > 0 else {
                 Logger.player.info("[INSTANT-MIX] no similarity data for seed — continuing with the library-based endless queue")
@@ -1125,7 +1184,8 @@ actor PlayerService: PlayerServiceProtocol {
         guard generation == playbackGeneration,
               queueGeneration == self.queueGeneration,
               !Task.isCancelled else { return nil }
-        return await MainActor.run {
+        let previousNextTrackID = await queuedNextTrackID()
+        let appendedCount: Int? = await MainActor.run {
             guard state.queueGeneration == queueGeneration,
                   state.currentTrack?.id == seedTrackID else { return nil }
 
@@ -1137,6 +1197,13 @@ actor PlayerService: PlayerServiceProtocol {
             state.queue.append(contentsOf: freshTracks)
             return freshTracks.count
         }
+        if appendedCount != nil {
+            await invalidatePrefetchIfNextTrackChanged(
+                from: previousNextTrackID,
+                reason: "Instant Mix supplied a next track"
+            )
+        }
+        return appendedCount
     }
 
     private func instantMixDidFinish(generation: UInt64) {
@@ -1186,7 +1253,7 @@ actor PlayerService: PlayerServiceProtocol {
               expectedPlayGeneration == playbackGeneration,
               expectedBuildGeneration == queueBuildGeneration
         else { return }
-        UserDefaults.standard.set(true, forKey: Self.autoExtendUserDefaultsKey)
+        await playbackPreferences.setAutoExtendEnabled(true)
         Logger.player.info("[MIX-TIMING] end-to-end=\(Int(Date().timeIntervalSince(tStart) * 1000), privacy: .public)ms (build=\(buildMs, privacy: .public)ms, start=\(Int(Date().timeIntervalSince(tPlay) * 1000), privacy: .public)ms)")
         await evaluateAutoExtend()
         guard expectedPlayGeneration == playbackGeneration,
@@ -1198,15 +1265,14 @@ actor PlayerService: PlayerServiceProtocol {
     func setVolume(_ volume: Float) async {
         let clamped = max(0, min(1, volume))
         engine.volume = clamped
-        if clamped > 0 {
-            UserDefaults.standard.set(clamped, forKey: "minidisc.lastVolume")
-        }
+        await playbackPreferences.storeLastAudibleVolume(clamped)
     }
 
     func replayGainSettingsDidChange() async {
         let (track, config) = await MainActor.run { (state.currentTrack, replayGainSettings.config) }
         let replayGainDB = track.map { ReplayGainService.gainDB(track: $0, config: config) } ?? 0
         engine.applyReplayGain(dB: replayGainDB)
+        invalidateStandbyPreload(reason: "ReplayGain settings changed")
         if let track {
             logReplayGain(track: track, config: config, appliedDB: replayGainDB, context: "settings")
         }
@@ -1231,8 +1297,9 @@ actor PlayerService: PlayerServiceProtocol {
 
     func crossfadeSettingsDidChange() async {
         crossfadeConfig = await MainActor.run { crossfadeSettings.config }
+        invalidateStandbyPreload(reason: "crossfade settings changed")
         Logger.player.info(
-            "[CROSSFADE] settings duration=\(self.crossfadeConfig.duration, format: .fixed(precision: 1))s keepAlbumTracksBackToBack=\(self.crossfadeConfig.disableForGapless, privacy: .public) appliesToNextPreload=true"
+            "[CROSSFADE] settings duration=\(self.crossfadeConfig.duration, format: .fixed(precision: 1))s keepAlbumTracksBackToBack=\(self.crossfadeConfig.disableForGapless, privacy: .public) standbyRebuild=true"
         )
     }
 
@@ -1247,7 +1314,7 @@ actor PlayerService: PlayerServiceProtocol {
             }
         }
         await MainActor.run { state.isAutoExtendEnabled = enabled }
-        UserDefaults.standard.set(enabled, forKey: Self.autoExtendUserDefaultsKey)
+        await playbackPreferences.setAutoExtendEnabled(enabled)
         if enabled {
             await evaluateAutoExtend()
         } else {
@@ -1348,6 +1415,7 @@ actor PlayerService: PlayerServiceProtocol {
         queueGeneration: UInt64
     ) async -> Int {
         guard !tracks.isEmpty, queueGeneration == self.queueGeneration else { return 0 }
+        let previousNextTrackID = await queuedNextTrackID()
         let appendedCount = await MainActor.run {
             guard state.queueGeneration == queueGeneration,
                   state.isAutoExtendEnabled,
@@ -1365,6 +1433,10 @@ actor PlayerService: PlayerServiceProtocol {
             return freshTracks.count
         }
         guard queueGeneration == self.queueGeneration, appendedCount > 0 else { return 0 }
+        await invalidatePrefetchIfNextTrackChanged(
+            from: previousNextTrackID,
+            reason: "auto-extend supplied a next track"
+        )
         await saveSession()
         return appendedCount
     }
@@ -1384,6 +1456,7 @@ actor PlayerService: PlayerServiceProtocol {
 
     /// Drops the tracks auto-extend appended, keeping whatever is playing right now.
     private func truncateExtensions() async {
+        let previousNextTrackID = await queuedNextTrackID()
         let (boundary, currentIndex, queueCount) = await MainActor.run {
             (state.originalQueueEndIndex, state.currentIndex, state.queue.count)
         }
@@ -1397,6 +1470,10 @@ actor PlayerService: PlayerServiceProtocol {
             state.queue = Array(state.queue[0..<target])
             state.originalQueueEndIndex = nil
         }
+        await invalidatePrefetchIfNextTrackChanged(
+            from: previousNextTrackID,
+            reason: "auto-extend tail changed next track"
+        )
         Logger.player.info("Auto-extend tail truncated to \(target) of \(queueCount) (currentIndex=\(currentIndex), boundary=\(boundary ?? -1))")
     }
 
@@ -1513,7 +1590,7 @@ actor PlayerService: PlayerServiceProtocol {
         restorePauseTask?.cancel()
         restorePauseTask = nil
         if isMutedForRestore {
-            engine.volume = restoredVolume
+            engine.volume = await playbackPreferences.restoredVolume
             isMutedForRestore = false
         }
         await MainActor.run { state.playbackState = .playing }
@@ -1622,7 +1699,7 @@ actor PlayerService: PlayerServiceProtocol {
         restorePauseTask?.cancel()
         restorePauseTask = nil
         if isMutedForRestore {
-            engine.volume = restoredVolume
+            engine.volume = await playbackPreferences.restoredVolume
             isMutedForRestore = false
         }
         liveStreamStallTask?.cancel()
@@ -1779,17 +1856,30 @@ actor PlayerService: PlayerServiceProtocol {
     /// the queue policy and completion attribution.
     private func executeTransitionPlan(
         _ plan: PlaybackTransitionPlanner.Plan,
-        queue: [DisplayableSong]
+        queue: [DisplayableSong],
+        engineTransition: AudioEngineTrackEnd? = nil
     ) async throws {
         switch plan {
         case .playQueueItem(let index, let currentTrackOutcome):
             guard queue.indices.contains(index) else { return }
             wasTrackCompletedNaturally = currentTrackOutcome == .completed
             let next = queue[index]
+            let preparedPlayback = takePreparedNextPlayback(trackID: next.id, queueIndex: index)
+            if let promotedTrackID = engineTransition?.promotedPlayback?.trackID,
+               promotedTrackID != next.id {
+                Logger.player.error(
+                    "[TRANSITION] engine promoted '\(promotedTrackID, privacy: .public)' but queue expects '\(next.id, privacy: .public)' — rebuilding expected item"
+                )
+            }
             Logger.player.info(
                 "[TRANSITION] queue item \(index) → id=\(next.id, privacy: .public) title=\(next.title, privacy: .public) outcome=\(String(describing: currentTrackOutcome), privacy: .public)"
             )
-            try await play(tracks: queue, startIndex: index)
+            try await play(
+                tracks: queue,
+                startIndex: index,
+                preparedPlayback: preparedPlayback,
+                engineTransition: engineTransition
+            )
 
         case .restartCurrent:
             await seek(to: 0)
@@ -1839,6 +1929,9 @@ actor PlayerService: PlayerServiceProtocol {
         }
         let previousMode = await MainActor.run { state.repeatMode }
         await MainActor.run { state.repeatMode = mode }
+        if previousMode == .one || mode == .one {
+            invalidateStandbyPreload(reason: "repeat mode changed")
+        }
         // Activating any loop mode while in the original zone truncates the auto-extended tail.
         if previousMode == .off && mode != .off {
             await truncateExtensions()
@@ -1855,6 +1948,7 @@ actor PlayerService: PlayerServiceProtocol {
             Logger.player.debug("toggleShuffle ignored — live stream mode")
             return
         }
+        let previousNextTrackID = await queuedNextTrackID()
         let isCurrentlyShuffled = await MainActor.run { state.isShuffled }
         if isCurrentlyShuffled {
             await restoreOriginalQueueOrder()
@@ -1866,6 +1960,10 @@ actor PlayerService: PlayerServiceProtocol {
             await shuffleUpNext()
             await MainActor.run { state.isShuffled = true }
         }
+        await invalidatePrefetchIfNextTrackChanged(
+            from: previousNextTrackID,
+            reason: "shuffle order changed"
+        )
         await saveSession()
     }
 
@@ -1895,6 +1993,7 @@ actor PlayerService: PlayerServiceProtocol {
             Logger.player.debug("appendToQueue ignored — live stream mode")
             return
         }
+        let previousNextTrackID = await queuedNextTrackID()
         await MainActor.run {
             state.queue.append(contentsOf: tracks)
             // Once the user edits an already extended tail, a single integer can no longer distinguish
@@ -1903,6 +2002,10 @@ actor PlayerService: PlayerServiceProtocol {
                 state.originalQueueEndIndex = state.queue.count
             }
         }
+        await invalidatePrefetchIfNextTrackChanged(
+            from: previousNextTrackID,
+            reason: "queue append changed next track"
+        )
         await saveSession()
     }
 
@@ -1911,6 +2014,7 @@ actor PlayerService: PlayerServiceProtocol {
             Logger.player.debug("playNext ignored — live stream mode")
             return
         }
+        let previousNextTrackID = await queuedNextTrackID()
         let (queue, currentIndex) = await MainActor.run { (state.queue, state.currentIndex) }
         if queue.isEmpty {
             do {
@@ -1927,6 +2031,10 @@ actor PlayerService: PlayerServiceProtocol {
                 }
             }
             Logger.player.info("Inserted \(songs.count) song(s) at queue position \(insertAt)")
+            await invalidatePrefetchIfNextTrackChanged(
+                from: previousNextTrackID,
+                reason: "Play Next changed next track"
+            )
             await saveSession()
             if !songs.isEmpty {
                 await presentQueueConfirmation(
@@ -1970,6 +2078,7 @@ actor PlayerService: PlayerServiceProtocol {
             Logger.player.debug("removeFromQueue ignored — live stream mode")
             return
         }
+        let previousNextTrackID = await queuedNextTrackID()
         let (queueCount, currentIndex, isShuffled) = await MainActor.run {
             (state.queue.count, state.currentIndex, state.isShuffled)
         }
@@ -1986,6 +2095,10 @@ actor PlayerService: PlayerServiceProtocol {
             }
         }
         if isShuffled { originalQueueOrder = nil }
+        await invalidatePrefetchIfNextTrackChanged(
+            from: previousNextTrackID,
+            reason: "queue removal changed next track"
+        )
         let newIdx = await MainActor.run { state.currentIndex }
         Logger.player.info("Removed track at \(index), currentIndex now \(newIdx)")
         await saveSession()
@@ -1996,6 +2109,7 @@ actor PlayerService: PlayerServiceProtocol {
             Logger.player.debug("moveInQueue ignored — live stream mode")
             return
         }
+        let previousNextTrackID = await queuedNextTrackID()
         let (queueCount, currentIndex, isShuffled) = await MainActor.run {
             (state.queue.count, state.currentIndex, state.isShuffled)
         }
@@ -2020,6 +2134,10 @@ actor PlayerService: PlayerServiceProtocol {
             state.originalQueueEndIndex = nil
         }
         if isShuffled { originalQueueOrder = nil }
+        await invalidatePrefetchIfNextTrackChanged(
+            from: previousNextTrackID,
+            reason: "queue reorder changed next track"
+        )
         let newIdx = await MainActor.run { state.currentIndex }
         Logger.player.info("Moved track \(fromIndex)→\(toIndex), currentIndex now \(newIdx)")
         await saveSession()
@@ -2813,6 +2931,45 @@ actor PlayerService: PlayerServiceProtocol {
     private func cancelPendingPrefetch() {
         prefetchGeneration &+= 1
         prefetchScheduled = false
+        preparedNextPlayback = nil
+    }
+
+    private func invalidateStandbyPreload(reason: String) {
+        let hadPendingWork = prefetchScheduled || preparedNextPlayback != nil
+        cancelPendingPrefetch()
+        engine.cancelPreload()
+        if hadPendingWork {
+            Logger.player.debug("[PREFETCH] invalidated standby: \(reason, privacy: .public)")
+        }
+    }
+
+    private func queuedNextTrackID() async -> String? {
+        await MainActor.run {
+            let index = state.currentIndex + 1
+            return state.queue.indices.contains(index) ? state.queue[index].id : nil
+        }
+    }
+
+    private func invalidatePrefetchIfNextTrackChanged(
+        from previousNextTrackID: String?,
+        reason: String
+    ) async {
+        let currentNextTrackID = await queuedNextTrackID()
+        guard previousNextTrackID != currentNextTrackID else { return }
+        invalidateStandbyPreload(reason: reason)
+    }
+
+    private func takePreparedNextPlayback(
+        trackID: String,
+        queueIndex: Int
+    ) -> PreparedNextPlayback? {
+        guard let preparedNextPlayback,
+              preparedNextPlayback.trackID == trackID,
+              preparedNextPlayback.playbackGeneration == playbackGeneration,
+              preparedNextPlayback.prefetchGeneration == prefetchGeneration,
+              preparedNextPlayback.expectedCurrentIndex + 1 == queueIndex else { return nil }
+        self.preparedNextPlayback = nil
+        return preparedNextPlayback
     }
 
     nonisolated static func shouldSchedulePrefetch(crossfadeDuration: Double, remaining: Double) -> Bool {
@@ -2901,7 +3058,7 @@ actor PlayerService: PlayerServiceProtocol {
         let repeatMode = await MainActor.run { state.repeatMode }
         guard repeatMode != .one else { return }
 
-        let isPair = await isNextGaplessPair(songId: songId)
+        let isPair = await isNextAlbumSequencePair(songId: songId)
         let overlap = Self.effectiveCrossfadeOverlap(
             duration: crossfadeConfig.duration,
             disableForGapless: crossfadeConfig.disableForGapless,
@@ -2933,6 +3090,13 @@ actor PlayerService: PlayerServiceProtocol {
             return
         }
         let replayGainDB = ReplayGainService.gainDB(track: nextSong, config: replayGainConfig)
+        let expectedCurrentIndex = await MainActor.run { state.currentIndex }
+        guard await isPrefetchContextValid(
+            songId: songId,
+            serverId: serverId,
+            generation: generation,
+            prefetchGeneration: prefetchGeneration
+        ) else { return }
         engine.setTrackEndTrim(trim.leadOut)
         engine.preloadNext(
             trackID: songId,
@@ -2941,6 +3105,14 @@ actor PlayerService: PlayerServiceProtocol {
             crossfadeDuration: overlap,
             leadInTrim: trim.leadIn,
             replayGainDB: replayGainDB
+        )
+        preparedNextPlayback = PreparedNextPlayback(
+            trackID: songId,
+            serverID: serverId,
+            source: source,
+            playbackGeneration: generation,
+            prefetchGeneration: prefetchGeneration,
+            expectedCurrentIndex: expectedCurrentIndex
         )
         Logger.player.info(
             "[CROSSFADE] preloaded next='\(songId, privacy: .public)' configured=\(self.crossfadeConfig.duration, format: .fixed(precision: 1))s gaplessPair=\(isPair, privacy: .public) overlap=\(overlap, format: .fixed(precision: 1))s replayGain=\(replayGainDB, format: .fixed(precision: 2))dB trimIn=\(trim.leadIn, format: .fixed(precision: 3))s trimOut=\(trim.leadOut, format: .fixed(precision: 3))s"
@@ -2989,39 +3161,48 @@ actor PlayerService: PlayerServiceProtocol {
         return GaplessTrim(leadIn: headTrim.leadIn, leadOut: tailTrim.leadOut)
     }
 
-    /// True when the current track and the queued `songId` form a gapless pair (same album,
-    /// consecutive tracks) — mirrors the crossfade fade-out skip.
-    private func isNextGaplessPair(songId: String) async -> Bool {
+    /// True when the current track and queued item are neighbours in the album sequence.
+    private func isNextAlbumSequencePair(songId: String) async -> Bool {
         await MainActor.run {
             let nextIndex = state.currentIndex + 1
             guard let current = state.currentTrack,
                   state.queue.indices.contains(nextIndex) else { return false }
             let next = state.queue[nextIndex]
             guard next.id == songId else { return false }
-            return PlayerService.isGaplessPair(
+            return PlayerService.isAlbumSequencePair(
                 currentAlbumId: current.albumId,
+                currentDiscNumber: current.discNumber,
                 currentTrackNumber: current.trackNumber,
                 nextAlbumId: next.albumId,
+                nextDiscNumber: next.discNumber,
                 nextTrackNumber: next.trackNumber
             )
         }
     }
 
-    // MARK: - Gapless pairing
+    // MARK: - Album sequence pairing
 
-    /// Returns true when the current and next track form a gapless pair (same album, consecutive track numbers).
-    /// Nil albumId or track number → not a pair, so crossfade proceeds.
-    nonisolated static func isGaplessPair(
+    /// Identifies adjacent album tracks without pretending the server exposes a true gapless tag.
+    /// It handles ordinary track increments and the common disc N → disc N+1, track 1 boundary.
+    nonisolated static func isAlbumSequencePair(
         currentAlbumId: String?,
+        currentDiscNumber: Int?,
         currentTrackNumber: Int?,
         nextAlbumId: String?,
+        nextDiscNumber: Int?,
         nextTrackNumber: Int?
     ) -> Bool {
         guard let cAlbum = currentAlbumId,
               let nAlbum = nextAlbumId,
               let cTrack = currentTrackNumber,
               let nTrack = nextTrackNumber else { return false }
-        return cAlbum == nAlbum && nTrack == cTrack + 1
+        guard cAlbum == nAlbum else { return false }
+        let currentDisc = currentDiscNumber ?? 1
+        let nextDisc = nextDiscNumber ?? 1
+        if currentDisc == nextDisc {
+            return nTrack == cTrack + 1
+        }
+        return nextDisc == currentDisc + 1 && nTrack == 1
     }
 
     /// Returns true when the route outputs represent a personal listening device whose
@@ -3067,10 +3248,13 @@ actor PlayerService: PlayerServiceProtocol {
 
     // MARK: - Stats recording
 
-    private func recordCurrentTrackPlayback(trigger: String = "unknown") async {
+    private func recordCurrentTrackPlayback(
+        trigger: String = "unknown",
+        finalProgress: TimeInterval? = nil
+    ) async {
         guard let song = await MainActor.run(body: { state.currentTrack }) else { return }
         guard let serverId = await MainActor.run(body: { serverService.state.activeServer?.id }) else { return }
-        await accumulatePlaybackProgress(engine.progress)
+        await accumulatePlaybackProgress(finalProgress ?? engine.progress)
         let trackDuration = await MainActor.run { state.duration }
         guard let dto = playbackProgressTracker.playbackEvent(
             song: song,
@@ -3094,7 +3278,8 @@ actor PlayerService: PlayerServiceProtocol {
 
     // MARK: - End of track
 
-    func handleEndOfTrack(playbackToken: AudioEnginePlaybackToken) async {
+    func handleEndOfTrack(_ engineTransition: AudioEngineTrackEnd) async {
+        let playbackToken = engineTransition.endedPlaybackToken
         guard isCurrentEngineEvent(playbackToken) else {
             Logger.player.debug("[END-OF-TRACK] ignored stale engine callback")
             return
@@ -3121,7 +3306,11 @@ actor PlayerService: PlayerServiceProtocol {
             snapshot: transition.planner
         )
         do {
-            try await executeTransitionPlan(plan, queue: transition.queue)
+            try await executeTransitionPlan(
+                plan,
+                queue: transition.queue,
+                engineTransition: engineTransition
+            )
         } catch {
             Logger.player.error("[TRANSITION] handleEndOfTrack failed: \(error, privacy: .public)")
         }
@@ -3197,7 +3386,7 @@ actor PlayerService: PlayerServiceProtocol {
                         guard !Task.isCancelled, self.isCurrentEngineEvent(playbackToken) else { return }
                         self.restorePauseTask = nil
                         self.engine.pause()
-                        self.engine.volume = self.restoredVolume
+                        self.engine.volume = await self.playbackPreferences.restoredVolume
                         self.isMutedForRestore = false
                         await MainActor.run { self.state.playbackState = .paused }
                         self.stopProgressTimer()
@@ -3207,7 +3396,7 @@ actor PlayerService: PlayerServiceProtocol {
                     break
                 }
                 if isMutedForRestore {
-                    engine.volume = restoredVolume
+                    engine.volume = await playbackPreferences.restoredVolume
                     isMutedForRestore = false
                 }
                 isRestoringSession = false
@@ -3897,9 +4086,9 @@ nonisolated final class AudioEngineBridge: AudioEngineDelegate, Sendable {
         Task { await service.handleEngineState(state, playbackToken: playbackToken) }
     }
 
-    func audioEngineDidReachEndOfTrack(playbackToken: AudioEnginePlaybackToken) {
+    func audioEngineDidReachEndOfTrack(_ transition: AudioEngineTrackEnd) {
         guard let service = currentService() else { return }
-        Task { await service.handleEndOfTrack(playbackToken: playbackToken) }
+        Task { await service.handleEndOfTrack(transition) }
     }
 
     func audioEngineDidError(_ message: String, playbackToken: AudioEnginePlaybackToken) {

@@ -83,6 +83,18 @@ struct PlaybackProgressTrackerTests {
         #expect(tracker.accumulatedTime == 0.5)
     }
 
+    @Test("crossfade promotion preserves already audible playback")
+    func promotedPlaybackIncludesOverlap() {
+        var tracker = PlaybackProgressTracker()
+        let startedAt = Date(timeIntervalSince1970: 1_500)
+
+        tracker.startTrack(at: startedAt, baseline: 5, accumulatedTime: 5)
+        tracker.record(progress: 5.5, isPlaying: true)
+
+        #expect(tracker.trackStartDate == startedAt)
+        #expect(tracker.accumulatedTime == 5.5)
+    }
+
     @Test("playback events require thirty listened seconds")
     func buildsPlaybackEventAtThreshold() throws {
         var tracker = PlaybackProgressTracker()

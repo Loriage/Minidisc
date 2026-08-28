@@ -15,6 +15,7 @@ nonisolated struct DisplayableSong: Identifiable, Hashable, Sendable, Codable {
     let artistId: String?
     let genre: String?
     let duration: TimeInterval
+    var discNumber: Int? = nil
     let trackNumber: Int?
     var isDownloaded: Bool
     let coverArtId: String?
@@ -39,6 +40,7 @@ extension DisplayableSong {
         self.artistId = song.artistId
         self.genre = song.genres?.first?.name ?? song.genre
         self.duration = song.duration.map(TimeInterval.init) ?? 0
+        self.discNumber = song.discNumber
         self.trackNumber = song.track
         self.isDownloaded = isDownloaded
         self.coverArtId = song.coverArt
@@ -61,6 +63,7 @@ extension DisplayableSong {
         self.artistId = track.artistId
         self.genre = track.genre
         self.duration = track.durationSeconds.map(TimeInterval.init) ?? 0
+        self.discNumber = track.discNumber
         self.trackNumber = track.trackNumber
         self.isDownloaded = true
         self.coverArtId = track.coverArtId

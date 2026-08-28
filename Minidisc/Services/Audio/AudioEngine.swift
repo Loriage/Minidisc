@@ -24,12 +24,36 @@ nonisolated struct AudioEnginePlaybackToken: Hashable, Sendable {
     }
 }
 
+/// A standby item that the engine has already promoted to the active output.
+///
+/// The orchestration layer uses this snapshot to adopt the exact physical playback without
+/// resolving the media URL again at the network-sensitive transition boundary.
+nonisolated struct AudioEnginePromotedPlayback: Sendable, Equatable {
+    let playbackToken: AudioEnginePlaybackToken
+    let trackID: String
+    let sourceURL: URL
+    let sourceHeaders: [String: String]
+    /// Wall-clock instant at which the incoming deck became audible.
+    let startedAt: Date
+    /// Current position in the promoted item, including any lead-in seek.
+    let position: TimeInterval
+    /// Audio from the promoted item that has already been heard during an overlap.
+    let audibleDuration: TimeInterval
+}
+
+/// Everything known at a natural track boundary, captured before deck roles change.
+nonisolated struct AudioEngineTrackEnd: Sendable, Equatable {
+    let endedPlaybackToken: AudioEnginePlaybackToken
+    let endedPosition: TimeInterval
+    let promotedPlayback: AudioEnginePromotedPlayback?
+}
+
 /// Events an `AudioEngine` reports back. Called on the engine's callback thread; a consumer that is an
 /// actor hops to its executor itself (as `PlayerService` does today).
 nonisolated protocol AudioEngineDelegate: AnyObject, Sendable {
     func audioEngineDidChangeState(_ state: AudioEngineState, playbackToken: AudioEnginePlaybackToken)
     /// The current track finished on its own (end of file), not by a user stop/skip.
-    func audioEngineDidReachEndOfTrack(playbackToken: AudioEnginePlaybackToken)
+    func audioEngineDidReachEndOfTrack(_ transition: AudioEngineTrackEnd)
     func audioEngineDidError(_ message: String, playbackToken: AudioEnginePlaybackToken)
 }
 

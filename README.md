@@ -59,7 +59,8 @@ If you want the largest set of functions on Mac and iPhone, use Cassette. If you
 
 **Privacy**
 
-- All traffic goes directly to your server, and Minidisc does not track you.
+- Minidisc does not track you. Library and playback traffic goes directly to your configured server.
+- If you select LRCLIB as the lyrics source, or use it as the automatic fallback, Minidisc sends the track title, artist, album, and duration to LRCLIB over HTTPS. Server credentials, custom headers, and server identifiers are never included.
 - Minidisc keeps your credentials only in the iOS Keychain.
 - Minidisc can send custom HTTP headers for a server behind a reverse proxy, for example Cloudflare Access or Authelia.
 

@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Minidisc
 
@@ -64,6 +65,33 @@ struct AVPlayerEngineReplayGainRoutingTests {
     }
 }
 
+@Suite("AVPlayerEngine equal-power crossfade")
+struct AVPlayerEngineEqualPowerCrossfadeTests {
+    @Test func endpointsRouteOneDeckAtATime() {
+        let start = AVPlayerEngine.equalPowerLevels(progress: 0)
+        let end = AVPlayerEngine.equalPowerLevels(progress: 1)
+
+        #expect(abs(start.outgoing - 1) < 0.0001)
+        #expect(abs(start.incoming) < 0.0001)
+        #expect(abs(end.outgoing) < 0.0001)
+        #expect(abs(end.incoming - 1) < 0.0001)
+    }
+
+    @Test func midpointPreservesCombinedPower() {
+        let midpoint = AVPlayerEngine.equalPowerLevels(progress: 0.5)
+        let combinedPower = midpoint.outgoing * midpoint.outgoing
+            + midpoint.incoming * midpoint.incoming
+
+        #expect(abs(combinedPower - 1) < 0.0001)
+        #expect(abs(midpoint.outgoing - midpoint.incoming) < 0.0001)
+    }
+
+    @Test func progressIsClampedToTheRamp() {
+        #expect(AVPlayerEngine.equalPowerLevels(progress: -1).outgoing == 1)
+        #expect(abs(AVPlayerEngine.equalPowerLevels(progress: 2).outgoing) < 0.0001)
+    }
+}
+
 @Suite("PlayerService.effectiveCrossfadeOverlap")
 struct EffectiveCrossfadeOverlapTests {
     @Test func usesConfiguredDurationForOrdinaryTransitions() {
@@ -91,47 +119,67 @@ struct EffectiveCrossfadeOverlapTests {
     }
 }
 
-// MARK: - isGaplessPair
+// MARK: - isAlbumSequencePair
 
-@Suite("PlayerService.isGaplessPair")
-struct IsGaplessPairTests {
+@Suite("PlayerService.isAlbumSequencePair")
+struct IsAlbumSequencePairTests {
 
     @Test func sameAlbumConsecutiveIsGapless() {
-        #expect(PlayerService.isGaplessPair(
-            currentAlbumId: "A", currentTrackNumber: 3,
-            nextAlbumId: "A", nextTrackNumber: 4
+        #expect(PlayerService.isAlbumSequencePair(
+            currentAlbumId: "A", currentDiscNumber: 1,
+            currentTrackNumber: 3,
+            nextAlbumId: "A", nextDiscNumber: 1, nextTrackNumber: 4
         ) == true)
     }
 
     @Test func differentAlbumIsNotGapless() {
-        #expect(PlayerService.isGaplessPair(
-            currentAlbumId: "A", currentTrackNumber: 3,
-            nextAlbumId: "B", nextTrackNumber: 4
+        #expect(PlayerService.isAlbumSequencePair(
+            currentAlbumId: "A", currentDiscNumber: 1,
+            currentTrackNumber: 3,
+            nextAlbumId: "B", nextDiscNumber: 1, nextTrackNumber: 4
         ) == false)
     }
 
     @Test func nonConsecutiveIsNotGapless() {
-        #expect(PlayerService.isGaplessPair(
-            currentAlbumId: "A", currentTrackNumber: 3,
-            nextAlbumId: "A", nextTrackNumber: 5
+        #expect(PlayerService.isAlbumSequencePair(
+            currentAlbumId: "A", currentDiscNumber: 1,
+            currentTrackNumber: 3,
+            nextAlbumId: "A", nextDiscNumber: 1, nextTrackNumber: 5
         ) == false)
     }
 
+    @Test func nextDiscStartsAContinuousAlbumSequence() {
+        #expect(PlayerService.isAlbumSequencePair(
+            currentAlbumId: "A", currentDiscNumber: 1, currentTrackNumber: 12,
+            nextAlbumId: "A", nextDiscNumber: 2, nextTrackNumber: 1
+        ))
+    }
+
+    @Test func skippedDiscIsNotContinuous() {
+        #expect(!PlayerService.isAlbumSequencePair(
+            currentAlbumId: "A", currentDiscNumber: 1, currentTrackNumber: 12,
+            nextAlbumId: "A", nextDiscNumber: 3, nextTrackNumber: 1
+        ))
+    }
+
     @Test func nilAlbumIdIsNotGapless() {
-        #expect(PlayerService.isGaplessPair(
-            currentAlbumId: nil, currentTrackNumber: 3,
-            nextAlbumId: "A", nextTrackNumber: 4
+        #expect(PlayerService.isAlbumSequencePair(
+            currentAlbumId: nil, currentDiscNumber: 1,
+            currentTrackNumber: 3,
+            nextAlbumId: "A", nextDiscNumber: 1, nextTrackNumber: 4
         ) == false)
-        #expect(PlayerService.isGaplessPair(
-            currentAlbumId: "A", currentTrackNumber: 3,
-            nextAlbumId: nil, nextTrackNumber: 4
+        #expect(PlayerService.isAlbumSequencePair(
+            currentAlbumId: "A", currentDiscNumber: 1,
+            currentTrackNumber: 3,
+            nextAlbumId: nil, nextDiscNumber: 1, nextTrackNumber: 4
         ) == false)
     }
 
     @Test func nilTrackNumberIsNotGapless() {
-        #expect(PlayerService.isGaplessPair(
-            currentAlbumId: "A", currentTrackNumber: nil,
-            nextAlbumId: "A", nextTrackNumber: 4
+        #expect(PlayerService.isAlbumSequencePair(
+            currentAlbumId: "A", currentDiscNumber: 1,
+            currentTrackNumber: nil,
+            nextAlbumId: "A", nextDiscNumber: 1, nextTrackNumber: 4
         ) == false)
     }
 }

@@ -16,6 +16,12 @@ the app can send their ListenBrainz account identifier and music listening data
 for scrobbling, recommendations, and other requested service functionality.
 Those linked data categories are declared without tracking.
 
+When the lyrics source is `Auto` or `LRCLIB`, Minidisc can send a track's title,
+artist, album, and duration to `https://lrclib.net` to retrieve lyrics. Requests
+never include server credentials, custom headers, server identifiers, or the
+server's URL. Before release, verify this disclosure against LRCLIB's current
+data practices and Xcode's merged privacy report.
+
 Re-audit the manifest whenever app code or a dependency adds analytics,
 diagnostics, identifiers, filesystem metadata, advertising, or data collection.
 

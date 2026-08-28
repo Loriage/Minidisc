@@ -448,6 +448,7 @@ actor DownloadService: DownloadServiceProtocol {
         let artist = song.artist
         let album = song.album
         let genre = song.genres?.first?.name ?? song.genre
+        let discNumber = song.discNumber
         let track = song.track
         let duration = song.duration
         let coverArtId = song.coverArt
@@ -488,6 +489,7 @@ actor DownloadService: DownloadServiceProtocol {
                 artist: artist,
                 artistId: artistId,
                 album: album,
+                discNumber: discNumber,
                 trackNumber: track,
                 durationSeconds: duration,
                 coverArtId: coverArtId,

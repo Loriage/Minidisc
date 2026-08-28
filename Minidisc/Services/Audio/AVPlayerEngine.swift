@@ -15,6 +15,12 @@ import Synchronization
 /// on other threads; a recursive lock guards the deck roles and transition state. ReplayGain cuts use
 /// each deck's volume; boosts use an `MTAudioProcessingTap` because `AVPlayer.volume` cannot exceed 1.
 nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
+    private enum StandbyPreparationState {
+        case idle
+        case preparing
+        case ready
+    }
+
     private enum ReplayGainDeck: Sendable {
         case a
         case b
@@ -62,6 +68,10 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     private var preloadedAsset: AVAsset?
     private var preloadedTrackID: String?
     private var preloadedPlaybackToken: AudioEnginePlaybackToken?
+    private var preloadedSourceURL: URL?
+    private var preloadedSourceHeaders: [String: String] = [:]
+    private var preloadedStartPosition: TimeInterval = 0
+    private var standbyPreparationState: StandbyPreparationState = .idle
     /// Monotonic within this engine instance. It is deliberately never reset with the decks, so a
     /// callback queued for an item that was stopped can never alias a later load of the same song.
     private var nextPlaybackTokenRawValue: UInt64 = 0
@@ -75,10 +85,13 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     private var rampActive: Float = 1
     private var rampStandby: Float = 1
     private var overlapTimer: DispatchSourceTimer?
-    private var overlapStep = 0
-    private var overlapSteps = 0
+    private var overlapDuration: TimeInterval = 0
+    private var overlapStartedAt: Date?
+    private var overlapAwaitingStandbyPlayback = false
     private var isOverlapping = false
     private let rampQueue = DispatchQueue(label: "minidisc.engine.crossfade")
+    private var overlapBoundaryToken: Any?
+    private var overlapBoundaryOwner: AVPlayer?
     /// Authoritative track length from the library metadata. AVPlayer's own `item.duration` is an
     /// estimate that drifts on transcoded/VBR streams, which would arm the overlap at the wrong time.
     private var metadataDuration: Double = 0
@@ -119,6 +132,23 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
                 self.lock.lock()
                 let isActive = player === self.activePlayer
                 let playbackToken = isActive ? self.currentPlaybackToken : nil
+                if !isActive, player === self.standbyPlayer {
+                    switch player.timeControlStatus {
+                    case .playing:
+                        self.startOverlapRampIfPossible()
+                    case .paused, .waitingToPlayAtSpecifiedRate:
+                        if self.isOverlapping {
+                            // A buffering incoming deck must never leave the only audible deck
+                            // partially faded. Its media clock freezes, so the ramp resumes from
+                            // the same point once AVPlayer renders it again.
+                            self.rampActive = 1
+                            self.rampStandby = 0
+                            self.applyDeckVolumes()
+                        }
+                    @unknown default:
+                        break
+                    }
+                }
                 self.lock.unlock()
                 guard isActive, let playbackToken else { return }
                 switch player.timeControlStatus {
@@ -144,6 +174,9 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         timeControlObservers.forEach { $0.invalidate() }
         if let periodicToken, let periodicOwner {
             periodicOwner.removeTimeObserver(periodicToken)
+        }
+        if let overlapBoundaryToken, let overlapBoundaryOwner {
+            overlapBoundaryOwner.removeTimeObserver(overlapBoundaryToken)
         }
     }
 
@@ -182,7 +215,9 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         }
 
         // Manual skip into the preloaded track: promote the warm standby deck right away.
-        if trackID == preloadedTrackID, preloadedItem?.status == .readyToPlay {
+        if trackID == preloadedTrackID,
+           standbyPreparationState == .ready,
+           preloadedItem?.status == .readyToPlay {
             promotePreloaded(startPlaying: true)
             // `preloadedItem` had a token before promotion, so this is an internal invariant rather
             // than a recoverable playback failure.
@@ -235,9 +270,9 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         if trackID == preloadedTrackID {
             pendingOverlap = crossfadeDuration
             if crossfadeDuration > 0 {
-                installPeriodicObserver(on: activePlayer)
+                installTransitionObservers(on: activePlayer)
             } else {
-                removePeriodicObserver()
+                removeTransitionObservers()
             }
             return
         }
@@ -249,11 +284,15 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         preloadedAsset = asset
         preloadedTrackID = trackID
         preloadedPlaybackToken = makePlaybackToken()
+        preloadedSourceURL = url
+        preloadedSourceHeaders = headers
+        preloadedStartPosition = max(0, leadInTrim)
+        standbyPreparationState = .preparing
         pendingOverlap = crossfadeDuration
         if crossfadeDuration > 0 {
-            installPeriodicObserver(on: activePlayer)
+            installTransitionObservers(on: activePlayer)
         } else {
-            removePeriodicObserver()
+            removeTransitionObservers()
         }
         standbyContext.gain = pow(10, replayGainDB / 20)
         applyDeckVolumes()
@@ -272,20 +311,54 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
             }
             guard item.status == .readyToPlay else { return }
             Logger.player.info(
-                "[CROSSFADE] standby ready track='\(self.preloadedTrackID ?? "unknown", privacy: .public)' overlap=\(self.pendingOverlap, format: .fixed(precision: 1))s"
+                "[CROSSFADE] standby item ready track='\(self.preloadedTrackID ?? "unknown", privacy: .public)' overlap=\(self.pendingOverlap, format: .fixed(precision: 1))s"
             )
             if leadInTrim > 0 {
                 item.seek(
                     to: CMTime(seconds: leadInTrim, preferredTimescale: 600),
                     toleranceBefore: .zero,
                     toleranceAfter: .zero
-                ) { [weak self] _ in
-                    self?.lock.lock()
-                    if item === self?.preloadedItem { self?.standbyPlayer.preroll(atRate: 1) { _ in } }
-                    self?.lock.unlock()
+                ) { [weak self] completed in
+                    guard let self else { return }
+                    self.lock.lock()
+                    defer { self.lock.unlock() }
+                    guard item === self.preloadedItem else { return }
+                    guard completed else {
+                        Logger.player.warning("[ENGINE] standby lead-in seek failed — using cold transition")
+                        self.clearPreloadedDeck()
+                        return
+                    }
+                    self.prerollStandby(item)
                 }
             } else {
-                self.standbyPlayer.preroll(atRate: 1) { _ in }
+                self.prerollStandby(item)
+            }
+        }
+    }
+
+    /// `readyToPlay` only means that the item can begin loading. A standby deck becomes eligible
+    /// for promotion only after AVPlayer confirms that its media pipeline has actually been primed.
+    private func prerollStandby(_ item: AVPlayerItem) {
+        guard item === preloadedItem else { return }
+        standbyPreparationState = .preparing
+        standbyPlayer.preroll(atRate: 1) { [weak self, weak item] succeeded in
+            guard let self, let item else { return }
+            self.lock.lock()
+            defer { self.lock.unlock() }
+            guard item === self.preloadedItem else { return }
+            guard succeeded else {
+                Logger.player.warning("[ENGINE] standby preroll failed — using cold transition")
+                self.clearPreloadedDeck()
+                return
+            }
+            self.standbyPreparationState = .ready
+            Logger.player.info(
+                "[ENGINE] standby preroll completed track='\(self.preloadedTrackID ?? "unknown", privacy: .public)'"
+            )
+            // The exact overlap boundary may have passed while a slow stream was priming. The
+            // periodic fallback computes the remaining playable window and starts safely now.
+            if self.pendingOverlap > 0 {
+                self.overlapTick()
             }
         }
     }
@@ -407,8 +480,13 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
 
     // MARK: - Transition machinery (all called with the lock held)
 
-    /// Watches the active deck's clock; when the remaining time enters the overlap window, starts
-    /// the blend.
+    /// A boundary observer starts the blend on the media timeline. The low-frequency periodic
+    /// observer remains as a fallback when the standby finishes prerolling after that boundary.
+    private func installTransitionObservers(on player: AVPlayer) {
+        installPeriodicObserver(on: player)
+        installBoundaryObserver(on: player)
+    }
+
     private func installPeriodicObserver(on player: AVPlayer) {
         removePeriodicObserver()
         periodicOwner = player
@@ -428,16 +506,54 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         periodicOwner = nil
     }
 
+    private func installBoundaryObserver(on player: AVPlayer) {
+        removeBoundaryObserver()
+        guard pendingOverlap > 0, let item = currentItem else { return }
+        let itemDuration = item.duration.isNumeric ? CMTimeGetSeconds(item.duration) : 0
+        let trackDuration = metadataDuration > 0 ? metadataDuration : itemDuration
+        guard trackDuration > 0 else { return }
+        let boundary = max(0, trackDuration - pendingOverlap)
+        let boundaryTime = CMTime(seconds: boundary, preferredTimescale: 600)
+        overlapBoundaryOwner = player
+        overlapBoundaryToken = player.addBoundaryTimeObserver(
+            forTimes: [NSValue(time: boundaryTime)],
+            queue: .main
+        ) { [weak self] in
+            self?.overlapTick()
+        }
+        let current = player.currentTime().isNumeric ? CMTimeGetSeconds(player.currentTime()) : 0
+        if current >= boundary {
+            overlapTick()
+        }
+    }
+
+    private func removeBoundaryObserver() {
+        if let overlapBoundaryToken, let overlapBoundaryOwner {
+            overlapBoundaryOwner.removeTimeObserver(overlapBoundaryToken)
+        }
+        overlapBoundaryToken = nil
+        overlapBoundaryOwner = nil
+    }
+
+    private func removeTransitionObservers() {
+        removePeriodicObserver()
+        removeBoundaryObserver()
+    }
+
     func setTrackDuration(_ seconds: Double) {
         lock.lock()
         defer { lock.unlock() }
         metadataDuration = seconds
+        if pendingOverlap > 0, currentItem != nil {
+            installBoundaryObserver(on: activePlayer)
+        }
     }
 
     private func overlapTick() {
         lock.lock()
         defer { lock.unlock() }
-        guard !isOverlapping, pendingOverlap > 0,
+        guard !isOverlapping, !overlapAwaitingStandbyPlayback, pendingOverlap > 0,
+              standbyPreparationState == .ready,
               let preloadedItem, preloadedItem.status == .readyToPlay,
               activePlayer.timeControlStatus == .playing,
               let item = currentItem else { return }
@@ -446,19 +562,40 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         guard trackDuration > 0 else { return }
         let remaining = trackDuration - CMTimeGetSeconds(activePlayer.currentTime())
         guard remaining > 0, remaining <= pendingOverlap else { return }
-        beginOverlap(duration: min(pendingOverlap, remaining))
+        requestOverlap()
     }
 
-    /// Starts the standby deck at zero and blends both decks with an equal-power ramp — both tracks
-    /// audible for `duration` seconds. The active deck finishes naturally; `finalizeAdvance` swaps.
-    private func beginOverlap(duration: Double) {
-        Logger.player.info("[CROSSFADE] overlap started duration=\(duration, format: .fixed(precision: 2))s")
-        isOverlapping = true
+    /// Requests playback at zero gain. The ramp itself does not start until AVPlayer reports that
+    /// the standby deck is genuinely rendering, preventing the outgoing deck from fading into a
+    /// buffering incoming stream.
+    private func requestOverlap() {
+        overlapAwaitingStandbyPlayback = true
         rampStandby = 0
         applyDeckVolumes()
         standbyPlayer.play()
-        overlapStep = 0
-        overlapSteps = max(1, Int(duration / 0.05))
+        startOverlapRampIfPossible()
+    }
+
+    private func startOverlapRampIfPossible() {
+        guard overlapAwaitingStandbyPlayback,
+              !isOverlapping,
+              standbyPlayer.timeControlStatus == .playing,
+              let item = currentItem else { return }
+        let itemDuration = item.duration.isNumeric ? CMTimeGetSeconds(item.duration) : 0
+        let trackDuration = metadataDuration > 0 ? metadataDuration : itemDuration
+        let activePosition = activePlayer.currentTime().isNumeric
+            ? CMTimeGetSeconds(activePlayer.currentTime())
+            : 0
+        let remaining = trackDuration - activePosition
+        guard remaining > 0 else { return }
+
+        overlapAwaitingStandbyPlayback = false
+        isOverlapping = true
+        overlapDuration = min(pendingOverlap, remaining)
+        overlapStartedAt = Date()
+        Logger.player.info(
+            "[CROSSFADE] overlap started duration=\(self.overlapDuration, format: .fixed(precision: 2))s"
+        )
         let timer = DispatchSource.makeTimerSource(queue: rampQueue)
         timer.schedule(deadline: .now() + .milliseconds(50), repeating: .milliseconds(50))
         timer.setEventHandler { [weak self] in
@@ -469,28 +606,42 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     }
 
     private func overlapRampTick() {
-        var endedPlaybackToken: AudioEnginePlaybackToken?
+        var endedTransition: AudioEngineTrackEnd?
         lock.lock()
         defer {
             lock.unlock()
-            if let endedPlaybackToken {
-                delegate?.audioEngineDidReachEndOfTrack(playbackToken: endedPlaybackToken)
+            if let endedTransition {
+                delegate?.audioEngineDidReachEndOfTrack(endedTransition)
             }
         }
         guard isOverlapping, overlapTimer != nil else { return }
-        overlapStep += 1
-        let x = Float(min(overlapStep, overlapSteps)) / Float(overlapSteps)
-        rampStandby = sin(x * .pi / 2)
-        rampActive = cos(x * .pi / 2)
+        guard standbyPlayer.timeControlStatus == .playing else {
+            rampActive = 1
+            rampStandby = 0
+            applyDeckVolumes()
+            return
+        }
+        let standbyTime = standbyPlayer.currentTime()
+        let standbyPosition = standbyTime.isNumeric ? CMTimeGetSeconds(standbyTime) : preloadedStartPosition
+        let audibleProgress = max(0, standbyPosition - preloadedStartPosition)
+        let progress = overlapDuration > 0 ? min(1, audibleProgress / overlapDuration) : 1
+        let levels = Self.equalPowerLevels(progress: progress)
+        rampActive = levels.outgoing
+        rampStandby = levels.incoming
         applyDeckVolumes()
-        if overlapStep >= overlapSteps {
+        if progress >= 1 {
             Logger.player.info("[CROSSFADE] overlap completed")
             overlapTimer?.cancel()
             overlapTimer = nil
             // Blend complete — the outgoing deck is silent. Hand off NOW instead of waiting for its
             // (possibly mis-estimated) end-of-file, so the UI advances together with the audio.
-            endedPlaybackToken = finalizeAdvance()
+            endedTransition = finalizeAdvance()
         }
+    }
+
+    nonisolated static func equalPowerLevels(progress: Double) -> (outgoing: Float, incoming: Float) {
+        let x = Float(min(1, max(0, progress)))
+        return (cos(x * .pi / 2), sin(x * .pi / 2))
     }
 
     /// Aborts a blend in progress (pause, seek, engine reset): the incoming deck rewinds and stays
@@ -498,10 +649,27 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     private func cancelOverlap() {
         overlapTimer?.cancel()
         overlapTimer = nil
-        if isOverlapping {
+        let shouldReprepareStandby = isOverlapping || overlapAwaitingStandbyPlayback
+        if shouldReprepareStandby {
             isOverlapping = false
+            overlapAwaitingStandbyPlayback = false
+            overlapStartedAt = nil
+            overlapDuration = 0
             standbyPlayer.pause()
-            standbyPlayer.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
+            if let item = preloadedItem {
+                standbyPreparationState = .preparing
+                item.seek(
+                    to: CMTime(seconds: preloadedStartPosition, preferredTimescale: 600),
+                    toleranceBefore: .zero,
+                    toleranceAfter: .zero
+                ) { [weak self, weak item] completed in
+                    guard let self, let item else { return }
+                    self.lock.lock()
+                    defer { self.lock.unlock() }
+                    guard completed, item === self.preloadedItem else { return }
+                    self.prerollStandby(item)
+                }
+            }
         }
         rampActive = 1
         rampStandby = 1
@@ -554,12 +722,12 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     /// buffer stall leaves the playhead far from the end and is left alone for AVPlayer to recover from;
     /// a user pause clears `shouldBePlaying` and stops the timer outright.
     private func watchdogTick() {
-        var endedPlaybackToken: AudioEnginePlaybackToken?
+        var endedTransition: AudioEngineTrackEnd?
         lock.lock()
         defer {
             lock.unlock()
-            if let endedPlaybackToken {
-                delegate?.audioEngineDidReachEndOfTrack(playbackToken: endedPlaybackToken)
+            if let endedTransition {
+                delegate?.audioEngineDidReachEndOfTrack(endedTransition)
             }
         }
         guard shouldBePlaying, !didSignalEnd, let item = currentItem else { return }
@@ -589,27 +757,53 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         Logger.player.warning(
             "[ENGINE] end-of-track watchdog fired — AVPlayer never reported EOF (\(reading, privacy: .public))"
         )
-        endedPlaybackToken = finalizeAdvance()
+        endedTransition = finalizeAdvance()
     }
 
     /// The current item played to its end. With a preloaded next: retire the finished deck, promote
     /// the standby (already blending in a crossfade, or started now for gapless), then tell
     /// PlayerService — whose confirming `play` adopts the promoted deck via `handedOffTrackID`.
     @discardableResult
-    private func finalizeAdvance() -> AudioEnginePlaybackToken? {
+    private func finalizeAdvance() -> AudioEngineTrackEnd? {
         // The notification, the crossfade ramp and the watchdog all land here, and any two of them can
         // fire for the same track — one advance per item.
         guard !didSignalEnd, let endedPlaybackToken = currentPlaybackToken else { return nil }
+        let endedTime = activePlayer.currentTime()
+        let endedPosition = endedTime.isNumeric ? max(0, CMTimeGetSeconds(endedTime)) : 0
         didSignalEnd = true
-        guard let preloadedItem, preloadedItem.status == .readyToPlay,
-              let trackID = preloadedTrackID else {
+        guard standbyPreparationState == .ready,
+              let preloadedItem, preloadedItem.status == .readyToPlay,
+              let trackID = preloadedTrackID,
+              let promotedPlaybackToken = preloadedPlaybackToken,
+              let sourceURL = preloadedSourceURL else {
             clearPreloadedDeck()
-            return endedPlaybackToken
+            return AudioEngineTrackEnd(
+                endedPlaybackToken: endedPlaybackToken,
+                endedPosition: endedPosition,
+                promotedPlayback: nil
+            )
         }
         let wasOverlapping = isOverlapping
+        let incomingTime = standbyPlayer.currentTime()
+        let incomingPosition = incomingTime.isNumeric
+            ? max(preloadedStartPosition, CMTimeGetSeconds(incomingTime))
+            : preloadedStartPosition
+        let promotedPlayback = AudioEnginePromotedPlayback(
+            playbackToken: promotedPlaybackToken,
+            trackID: trackID,
+            sourceURL: sourceURL,
+            sourceHeaders: preloadedSourceHeaders,
+            startedAt: overlapStartedAt ?? Date(),
+            position: incomingPosition,
+            audibleDuration: wasOverlapping ? max(0, incomingPosition - preloadedStartPosition) : 0
+        )
         handedOffTrackID = trackID
         promotePreloaded(startPlaying: !wasOverlapping)
-        return endedPlaybackToken
+        return AudioEngineTrackEnd(
+            endedPlaybackToken: endedPlaybackToken,
+            endedPosition: endedPosition,
+            promotedPlayback: promotedPlayback
+        )
     }
 
     /// Swaps deck roles and makes the preloaded item current.
@@ -617,6 +811,9 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         overlapTimer?.cancel()
         overlapTimer = nil
         isOverlapping = false
+        overlapAwaitingStandbyPlayback = false
+        overlapDuration = 0
+        overlapStartedAt = nil
         clearItemObservers()
         standbyStatusObserver?.invalidate()
         standbyStatusObserver = nil
@@ -632,6 +829,10 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         preloadedAsset = nil
         preloadedTrackID = nil
         preloadedPlaybackToken = nil
+        preloadedSourceURL = nil
+        preloadedSourceHeaders = [:]
+        preloadedStartPosition = 0
+        standbyPreparationState = .idle
         pendingOverlap = 0
         metadataDuration = 0
         rampActive = 1
@@ -648,14 +849,17 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
             activePlayer.play()
         }
         startWatchdog()
-        removePeriodicObserver()
+        removeTransitionObservers()
     }
 
     private func resetDecks() {
-        removePeriodicObserver()
+        removeTransitionObservers()
         overlapTimer?.cancel()
         overlapTimer = nil
         isOverlapping = false
+        overlapAwaitingStandbyPlayback = false
+        overlapDuration = 0
+        overlapStartedAt = nil
         shouldBePlaying = false
         didSignalEnd = false
         stopWatchdog()
@@ -664,6 +868,8 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         standbyStatusObserver = nil
         deckA.pause()
         deckB.pause()
+        deckA.cancelPendingPrerolls()
+        deckB.cancelPendingPrerolls()
         deckA.replaceCurrentItem(with: nil)
         deckB.replaceCurrentItem(with: nil)
         currentItem = nil
@@ -674,6 +880,10 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         preloadedAsset = nil
         preloadedTrackID = nil
         preloadedPlaybackToken = nil
+        preloadedSourceURL = nil
+        preloadedSourceHeaders = [:]
+        preloadedStartPosition = 0
+        standbyPreparationState = .idle
         handedOffTrackID = nil
         pendingOverlap = 0
         metadataDuration = 0
@@ -686,16 +896,24 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
 
     /// Clears only the standby role. Caller holds `lock`.
     private func clearPreloadedDeck() {
-        removePeriodicObserver()
+        removeTransitionObservers()
         standbyStatusObserver?.invalidate()
         standbyStatusObserver = nil
         standbyPlayer.pause()
+        standbyPlayer.cancelPendingPrerolls()
         standbyPlayer.replaceCurrentItem(with: nil)
         standbyContext.tapInstalled = false
         preloadedItem = nil
         preloadedAsset = nil
         preloadedTrackID = nil
         preloadedPlaybackToken = nil
+        preloadedSourceURL = nil
+        preloadedSourceHeaders = [:]
+        preloadedStartPosition = 0
+        standbyPreparationState = .idle
+        overlapAwaitingStandbyPlayback = false
+        overlapDuration = 0
+        overlapStartedAt = nil
         pendingOverlap = 0
     }
 
@@ -734,14 +952,14 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
             // a block observer does not cancel a notification already queued on the main queue. Without
             // this identity check that late arrival would advance the queue a second time, skipping the
             // track that just took over.
-            let endedPlaybackToken: AudioEnginePlaybackToken? = if let item, item === self.currentItem {
+            let endedTransition: AudioEngineTrackEnd? = if let item, item === self.currentItem {
                 self.finalizeAdvance()
             } else {
                 nil
             }
             self.lock.unlock()
-            if let endedPlaybackToken {
-                self.delegate?.audioEngineDidReachEndOfTrack(playbackToken: endedPlaybackToken)
+            if let endedTransition {
+                self.delegate?.audioEngineDidReachEndOfTrack(endedTransition)
             }
         }
         // A mid-stream network failure (connection drop, server hiccup) — surface it so PlayerService

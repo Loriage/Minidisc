@@ -17,6 +17,19 @@ nonisolated struct PlaybackProgressTracker {
         didReachScrobbleThreshold = false
     }
 
+    /// Starts tracking an item that was already audible on a standby deck during a crossfade.
+    /// `baseline` is the item's real media position; `accumulatedTime` excludes any lead-in seek.
+    mutating func startTrack(
+        at date: Date,
+        baseline: TimeInterval,
+        accumulatedTime: TimeInterval
+    ) {
+        self.accumulatedTime = Self.isValid(accumulatedTime) ? accumulatedTime : 0
+        trackStartDate = date
+        lastProgress = Self.isValid(baseline) ? baseline : nil
+        didReachScrobbleThreshold = false
+    }
+
     mutating func reset() {
         accumulatedTime = 0
         trackStartDate = nil

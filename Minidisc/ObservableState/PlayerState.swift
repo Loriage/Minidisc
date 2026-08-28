@@ -31,14 +31,19 @@ final class PlayerState {
     /// Survives skips and pauses; resets on new explicit play, radio, stop, or cold start.
     var isSmartShuffleActive: Bool = false
     /// User preference: when enabled, the player automatically appends a fresh smart shuffle batch
-    /// when ≤15 tracks remain. Suppressed by loop mode and live stream mode. Persisted in UserDefaults.
-    var isAutoExtendEnabled: Bool = UserDefaults.standard.bool(forKey: "minidisc.player.autoExtendEnabled")
+    /// when ≤15 tracks remain. Suppressed by loop mode and live stream mode. AppContainer loads the
+    /// persisted initial value from PlaybackPreferences.
+    var isAutoExtendEnabled: Bool
     /// Boundary between user-intentional queue tracks and auto-extended tracks.
     /// `nil` when no auto-extend has occurred in the current session.
     /// When set, indices `[0..<originalQueueEndIndex]` are user-intentional (album, playlist, or initial
     /// smart shuffle batch), and indices `[originalQueueEndIndex...]` are added by auto-extend.
     /// Reset to `nil` on play(tracks:), playRadio(), stop().
     var originalQueueEndIndex: Int?
+
+    init(isAutoExtendEnabled: Bool = false) {
+        self.isAutoExtendEnabled = isAutoExtendEnabled
+    }
 
     // MARK: - Derived UI state
 

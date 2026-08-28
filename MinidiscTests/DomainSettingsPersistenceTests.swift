@@ -55,6 +55,26 @@ struct DomainSettingsPersistenceTests {
         #expect(restoredLyrics.source == .lrclib)
     }
 
+    @Test("Player preferences use the injected defaults suite")
+    func playerPreferencesUseInjectedDefaults() {
+        let (defaults, suiteName) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = PlaybackPreferences(defaults: defaults)
+        #expect(preferences.restoredVolume == PlaybackPreferences.defaultVolume)
+        #expect(!preferences.isAutoExtendEnabled)
+
+        preferences.storeLastAudibleVolume(0.35)
+        preferences.setAutoExtendEnabled(true)
+
+        let restored = PlaybackPreferences(defaults: defaults)
+        #expect(restored.restoredVolume == 0.35)
+        #expect(restored.isAutoExtendEnabled)
+
+        preferences.storeLastAudibleVolume(0)
+        #expect(restored.restoredVolume == 0.35)
+    }
+
     @Test("the legacy track-count cache preference migrates to a byte capacity")
     func cacheCapacityMigration() {
         let (defaults, suiteName) = isolatedDefaults()

@@ -131,3 +131,4 @@ Dependencies: [SwiftSonic](https://github.com/CassetteLab/swiftsonic) (MIT), whi
 - [Cassette](https://github.com/CassetteLab/cassette) by Mathieu Dubart, because Minidisc is a fork of Cassette.
 - The [Navidrome](https://www.navidrome.org) team, because Navidrome is an excellent self-hosted music server.
 - The [OpenSubsonic](https://opensubsonic.netlify.app) community, because they modernized the Subsonic API.
+

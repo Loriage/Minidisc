@@ -495,16 +495,7 @@ private struct TrackInfoSection: View {
             HStack(spacing: MinidiscSpacing.s) {
                 if !playerState.isLiveStream {
                     Button {
-                        HapticFeedback.light.trigger()
-                        let fav = isFavorite
-                        let songId = playerState.currentTrack?.id ?? ""
-                        Task {
-                            if fav {
-                                try? await container?.favoritesService.unstar(itemType: .song, itemId: songId)
-                            } else {
-                                try? await container?.favoritesService.star(itemType: .song, itemId: songId)
-                            }
-                        }
+                        toggleFavorite()
                     } label: {
                         Image(systemName: isFavorite ? "star.fill" : "star")
                             .font(.title3)
@@ -513,19 +504,50 @@ private struct TrackInfoSection: View {
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .disabled(!isOnline)
+                    .disabled(!isOnline || playerState.currentTrack == nil)
                     .accessibilityLabel(isFavorite ? "Remove from Favorites" : "Add to Favorites")
                 }
 
                 Menu {
                     if !playerState.isLiveStream {
-                        Button("Go to Album", systemImage: "square.stack") {
+                        ControlGroup {
+                            if let track = playerState.currentTrack {
+                                ShareLink(item: shareText(for: track)) {
+                                    Label("Share", systemImage: "square.and.arrow.up")
+                                }
+                            }
+
+                            if isFavorite {
+                                Button("Undo", systemImage: "star.slash.fill") {
+                                    toggleFavorite()
+                                }
+                                .disabled(!isOnline || playerState.currentTrack == nil)
+                            } else {
+                                Button("Favorite", systemImage: "star") {
+                                    toggleFavorite()
+                                }
+                                .disabled(!isOnline || playerState.currentTrack == nil)
+                            }
+                        }
+
+                        Divider()
+                        Button {
                             guard playerState.currentTrack?.albumId != nil else { return }
                             showAlbumSheet = true
+                        } label: {
+                            Label("Go to Album", systemImage: "square.stack")
+                            if let albumName = playerState.currentTrack?.albumName, !albumName.isEmpty {
+                                Text(albumName)
+                            }
                         }
                         .disabled(playerState.currentTrack?.albumId == nil || !isOnline)
-                        Button("Go to Artist", systemImage: "music.mic") {
+                        Button {
                             goToArtist()
+                        } label: {
+                            Label("Go to Artist", systemImage: "music.mic")
+                            if let artist = playerState.currentTrack?.artist, !artist.isEmpty {
+                                Text(artist)
+                            }
                         }
                         .disabled(playerState.currentTrack?.artist == nil || !isOnline)
                         Divider()
@@ -555,6 +577,7 @@ private struct TrackInfoSection: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Circle())
                 }
+                .menuOrder(.fixed)
                 .buttonStyle(.plain)
                 .tint(.primary)
                 .accessibilityLabel("More options")
@@ -616,7 +639,7 @@ private struct TrackInfoSection: View {
     @ViewBuilder
     private func metadataTitle(_ title: String, usesMarquee: Bool) -> some View {
         if usesMarquee {
-            MarqueeTrackTitle(
+            MarqueeTrackMetadataText(
                 text: title,
                 font: .title2,
                 weight: .bold,
@@ -639,12 +662,12 @@ private struct TrackInfoSection: View {
                     Button {
                         goToArtist()
                     } label: {
-                        artistLabel(artist)
+                        artistLabel(artist, usesMarquee: !compact)
                     }
                     .buttonStyle(.plain)
                     .disabled(!isOnline)
                 } else {
-                    artistLabel(artist)
+                    artistLabel(artist, usesMarquee: false)
                 }
             }
             if let format = song?.audioFormat {
@@ -653,12 +676,50 @@ private struct TrackInfoSection: View {
         }
     }
 
-    private func artistLabel(_ artist: String) -> some View {
-        Text(artist)
-            .font(compact ? .subheadline : .title3)
-            .foregroundStyle(secondaryContentColor)
-            .lineLimit(1)
-            .truncationMode(.tail)
+    @ViewBuilder
+    private func artistLabel(_ artist: String, usesMarquee: Bool) -> some View {
+        if usesMarquee {
+            MarqueeTrackMetadataText(
+                text: artist,
+                font: .title3,
+                weight: .regular,
+                color: secondaryContentColor
+            )
+        } else {
+            Text(artist)
+                .font(compact ? .subheadline : .title3)
+                .foregroundStyle(secondaryContentColor)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+    }
+
+    private func shareText(for song: DisplayableSong) -> String {
+        let subtitle = [song.artist, song.albumName]
+            .compactMap { value -> String? in
+                guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !value.isEmpty else { return nil }
+                return value
+            }
+            .joined(separator: " · ")
+
+        if subtitle.isEmpty {
+            return "♫ \(song.title)"
+        }
+        return "♫ \(song.title)\n\(subtitle)"
+    }
+
+    private func toggleFavorite() {
+        guard let songId = playerState.currentTrack?.id, !songId.isEmpty else { return }
+        HapticFeedback.light.trigger()
+        let wasFavorite = isFavorite
+        Task {
+            if wasFavorite {
+                try? await container?.favoritesService.unstar(itemType: .song, itemId: songId)
+            } else {
+                try? await container?.favoritesService.star(itemType: .song, itemId: songId)
+            }
+        }
     }
 
     /// Uses a name search only when the track has no artist id.

@@ -381,7 +381,7 @@ struct SwipeableTrackMetadata<Content: View>: View {
     }
 }
 
-struct MarqueeTrackTitle: View {
+struct MarqueeTrackMetadataText: View {
     let text: String
     let font: Font
     let weight: Font.Weight

@@ -65,7 +65,7 @@ struct WrappedStoryPlayerView: View {
         .onDisappear { timerTask?.cancel() }
         .task { await loadWrappedData() }
         .sheet(isPresented: $showShareSheet) {
-            if let image = renderedImage { ShareSheet(items: [image]) }
+            if let image = renderedImage { SystemShareSheet(item: image) }
         }
         .onChange(of: showShareSheet) { _, presented in isPaused = presented }
     }
@@ -295,16 +295,4 @@ struct WrappedStoryPlayerView: View {
         isRendering = false
         if renderedImage != nil { showShareSheet = true }
     }
-}
-
-// MARK: - UIActivityViewController wrapper
-
-private struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

@@ -38,6 +38,7 @@ final class AppContainer {
     let moodPlaylistService: MoodPlaylistService
     let lyricsSettings: LyricsSettings
     let lyricsService: LyricsService
+    let trackSharingService: TrackSharingService
     let recommendationService: RecommendationService
     let listenBrainzService: ListenBrainzService
     let externalProvidersStore: ExternalProvidersStore
@@ -91,6 +92,7 @@ final class AppContainer {
             playbackDiagnostics: playbackDiagnostics
         )
         serverService = server
+        trackSharingService = TrackSharingService(serverService: server)
         let librarySource = SwiftSonicLibrarySource(serverService: server)
         let librarySynchronizer = LibraryIndexSynchronizer(source: librarySource, store: indexStore)
         let catalog = LibraryCatalog(

@@ -464,6 +464,9 @@ private struct TrackInfoSection: View {
     @Query private var favoriteMatches: [FavoriteRecord]
     @Environment(PlaylistAddition.self) private var playlistAddition
     @State private var showAlbumSheet = false
+    @State private var shareRequest: DisplayableSong?
+    @State private var preparedShare: PreparedTrackShare?
+    @State private var trackInformation: DisplayableSong?
 
     init(
         playerState: PlayerState,
@@ -498,7 +501,7 @@ private struct TrackInfoSection: View {
                         toggleFavorite()
                     } label: {
                         Image(systemName: isFavorite ? "star.fill" : "star")
-                            .font(.title3)
+                            .font(.title2.weight(.semibold))
                             .foregroundStyle(contentColor)
                             .frame(width: 44, height: 44)
                             .contentShape(Circle())
@@ -512,9 +515,12 @@ private struct TrackInfoSection: View {
                     if !playerState.isLiveStream {
                         ControlGroup {
                             if let track = playerState.currentTrack {
-                                ShareLink(item: shareText(for: track)) {
+                                Button {
+                                    shareRequest = track
+                                } label: {
                                     Label("Share", systemImage: "square.and.arrow.up")
                                 }
+                                .disabled(shareRequest != nil)
                             }
 
                             if isFavorite {
@@ -550,6 +556,10 @@ private struct TrackInfoSection: View {
                             }
                         }
                         .disabled(playerState.currentTrack?.artist == nil || !isOnline)
+                        Button("Get Info", systemImage: "info.circle") {
+                            trackInformation = playerState.currentTrack
+                        }
+                        .disabled(playerState.currentTrack == nil)
                         Divider()
                         Button("Add to Playlist...", systemImage: "music.note.list") {
                             if let track = playerState.currentTrack {
@@ -572,7 +582,7 @@ private struct TrackInfoSection: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.title3)
+                        .font(.title2.weight(.semibold))
                         .foregroundStyle(contentColor)
                         .frame(width: 44, height: 44)
                         .contentShape(Circle())
@@ -591,6 +601,15 @@ private struct TrackInfoSection: View {
                     AlbumDetailView(albumId: albumId, albumName: albumName, coverArtId: track.coverArtId)
                 }
             }
+        }
+        .sheet(item: $preparedShare) { share in
+            shareSheet(for: share)
+        }
+        .sheet(item: $trackInformation) { track in
+            TrackInformationSheet(track: track)
+        }
+        .task(id: shareRequest?.id) {
+            await prepareRequestedShare()
         }
     }
 
@@ -655,23 +674,19 @@ private struct TrackInfoSection: View {
         }
     }
 
+    @ViewBuilder
     private func metadataSubtitle(for song: DisplayableSong?, isCurrent: Bool) -> some View {
-        HStack(spacing: MinidiscSpacing.s) {
-            if let artist = song?.artist {
-                if isCurrent {
-                    Button {
-                        goToArtist()
-                    } label: {
-                        artistLabel(artist, usesMarquee: !compact)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!isOnline)
-                } else {
-                    artistLabel(artist, usesMarquee: false)
+        if let artist = song?.artist {
+            if isCurrent {
+                Button {
+                    goToArtist()
+                } label: {
+                    artistLabel(artist, usesMarquee: !compact)
                 }
-            }
-            if let format = song?.audioFormat {
-                AudioFormatBadge(format: format, color: secondaryContentColor)
+                .buttonStyle(.plain)
+                .disabled(!isOnline)
+            } else {
+                artistLabel(artist, usesMarquee: false)
             }
         }
     }
@@ -694,19 +709,25 @@ private struct TrackInfoSection: View {
         }
     }
 
-    private func shareText(for song: DisplayableSong) -> String {
-        let subtitle = [song.artist, song.albumName]
-            .compactMap { value -> String? in
-                guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-                      !value.isEmpty else { return nil }
-                return value
-            }
-            .joined(separator: " · ")
+    private func prepareRequestedShare() async {
+        guard let track = shareRequest else { return }
+        let share = await container?.trackSharingService.prepareShare(
+            for: track,
+            serverIsReachable: isOnline
+        )
+        guard !Task.isCancelled, shareRequest?.id == track.id else { return }
+        shareRequest = nil
+        preparedShare = share
+    }
 
-        if subtitle.isEmpty {
-            return "♫ \(song.title)"
+    @ViewBuilder
+    private func shareSheet(for share: PreparedTrackShare) -> some View {
+        switch share {
+        case .publicLink(let url):
+            SystemShareSheet(item: url)
+        case .metadata(let text):
+            SystemShareSheet(item: text)
         }
-        return "♫ \(song.title)\n\(subtitle)"
     }
 
     private func toggleFavorite() {

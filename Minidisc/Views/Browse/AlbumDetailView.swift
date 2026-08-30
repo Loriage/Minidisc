@@ -407,12 +407,6 @@ struct AlbumDetailView: View {
                     HStack(spacing: MinidiscSpacing.s) {
                         if let year = vm.year { Text(String(year)) }
                         if let genre = vm.genre { Text("·"); Text(genre) }
-                        if let format = songs.first?.audioFormat {
-                            Text("·")
-                            Image(systemName: "waveform")
-                                .font(.system(size: 9, weight: .semibold))
-                            Text(format.uppercased())
-                        }
                     }
                     .font(.minidiscCaption)
                     .foregroundStyle(headerSecondaryColor.opacity(0.8))

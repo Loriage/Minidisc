@@ -34,16 +34,15 @@ struct MiniPlayerAccessoryView: View {
         let coverArtId = isLiveStream ? (playerState.currentRadio?.coverArt ?? "") : (playerState.currentTrack?.coverArtId ?? playerState.currentTrack?.id ?? "")
         let title = isLiveStream ? (playerState.currentRadio?.name ?? "") : (playerState.currentTrack?.title ?? "")
         let artist: String? = isLiveStream ? "Live Radio" : playerState.currentTrack?.artist
-        let audioFormat: String? = isLiveStream ? nil : playerState.currentTrack?.audioFormat
         let isPlaying = playerState.playbackState == .playing
         let isAvailable = playerState.isPlaybackAvailable
 
         Group {
             if isInline {
-                inlineBar(coverArtId: coverArtId, title: title, artist: artist, audioFormat: audioFormat, isPlaying: isPlaying, isAvailable: isAvailable, isLiveStream: isLiveStream)
+                inlineBar(coverArtId: coverArtId, title: title, artist: artist, isPlaying: isPlaying, isAvailable: isAvailable, isLiveStream: isLiveStream)
                     .transition(.opacity)
             } else {
-                expandedBar(playerState: playerState, coverArtId: coverArtId, title: title, artist: artist, audioFormat: audioFormat, isPlaying: isPlaying, isAvailable: isAvailable, isLiveStream: isLiveStream)
+                expandedBar(playerState: playerState, coverArtId: coverArtId, title: title, artist: artist, isPlaying: isPlaying, isAvailable: isAvailable, isLiveStream: isLiveStream)
                     .transition(.opacity)
             }
         }
@@ -55,7 +54,7 @@ struct MiniPlayerAccessoryView: View {
         .gesture(isAvailable && !isLiveStream ? swipeSkipGesture : nil)
     }
 
-    private func inlineBar(coverArtId: String, title: String, artist: String?, audioFormat: String?, isPlaying: Bool, isAvailable: Bool, isLiveStream: Bool) -> some View {
+    private func inlineBar(coverArtId: String, title: String, artist: String?, isPlaying: Bool, isAvailable: Bool, isLiveStream: Bool) -> some View {
         HStack(spacing: MinidiscSpacing.m) {
             CoverArtCard(id: coverArtId, size: 30)
                 .opacity(isAvailable ? 1.0 : 0.5)
@@ -89,7 +88,7 @@ struct MiniPlayerAccessoryView: View {
         .padding(.vertical, MinidiscSpacing.s)
     }
 
-    private func expandedBar(playerState: PlayerState, coverArtId: String, title: String, artist: String?, audioFormat: String?, isPlaying: Bool, isAvailable: Bool, isLiveStream: Bool) -> some View {
+    private func expandedBar(playerState: PlayerState, coverArtId: String, title: String, artist: String?, isPlaying: Bool, isAvailable: Bool, isLiveStream: Bool) -> some View {
         // While the full player covers the mini bar, skip reading position — that read is what drives the
         // capsule's per-tick (500ms) re-render, and the capsule is off-screen so its value can't be seen.
         // The `||` short-circuits before touching playerState.position when showingFullPlayer is true.

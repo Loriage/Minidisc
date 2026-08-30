@@ -22,20 +22,69 @@ private struct FullPlayerBackground: View {
     let dominantColor: Color
 
     var body: some View {
-        ZStack {
-            Color.black
-            dominantColor
-            LinearGradient(
-                stops: [
-                    .init(color: Color.black.opacity(0.34), location: 0),
-                    .init(color: Color.black.opacity(0.50), location: 0.48),
-                    .init(color: Color.black.opacity(0.68), location: 1),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
+        LinearGradient(
+            stops: gradientStops,
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .ignoresSafeArea()
+    }
+
+    private var gradientStops: [Gradient.Stop] {
+        var hue: CGFloat = 0
+        var saturation: CGFloat = 0
+        var brightness: CGFloat = 0
+        var alpha: CGFloat = 0
+        let resolvedColor = UIColor(dominantColor)
+        guard resolvedColor.getHue(
+            &hue,
+            saturation: &saturation,
+            brightness: &brightness,
+            alpha: &alpha
+        ) else {
+            return [
+                .init(color: .black, location: 0),
+                .init(color: .black, location: 1),
+            ]
+        }
+
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        let perceivedLuminance: Double
+        if resolvedColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
+            perceivedLuminance = 0.299 * Double(red) + 0.587 * Double(green) + 0.114 * Double(blue)
+        } else {
+            perceivedLuminance = 0.5
+        }
+
+        let contrastDimming = min(max((perceivedLuminance - 0.48) * 0.56, 0), 0.28)
+        // Whole-image averages lose chroma. Scaling the existing saturation keeps neutral artwork neutral.
+        let isChromatic = saturation >= 0.08
+        let baseBrightness = isChromatic ? max(Double(brightness), 0.30) : Double(brightness)
+
+        func color(saturationMultiplier: Double, dimming: Double) -> Color {
+            Color(
+                hue: Double(hue),
+                saturation: isChromatic ? min(Double(saturation) * saturationMultiplier, 1) : Double(saturation),
+                brightness: baseBrightness * (1 - min(max(dimming, 0), 0.82))
             )
         }
-        .ignoresSafeArea()
+
+        return [
+            .init(
+                color: color(saturationMultiplier: 1.6, dimming: 0.18 + contrastDimming),
+                location: 0
+            ),
+            .init(
+                color: color(saturationMultiplier: 1.85, dimming: 0.28 + contrastDimming),
+                location: 0.48
+            ),
+            .init(
+                color: color(saturationMultiplier: 1.85, dimming: 0.46 + contrastDimming * 0.75),
+                location: 1
+            ),
+        ]
     }
 }
 

@@ -16,7 +16,7 @@ final class FullPlayerViewModel {
 
     func updateColors(for coverArtId: String?, colorExtractor: DominantColorExtractor, container: AppContainer?) async {
         guard let coverArtId else {
-            withAnimation(.easeInOut(duration: 0.4)) {
+            withAnimation(.easeOut(duration: 0.25)) {
                 dominantColor = .black
             }
             return
@@ -26,7 +26,7 @@ final class FullPlayerViewModel {
         // cover downloads.
         let cachedColor = colorExtractor.cachedColor(for: coverArtId)
         if let cachedColor {
-            withAnimation(.easeInOut(duration: 0.4)) {
+            withAnimation(.easeOut(duration: 0.25)) {
                 dominantColor = cachedColor
             }
             return
@@ -46,7 +46,7 @@ final class FullPlayerViewModel {
         }.value
         guard !Task.isCancelled, let packed else { return }
         let color = colorExtractor.storeColor(packed: packed, for: coverArtId)
-        withAnimation(.easeInOut(duration: 0.4)) {
+        withAnimation(.easeOut(duration: 0.25)) {
             dominantColor = color
         }
     }

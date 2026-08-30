@@ -51,7 +51,7 @@ struct MainTabView: View {
 
     private var tabs: some View {
         TabView(selection: $selectedTab) {
-            Tab("Home", systemImage: "house.fill", value: AppTab.home) {
+            Tab("Home", image: "HomeTabIcon", value: AppTab.home) {
                 NavigationStack(path: $homePath) {
                     HomeView()
                 }

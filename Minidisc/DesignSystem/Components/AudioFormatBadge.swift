@@ -5,9 +5,12 @@ struct AudioFormatBadge: View {
     var color: Color = Color.minidiscAccent
 
     var body: some View {
-        Image(systemName: "waveform")
-            .font(.system(size: 9, weight: .semibold))
+        Text(format.uppercased())
+            .font(.caption2)
+            .fontWeight(.semibold)
             .foregroundStyle(color)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
             .background(

@@ -13,6 +13,9 @@ protocol PlayerServiceProtocol: AnyObject, Sendable {
     func stop() async
     func skipToNext() async throws
     func skipToPrevious() async throws
+    /// Selects an item in the current queue only if the caller's queue snapshot is still current.
+    /// Returns false when the request became stale before it reached the player actor.
+    func selectQueueTrack(_ selection: QueueTrackSelection) async throws -> Bool
     func seek(to position: TimeInterval) async
     func setRepeatMode(_ mode: RepeatMode) async
     func toggleShuffle() async

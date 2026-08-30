@@ -7,17 +7,6 @@ import AVKit
 
 private enum PlayerSurface { case player, queue }
 
-private extension View {
-    @ViewBuilder
-    func morphCover(_ enabled: Bool, in namespace: Namespace.ID, isSource: Bool) -> some View {
-        if enabled {
-            matchedGeometryEffect(id: "cover", in: namespace, isSource: isSource)
-        } else {
-            self
-        }
-    }
-}
-
 private struct PlayerThemeKey: Equatable {
     let coverId: String?
     let override: Color?
@@ -62,11 +51,11 @@ struct FullPlayerView: View {
     @State private var showLyrics = false
     @State private var surface: PlayerSurface = .player
     @State private var lyricsViewModel: LyricsViewModel?
+    @State private var trackSwipe = TrackSwipeInteraction()
     @Namespace private var morphNS
 
     // MARK: - Player layout
 
-    private static let playerCoverSize: CGFloat = 340
     private static let playerCoverHPadding: CGFloat = MinidiscSpacing.xxl
     private static let playerHorizontalPadding: CGFloat = MinidiscSpacing.xxxl
     private static let playerTopGap: CGFloat = 36
@@ -87,6 +76,7 @@ struct FullPlayerView: View {
                 ? playerState.currentRadio?.coverArt
                 : (playerState.currentTrack?.coverArtId ?? playerState.currentTrack?.id)
             content(playerState)
+                .interactiveDismissDisabled(trackSwipe.isHorizontalDragActive)
                 .task(id: PlayerThemeKey(coverId: themeCoverId, override: colorExtractor.colorOverride(for: themeCoverId ?? ""))) {
                     await vm.updateColors(for: themeCoverId, colorExtractor: colorExtractor, container: container)
                 }
@@ -171,7 +161,7 @@ struct FullPlayerView: View {
 
                     // Keep the cover mounted across player and queue for matched geometry.
                     if !showLyrics {
-                        flowingCover(coverArtId: coverArtId, isSource: !showingQueue)
+                        flowingCover(playerState, coverArtId: coverArtId, isSource: !showingQueue)
                             .allowsHitTesting(!showingQueue)
                             .padding(.horizontal, showingQueue ? 0 : Self.playerCoverHPadding)
                             .transition(.opacity)
@@ -186,7 +176,8 @@ struct FullPlayerView: View {
                         playerState: playerState,
                         container: container,
                         contentColor: vm.contentColor,
-                        secondaryContentColor: vm.secondaryContentColor
+                        secondaryContentColor: vm.secondaryContentColor,
+                        trackSwipe: trackSwipe
                     )
                     .padding(.horizontal, Self.playerHorizontalPadding)
                 }
@@ -208,8 +199,8 @@ struct FullPlayerView: View {
                     playerState: playerState,
                     playerService: container?.playerService,
                     isPlaybackAvailable: playerState.isPlaybackAvailable,
-                    contentColor: vm.contentColor,
-                    secondaryContentColor: vm.secondaryContentColor
+                    keepsPauseIcon: trackSwipe.keepsPauseIcon,
+                    contentColor: vm.contentColor
                 )
                 .padding(.top, Self.playerControlsSpacing)
 
@@ -245,7 +236,7 @@ struct FullPlayerView: View {
         Color.clear.frame(minHeight: floor, maxHeight: floor)
     }
 
-    private func flowingCover(coverArtId: String, isSource: Bool) -> some View {
+    private func flowingCover(_ playerState: PlayerState, coverArtId: String, isSource: Bool) -> some View {
         GeometryReader { geo in
             let artworkSide = min(geo.size.width, geo.size.height)
             CoverArtView(id: coverArtId, size: 1000)
@@ -267,6 +258,13 @@ struct FullPlayerView: View {
                 )
                 .matchedGeometryEffect(id: "queueCover", in: morphNS, isSource: isSource)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .trackSwipeGesture(
+                    interaction: trackSwipe,
+                    playerState: playerState,
+                    playerService: container?.playerService,
+                    reduceMotion: reduceMotion,
+                    isEnabled: isSource && playerState.isPlaybackAvailable && !playerState.isLiveStream
+                )
         }
     }
 
@@ -317,110 +315,6 @@ struct FullPlayerView: View {
 
     private func isQueueVisible(_ playerState: PlayerState) -> Bool {
         surface == .queue && !playerState.isLiveStream
-    }
-
-    @ViewBuilder
-    private func playerSurface(_ playerState: PlayerState, coverArtId: String, isPlaying: Bool) -> some View {
-        let coverCap = Self.playerCoverSize
-        let coverHPadding = Self.playerCoverHPadding
-        let coverTitleSpacing = Self.playerCoverToTitleGap
-        VStack(spacing: coverTitleSpacing) {
-            ZStack {
-                if showLyrics, let lyricsVM = lyricsViewModel {
-                    LyricsView(viewModel: lyricsVM)
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal, 20)
-                        .mask(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .clear, location: 0),
-                                    .init(color: .black, location: 0.1),
-                                    .init(color: .black, location: 0.8),
-                                    .init(color: .clear, location: 1)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .transition(.opacity)
-                } else {
-                    Color.clear
-                        .aspectRatio(1, contentMode: .fit)
-                        .frame(maxWidth: coverCap)
-                        .overlay {
-                            CoverArtView(id: coverArtId, size: 600)
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.large))
-                        // Rasterize before matched geometry to avoid recompositing the shadow while animating.
-                        .drawingGroup()
-                        .morphCover(!reduceMotion, in: morphNS, isSource: !isQueueVisible(playerState))
-                        .scaleEffect(isPlaying ? 1.0 : 0.92)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: isPlaying)
-                        .transition(.opacity)
-                        .trackSkipSwipe(playerState: playerState)
-                        .padding(.horizontal, coverHPadding)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: showLyrics ? CGFloat.infinity : nil)
-            .animation(.smooth(duration: 0.3), value: showLyrics)
-
-            TrackInfoSection(
-                playerState: playerState,
-                container: container,
-                contentColor: vm.contentColor,
-                secondaryContentColor: vm.secondaryContentColor
-            )
-            .padding(.horizontal, MinidiscSpacing.l)
-        }
-        .padding(.top, MinidiscSpacing.s)
-        .padding(.bottom, MinidiscSpacing.s)
-    }
-
-    @ViewBuilder
-    private func queueSurface(_ playerState: PlayerState, coverArtId: String) -> some View {
-        VStack(spacing: 0) {
-            collapsedTrackHeader(playerState, coverArtId: coverArtId)
-                .padding(.horizontal, MinidiscSpacing.l)
-                .padding(.top, MinidiscSpacing.s)
-
-            queuePills(playerState)
-                .padding(.horizontal, MinidiscSpacing.l)
-                .padding(.vertical, MinidiscSpacing.m)
-
-            upNextHeader(playerState)
-                .padding(.horizontal, MinidiscSpacing.l)
-                .padding(.bottom, MinidiscSpacing.xs)
-
-            InlineQueueList(
-                playerState: playerState,
-                contentColor: vm.contentColor,
-                secondaryContentColor: vm.secondaryContentColor,
-                loadArtwork: isQueueVisible(playerState)
-            )
-            .environment(\.colorScheme, .dark)
-            .frame(maxWidth: .infinity, minHeight: 120, maxHeight: .infinity)
-
-            queueStatusLine(playerState)
-                .padding(.horizontal, MinidiscSpacing.l)
-                .padding(.vertical, MinidiscSpacing.s)
-        }
-    }
-
-    private func collapsedTrackHeader(_ playerState: PlayerState, coverArtId: String) -> some View {
-        HStack(spacing: MinidiscSpacing.m) {
-            CoverArtView(id: coverArtId, size: 120)
-                .frame(width: 56, height: 56)
-                .minidiscCoverStyle(cornerRadius: MinidiscCornerRadius.standard)
-                .morphCover(!reduceMotion, in: morphNS, isSource: isQueueVisible(playerState))
-
-            TrackInfoSection(
-                playerState: playerState,
-                container: container,
-                contentColor: vm.contentColor,
-                secondaryContentColor: vm.secondaryContentColor,
-                compact: true
-            )
-        }
     }
 
     private func queuePills(_ playerState: PlayerState) -> some View {
@@ -492,49 +386,6 @@ struct FullPlayerView: View {
             .lineLimit(1)
     }
 
-    @ViewBuilder
-    private func sharedFooter(_ playerState: PlayerState) -> some View {
-        VStack(spacing: 0) {
-            if !playerState.isLiveStream {
-                ScrubberView(
-                    playerState: playerState,
-                    playerService: container?.playerService,
-                    contentColor: vm.contentColor,
-                    secondaryContentColor: vm.secondaryContentColor
-                )
-                .padding(.horizontal, MinidiscSpacing.l)
-                .padding(.top, MinidiscSpacing.m)
-                .disabled(!playerState.isPlaybackAvailable)
-                .opacity(playerState.isPlaybackAvailable ? 1.0 : 0.4)
-            }
-
-            PlaybackControlsView(
-                playerState: playerState,
-                playerService: container?.playerService,
-                isPlaybackAvailable: playerState.isPlaybackAvailable,
-                contentColor: vm.contentColor,
-                secondaryContentColor: vm.secondaryContentColor
-            )
-            .padding(.top, MinidiscSpacing.s)
-
-            if dynamicTypeSize < .accessibility1 {
-                VolumeSection(contentColor: vm.contentColor, secondaryContentColor: vm.secondaryContentColor)
-                    .padding(.horizontal, MinidiscSpacing.l)
-                    .padding(.top, MinidiscSpacing.s)
-            }
-
-            BottomToolbar(
-                showLyrics: $showLyrics,
-                surface: $surface,
-                isLiveStream: playerState.isLiveStream,
-                secondaryContentColor: vm.secondaryContentColor,
-                accentColor: MinidiscColors.accentForeground(on: vm.dominantColor),
-                playerState: playerState
-            )
-            .padding(.top, MinidiscSpacing.s)
-        }
-    }
-
     private var topBar: some View {
         Button {
             dismiss()
@@ -559,17 +410,26 @@ private struct TrackInfoSection: View {
     let contentColor: Color
     let secondaryContentColor: Color
     var compact: Bool = false
+    var trackSwipe: TrackSwipeInteraction?
 
     @Query private var favoriteMatches: [FavoriteRecord]
     @Environment(PlaylistAddition.self) private var playlistAddition
     @State private var showAlbumSheet = false
 
-    init(playerState: PlayerState, container: AppContainer?, contentColor: Color, secondaryContentColor: Color, compact: Bool = false) {
+    init(
+        playerState: PlayerState,
+        container: AppContainer?,
+        contentColor: Color,
+        secondaryContentColor: Color,
+        compact: Bool = false,
+        trackSwipe: TrackSwipeInteraction? = nil
+    ) {
         self.playerState = playerState
         self.container = container
         self.contentColor = contentColor
         self.secondaryContentColor = secondaryContentColor
         self.compact = compact
+        self.trackSwipe = trackSwipe
         let cid = "song:\(playerState.currentTrack?.id ?? "")"
         _favoriteMatches = Query(filter: #Predicate<FavoriteRecord> { $0.id == cid })
     }
@@ -579,47 +439,7 @@ private struct TrackInfoSection: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: MinidiscSpacing.m) {
-            VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
-                Text(playerState.isLiveStream ? (playerState.currentRadio?.name ?? "") : (playerState.currentTrack?.title ?? ""))
-                    .font(compact ? .minidiscSectionTitle : .title2)
-                    .fontWeight(compact ? .semibold : .bold)
-                    .foregroundStyle(contentColor)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-
-                if !playerState.isPlaybackAvailable {
-                    Label("Reconnect to resume", systemImage: "wifi.slash")
-                        .font(.callout)
-                        .foregroundStyle(secondaryContentColor)
-                        .lineLimit(1)
-                } else if playerState.isLiveStream {
-                    Text("Live Radio")
-                        .font(.subheadline)
-                        .foregroundStyle(secondaryContentColor)
-                        .lineLimit(1)
-                } else {
-                    VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
-                        HStack(spacing: MinidiscSpacing.xs) {
-                            if let artist = playerState.currentTrack?.artist {
-                                Button {
-                                    goToArtist()
-                                } label: {
-                                    Text(artist)
-                                        .font(compact ? .subheadline : .title3)
-                                        .foregroundStyle(secondaryContentColor)
-                                        .lineLimit(1)
-                                        .truncationMode(.tail)
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(!isOnline)
-                            }
-                            if let format = playerState.currentTrack?.audioFormat {
-                                AudioFormatBadge(format: format, color: secondaryContentColor)
-                            }
-                        }
-                    }
-                }
-            }
+            trackMetadata
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
 
@@ -700,6 +520,96 @@ private struct TrackInfoSection: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var trackMetadata: some View {
+        if !compact,
+           !playerState.isLiveStream,
+           playerState.isPlaybackAvailable,
+           let trackSwipe {
+            SwipeableTrackMetadata(
+                playerState: playerState,
+                playerService: container?.playerService,
+                interaction: trackSwipe
+            ) { song, isCurrent in
+                metadata(for: song, isCurrent: isCurrent)
+            }
+        } else {
+            metadata(for: playerState.currentTrack, isCurrent: true)
+        }
+    }
+
+    private func metadata(for song: DisplayableSong?, isCurrent: Bool) -> some View {
+        VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
+            metadataTitle(
+                playerState.isLiveStream ? (playerState.currentRadio?.name ?? "") : (song?.title ?? ""),
+                usesMarquee: isCurrent && !compact && !playerState.isLiveStream
+            )
+
+            if !playerState.isPlaybackAvailable {
+                Label("Reconnect to resume", systemImage: "wifi.slash")
+                    .font(.callout)
+                    .foregroundStyle(secondaryContentColor)
+                    .lineLimit(1)
+            } else if playerState.isLiveStream {
+                Text("Live Radio")
+                    .font(.subheadline)
+                    .foregroundStyle(secondaryContentColor)
+                    .lineLimit(1)
+            } else {
+                metadataSubtitle(for: song, isCurrent: isCurrent)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func metadataTitle(_ title: String, usesMarquee: Bool) -> some View {
+        if usesMarquee {
+            MarqueeTrackTitle(
+                text: title,
+                font: .title2,
+                weight: .bold,
+                color: contentColor
+            )
+        } else {
+            Text(title)
+                .font(compact ? .minidiscSectionTitle : .title2)
+                .fontWeight(compact ? .semibold : .bold)
+                .foregroundStyle(contentColor)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+    }
+
+    private func metadataSubtitle(for song: DisplayableSong?, isCurrent: Bool) -> some View {
+        HStack(spacing: MinidiscSpacing.s) {
+            if let artist = song?.artist {
+                if isCurrent {
+                    Button {
+                        goToArtist()
+                    } label: {
+                        artistLabel(artist)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!isOnline)
+                } else {
+                    artistLabel(artist)
+                }
+            }
+            if let format = song?.audioFormat {
+                AudioFormatBadge(format: format, color: secondaryContentColor)
+            }
+        }
+    }
+
+    private func artistLabel(_ artist: String) -> some View {
+        Text(artist)
+            .font(compact ? .subheadline : .title3)
+            .foregroundStyle(secondaryContentColor)
+            .lineLimit(1)
+            .truncationMode(.tail)
     }
 
     /// Uses a name search only when the track has no artist id.
@@ -899,10 +809,12 @@ private struct PlaybackControlsView: View {
     let playerState: PlayerState
     let playerService: (any PlayerServiceProtocol)?
     var isPlaybackAvailable: Bool = true
+    var keepsPauseIcon: Bool = false
     let contentColor: Color
-    let secondaryContentColor: Color
 
     var body: some View {
+        let showsPause = keepsPauseIcon || playerState.playbackState == .playing
+
         HStack(spacing: MinidiscSpacing.xxxxl) {
             if !playerState.isLiveStream {
                 Button {
@@ -928,13 +840,13 @@ private struct PlaybackControlsView: View {
                     }
                 }
             } label: {
-                Image(systemName: playerState.playbackState == .playing ? "pause.fill" : "play.fill")
+                Image(systemName: showsPause ? "pause.fill" : "play.fill")
                     .font(.system(size: 44))
                     .foregroundStyle(isPlaybackAvailable ? contentColor : contentColor.opacity(0.4))
                     .frame(width: 80, height: 80)
             }
             .disabled(!isPlaybackAvailable)
-            .accessibilityLabel(playerState.playbackState == .playing ? "Pause" : "Play")
+            .accessibilityLabel(showsPause ? "Pause" : "Play")
 
             if !playerState.isLiveStream {
                 Button {

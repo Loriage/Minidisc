@@ -1834,6 +1834,37 @@ actor PlayerService: PlayerServiceProtocol {
         try await executeTransitionPlan(plan, queue: transition.queue)
     }
 
+    func selectQueueTrack(_ selection: QueueTrackSelection) async throws -> Bool {
+        guard selection.queueGeneration == queueGeneration else {
+            Logger.player.debug("[TRANSITION] ignored stale queue selection generation")
+            return false
+        }
+
+        let resolved = await MainActor.run { () -> (index: Int, queue: [DisplayableSong])? in
+            guard !state.isLiveStream,
+                  let index = selection.resolve(in: state) else {
+                return nil
+            }
+            return (index, state.queue)
+        }
+        guard selection.queueGeneration == queueGeneration,
+              let resolved else {
+            Logger.player.debug("[TRANSITION] ignored stale queue selection snapshot")
+            return false
+        }
+
+        try await executeTransitionPlan(
+            .playQueueItem(index: resolved.index, currentTrackOutcome: .skipped),
+            queue: resolved.queue
+        )
+
+        return await MainActor.run {
+            state.queueGeneration == selection.queueGeneration
+                && state.currentIndex == resolved.index
+                && state.currentTrack?.id == selection.destinationTrackID
+        }
+    }
+
     private func queueTransitionSnapshot() async -> (
         queue: [DisplayableSong],
         planner: PlaybackTransitionPlanner.Snapshot,

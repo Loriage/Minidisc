@@ -166,7 +166,15 @@ struct InlineQueueList: View {
                             HapticFeedback.medium.trigger()
                             Task {
                                 do {
-                                    try await container?.playerService.play(tracks: queue, startIndex: absoluteIndex)
+                                    guard let playerState = container?.playerState,
+                                          let selection = QueueTrackSelection(
+                                              playerState: playerState,
+                                              destinationIndex: absoluteIndex,
+                                              destinationTrackID: song.id
+                                          ) else {
+                                        return
+                                    }
+                                    _ = try await container?.playerService.selectQueueTrack(selection)
                                 } catch {
                                     Logger.player.error("[PLAYBACK] play failed: \(error, privacy: .public)")
                                 }

@@ -17,6 +17,7 @@ final class MockPlayerService: PlayerServiceProtocol {
     func stop() async {}
     func skipToNext() async throws {}
     func skipToPrevious() async throws {}
+    func selectQueueTrack(_ selection: QueueTrackSelection) async throws -> Bool { true }
     func seek(to position: TimeInterval) async { seekCalledWith = position }
     func setRepeatMode(_ mode: RepeatMode) async {}
     func toggleShuffle() async {}

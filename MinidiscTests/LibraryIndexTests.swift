@@ -193,8 +193,8 @@ private actor FreshnessLibrarySource: LibraryRemoteSource {
 @Suite("Persistent library index")
 @MainActor
 struct LibraryIndexTests {
-    @Test("the V1 library store migrates without losing indexed media")
-    func v1StoreMigratesToV2() throws {
+    @Test("the V1 library store migrates to V3 without losing indexed media")
+    func v1StoreMigratesToV3() throws {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "MinidiscLibraryMigration-\(UUID().uuidString)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -233,7 +233,7 @@ struct LibraryIndexTests {
             try context.save()
         }
 
-        let schema = Schema(versionedSchema: LibraryIndexSchemaV2.self)
+        let schema = Schema(versionedSchema: LibraryIndexSchemaV3.self)
         let configuration = ModelConfiguration(
             "migration-test",
             schema: schema,
@@ -249,6 +249,101 @@ struct LibraryIndexTests {
 
         #expect(try context.fetch(FetchDescriptor<IndexedAlbum>()).map(\.itemId) == [album.id])
         #expect(try context.fetchCount(FetchDescriptor<IndexedPlaylist>()) == 0)
+        #expect(try context.fetchCount(FetchDescriptor<IndexedAlbumRecommendation>()) == 0)
+    }
+
+    @Test("album recommendations persist positive and empty results")
+    func recommendationCachePersistsPositiveAndEmptyResults() async throws {
+        let store = try makeStore()
+        let serverID = UUID()
+        let recommendation = album(id: "recommended", name: "Recommended")
+
+        try await store.cacheAlbumRecommendations(
+            [recommendation],
+            sourceAlbumID: "source-with-result",
+            serverID: serverID,
+            requestedLimit: 20
+        )
+        try await store.cacheAlbumRecommendations(
+            [],
+            sourceAlbumID: "source-without-result",
+            serverID: serverID,
+            requestedLimit: 20
+        )
+
+        let positive = try #require(try await store.albumRecommendations(
+            sourceAlbumID: "source-with-result",
+            serverID: serverID
+        ))
+        let empty = try #require(try await store.albumRecommendations(
+            sourceAlbumID: "source-without-result",
+            serverID: serverID
+        ))
+
+        #expect(positive.albums == [recommendation])
+        #expect(positive.requestedLimit == 20)
+        #expect(empty.albums.isEmpty)
+        #expect(try await store.storageUsage().recommendationAlbums == 2)
+    }
+
+    @Test("recommendation resume markers require both freshness and requested depth")
+    func recommendationResumeMarkersAreStrict() async throws {
+        let store = try makeStore()
+        let serverID = UUID()
+        let now = Date.now
+
+        try await store.cacheAlbumRecommendations(
+            [],
+            sourceAlbumID: "fresh-and-deep",
+            serverID: serverID,
+            requestedLimit: 20,
+            refreshedAt: now
+        )
+        try await store.cacheAlbumRecommendations(
+            [],
+            sourceAlbumID: "fresh-but-shallow",
+            serverID: serverID,
+            requestedLimit: 10,
+            refreshedAt: now
+        )
+        try await store.cacheAlbumRecommendations(
+            [],
+            sourceAlbumID: "deep-but-stale",
+            serverID: serverID,
+            requestedLimit: 20,
+            refreshedAt: now.addingTimeInterval(-8 * 24 * 60 * 60)
+        )
+
+        let resumable = try await store.freshRecommendationAlbumIDs(
+            serverID: serverID,
+            refreshedAfter: now.addingTimeInterval(-7 * 24 * 60 * 60),
+            minimumRequestedLimit: 20
+        )
+        #expect(resumable == ["fresh-and-deep"])
+    }
+
+    @Test("deleting the index removes metadata and recommendations together")
+    func eraseAllRemovesCompleteIndex() async throws {
+        let store = try makeStore()
+        let serverID = UUID()
+        try await store.upsertAlbums(
+            [album(id: "album", name: "Album")],
+            serverID: serverID,
+            generation: "generation"
+        )
+        try await store.cacheAlbumRecommendations(
+            [],
+            sourceAlbumID: "album",
+            serverID: serverID,
+            requestedLimit: 20
+        )
+
+        try await store.eraseAll()
+
+        let usage = try await store.storageUsage()
+        #expect(usage.albums == 0)
+        #expect(usage.recommendationAlbums == 0)
+        #expect(try await store.albums(serverID: serverID).isEmpty)
     }
 
     @Test("a completed generation replaces stale rows and updates payloads")

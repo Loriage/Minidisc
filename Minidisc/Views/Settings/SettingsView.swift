@@ -79,7 +79,6 @@ struct SettingsView: View {
                 }
             }
             aboutSection()
-            ApplicationSectionView(vm: downloadsVM)
         }
         .formStyle(.grouped)
         .refreshable {
@@ -117,7 +116,7 @@ struct SettingsView: View {
         }
     }
 
-    fileprivate static var appVersion: String {
+    private static var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
         return "\(version) (\(build))"
@@ -147,6 +146,10 @@ struct SettingsView: View {
             }
         } header: {
             Text("About")
+        } footer: {
+            Text("Version \(Self.appVersion)")
+                .frame(maxWidth: .infinity)
+                .padding(.top, 8)
         }
     }
 }
@@ -162,6 +165,7 @@ struct StorageSettingsView: View {
     @State private var coverCount: Int = 0
     @State private var coverBytes: Int64 = 0
     @State private var isClearingCache = false
+    @State private var showClearDownloadsConfirm = false
     @State private var showClearCacheConfirm = false
     @State private var showClearArtworkConfirm = false
 
@@ -244,6 +248,21 @@ struct StorageSettingsView: View {
                         .foregroundStyle(.primary)
                 }
             }
+
+            Button(role: .destructive) {
+                showClearDownloadsConfirm = true
+            } label: {
+                if vm.isClearingAll {
+                    HStack(spacing: MinidiscSpacing.s) {
+                        ProgressView().scaleEffect(0.8)
+                        Text("Clearing…")
+                    }
+                } else {
+                    Text("Clear all downloads")
+                        .foregroundStyle(.red)
+                }
+            }
+            .disabled(vm.isClearingAll)
             } header: {
                 Text("Downloads")
             } footer: {
@@ -324,6 +343,8 @@ struct StorageSettingsView: View {
                 Text("Keeps recently-played music for instant replay. Least-recently-played tracks are removed when the size limit is reached.")
             }
 
+            LibraryIndexStorageSection()
+
             Section {
                 LabeledContent {
                     Text(coverCount == 1 ? "1 image · \(ByteCountFormatter.string(fromByteCount: coverBytes, countStyle: .file))" : "\(coverCount) images · \(ByteCountFormatter.string(fromByteCount: coverBytes, countStyle: .file))")
@@ -365,6 +386,12 @@ struct StorageSettingsView: View {
         .navigationBarTitleDisplayModeInline()
         .background {
             Color.clear
+                .alert("Clear all downloads?", isPresented: $showClearDownloadsConfirm) {
+                    Button("Clear", role: .destructive) { Task { await vm.clearAll() } }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Every downloaded album and playlist is deleted. This can't be undone.")
+                }
                 .alert("Clear stream cache?", isPresented: $showClearCacheConfirm) {
                     Button("Clear", role: .destructive) { Task { await clearStreamCache() } }
                     Button("Cancel", role: .cancel) {}
@@ -416,6 +443,274 @@ struct StorageSettingsView: View {
         artworkImageCache.clearCache()
         artworkImageCache.clearRevalidationMetadata()
         await refreshUsage()
+    }
+}
+
+private enum LibraryIndexSettingsOperation: Equatable {
+    case idle
+    case synchronizing
+    case deleting
+    case fullIndex(completed: Int, total: Int)
+
+    var isRunning: Bool { self != .idle }
+}
+
+/// Controls the complete discardable SwiftData index, not only its recommendation rows.
+/// State stays local to the storage feature because no other screen drives these operations.
+private struct LibraryIndexStorageSection: View {
+    @Environment(\.appContainer) private var container
+    @State private var usage = LibraryIndexStorageUsage.empty
+    @State private var activeServerAlbumCount = 0
+    @State private var operation = LibraryIndexSettingsOperation.idle
+    @State private var operationTask: Task<Void, Never>?
+    @State private var showDeleteConfirmation = false
+    @State private var showFullIndexConfirmation = false
+    @State private var errorMessage: String?
+
+    private var fullIndexAllowed: Bool {
+        guard let state = container?.serverState else { return false }
+        let path = state.networkPathEvent.descriptor
+        return state.hasObservedNetworkPath
+            && path.isOnline
+            && !path.isExpensive
+            && !path.isConstrained
+    }
+
+    private var fullIndexConfirmationMessage: String {
+        let scope = if activeServerAlbumCount > 0 {
+            "The current index contains \(activeServerAlbumCount) albums for this server."
+        } else {
+            "The album count will be determined after metadata synchronization."
+        }
+        let warning = activeServerAlbumCount >= LibraryIndexMaintenanceService.largeLibraryAlbumThreshold
+            ? " This is a large library; keep Minidisc open and connected to Wi-Fi. You can cancel and resume later."
+            : " Keep Minidisc open until it finishes. You can cancel and resume later."
+        return "\(scope) All metadata will be synchronized, then album recommendations will be precomputed one at a time.\(warning)"
+    }
+
+    var body: some View {
+        Section {
+            LabeledContent("Disk usage") {
+                Text(ByteCountFormatter.string(fromByteCount: usage.persistentBytes, countStyle: .file))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            LabeledContent("Artists") {
+                Text(usage.artists, format: .number)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            LabeledContent("Albums") {
+                Text(usage.albums, format: .number)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            LabeledContent("Songs") {
+                Text(usage.tracks, format: .number)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            LabeledContent("Playlists") {
+                Text(usage.playlists, format: .number)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            LabeledContent("Album recommendations") {
+                Text(usage.recommendationAlbums, format: .number)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+
+            operationProgress
+
+            Button {
+                startSynchronization()
+            } label: {
+                Label {
+                    Text("Synchronize index")
+                        .foregroundStyle(.primary)
+                } icon: {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .symbolRenderingMode(.monochrome)
+                        .foregroundStyle(.primary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(operation.isRunning)
+
+            Button {
+                showFullIndexConfirmation = true
+            } label: {
+                Label {
+                    Text("Index full server")
+                        .foregroundStyle(.primary)
+                } icon: {
+                    Image(systemName: "server.rack")
+                        .symbolRenderingMode(.monochrome)
+                        .foregroundStyle(.primary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(operation.isRunning || !fullIndexAllowed)
+
+            Button(role: .destructive) {
+                showDeleteConfirmation = true
+            } label: {
+                Label {
+                    Text("Delete index")
+                        .foregroundStyle(.red)
+                } icon: {
+                    Image(systemName: "trash")
+                        .symbolRenderingMode(.monochrome)
+                        .foregroundStyle(.red)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(operation.isRunning)
+        } header: {
+            Text("Library index")
+        } footer: {
+            Text("The index stores searchable metadata for artists, albums, songs, playlists, and album recommendations. Full indexing requires an unmetered, unconstrained connection. Downloads, favorites, and playback history are stored separately.")
+        }
+        .task {
+            await refreshUsage()
+        }
+        .onDisappear {
+            operationTask?.cancel()
+        }
+        .alert("Delete library index?", isPresented: $showDeleteConfirmation) {
+            Button("Delete", role: .destructive) { startDeletion() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("All indexed metadata and cached album recommendations will be removed. Downloads, favorites, playlists on your server, and playback history are not affected.")
+        }
+        .alert("Index full server?", isPresented: $showFullIndexConfirmation) {
+            Button("Start indexing") { startFullIndex() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(fullIndexConfirmationMessage)
+        }
+        .alert("Index operation failed", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK") { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private var operationProgress: some View {
+        switch operation {
+        case .idle:
+            EmptyView()
+        case .synchronizing:
+            LabeledContent("Synchronizing metadata…") {
+                ProgressView()
+            }
+            Button("Cancel", role: .cancel) { operationTask?.cancel() }
+        case .deleting:
+            LabeledContent("Deleting index…") {
+                ProgressView()
+            }
+        case .fullIndex(let completed, let total):
+            VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
+                if total > 0 {
+                    ProgressView(value: Double(completed), total: Double(total))
+                    Text("\(completed) of \(total) albums")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                } else {
+                    HStack {
+                        Text("Synchronizing metadata…")
+                        Spacer()
+                        ProgressView()
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { operationTask?.cancel() }
+        }
+    }
+
+    private func startSynchronization() {
+        guard let maintenance = container?.libraryIndexMaintenance else { return }
+        operationTask = Task { @MainActor in
+            operation = .synchronizing
+            defer {
+                operation = .idle
+                operationTask = nil
+            }
+            do {
+                try await maintenance.synchronize()
+                await refreshUsage()
+            } catch is CancellationError {
+                return
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func startFullIndex() {
+        guard let maintenance = container?.libraryIndexMaintenance else { return }
+        operationTask = Task { @MainActor in
+            operation = .fullIndex(completed: 0, total: 0)
+            defer {
+                operation = .idle
+                operationTask = nil
+            }
+            do {
+                try await maintenance.indexFullServer { progress in
+                    switch progress {
+                    case .synchronizingMetadata:
+                        operation = .fullIndex(completed: 0, total: 0)
+                    case .indexingRecommendations(let completed, let total):
+                        operation = .fullIndex(completed: completed, total: total)
+                    }
+                }
+                await refreshUsage()
+            } catch is CancellationError {
+                await refreshUsage()
+            } catch {
+                await refreshUsage()
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func startDeletion() {
+        guard let maintenance = container?.libraryIndexMaintenance else { return }
+        operationTask = Task { @MainActor in
+            operation = .deleting
+            defer {
+                operation = .idle
+                operationTask = nil
+            }
+            do {
+                try await maintenance.eraseAll()
+                await refreshUsage()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func refreshUsage() async {
+        guard let maintenance = container?.libraryIndexMaintenance else { return }
+        do {
+            usage = try await maintenance.usage()
+            activeServerAlbumCount = (try? await maintenance.activeServerAlbumCount()) ?? 0
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
@@ -571,46 +866,5 @@ private struct ApplicationDebugSection: View {
                     .foregroundStyle(.primary)
             }
         }
-    }
-}
-
-// MARK: - Application section (destructive actions)
-
-/// Beszel-style bottom section: every destructive "clear" action in one place, plain red rows, with
-/// the app version underneath.
-struct ApplicationSectionView: View {
-    let vm: DownloadsViewModel
-    @State private var showClearAllConfirm = false
-
-    var body: some View {
-        Section {
-            Button(role: .destructive) {
-                showClearAllConfirm = true
-            } label: {
-                if vm.isClearingAll {
-                    HStack(spacing: MinidiscSpacing.s) {
-                        ProgressView().scaleEffect(0.8)
-                        Text("Clearing…")
-                    }
-                } else {
-                    Text("Clear all downloads")
-                        .foregroundStyle(.red)
-                }
-            }
-            .disabled(vm.isClearingAll)
-        } header: {
-            Text("Application")
-        } footer: {
-            Text("Version \(SettingsView.appVersion)")
-                .frame(maxWidth: .infinity)
-                .padding(.top, 8)
-        }
-        .alert("Clear all downloads?", isPresented: $showClearAllConfirm) {
-            Button("Clear", role: .destructive) { Task { await vm.clearAll() } }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Every downloaded album and playlist is deleted. This can't be undone.")
-        }
-        .tint(.primary)
     }
 }

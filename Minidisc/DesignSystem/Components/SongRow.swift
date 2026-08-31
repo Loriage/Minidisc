@@ -1,5 +1,9 @@
 import SwiftUI
-import OSLog
+
+nonisolated enum SongRowTrailingAccessory: Sendable, Equatable {
+    case duration
+    case menu
+}
 
 /// Standard track cell for album and playlist detail screens.
 ///
@@ -15,18 +19,23 @@ struct SongRow: View {
     var isFavorite: Bool = false
     var titleColor: Color = .primary
     var secondaryColor: Color = .secondary
+    var trailingAccessory: SongRowTrailingAccessory = .duration
     let onDownload: (() -> Void)?
     let onRemoveDownload: (() -> Void)?
     var isDownloading: Bool = false
     var onRemoveFromPlaylist: (() -> Void)? = nil
     var onAddToPlaylist: ((DisplayableSong) -> Void)? = nil
+    var onTap: (() -> Void)? = nil
 
     @Environment(\.appContainer) private var container
     @Environment(ArtworkImageCache.self) private var artworkImageCache
     @Environment(\.minidiscPlayingAccent) private var playingAccent
     @State private var coverImage: PlatformImage?
+    @State private var shareRequest: DisplayableSong?
+    @State private var preparedShare: PreparedTrackShare?
+    @State private var trackInformation: DisplayableSong?
 
-    init(song: DisplayableSong, index: Int, showCoverArt: Bool = false, showArtist: Bool = true, isFavorite: Bool = false, titleColor: Color = .primary, secondaryColor: Color = .secondary, onDownload: (() -> Void)? = nil, onRemoveDownload: (() -> Void)? = nil, isDownloading: Bool = false, onRemoveFromPlaylist: (() -> Void)? = nil, onAddToPlaylist: ((DisplayableSong) -> Void)? = nil) {
+    init(song: DisplayableSong, index: Int, showCoverArt: Bool = false, showArtist: Bool = true, isFavorite: Bool = false, titleColor: Color = .primary, secondaryColor: Color = .secondary, trailingAccessory: SongRowTrailingAccessory = .duration, onDownload: (() -> Void)? = nil, onRemoveDownload: (() -> Void)? = nil, isDownloading: Bool = false, onRemoveFromPlaylist: (() -> Void)? = nil, onAddToPlaylist: ((DisplayableSong) -> Void)? = nil, onTap: (() -> Void)? = nil) {
         self.song = song
         self.index = index
         self.showCoverArt = showCoverArt
@@ -34,18 +43,66 @@ struct SongRow: View {
         self.isFavorite = isFavorite
         self.titleColor = titleColor
         self.secondaryColor = secondaryColor
+        self.trailingAccessory = trailingAccessory
         self.onDownload = onDownload
         self.onRemoveDownload = onRemoveDownload
         self.isDownloading = isDownloading
         self.onRemoveFromPlaylist = onRemoveFromPlaylist
         self.onAddToPlaylist = onAddToPlaylist
+        self.onTap = onTap
     }
 
-    private var isOnline: Bool { container?.serverState.isOnline == true }
     private var isCurrentTrack: Bool { container?.playerState.currentTrack?.id == song.id }
     private var isPlaying: Bool { container?.playerState.playbackState == .playing }
+    private var actions: SongActions {
+        SongActions(
+            song: song,
+            isFavorite: isFavorite,
+            isDownloading: isDownloading,
+            onDownload: onDownload,
+            onRemoveDownload: onRemoveDownload,
+            onRemoveFromPlaylist: onRemoveFromPlaylist,
+            onAddToPlaylist: onAddToPlaylist,
+            onShare: { shareRequest = song },
+            onGetInfo: trailingAccessory == .menu ? { trackInformation = song } : nil
+        )
+    }
 
     var body: some View {
+        HStack(spacing: MinidiscSpacing.s) {
+            if let onTap {
+                Button(action: onTap) {
+                    primaryContent
+                }
+                .buttonStyle(.plain)
+            } else {
+                primaryContent
+            }
+
+            trailingContent
+        }
+        .padding(.vertical, trailingAccessory == .menu ? 0 : MinidiscSpacing.s)
+        .contentShape(Rectangle())
+        .task(id: song.id) {
+            coverImage = await artworkImageCache.load(coverArtId: song.coverArtId ?? song.id)
+        }
+        .task(id: shareRequest?.id) {
+            await prepareRequestedShare()
+        }
+        .sheet(item: $preparedShare) { share in
+            shareSheet(for: share)
+        }
+        .sheet(item: $trackInformation) { track in
+            TrackInformationSheet(track: track)
+        }
+        .contextMenu {
+            actions
+        } preview: {
+            SongContextPreview(coverImage: coverImage, song: song)
+        }
+    }
+
+    private var primaryContent: some View {
         HStack(spacing: MinidiscSpacing.s) {
             if showCoverArt {
                 CoverArtCard(id: song.coverArtId ?? song.id, size: 44)
@@ -74,8 +131,8 @@ struct SongRow: View {
                         NowPlayingBarsIndicator(isPlaying: isPlaying)
                     } else {
                         Text("\(song.trackNumber ?? index)")
-                            .font(.minidiscCaption)
-                            .foregroundStyle(secondaryColor.opacity(0.6))
+                            .font(.minidiscCellSubtitle)
+                            .foregroundStyle(secondaryColor.opacity(0.72))
                             .opacity(isFavorite ? 0 : 1)
                         if isFavorite {
                             Image(systemName: "star.fill")
@@ -85,134 +142,198 @@ struct SongRow: View {
                         }
                     }
                 }
-                .frame(width: 28, alignment: .trailing)
+                .frame(width: 28, height: 44, alignment: .center)
                 .monospacedDigit()
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(song.title)
-                    .font(.minidiscCellTitle)
+                    .font(.minidiscBody)
                     .foregroundStyle(isCurrentTrack ? playingAccent : titleColor)
                     .lineLimit(1)
                 if showArtist, let artist = song.artist {
                     Text(artist)
-                        .font(.minidiscCaption)
+                        .font(.minidiscCellSubtitle)
                         .foregroundStyle(secondaryColor)
                         .lineLimit(1)
                 }
             }
 
             Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
 
-            HStack(spacing: MinidiscSpacing.s) {
-                if song.isDownloaded {
-                    Image(systemName: "arrow.down.circle.fill")
-                        .font(.minidiscCaption)
-                        .foregroundStyle(secondaryColor.opacity(0.6))
-                } else if isDownloading {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                        .frame(width: 16, height: 16)
-                }
+    private var trailingContent: some View {
+        HStack(spacing: MinidiscSpacing.s) {
+            if song.isDownloaded {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.minidiscCaption)
+                    .foregroundStyle(secondaryColor.opacity(0.6))
+            } else if isDownloading {
+                ProgressView()
+                    .scaleEffect(0.7)
+                    .frame(width: 16, height: 16)
+            }
+            switch trailingAccessory {
+            case .duration:
                 if song.duration > 0 {
                     Text(Duration.seconds(song.duration).formatted(.time(pattern: .minuteSecond)))
                         .font(.minidiscCaption)
                         .foregroundStyle(secondaryColor.opacity(0.6))
                         .monospacedDigit()
                 }
+            case .menu:
+                Menu {
+                    actions
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(secondaryColor)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .tint(secondaryColor)
+                .menuOrder(.fixed)
+                .accessibilityLabel("More options")
             }
         }
-        .padding(.vertical, MinidiscSpacing.s)
-        .contentShape(Rectangle())
-        .task(id: song.id) {
-            coverImage = await artworkImageCache.load(coverArtId: song.coverArtId ?? song.id)
+    }
+
+    private func prepareRequestedShare() async {
+        guard let track = shareRequest else { return }
+        let share = await container?.trackSharingService.prepareShare(
+            for: track,
+            serverIsReachable: container?.serverState.isOnline == true
+        )
+        guard !Task.isCancelled, shareRequest?.id == track.id else { return }
+        shareRequest = nil
+        preparedShare = share
+    }
+
+    @ViewBuilder
+    private func shareSheet(for share: PreparedTrackShare) -> some View {
+        switch share {
+        case .publicLink(let url):
+            SystemShareSheet(item: url)
+        case .metadata(let text):
+            SystemShareSheet(item: text)
         }
-        .contextMenu {
-            Group {
-            Button {
-                Task {
-                    do {
-                        try await container?.playerService.play(tracks: [song], startIndex: 0)
-                    } catch {
-                        Logger.player.error("[PLAYBACK] play failed: \(error, privacy: .public)")
+    }
+}
+
+private struct SongActions: View {
+    let song: DisplayableSong
+    let isFavorite: Bool
+    let isDownloading: Bool
+    let onDownload: (() -> Void)?
+    let onRemoveDownload: (() -> Void)?
+    let onRemoveFromPlaylist: (() -> Void)?
+    let onAddToPlaylist: ((DisplayableSong) -> Void)?
+    let onShare: () -> Void
+    let onGetInfo: (() -> Void)?
+
+    @Environment(\.appContainer) private var container
+
+    private var isOnline: Bool { container?.serverState.isOnline == true }
+
+    var body: some View {
+        Group {
+            ControlGroup {
+                if song.isDownloaded {
+                    Button("Downloaded", systemImage: "arrow.down.circle.fill") { }
+                        .disabled(true)
+                } else if isDownloading {
+                    Button("Downloading…", systemImage: "arrow.down.circle.fill") { }
+                        .disabled(true)
+                } else {
+                    Button("Download", systemImage: "arrow.down.circle.fill") {
+                        onDownload?()
+                    }
+                    .disabled(onDownload == nil)
+                }
+
+                Button("Share", systemImage: "square.and.arrow.up.fill", action: onShare)
+
+                if isFavorite {
+                    Button("Undo", systemImage: "star.slash.fill") {
+                        toggleFavorite()
+                    }
+                    .disabled(!isOnline)
+                } else {
+                    Button("Favorite", systemImage: "star.fill") {
+                        toggleFavorite()
+                    }
+                    .disabled(!isOnline)
+                }
+            }
+
+            Section {
+                Button {
+                    onAddToPlaylist?(song)
+                } label: {
+                    Label("Add to Playlist...", systemImage: "music.note.list")
+                }
+                .disabled(!isOnline)
+            }
+
+            Section {
+                Button {
+                    Task { await container?.playerService.playNext(song) }
+                } label: {
+                    Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                }
+
+                Button {
+                    Task { await container?.playerService.addToQueue(song) }
+                } label: {
+                    Label("Add to Queue", systemImage: "text.append")
+                }
+            }
+
+            if let onGetInfo {
+                Section {
+                    Button("Get Info", systemImage: "info.circle.fill", action: onGetInfo)
+                }
+            }
+
+            Section {
+                Button {
+                    startInstantMix(from: .song(id: song.id), using: container, startingWith: song)
+                } label: {
+                    Label("Instant Mix", systemImage: instantMixSymbol)
+                }
+            }
+
+            if onRemoveFromPlaylist != nil || (song.isDownloaded && onRemoveDownload != nil) {
+                Section {
+                    if let onRemoveFromPlaylist {
+                        Button(role: .destructive, action: onRemoveFromPlaylist) {
+                            Label("Remove from Playlist", systemImage: "minus.circle")
+                        }
+                    }
+
+                    if song.isDownloaded, let onRemoveDownload {
+                        Button(role: .destructive, action: onRemoveDownload) {
+                            Label("Remove Download", systemImage: "trash")
+                        }
                     }
                 }
-            } label: {
-                Label("Play", systemImage: "play.fill")
             }
+        }
+        .tint(.primary)
+    }
 
-            Button {
-                Task { await container?.playerService.playNext(song) }
-            } label: {
-                Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+    private func toggleFavorite() {
+        HapticFeedback.light.trigger()
+        Task {
+            if isFavorite {
+                try? await container?.favoritesService.unstar(itemType: .song, itemId: song.id)
+            } else {
+                try? await container?.favoritesService.star(itemType: .song, itemId: song.id)
             }
-
-            Button {
-                Task { await container?.playerService.addToQueue(song) }
-            } label: {
-                Label("Add to Queue", systemImage: "text.append")
-            }
-
-            Button {
-                startInstantMix(from: .song(id: song.id), using: container, startingWith: song)
-            } label: {
-                Label("Instant Mix", systemImage: instantMixSymbol)
-            }
-
-            Divider()
-
-            Button {
-                onAddToPlaylist?(song)
-            } label: {
-                Label("Add to Playlist...", systemImage: "music.note.list")
-            }
-            .disabled(!isOnline)
-
-            if let action = onRemoveFromPlaylist {
-                Divider()
-                Button(role: .destructive, action: action) {
-                    Label("Remove from Playlist", systemImage: "minus.circle")
-                }
-            }
-
-            if !song.isDownloaded && !isDownloading, let action = onDownload {
-                Button(action: action) {
-                    Label("Download", systemImage: "arrow.down.circle")
-                }
-            }
-
-            if song.isDownloaded, let action = onRemoveDownload {
-                Button(role: .destructive, action: action) {
-                    Label("Remove Download", systemImage: "trash")
-                }
-            }
-
-            Divider()
-
-            Button {
-                let fav = isFavorite
-                Task {
-                    if fav {
-                        try? await container?.favoritesService.unstar(itemType: .song, itemId: song.id)
-                    } else {
-                        try? await container?.favoritesService.star(itemType: .song, itemId: song.id)
-                    }
-                }
-            } label: {
-                Label(
-                    isFavorite ? "Remove from Favorites" : "Add to Favorites",
-                    systemImage: isFavorite ? "star.slash" : "star"
-                )
-            }
-            .disabled(!isOnline)
-
-            // TODO(v1.5.x): Add "Show in Album" and "Show in Artist". Requires:
-            // (1) albumId + artistId fields on DisplayableSong, (2) NavigationPath
-            // lifted into RootViewMacOS and threaded through all section views.
-            }
-            .tint(.primary)
-        } preview: {
-            SongContextPreview(coverImage: coverImage, song: song)
         }
     }
 }

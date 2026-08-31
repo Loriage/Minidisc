@@ -9,6 +9,7 @@ actor LibraryService: LibraryServiceProtocol {
     private let downloadService: any DownloadServiceProtocol
     private let statsService: StatsService
     private let catalog: LibraryCatalog
+    private let indexStore: LibraryIndexStore
     private var cachedClient: SwiftSonicClient?
     private var cachedConnectionVersion: ServerConnection.Version?
     private var artistInfoCache: [String: ArtistInfo] = [:]
@@ -18,13 +19,15 @@ actor LibraryService: LibraryServiceProtocol {
         modelContainer: ModelContainer,
         downloadService: any DownloadServiceProtocol,
         statsService: StatsService,
-        catalog: LibraryCatalog
+        catalog: LibraryCatalog,
+        indexStore: LibraryIndexStore
     ) {
         self.serverService = serverService
         self.modelContainer = modelContainer
         self.downloadService = downloadService
         self.statsService = statsService
         self.catalog = catalog
+        self.indexStore = indexStore
     }
 
     private func client() async throws -> SwiftSonicClient {
@@ -404,7 +407,255 @@ actor LibraryService: LibraryServiceProtocol {
         return result
     }
 
-    // MARK: - Similar artists support
+    // MARK: - Recommendations
+
+    nonisolated static let albumRecommendationCacheLifetime: TimeInterval = 7 * 24 * 60 * 60
+
+    func similarAlbums(
+        to albumID: String,
+        excludingArtistID artistID: String?,
+        excludingArtistName artistName: String?,
+        limit: Int
+    ) async throws -> [AlbumID3] {
+        guard limit > 0 else { return [] }
+        try Task.checkCancellation()
+
+        if let serverID = await serverService.activeConnectionVersion()?.serverID {
+            do {
+                if let cached = try await indexStore.albumRecommendations(
+                    sourceAlbumID: albumID,
+                    serverID: serverID
+                ) {
+                    let result = Array(cached.albums.prefix(limit))
+                    if cached.isFresh(at: .now, lifetime: Self.albumRecommendationCacheLifetime),
+                       cached.canSatisfy(limit: limit) {
+                        return result
+                    }
+
+                    // A stale result is still preferable to a section that appears after the user
+                    // reaches the bottom of the page. Refresh it for the next visit without mutating
+                    // the current screen out from under the user.
+                    Task(priority: .utility) { [weak self] in
+                        guard let self else { return }
+                        do {
+                            _ = try await self.refreshAlbumRecommendations(
+                                to: albumID,
+                                excludingArtistID: artistID,
+                                excludingArtistName: artistName,
+                                limit: limit,
+                                serverID: serverID
+                            )
+                        } catch is CancellationError {
+                            return
+                        } catch {
+                            Logger.library.debug(
+                                "Album recommendation refresh failed for \(albumID, privacy: .public): \(error, privacy: .public)"
+                            )
+                        }
+                    }
+                    return result
+                }
+            } catch {
+                Logger.library.debug(
+                    "Album recommendation cache read failed for \(albumID, privacy: .public): \(error, privacy: .public)"
+                )
+            }
+
+            return try await refreshAlbumRecommendations(
+                to: albumID,
+                excludingArtistID: artistID,
+                excludingArtistName: artistName,
+                limit: limit,
+                serverID: serverID
+            )
+        }
+
+        return try await fetchAlbumRecommendations(
+            to: albumID,
+            excludingArtistID: artistID,
+            excludingArtistName: artistName,
+            limit: limit
+        )
+    }
+
+    /// Forces a server refresh and persists even an empty result. The maintenance service uses
+    /// this concrete operation while walking every album in the dedicated SwiftData index.
+    func refreshAlbumRecommendations(
+        to albumID: String,
+        excludingArtistID artistID: String?,
+        excludingArtistName artistName: String?,
+        limit: Int,
+        serverID: UUID
+    ) async throws -> [AlbumID3] {
+        guard limit > 0 else { return [] }
+        let activeServerID = await serverService.activeConnectionVersion()?.serverID
+        guard activeServerID == serverID else { throw MinidiscError.serverNotConfigured }
+
+        let recommendations = try await fetchAlbumRecommendations(
+            to: albumID,
+            excludingArtistID: artistID,
+            excludingArtistName: artistName,
+            limit: limit
+        )
+        try Task.checkCancellation()
+        try await indexStore.cacheAlbumRecommendations(
+            recommendations,
+            sourceAlbumID: albumID,
+            serverID: serverID,
+            requestedLimit: limit
+        )
+        return recommendations
+    }
+
+    private func fetchAlbumRecommendations(
+        to albumID: String,
+        excludingArtistID artistID: String?,
+        excludingArtistName artistName: String?,
+        limit: Int
+    ) async throws -> [AlbumID3] {
+        guard limit > 0 else { return [] }
+        try Task.checkCancellation()
+
+        let subsonicClient = try await client()
+        let requestCount = min(max(limit * 5, 50), 200)
+        var matches: [Song]
+        var usedArtistFallback = false
+
+        do {
+            matches = try await subsonicClient.getSimilarSongs(id: albumID, count: requestCount)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            guard let artistID else { throw error }
+            Logger.library.debug(
+                "Album similarity failed for album \(albumID, privacy: .public); falling back to artist similarity: \(error, privacy: .public)"
+            )
+            matches = try await subsonicClient.getSimilarSongs2(id: artistID, count: requestCount)
+            usedArtistFallback = true
+        }
+
+        try Task.checkCancellation()
+        var recommendations = Self.albumRecommendations(
+            from: matches,
+            excludingAlbumID: albumID,
+            excludingArtistID: artistID,
+            excludingArtistName: artistName,
+            limit: limit
+        )
+
+        // A valid album result is immediately useful and must not wait on a second server round trip.
+        // Artist similarity remains a rescue path for servers that cannot resolve an album seed at all.
+        if recommendations.isEmpty, let artistID, !usedArtistFallback {
+            do {
+                let artistMatches = try await subsonicClient.getSimilarSongs2(
+                    id: artistID,
+                    count: requestCount
+                )
+                try Task.checkCancellation()
+                matches.append(contentsOf: artistMatches)
+                recommendations = Self.albumRecommendations(
+                    from: matches,
+                    excludingAlbumID: albumID,
+                    excludingArtistID: artistID,
+                    excludingArtistName: artistName,
+                    limit: limit
+                )
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                Logger.library.debug(
+                    "Artist similarity backfill failed for album \(albumID, privacy: .public): \(error, privacy: .public)"
+                )
+            }
+        }
+
+        return recommendations
+    }
+
+    /// Converts a ranked similar-song response into stable, diverse album cards without another network round trip.
+    /// Multiple matching tracks strengthen an album while first-seen order breaks ties, preserving server relevance.
+    nonisolated static func albumRecommendations(
+        from songs: [Song],
+        excludingAlbumID: String,
+        excludingArtistID: String?,
+        excludingArtistName: String?,
+        limit: Int
+    ) -> [AlbumID3] {
+        guard limit > 0 else { return [] }
+
+        let normalizedExcludedArtistName = excludingArtistName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        var grouped: [String: (song: Song, count: Int, firstIndex: Int)] = [:]
+
+        for (index, song) in songs.enumerated() {
+            guard let candidateAlbumID = song.albumId,
+                  candidateAlbumID != excludingAlbumID,
+                  let albumName = song.album?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !albumName.isEmpty else {
+                continue
+            }
+
+            if let excludingArtistID, song.artistId == excludingArtistID {
+                continue
+            }
+            if let normalizedExcludedArtistName,
+               song.artist?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                   == normalizedExcludedArtistName {
+                continue
+            }
+
+            if var existing = grouped[candidateAlbumID] {
+                existing.count += 1
+                grouped[candidateAlbumID] = existing
+            } else {
+                grouped[candidateAlbumID] = (song, 1, index)
+            }
+        }
+
+        let ranked = grouped.values.sorted { lhs, rhs in
+            if lhs.count != rhs.count {
+                return lhs.count > rhs.count
+            }
+            return lhs.firstIndex < rhs.firstIndex
+        }
+
+        var albums: [AlbumID3] = []
+        var artistCounts: [String: Int] = [:]
+        albums.reserveCapacity(min(limit, ranked.count))
+
+        for candidate in ranked {
+            guard let candidateAlbumID = candidate.song.albumId,
+                  let albumName = candidate.song.album?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !albumName.isEmpty else {
+                continue
+            }
+
+            let artistKey = candidate.song.artistId
+                ?? candidate.song.artist?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                ?? candidateAlbumID
+            guard artistCounts[artistKey, default: 0] < 2 else { continue }
+
+            albums.append(
+                AlbumID3(
+                    id: candidateAlbumID,
+                    name: albumName,
+                    songCount: 0,
+                    duration: 0,
+                    artist: candidate.song.artist,
+                    artistId: candidate.song.artistId,
+                    coverArt: candidate.song.coverArt,
+                    year: candidate.song.year,
+                    genre: candidate.song.genre
+                )
+            )
+            artistCounts[artistKey, default: 0] += 1
+
+            if albums.count == limit { break }
+        }
+
+        return albums
+    }
 
     func topSongs(artist: String, count: Int) async throws -> [DisplayableSong] {
         try await client().getTopSongs(artist: artist, count: count).map { DisplayableSong(from: $0) }

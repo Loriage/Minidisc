@@ -4,6 +4,26 @@ enum MinidiscCarouselMetrics {
     static let previewLimit = 10
 }
 
+/// The shared edge-to-edge horizontal shelf used by the Home feed and detail-page recommendations.
+struct MinidiscShelf<Header: View, Content: View>: View {
+    @ViewBuilder let header: () -> Header
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
+            header()
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: MinidiscSpacing.m) {
+                    content()
+                }
+                .scrollTargetLayout()
+                .padding(.horizontal, MinidiscSpacing.l)
+            }
+            .scrollTargetBehavior(.viewAligned)
+        }
+    }
+}
+
 struct MinidiscCarouselHeader: View {
     private let title: Text
     private let showsChevron: Bool

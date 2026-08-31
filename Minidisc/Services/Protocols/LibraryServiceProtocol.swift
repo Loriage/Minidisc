@@ -86,6 +86,17 @@ nonisolated protocol ArtistRecommendationBrowsing: AnyObject, Sendable {
     func topSongs(artist: String, count: Int) async throws -> [DisplayableSong]
 }
 
+nonisolated protocol AlbumRecommendationBrowsing: AnyObject, Sendable {
+    /// Derives album recommendations from the server's similar-song graph.
+    /// Albums by the current artist are excluded because the album screen already presents them in “More by”.
+    func similarAlbums(
+        to albumID: String,
+        excludingArtistID artistID: String?,
+        excludingArtistName artistName: String?,
+        limit: Int
+    ) async throws -> [AlbumID3]
+}
+
 nonisolated protocol PlaybackQueueBuilding: AnyObject, Sendable {
     /// Smart Shuffle is truly random online and limited to downloaded tracks offline.
     func smartShuffleQueue(targetSize: Int) async throws -> [DisplayableSong]
@@ -118,6 +129,7 @@ nonisolated protocol LibraryServiceProtocol:
     GenreBrowsing,
     MoodTrackSourcing,
     ArtistRecommendationBrowsing,
+    AlbumRecommendationBrowsing,
     PlaybackQueueBuilding,
     PlaybackReporting,
     ArtworkURLResolving

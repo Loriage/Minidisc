@@ -13,6 +13,7 @@ final class AppContainer {
 
     let modelContainer: ModelContainer
     let libraryIndexStore: LibraryIndexStore
+    let libraryIndexMaintenance: LibraryIndexMaintenanceService
     let libraryCatalog: LibraryCatalog
     let keychainService: any KeychainServiceProtocol
     let serverService: any ServerServiceProtocol
@@ -113,9 +114,16 @@ final class AppContainer {
             modelContainer: modelContainer,
             downloadService: download,
             statsService: stats,
-            catalog: catalog
+            catalog: catalog,
+            indexStore: indexStore
         )
         libraryService = library
+        libraryIndexMaintenance = LibraryIndexMaintenanceService(
+            serverService: server,
+            store: indexStore,
+            synchronizer: librarySynchronizer,
+            libraryService: library
+        )
 
         artworkImageCache = ArtworkImageCache(downloadService: download, libraryService: library)
         artworkImageCache.persistCoversEnabled = cacheSettings.cacheArtwork
@@ -289,7 +297,7 @@ extension ModelContainer {
     /// A discardable metadata index kept separate from downloads, playback history,
     /// and server configuration so rebuilding it cannot affect user-owned local data.
     static func libraryIndex(inMemory: Bool = false) throws -> ModelContainer {
-        let schema = Schema(versionedSchema: LibraryIndexSchemaV2.self)
+        let schema = Schema(versionedSchema: LibraryIndexSchemaV3.self)
         let config = ModelConfiguration(
             "minidisc-library-index",
             schema: schema,

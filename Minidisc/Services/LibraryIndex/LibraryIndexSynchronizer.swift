@@ -45,6 +45,17 @@ actor LibraryIndexSynchronizer {
         )
     }
 
+    /// Stops every physical scan and waits for its last store write to finish. Index deletion uses
+    /// this barrier so an automatic launch refresh cannot repopulate rows immediately after erase.
+    func cancelAll() async {
+        let tasks = Array(inFlight.values)
+        tasks.forEach { $0.cancel() }
+        for task in tasks {
+            _ = try? await task.value
+        }
+        inFlight.removeAll()
+    }
+
     private func refreshMissing(
         serverID: UUID,
         status: LibraryIndexStatus?,

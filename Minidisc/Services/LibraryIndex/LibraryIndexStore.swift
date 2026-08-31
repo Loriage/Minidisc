@@ -57,6 +57,39 @@ nonisolated struct LibraryIndexCounts: Sendable, Equatable {
     let playlists: Int
 }
 
+nonisolated struct LibraryIndexStorageUsage: Sendable, Equatable {
+    static let empty = LibraryIndexStorageUsage(
+        artists: 0,
+        albums: 0,
+        tracks: 0,
+        playlists: 0,
+        recommendationAlbums: 0,
+        persistentBytes: 0
+    )
+
+    let artists: Int
+    let albums: Int
+    let tracks: Int
+    let playlists: Int
+    /// Number of source albums for which a recommendation result — including an empty result — is cached.
+    let recommendationAlbums: Int
+    let persistentBytes: Int64
+}
+
+nonisolated struct CachedAlbumRecommendations: Sendable, Equatable {
+    let albums: [AlbumID3]
+    let refreshedAt: Date
+    let requestedLimit: Int
+
+    func isFresh(at date: Date, lifetime: TimeInterval) -> Bool {
+        date.timeIntervalSince(refreshedAt) < lifetime
+    }
+
+    func canSatisfy(limit: Int) -> Bool {
+        requestedLimit >= limit || albums.count < requestedLimit
+    }
+}
+
 nonisolated struct LibraryIndexSearchResults: Sendable {
     let artists: [ArtistID3]
     let albums: [AlbumID3]
@@ -203,6 +236,18 @@ actor LibraryIndexStore {
             playlists: context.fetchCount(
                 FetchDescriptor<IndexedPlaylist>(predicate: #Predicate { $0.serverId == sid })
             )
+        )
+    }
+
+    func storageUsage() throws -> LibraryIndexStorageUsage {
+        let context = ModelContext(modelContainer)
+        return try LibraryIndexStorageUsage(
+            artists: context.fetchCount(FetchDescriptor<IndexedArtist>()),
+            albums: context.fetchCount(FetchDescriptor<IndexedAlbum>()),
+            tracks: context.fetchCount(FetchDescriptor<IndexedTrack>()),
+            playlists: context.fetchCount(FetchDescriptor<IndexedPlaylist>()),
+            recommendationAlbums: context.fetchCount(FetchDescriptor<IndexedAlbumRecommendation>()),
+            persistentBytes: persistentStoreBytes()
         )
     }
 
@@ -442,6 +487,37 @@ actor LibraryIndexStore {
         try context.save()
     }
 
+    func cacheAlbumRecommendations(
+        _ albums: [AlbumID3],
+        sourceAlbumID: String,
+        serverID: UUID,
+        requestedLimit: Int,
+        refreshedAt: Date = .now
+    ) throws {
+        guard !removedServerIDs.contains(serverID) else { return }
+        let context = ModelContext(modelContainer)
+        let key = Self.recordKey(serverID: serverID, itemID: sourceAlbumID)
+        let payload = try encoder.encode(albums)
+
+        if let existing = try albumRecommendationRow(recordKey: key, in: context) {
+            existing.refreshedAt = refreshedAt
+            existing.requestedLimit = requestedLimit
+            existing.payload = payload
+        } else {
+            context.insert(
+                IndexedAlbumRecommendation(
+                    recordKey: key,
+                    serverId: serverID,
+                    sourceAlbumId: sourceAlbumID,
+                    refreshedAt: refreshedAt,
+                    requestedLimit: requestedLimit,
+                    payload: payload
+                )
+            )
+        }
+        try context.save()
+    }
+
     func removePlaylist(id: String, serverID: UUID) throws {
         let context = ModelContext(modelContainer)
         let key = Self.recordKey(serverID: serverID, itemID: id)
@@ -523,6 +599,12 @@ actor LibraryIndexStore {
         try purge(serverID)
     }
 
+    /// Removes the complete discardable library index while preserving the app's main SwiftData store.
+    func eraseAll() throws {
+        removedServerIDs.removeAll()
+        try modelContainer.erase()
+    }
+
     /// Clears metadata after a server endpoint or account changes while allowing
     /// the stable configuration ID to be indexed again.
     func resetServer(_ serverID: UUID) throws {
@@ -537,12 +619,40 @@ actor LibraryIndexStore {
         try context.delete(model: IndexedAlbum.self, where: #Predicate { $0.serverId == sid })
         try context.delete(model: IndexedArtist.self, where: #Predicate { $0.serverId == sid })
         try context.delete(model: IndexedPlaylist.self, where: #Predicate { $0.serverId == sid })
+        try context.delete(model: IndexedAlbumRecommendation.self, where: #Predicate { $0.serverId == sid })
         try context.delete(model: LibraryIndexState.self, where: #Predicate { $0.serverId == sid })
         try context.delete(model: PlaylistIndexState.self, where: #Predicate { $0.serverId == sid })
         try context.save()
     }
 
     // MARK: - Reads
+
+    func albumRecommendations(sourceAlbumID: String, serverID: UUID) throws -> CachedAlbumRecommendations? {
+        let context = ModelContext(modelContainer)
+        let key = Self.recordKey(serverID: serverID, itemID: sourceAlbumID)
+        guard let row = try albumRecommendationRow(recordKey: key, in: context) else { return nil }
+        return CachedAlbumRecommendations(
+            albums: try decoder.decode([AlbumID3].self, from: row.payload),
+            refreshedAt: row.refreshedAt,
+            requestedLimit: row.requestedLimit
+        )
+    }
+
+    func freshRecommendationAlbumIDs(
+        serverID: UUID,
+        refreshedAfter cutoff: Date,
+        minimumRequestedLimit: Int
+    ) throws -> Set<String> {
+        let context = ModelContext(modelContainer)
+        let sid = serverID
+        let limit = minimumRequestedLimit
+        let descriptor = FetchDescriptor<IndexedAlbumRecommendation>(
+            predicate: #Predicate {
+                $0.serverId == sid && $0.refreshedAt >= cutoff && $0.requestedLimit >= limit
+            }
+        )
+        return Set(try context.fetch(descriptor).map(\.sourceAlbumId))
+    }
 
     func search(_ query: String, serverID: UUID) throws -> LibraryIndexSearchResults {
         let context = ModelContext(modelContainer)
@@ -734,6 +844,28 @@ actor LibraryIndexStore {
         var descriptor = FetchDescriptor<IndexedPlaylist>(predicate: #Predicate { $0.recordKey == key })
         descriptor.fetchLimit = 1
         return try context.fetch(descriptor).first
+    }
+
+    private func albumRecommendationRow(
+        recordKey: String,
+        in context: ModelContext
+    ) throws -> IndexedAlbumRecommendation? {
+        let key = recordKey
+        var descriptor = FetchDescriptor<IndexedAlbumRecommendation>(
+            predicate: #Predicate { $0.recordKey == key }
+        )
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
+    }
+
+    private func persistentStoreBytes() -> Int64 {
+        modelContainer.configurations.reduce(into: 0) { total, configuration in
+            let path = configuration.url.path
+            for candidate in [path, "\(path)-wal", "\(path)-shm"] {
+                let attributes = try? FileManager.default.attributesOfItem(atPath: candidate)
+                total += (attributes?[.size] as? NSNumber)?.int64Value ?? 0
+            }
+        }
     }
 
     private func albums(artistID: String, serverID: UUID, in context: ModelContext) throws -> [AlbumID3] {

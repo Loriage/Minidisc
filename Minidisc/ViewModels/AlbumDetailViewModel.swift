@@ -9,6 +9,10 @@ final class AlbumDetailViewModel {
     var year: Int? = nil
     var genre: String? = nil
     var songCount: Int = 0
+    var releaseDate: ItemDate? = nil
+    var releaseTypes: [String] = []
+    var version: String? = nil
+    var recordLabels: [String] = []
     var coverArtId: String? = nil
     var artistId: String? = nil
     var songs: [DisplayableSong] = []
@@ -68,6 +72,10 @@ final class AlbumDetailViewModel {
             year = apiAlbum.year
             genre = apiAlbum.genre
             songCount = apiAlbum.songCount
+            releaseDate = apiAlbum.releaseDate ?? apiAlbum.originalReleaseDate
+            releaseTypes = apiAlbum.releaseTypes ?? []
+            version = apiAlbum.version
+            recordLabels = apiAlbum.recordLabels?.map(\.name) ?? []
             coverArtId = apiAlbum.coverArt
             artistId = apiAlbum.artistId
             songs = (apiAlbum.song ?? []).map { DisplayableSong(from: $0, isDownloaded: downloadedIds.contains($0.id)) }
@@ -97,6 +105,10 @@ final class AlbumDetailViewModel {
         // offline (the long-lived VM re-runs load() on connectivity change) doesn't keep showing them.
         year = nil
         genre = nil
+        releaseDate = nil
+        releaseTypes = []
+        version = nil
+        recordLabels = []
         artistId = nil
         isOffline = true
         return true

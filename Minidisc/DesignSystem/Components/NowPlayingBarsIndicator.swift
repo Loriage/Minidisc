@@ -8,14 +8,14 @@ struct NowPlayingBarsIndicator: View {
     @State private var heights: [CGFloat] = [4, 8, 4]
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 2) {
+        HStack(alignment: .center, spacing: 2) {
             ForEach(0..<3, id: \.self) { i in
                 RoundedRectangle(cornerRadius: 1.5)
                     .fill(playingAccent)
                     .frame(width: 3, height: heights[i])
             }
         }
-        .frame(width: 14, height: 14, alignment: .bottom)
+        .frame(width: 14, height: 14, alignment: .center)
         .onAppear { if isPlaying { startAnimating() } }
         .onChange(of: isPlaying) { _, playing in
             if playing { startAnimating() } else { stopAnimating() }

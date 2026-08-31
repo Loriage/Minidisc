@@ -216,6 +216,41 @@ nonisolated final class PlaylistIndexState {
     }
 }
 
+/// Derived album recommendations cached per server and source album. An empty payload is a
+/// meaningful negative result: it prevents an absent section from briefly appearing on revisit.
+@Model
+nonisolated final class IndexedAlbumRecommendation {
+    #Unique<IndexedAlbumRecommendation>([\.recordKey])
+    #Index<IndexedAlbumRecommendation>(
+        [\.serverId],
+        [\.serverId, \.sourceAlbumId],
+        [\.serverId, \.refreshedAt]
+    )
+
+    var recordKey: String
+    var serverId: UUID
+    var sourceAlbumId: String
+    var refreshedAt: Date
+    var requestedLimit: Int
+    var payload: Data
+
+    init(
+        recordKey: String,
+        serverId: UUID,
+        sourceAlbumId: String,
+        refreshedAt: Date,
+        requestedLimit: Int,
+        payload: Data
+    ) {
+        self.recordKey = recordKey
+        self.serverId = serverId
+        self.sourceAlbumId = sourceAlbumId
+        self.refreshedAt = refreshedAt
+        self.requestedLimit = requestedLimit
+        self.payload = payload
+    }
+}
+
 /// Completion markers are independent so a failed track scan cannot invalidate a
 /// successfully refreshed album or artist index.
 @Model
@@ -254,12 +289,30 @@ nonisolated enum LibraryIndexSchemaV2: VersionedSchema {
     }
 }
 
+nonisolated enum LibraryIndexSchemaV3: VersionedSchema {
+    static let versionIdentifier = Schema.Version(3, 0, 0)
+    static var models: [any PersistentModel.Type] {
+        [
+            IndexedTrack.self,
+            IndexedAlbum.self,
+            IndexedArtist.self,
+            IndexedPlaylist.self,
+            IndexedAlbumRecommendation.self,
+            LibraryIndexState.self,
+            PlaylistIndexState.self
+        ]
+    }
+}
+
 nonisolated enum LibraryIndexMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [LibraryIndexSchemaV1.self, LibraryIndexSchemaV2.self]
+        [LibraryIndexSchemaV1.self, LibraryIndexSchemaV2.self, LibraryIndexSchemaV3.self]
     }
 
     static var stages: [MigrationStage] {
-        [.lightweight(fromVersion: LibraryIndexSchemaV1.self, toVersion: LibraryIndexSchemaV2.self)]
+        [
+            .lightweight(fromVersion: LibraryIndexSchemaV1.self, toVersion: LibraryIndexSchemaV2.self),
+            .lightweight(fromVersion: LibraryIndexSchemaV2.self, toVersion: LibraryIndexSchemaV3.self)
+        ]
     }
 }

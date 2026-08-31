@@ -71,7 +71,7 @@ struct HomeView: View {
                 // pull-to-refresh inset math, stranding the ScrollView with a blank gap at the top.
                 VStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
                     if !vm.topPicks.isEmpty {
-                        HomeShelf {
+                        MinidiscShelf {
                             MinidiscCarouselHeaderLink(
                                 "Top Picks for You",
                                 itemCount: vm.topPicks.count
@@ -88,7 +88,7 @@ struct HomeView: View {
                         }
                     }
                     if !vm.recentlyPlayed.isEmpty {
-                        HomeShelf {
+                        MinidiscShelf {
                             MinidiscCarouselHeaderLink(
                                 "Recently Played",
                                 itemCount: vm.recentlyPlayed.count
@@ -100,12 +100,12 @@ struct HomeView: View {
                             }
                         } content: {
                             ForEach(Array(vm.recentlyPlayed.prefix(MinidiscCarouselMetrics.previewLimit))) { album in
-                                HomeShelfAlbumCard(album: album)
+                                AlbumShelfCard(album: album)
                             }
                         }
                     }
                     if !vm.recentlyAdded.isEmpty {
-                        HomeShelf {
+                        MinidiscShelf {
                             MinidiscCarouselHeaderLink(
                                 "Recently Added",
                                 itemCount: vm.recentlyAdded.count
@@ -117,12 +117,12 @@ struct HomeView: View {
                             }
                         } content: {
                             ForEach(Array(vm.recentlyAdded.prefix(MinidiscCarouselMetrics.previewLimit))) { album in
-                                HomeShelfAlbumCard(album: album)
+                                AlbumShelfCard(album: album)
                             }
                         }
                     }
                     ForEach(vm.genreShelves) { shelf in
-                        HomeShelf {
+                        MinidiscShelf {
                             MinidiscCarouselHeaderLink(
                                 verbatim: shelf.name,
                                 itemCount: shelf.albums.count
@@ -134,7 +134,7 @@ struct HomeView: View {
                             }
                         } content: {
                             ForEach(Array(shelf.albums.prefix(MinidiscCarouselMetrics.previewLimit))) { album in
-                                HomeShelfAlbumCard(album: album)
+                                AlbumShelfCard(album: album)
                             }
                         }
                     }
@@ -200,28 +200,6 @@ struct HomeView: View {
     }
 }
 
-// MARK: - Shelf container
-
-/// A titled, edge-to-edge horizontal shelf with view-aligned paging.
-private struct HomeShelf<Header: View, Content: View>: View {
-    @ViewBuilder let header: () -> Header
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
-            header()
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: MinidiscSpacing.m) {
-                    content()
-                }
-                .scrollTargetLayout()
-                .padding(.horizontal, MinidiscSpacing.l)
-            }
-            .scrollTargetBehavior(.viewAligned)
-        }
-    }
-}
-
 // MARK: - Top pick card (large, Apple-Music style)
 
 private struct TopPickCard: View {
@@ -245,27 +223,6 @@ private struct TopPickCard: View {
                     title: playlist.name,
                     subtitle: String(localized: "\(playlist.songCount) tracks")
                 )
-            }
-            .frame(width: side, alignment: .leading)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Shelf album card
-
-private struct HomeShelfAlbumCard: View {
-    let album: AlbumID3
-
-    private let side: CGFloat = 160
-
-    var body: some View {
-        NavigationLink(value: HomeDestination.album(album)) {
-            VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
-                CoverArtView(id: album.coverArt ?? album.id, size: Int(side * 2))
-                    .frame(width: side, height: side)
-                    .minidiscCoverStyle(cornerRadius: MinidiscCornerRadius.standard)
-                CoverCardMetadata(title: album.name, subtitle: album.artist)
             }
             .frame(width: side, alignment: .leading)
         }

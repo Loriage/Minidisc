@@ -38497,6 +38497,83 @@
           }
         }
       }
+    },
+    "%lld of %lld albums" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld albums"
+          }
+        }
+      }
+    },
+    "Album recommendations" : {},
+    "All indexed metadata and cached album recommendations will be removed. Downloads, favorites, playlists on your server, and playback history are not affected." : {},
+    "Delete index" : {},
+    "Delete library index?" : {},
+    "Deleting index…" : {},
+    "Full indexing requires an unmetered, unconstrained network connection." : {},
+    "Index full server" : {},
+    "Index full server?" : {},
+    "Index operation failed" : {},
+    "Indexing stopped after repeated recommendation failures. Your completed index data was kept." : {},
+    "Library index" : {},
+    "Start indexing" : {},
+    "Synchronize index" : {},
+    "Synchronizing metadata…" : {},
+    "The index stores searchable metadata for artists, albums, songs, playlists, and album recommendations. Full indexing requires an unmetered, unconstrained connection. Downloads, favorites, and playback history are stored separately." : {},
+    "You Might Also Like" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das könnte dir auch gefallen"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ίσως σου αρέσουν επίσης"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "También te puede gustar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous aimerez peut-être aussi"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Potrebbe piacerti anche"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "こちらもおすすめ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你可能还会喜欢"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你可能也會喜歡"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

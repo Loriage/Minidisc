@@ -518,7 +518,7 @@ private struct TrackInfoSection: View {
                                 Button {
                                     shareRequest = track
                                 } label: {
-                                    Label("Share", systemImage: "square.and.arrow.up")
+                                    Label("Share", systemImage: "square.and.arrow.up.fill")
                                 }
                                 .disabled(shareRequest != nil)
                             }
@@ -529,7 +529,7 @@ private struct TrackInfoSection: View {
                                 }
                                 .disabled(!isOnline || playerState.currentTrack == nil)
                             } else {
-                                Button("Favorite", systemImage: "star") {
+                                Button("Favorite", systemImage: "star.fill") {
                                     toggleFavorite()
                                 }
                                 .disabled(!isOnline || playerState.currentTrack == nil)

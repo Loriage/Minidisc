@@ -35,6 +35,7 @@ struct AlbumCard: View {
 /// The 160pt album card used by Home-style shelves.
 struct AlbumShelfCard: View {
     let album: AlbumID3
+    var metadataSubtitle: String? = nil
 
     private let side: CGFloat = 160
 
@@ -44,7 +45,10 @@ struct AlbumShelfCard: View {
                 CoverArtView(id: album.coverArt ?? album.id, size: Int(side * 2))
                     .frame(width: side, height: side)
                     .minidiscCoverStyle(cornerRadius: MinidiscCornerRadius.standard)
-                CoverCardMetadata(title: album.name, subtitle: album.artist)
+                CoverCardMetadata(
+                    title: album.name,
+                    subtitle: metadataSubtitle ?? album.artist
+                )
             }
             .frame(width: side, alignment: .leading)
         }

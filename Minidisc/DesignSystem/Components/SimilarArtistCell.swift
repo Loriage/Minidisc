@@ -3,6 +3,7 @@ import SwiftUI
 struct SimilarArtistCell: View {
     let recommendation: SimilarArtistRecommendation
     let externalImageURL: URL?
+    var size: CGFloat = 140
     let onOutOfLibraryTap: () -> Void
 
     var body: some View {
@@ -17,16 +18,16 @@ struct SimilarArtistCell: View {
     }
 
     private var cellContent: some View {
-        VStack(spacing: MinidiscSpacing.xs) {
+        VStack(spacing: MinidiscSpacing.s) {
             if recommendation.inLibrary, let coverArt = recommendation.coverArt {
-                CoverArtView(id: coverArt, size: 128, placeholderSystemImage: "person.fill")
-                    .frame(width: 64, height: 64)
+                CoverArtView(id: coverArt, size: Int(size * 2), placeholderSystemImage: "person.fill")
+                    .frame(width: size, height: size)
                     .clipShape(Circle())
             } else {
                 ExternalCoverView(url: externalImageURL) {
-                    ArtistPlaceholderView(name: recommendation.name, size: 64)
+                    ArtistPlaceholderView(name: recommendation.name, size: size)
                 }
-                .frame(width: 64, height: 64)
+                .frame(width: size, height: size)
                 .clipShape(Circle())
             }
 
@@ -36,5 +37,6 @@ struct SimilarArtistCell: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
         }
+        .frame(width: size)
     }
 }

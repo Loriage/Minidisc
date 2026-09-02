@@ -541,7 +541,7 @@ private struct TrackInfoSection: View {
                             guard playerState.currentTrack?.albumId != nil else { return }
                             showAlbumSheet = true
                         } label: {
-                            Label("Go to Album", systemImage: "square.stack")
+                            Label("Go to Album", systemImage: "music.note.square.stack")
                             if let albumName = playerState.currentTrack?.albumName, !albumName.isEmpty {
                                 Text(albumName)
                             }

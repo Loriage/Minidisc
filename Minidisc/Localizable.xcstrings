@@ -1306,6 +1306,16 @@
         }
       }
     },
+    "%lld of %lld albums" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld albums"
+          }
+        }
+      }
+    },
     "%lld songs" : {
       "localizations" : {
         "de" : {
@@ -3997,6 +4007,9 @@
         }
       }
     },
+    "Album recommendations" : {
+
+    },
     "albums" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4257,6 +4270,9 @@
           }
         }
       }
+    },
+    "All indexed metadata and cached album recommendations will be removed. Downloads, favorites, playlists on your server, and playback history are not affected." : {
+
     },
     "All Indexers" : {
       "localizations" : {
@@ -5142,6 +5158,9 @@
         }
       }
     },
+    "Artwork for %@" : {
+      "comment" : "Accessibility label for the album cover; the variable is the album title."
+    },
     "Assign to Album" : {
       "localizations" : {
         "de" : {
@@ -5817,6 +5836,58 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "自動"
+          }
+        }
+      }
+    },
+    "Automix" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automix"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automix"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automix"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automix"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automix"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automix"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automix"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automix"
           }
         }
       }
@@ -10194,6 +10265,12 @@
         }
       }
     },
+    "Delete index" : {
+
+    },
+    "Delete library index?" : {
+
+    },
     "Delete Playlist" : {
       "localizations" : {
         "de" : {
@@ -10401,6 +10478,9 @@
           }
         }
       }
+    },
+    "Deleting index…" : {
+
     },
     "Description" : {
       "localizations" : {
@@ -10662,6 +10742,58 @@
         }
       }
     },
+    "Disc" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disc"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Δίσκος"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disco"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disque"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disco"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ディスク"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "碟片"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "光碟"
+          }
+        }
+      }
+    },
     "Discard" : {
       "localizations" : {
         "de" : {
@@ -10762,58 +10894,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "要捨棄變更嗎？"
-          }
-        }
-      }
-    },
-    "Disc" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Disc"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Δίσκος"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Disco"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Disque"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Disco"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ディスク"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "碟片"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "光碟"
           }
         }
       }
@@ -11915,6 +11995,9 @@
           }
         }
       }
+    },
+    "Downloading…" : {
+
     },
     "Downloads" : {
       "localizations" : {
@@ -13587,6 +13670,58 @@
         }
       }
     },
+    "First release" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erste Veröffentlichung"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Πρώτη κυκλοφορία"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Primer lanzamiento"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Première sortie"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prima uscita"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最初のリリース"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "首次发行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "首次發行"
+          }
+        }
+      }
+    },
     "Focus" : {
       "localizations" : {
         "de" : {
@@ -14051,6 +14186,61 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "最新發行"
+          }
+        }
+      }
+    },
+    "Full indexing requires an unmetered, unconstrained network connection." : {
+
+    },
+    "Genre" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Genre"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Είδος"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Género"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Genre"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Genere"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ジャンル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "流派"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "類型"
           }
         }
       }
@@ -14576,6 +14766,7 @@
       }
     },
     "Horizontal view" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15511,6 +15702,15 @@
         }
       }
     },
+    "Index full server" : {
+
+    },
+    "Index full server?" : {
+
+    },
+    "Index operation failed" : {
+
+    },
     "Indexer" : {
       "localizations" : {
         "de" : {
@@ -15562,6 +15762,9 @@
           }
         }
       }
+    },
+    "Indexing stopped after repeated recommendation failures. Your completed index data was kept." : {
+
     },
     "Information" : {
       "localizations" : {
@@ -16708,6 +16911,9 @@
           }
         }
       }
+    },
+    "Library index" : {
+
     },
     "Library tags" : {
       "localizations" : {
@@ -19312,6 +19518,9 @@
           }
         }
       }
+    },
+    "More by %@" : {
+
     },
     "More options" : {
       "localizations" : {
@@ -29070,6 +29279,7 @@
       }
     },
     "Show less" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -29122,6 +29332,7 @@
       }
     },
     "Show more" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -29481,6 +29692,58 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "相似藝人"
+          }
+        }
+      }
+    },
+    "Singles & EPs" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Singles & EPs"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Singles και EP"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sencillos y EP"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Singles et EP"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Singoli ed EP"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "シングル＆EP"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "单曲与 EP"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "單曲與 EP"
           }
         }
       }
@@ -30265,6 +30528,9 @@
         }
       }
     },
+    "Start indexing" : {
+
+    },
     "Start Listening" : {
       "localizations" : {
         "de" : {
@@ -30947,6 +31213,12 @@
           }
         }
       }
+    },
+    "Synchronize index" : {
+
+    },
+    "Synchronizing metadata…" : {
+
     },
     "System follows your device's light or dark setting." : {
       "localizations" : {
@@ -31701,6 +31973,9 @@
           }
         }
       }
+    },
+    "The index stores searchable metadata for artists, albums, songs, playlists, and album recommendations. Full indexing requires an unmetered, unconstrained connection. Downloads, favorites, and playback history are stored separately." : {
+
     },
     "The Lidarr address is not valid." : {
       "localizations" : {
@@ -35424,6 +35699,58 @@
         }
       }
     },
+    "Undo" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rückgängig"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Αναίρεση"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deshacer"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Annuler"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Annulla"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "元に戻す"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤销"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "復原"
+          }
+        }
+      }
+    },
     "Unencrypted connection — make sure you are on a trusted network." : {
       "localizations" : {
         "de" : {
@@ -35582,58 +35909,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "未預期的錯誤：%@ %lld。"
-          }
-        }
-      }
-    },
-    "Undo" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rückgängig"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Αναίρεση"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Deshacer"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Annuler"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Annulla"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "元に戻す"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "撤销"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "復原"
           }
         }
       }
@@ -37406,6 +37681,58 @@
         }
       }
     },
+    "You Might Also Like" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das könnte dir auch gefallen"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ίσως σου αρέσουν επίσης"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "También te puede gustar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous aimerez peut-être aussi"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Potrebbe piacerti anche"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "こちらもおすすめ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你可能还会喜欢"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你可能也會喜歡"
+          }
+        }
+      }
+    },
     "You're all set." : {
       "localizations" : {
         "de" : {
@@ -38494,83 +38821,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的年度以 %@ 揭開序幕"
-          }
-        }
-      }
-    },
-    "%lld of %lld albums" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld of %2$lld albums"
-          }
-        }
-      }
-    },
-    "Album recommendations" : {},
-    "All indexed metadata and cached album recommendations will be removed. Downloads, favorites, playlists on your server, and playback history are not affected." : {},
-    "Delete index" : {},
-    "Delete library index?" : {},
-    "Deleting index…" : {},
-    "Full indexing requires an unmetered, unconstrained network connection." : {},
-    "Index full server" : {},
-    "Index full server?" : {},
-    "Index operation failed" : {},
-    "Indexing stopped after repeated recommendation failures. Your completed index data was kept." : {},
-    "Library index" : {},
-    "Start indexing" : {},
-    "Synchronize index" : {},
-    "Synchronizing metadata…" : {},
-    "The index stores searchable metadata for artists, albums, songs, playlists, and album recommendations. Full indexing requires an unmetered, unconstrained connection. Downloads, favorites, and playback history are stored separately." : {},
-    "You Might Also Like" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das könnte dir auch gefallen"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ίσως σου αρέσουν επίσης"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "También te puede gustar"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vous aimerez peut-être aussi"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Potrebbe piacerti anche"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "こちらもおすすめ"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你可能还会喜欢"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你可能也會喜歡"
           }
         }
       }

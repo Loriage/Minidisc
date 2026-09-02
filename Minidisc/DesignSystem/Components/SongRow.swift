@@ -16,6 +16,11 @@ struct SongRow: View {
     /// Show the artist as the subtitle. Default true; pass false where the artist is implied (e.g. the artist
     /// detail page) so the row isn't redundant.
     var showArtist: Bool = true
+    /// Optional context-specific secondary line, such as the album title on an artist's top songs.
+    var secondaryText: String? = nil
+    var coverArtSize: CGFloat = 44
+    var coverArtCornerRadius: CGFloat = MinidiscCornerRadius.standard
+    var primaryContentSpacing: CGFloat = MinidiscSpacing.s
     var isFavorite: Bool = false
     var titleColor: Color = .primary
     var secondaryColor: Color = .secondary
@@ -25,6 +30,7 @@ struct SongRow: View {
     var isDownloading: Bool = false
     var onRemoveFromPlaylist: (() -> Void)? = nil
     var onAddToPlaylist: ((DisplayableSong) -> Void)? = nil
+    var onGoToAlbum: (() -> Void)? = nil
     var onTap: (() -> Void)? = nil
 
     @Environment(\.appContainer) private var container
@@ -35,11 +41,15 @@ struct SongRow: View {
     @State private var preparedShare: PreparedTrackShare?
     @State private var trackInformation: DisplayableSong?
 
-    init(song: DisplayableSong, index: Int, showCoverArt: Bool = false, showArtist: Bool = true, isFavorite: Bool = false, titleColor: Color = .primary, secondaryColor: Color = .secondary, trailingAccessory: SongRowTrailingAccessory = .duration, onDownload: (() -> Void)? = nil, onRemoveDownload: (() -> Void)? = nil, isDownloading: Bool = false, onRemoveFromPlaylist: (() -> Void)? = nil, onAddToPlaylist: ((DisplayableSong) -> Void)? = nil, onTap: (() -> Void)? = nil) {
+    init(song: DisplayableSong, index: Int, showCoverArt: Bool = false, showArtist: Bool = true, secondaryText: String? = nil, coverArtSize: CGFloat = 44, coverArtCornerRadius: CGFloat = MinidiscCornerRadius.standard, primaryContentSpacing: CGFloat = MinidiscSpacing.s, isFavorite: Bool = false, titleColor: Color = .primary, secondaryColor: Color = .secondary, trailingAccessory: SongRowTrailingAccessory = .duration, onDownload: (() -> Void)? = nil, onRemoveDownload: (() -> Void)? = nil, isDownloading: Bool = false, onRemoveFromPlaylist: (() -> Void)? = nil, onAddToPlaylist: ((DisplayableSong) -> Void)? = nil, onGoToAlbum: (() -> Void)? = nil, onTap: (() -> Void)? = nil) {
         self.song = song
         self.index = index
         self.showCoverArt = showCoverArt
         self.showArtist = showArtist
+        self.secondaryText = secondaryText
+        self.coverArtSize = coverArtSize
+        self.coverArtCornerRadius = coverArtCornerRadius
+        self.primaryContentSpacing = primaryContentSpacing
         self.isFavorite = isFavorite
         self.titleColor = titleColor
         self.secondaryColor = secondaryColor
@@ -49,6 +59,7 @@ struct SongRow: View {
         self.isDownloading = isDownloading
         self.onRemoveFromPlaylist = onRemoveFromPlaylist
         self.onAddToPlaylist = onAddToPlaylist
+        self.onGoToAlbum = onGoToAlbum
         self.onTap = onTap
     }
 
@@ -64,6 +75,7 @@ struct SongRow: View {
             onRemoveFromPlaylist: onRemoveFromPlaylist,
             onAddToPlaylist: onAddToPlaylist,
             onShare: { shareRequest = song },
+            onGoToAlbum: onGoToAlbum,
             onGetInfo: trailingAccessory == .menu ? { trackInformation = song } : nil
         )
     }
@@ -103,9 +115,13 @@ struct SongRow: View {
     }
 
     private var primaryContent: some View {
-        HStack(spacing: MinidiscSpacing.s) {
+        HStack(spacing: primaryContentSpacing) {
             if showCoverArt {
-                CoverArtCard(id: song.coverArtId ?? song.id, size: 44)
+                CoverArtCard(
+                    id: song.coverArtId ?? song.id,
+                    size: coverArtSize,
+                    cornerRadius: coverArtCornerRadius
+                )
                     .overlay {
                         // Now-playing equalizer over the thumbnail (with a scrim) for the current track —
                         // restores the playing cue lost when rows switched to album thumbnails (showCoverArt).
@@ -114,7 +130,7 @@ struct SongRow: View {
                                 Color.black.opacity(0.45)
                                 NowPlayingBarsIndicator(isPlaying: isPlaying)
                             }
-                            .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard))
+                            .clipShape(RoundedRectangle(cornerRadius: coverArtCornerRadius))
                         }
                     }
                     .overlay(alignment: .topLeading) {
@@ -151,8 +167,8 @@ struct SongRow: View {
                     .font(.minidiscBody)
                     .foregroundStyle(isCurrentTrack ? playingAccent : titleColor)
                     .lineLimit(1)
-                if showArtist, let artist = song.artist {
-                    Text(artist)
+                if let secondaryText = secondaryText ?? (showArtist ? song.artist : nil) {
+                    Text(secondaryText)
                         .font(.minidiscCellSubtitle)
                         .foregroundStyle(secondaryColor)
                         .lineLimit(1)
@@ -233,6 +249,7 @@ private struct SongActions: View {
     let onRemoveFromPlaylist: (() -> Void)?
     let onAddToPlaylist: ((DisplayableSong) -> Void)?
     let onShare: () -> Void
+    let onGoToAlbum: (() -> Void)?
     let onGetInfo: (() -> Void)?
 
     @Environment(\.appContainer) private var container
@@ -293,9 +310,22 @@ private struct SongActions: View {
                 }
             }
 
-            if let onGetInfo {
+            if onGoToAlbum != nil || onGetInfo != nil {
                 Section {
-                    Button("Get Info", systemImage: "info.circle.fill", action: onGetInfo)
+                    if let onGoToAlbum,
+                       song.albumId != nil,
+                       let albumName = song.albumName,
+                       !albumName.isEmpty {
+                        Button(action: onGoToAlbum) {
+                            Label("Go to Album", systemImage: "music.note.square.stack")
+                            Text(albumName)
+                        }
+                        .disabled(!isOnline)
+                    }
+
+                    if let onGetInfo {
+                        Button("Get Info", systemImage: "info.circle.fill", action: onGetInfo)
+                    }
                 }
             }
 

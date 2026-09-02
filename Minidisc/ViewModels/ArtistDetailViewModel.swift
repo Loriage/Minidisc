@@ -6,6 +6,9 @@ import OSLog
 @MainActor
 final class ArtistDetailViewModel {
     var artist: ArtistID3?
+    /// Releases are prepared when the artist loads so the view never repeatedly filters the discography.
+    private(set) var albumReleases: [AlbumID3] = []
+    private(set) var singlesAndEPs: [AlbumID3] = []
     var isLoading = false
     var isPlayLoading = false
     var error: UserFacingError?
@@ -83,7 +86,7 @@ final class ArtistDetailViewModel {
             // Empty-success guard: behind a captive proxy the server answers 200 with no albums.
             // That never throws, so prefer the downloaded copy over an empty screen.
             if (fetched.album ?? []).isEmpty, await loadFromLocal() { return }
-            artist = fetched
+            setArtist(fetched)
             isOffline = false
         } catch {
             // Server unreachable (stale isOnline, VPN-satisfied path, server down): the downloaded
@@ -106,7 +109,7 @@ final class ArtistDetailViewModel {
               !data.albums.isEmpty
         else { return false }
 
-        artist = ArtistID3(
+        setArtist(ArtistID3(
             id: data.artistId,
             name: data.artistName,
             albumCount: data.albums.count,
@@ -123,7 +126,7 @@ final class ArtistDetailViewModel {
                     coverArt: album.coverArtId
                 )
             }
-        )
+        ))
         offlineTracks = data.tracks
         // The online-only sections have nothing to fetch: clear their loading flags so the view
         // collapses them instead of showing skeletons that never resolve.
@@ -138,6 +141,13 @@ final class ArtistDetailViewModel {
         isLoadingArtistInfo = false
         isOffline = true
         return true
+    }
+
+    private func setArtist(_ loadedArtist: ArtistID3) {
+        artist = loadedArtist
+        let releases = loadedArtist.album ?? []
+        albumReleases = releases.filter { $0.minidiscReleaseCategory == .album }
+        singlesAndEPs = releases.filter { $0.minidiscReleaseCategory == .singleOrEP }
     }
 
     /// Top songs (getTopSongs takes the artist NAME) — call after `load()` so `artist?.name` is set.

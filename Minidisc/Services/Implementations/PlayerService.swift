@@ -199,6 +199,9 @@ actor PlayerService: PlayerServiceProtocol {
         let transportIntentGeneration: UInt64
     }
     private var activeEnginePlayback: ActiveEnginePlayback?
+    /// Last callback from the active physical item. PlayerState deliberately represents user intent,
+    /// so it cannot tell validation code whether AVPlayer is truly rendering or merely waiting.
+    private var activeEngineState: AudioEngineState?
     /// Changes only when the queue session is replaced (not on an ordinary skip).
     private var queueGeneration: UInt64 = 0
     /// Serializes the state/engine commit phase while still allowing a newer play
@@ -313,6 +316,7 @@ actor PlayerService: PlayerServiceProtocol {
             playbackGeneration: playbackGeneration,
             transportIntentGeneration: transportIntentGeneration
         )
+        activeEngineState = nil
     }
 
     private func isCurrentEngineEvent(_ token: AudioEnginePlaybackToken) -> Bool {
@@ -357,6 +361,17 @@ actor PlayerService: PlayerServiceProtocol {
         if current > baseline + 0.1 { return .validated }
         if duration > 0, current >= duration - 1.5 { return .deferToEndOfTrack }
         return .retry
+    }
+
+    /// A remote item can remain in AVPlayer's waiting state forever without producing an item
+    /// failure or a network-path change. Those stalls need the same bounded rebuild path as an
+    /// interface handover; local files and deliberate pauses must remain untouched.
+    nonisolated static func shouldRecoverUnexpectedEngineStall(
+        sourceIsRemoteStream: Bool,
+        isOnline: Bool,
+        playbackState: PlaybackState
+    ) -> Bool {
+        sourceIsRemoteStream && isOnline && playbackState == .playing
     }
 
     private var currentSourceIsRemoteStream: Bool {
@@ -2459,7 +2474,7 @@ actor PlayerService: PlayerServiceProtocol {
         guard action == .armAutomaticRecovery else { return }
         switch snapshot.playbackState {
         case .error:
-            armNetworkRecoveryProbe(trackID: track.id, delay: .seconds(1), requireStall: false)
+            await armNetworkRecoveryProbe(trackID: track.id, delay: .seconds(1), requireStall: false)
         case .playing:
             // The engine may have emitted `.paused` while the path was offline. NWPath returning
             // online does not guarantee another KVO callback, so explicitly reassert the still-live
@@ -2482,7 +2497,7 @@ actor PlayerService: PlayerServiceProtocol {
             }
             // A satisfied Wi-Fi path can be published before DNS, the proxy, or the media server is
             // usable. Keep the audible item and rebuild only if its playhead actually stops moving.
-            armNetworkRecoveryProbe(trackID: track.id, delay: .seconds(2), requireStall: true)
+            await armNetworkRecoveryProbe(trackID: track.id, delay: .seconds(2), requireStall: true)
         case .idle, .loading, .paused:
             // A seamless handover stays audible. Do not manufacture a gap; explicit Play rebuilds.
             break
@@ -2575,6 +2590,13 @@ actor PlayerService: PlayerServiceProtocol {
             return
         }
 
+        guard activeEngineState == .playing else {
+            // A brief `.playing` followed by another wait must not validate the item merely because
+            // it managed to move by a fraction of a second. The buffering callback owns the probe.
+            networkRecoveryValidationToken = nil
+            return
+        }
+
         let progress = engine.progress
         switch Self.networkProgressValidationOutcome(
             baseline: baselineProgress,
@@ -2608,14 +2630,14 @@ actor PlayerService: PlayerServiceProtocol {
         Logger.player.warning(
             "[NETWORK-RECOVERY] rebuilt item did not advance track='\(trackID, privacy: .public)' — retrying"
         )
-        armNetworkRecoveryProbe(trackID: trackID, delay: .milliseconds(250), requireStall: false)
+        await armNetworkRecoveryProbe(trackID: trackID, delay: .milliseconds(250), requireStall: false)
     }
 
     private func armNetworkRecoveryProbe(
         trackID: String,
         delay: Duration,
         requireStall: Bool
-    ) {
+    ) async {
         let pathGeneration = latestNetworkPathEvent.generation
         guard networkRecoveryAttemptBudget.canAttempt(
             trackID: trackID,
@@ -2627,6 +2649,26 @@ actor PlayerService: PlayerServiceProtocol {
             Logger.player.warning(
                 "[NETWORK-RECOVERY] retry budget exhausted track='\(trackID, privacy: .public)' path=\(pathGeneration, privacy: .public)"
             )
+            let snapshot = await MainActor.run {
+                (trackID: state.currentTrack?.id, playbackState: state.playbackState)
+            }
+            let recoveryStillWanted: Bool = switch snapshot.playbackState {
+            case .playing, .error: true
+            case .idle, .loading, .paused: false
+            }
+            guard networkReloadRequiredTrackID == trackID,
+                  snapshot.trackID == trackID,
+                  recoveryStillWanted else { return }
+            cancelNetworkRecoveryValidation()
+            playbackProgressTracker.breakContinuity()
+            stopProgressTimer()
+            stopPositionSaveTimer()
+            cancelPendingCacheDownload()
+            cancelPendingPrefetch()
+            engine.stop()
+            activeEnginePlayback = nil
+            await MainActor.run { state.playbackState = .error(.timeout) }
+            playbackDiagnostics.record(.playbackStateChanged(.error))
             return
         }
 
@@ -2705,7 +2747,9 @@ actor PlayerService: PlayerServiceProtocol {
         }
 
         let currentProgress = engine.progress
-        if requireStall, currentProgress > baselineProgress + 0.1 {
+        if requireStall,
+           activeEngineState == .playing,
+           currentProgress > baselineProgress + 0.1 {
             cancelNetworkRecoveryValidation()
             networkReloadRequiredTrackID = nil
             networkRecoveryAttemptBudget.reset()
@@ -2740,7 +2784,7 @@ actor PlayerService: PlayerServiceProtocol {
             Logger.player.warning(
                 "[NETWORK-RECOVERY] source refresh attempt=\(attempt, privacy: .public) failed track='\(trackID, privacy: .public)': \(error, privacy: .public)"
             )
-            armNetworkRecoveryProbe(trackID: trackID, delay: .seconds(2), requireStall: false)
+            await armNetworkRecoveryProbe(trackID: trackID, delay: .seconds(2), requireStall: false)
             return
         }
         guard !Task.isCancelled,
@@ -3386,6 +3430,7 @@ actor PlayerService: PlayerServiceProtocol {
         playbackToken: AudioEnginePlaybackToken
     ) async {
         guard isCurrentEngineEvent(playbackToken) else { return }
+        activeEngineState = newState
         let diagnosticState: PlaybackDiagnostics.EngineStatus = switch newState {
         case .playing: .playing
         case .buffering: .buffering
@@ -3447,10 +3492,10 @@ actor PlayerService: PlayerServiceProtocol {
             }
         case .buffering, .paused:
             playbackProgressTracker.breakContinuity()
+            await armRecoveryForUnexpectedEngineStall(playbackToken: playbackToken)
             if newState == .paused {
                 await resumeAfterNetworkPauseIfNeeded(playbackToken: playbackToken)
             }
-            await armRecoveryForUnexpectedEngineStall(playbackToken: playbackToken)
         case .stopped:
             playbackProgressTracker.breakContinuity()
         case .error:
@@ -3485,7 +3530,7 @@ actor PlayerService: PlayerServiceProtocol {
                 await MainActor.run { state.playbackState = .error(.timeout) }
                 if let trackID = networkReloadRequiredTrackID,
                    latestNetworkPathEvent.isOnline {
-                    armNetworkRecoveryProbe(
+                    await armNetworkRecoveryProbe(
                         trackID: trackID,
                         delay: .seconds(2),
                         requireStall: false
@@ -3533,16 +3578,42 @@ actor PlayerService: PlayerServiceProtocol {
     private func armRecoveryForUnexpectedEngineStall(
         playbackToken: AudioEnginePlaybackToken
     ) async {
-        guard currentSourceIsRemoteStream,
-              latestNetworkPathEvent.isOnline else { return }
         let snapshot = await MainActor.run {
             (trackID: state.currentTrack?.id, playbackState: state.playbackState)
         }
         guard isCurrentEngineEvent(playbackToken),
-              snapshot.playbackState == .playing,
               let trackID = snapshot.trackID,
-              networkReloadRequiredTrackID == trackID else { return }
-        armNetworkRecoveryProbe(trackID: trackID, delay: .seconds(2), requireStall: true)
+              Self.shouldRecoverUnexpectedEngineStall(
+                  sourceIsRemoteStream: currentSourceIsRemoteStream,
+                  isOnline: latestNetworkPathEvent.isOnline,
+                  playbackState: snapshot.playbackState
+              ) else { return }
+
+        let isNewStall = networkReloadRequiredTrackID != trackID
+        if isNewStall {
+            networkReloadRequiredTrackID = trackID
+            networkRecoveryAttemptBudget.reset()
+            playbackDiagnostics.record(
+                .networkRecovery(
+                    .marked(pathGeneration: latestNetworkPathEvent.generation, automatic: true)
+                )
+            )
+            Logger.player.warning(
+                "[NETWORK-RECOVERY] remote item stalled without a path change track='\(trackID, privacy: .public)'"
+            )
+        }
+
+        // A later `.playing` callback must be validated by real playhead movement. AVPlayer can
+        // transiently claim to be playing before falling straight back into the same wait state.
+        if networkRecoveryValidationToken == playbackToken {
+            cancelNetworkRecoveryValidation()
+        }
+        networkRecoveryValidationToken = playbackToken
+        await armNetworkRecoveryProbe(
+            trackID: trackID,
+            delay: isNewStall ? .seconds(3) : .seconds(2),
+            requireStall: true
+        )
     }
 
     /// Called by the engine bridge on unexpected errors.
@@ -3582,7 +3653,7 @@ actor PlayerService: PlayerServiceProtocol {
             await MainActor.run { state.playbackState = .error(.timeout) }
             if let trackID = networkReloadRequiredTrackID,
                latestNetworkPathEvent.isOnline {
-                armNetworkRecoveryProbe(
+                await armNetworkRecoveryProbe(
                     trackID: trackID,
                     delay: .seconds(2),
                     requireStall: false

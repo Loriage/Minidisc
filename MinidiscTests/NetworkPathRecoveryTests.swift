@@ -289,6 +289,42 @@ struct PlaybackHandoverReassertionTests {
     }
 }
 
+@Suite("Unexpected playback stall recovery")
+struct UnexpectedPlaybackStallRecoveryTests {
+    @Test("an online remote stream with active play intent is recoverable")
+    func onlineRemotePlayback() {
+        #expect(PlayerService.shouldRecoverUnexpectedEngineStall(
+            sourceIsRemoteStream: true,
+            isOnline: true,
+            playbackState: .playing
+        ))
+    }
+
+    @Test("local, offline, and deliberate non-playing states are left alone")
+    func exclusions() {
+        #expect(!PlayerService.shouldRecoverUnexpectedEngineStall(
+            sourceIsRemoteStream: false,
+            isOnline: true,
+            playbackState: .playing
+        ))
+        #expect(!PlayerService.shouldRecoverUnexpectedEngineStall(
+            sourceIsRemoteStream: true,
+            isOnline: false,
+            playbackState: .playing
+        ))
+        #expect(!PlayerService.shouldRecoverUnexpectedEngineStall(
+            sourceIsRemoteStream: true,
+            isOnline: true,
+            playbackState: .paused
+        ))
+        #expect(!PlayerService.shouldRecoverUnexpectedEngineStall(
+            sourceIsRemoteStream: true,
+            isOnline: true,
+            playbackState: .loading
+        ))
+    }
+}
+
 @Suite("Personal audio route recovery")
 struct PersonalAudioRouteRecoveryTests {
     @Test("an ambiguous previous route never manufactures a pause")

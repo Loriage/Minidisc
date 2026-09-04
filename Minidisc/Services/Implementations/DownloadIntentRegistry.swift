@@ -11,6 +11,7 @@ nonisolated final class DownloadIntentRegistry: Sendable {
     }
 
     struct Token: Sendable {
+        let id = UUID()
         fileprivate let registry: DownloadIntentRegistry
         fileprivate let key: Key
         fileprivate let generation: UInt64

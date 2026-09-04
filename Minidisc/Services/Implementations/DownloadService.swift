@@ -183,8 +183,8 @@ actor DownloadService: DownloadServiceProtocol {
     private var progressContinuation: AsyncStream<[DownloadProgress]>.Continuation?
     private let transferCoordinator = SharedDownloadTaskCoordinator()
     private let intents = DownloadIntentRegistry()
-    private var activeAlbumDownloads: Set<String> = []
-    private var activePlaylistDownloads: Set<String> = []
+    private var activeAlbumDownloads: [String: DownloadIntentRegistry.Token] = [:]
+    private var activePlaylistDownloads: [String: DownloadIntentRegistry.Token] = [:]
     private var isRemovingAllDownloads = false
     private let toastService: ToastService
     private let downloadSession: URLSession
@@ -451,23 +451,20 @@ actor DownloadService: DownloadServiceProtocol {
             return
         }
         try checkDownloadCancellation()
+        let queue = downloadsQueue()
+        // Register this explicit track request even when an album already has a waiter.
+        // Otherwise cancelling that album also cancels the independently requested song.
+        try await queue.enqueue([song], serverID: serverId, owner: .track, isCurrent: { intent.isCurrent })
+        try intent.check()
+        await toastService.show(String(localized: "Download queued"), subtitle: song.title, action: .navigateToDownloads)
 
         let key = taskKey(songId: song.id, serverId: serverId)
         // Every caller must observe the real result. Returning immediately used to make
         // overlapping album/playlist requests count a still-running (or later failing)
         // transfer as a success.
         try await transferCoordinator.run(key: key) {
-            try await self._downloadSong(song, serverId: serverId, intent: intent)
+            try await queue.wait(songID: song.id, serverID: serverId)
         }
-    }
-
-    private func _downloadSong(_ song: Song, serverId: UUID, intent: DownloadIntentRegistry.Token) async throws {
-        try checkDownloadCancellation()
-        try intent.check()
-        let queue = downloadsQueue()
-        try await queue.enqueue([song], serverID: serverId, owner: .track, isCurrent: { intent.isCurrent })
-        await toastService.show(String(localized: "Download queued"), subtitle: song.title, action: .navigateToDownloads)
-        try await queue.wait(songID: song.id, serverID: serverId)
     }
 
     private func awaitQueuedSong(_ song: Song, serverId: UUID) async throws {
@@ -602,8 +599,11 @@ actor DownloadService: DownloadServiceProtocol {
         try checkDownloadCancellation()
         let intent = try intents.capture(.init(serverID: serverId, owner: .album(album.id)))
         guard let songs = album.song else { return }
-        activeAlbumDownloads.insert(album.id)
-        defer { activeAlbumDownloads.remove(album.id) }
+        let collectionKey = taskKey(songId: album.id, serverId: serverId)
+        activeAlbumDownloads[collectionKey] = intent
+        defer {
+            if activeAlbumDownloads[collectionKey]?.id == intent.id { activeAlbumDownloads.removeValue(forKey: collectionKey) }
+        }
         let total = songs.count
         var succeeded = 0
         let aid = album.id
@@ -707,8 +707,11 @@ actor DownloadService: DownloadServiceProtocol {
         let songs = playlist.entry ?? []
         let total = songs.count
         let pid = playlist.id
-        activePlaylistDownloads.insert(playlist.id)
-        defer { activePlaylistDownloads.remove(playlist.id) }
+        let collectionKey = taskKey(songId: playlist.id, serverId: serverId)
+        activePlaylistDownloads[collectionKey] = intent
+        defer {
+            if activePlaylistDownloads[collectionKey]?.id == intent.id { activePlaylistDownloads.removeValue(forKey: collectionKey) }
+        }
         try await persistPlaylistIntent(playlist, serverID: serverId, intent: intent)
         try await downloadsQueue().enqueue(songs, serverID: serverId, owner: .playlist(pid), isCurrent: { intent.isCurrent })
         try intent.check()
@@ -813,18 +816,34 @@ actor DownloadService: DownloadServiceProtocol {
     }
 
     func isDownloadingAlbum(_ albumId: String) async -> Bool {
-        if activeAlbumDownloads.contains(albumId) { return true }
         let serverID = await MainActor.run { serverService.state.activeServer?.id }
+        if let serverID, activeAlbumDownloads[taskKey(songId: albumId, serverId: serverID)]?.isCurrent == true { return true }
         return await queueController?.snapshot().contains { $0.serverID == serverID && $0.owners.contains(.album(albumId)) && $0.status != .failed } ?? false
     }
 
     func isDownloadingPlaylist(_ playlistId: String) async -> Bool {
-        if activePlaylistDownloads.contains(playlistId) { return true }
         let serverID = await MainActor.run { serverService.state.activeServer?.id }
+        if let serverID, activePlaylistDownloads[taskKey(songId: playlistId, serverId: serverID)]?.isCurrent == true { return true }
         return await queueController?.snapshot().contains { $0.serverID == serverID && $0.owners.contains(.playlist(playlistId)) && $0.status != .failed } ?? false
     }
 
     // MARK: - Cancel
+
+    func cancelDownloads(albumId: String, serverId: UUID) async throws {
+        try await cancelCollection(.album(albumId), serverId: serverId)
+    }
+
+    func cancelDownloads(playlistId: String, serverId: UUID) async throws {
+        try await cancelCollection(.playlist(playlistId), serverId: serverId)
+    }
+
+    private func cancelCollection(_ owner: DownloadOwner, serverId: UUID) async throws {
+        let key = DownloadIntentRegistry.Key(serverID: serverId, owner: owner)
+        intents.beginRemoval(key)
+        defer { intents.endRemoval(key) }
+        // A different collection may still need the same physical transfer.
+        try await downloadsQueue().removeOwner(owner, serverID: serverId)
+    }
 
     func cancelDownload(songId: String, serverId: UUID) async throws {
         let intentKey = DownloadIntentRegistry.Key(serverID: serverId, owner: .track, songID: songId)

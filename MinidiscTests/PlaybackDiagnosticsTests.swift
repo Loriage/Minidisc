@@ -54,6 +54,8 @@ struct PlaybackDiagnosticsTests {
             )
         )
         diagnostics.record(.networkPathChanged(PlaybackDiagnostics.NetworkPath(path)))
+        diagnostics.recordHomeContentReady(after: 0.25, fromCache: true)
+        diagnostics.recordDownloadOutcome(succeeded: false)
 
         let report = diagnostics.makeReport(
             context: PlaybackDiagnostics.ReportContext(
@@ -74,6 +76,8 @@ struct PlaybackDiagnosticsTests {
         #expect(!report.contains(version.serverID.uuidString))
         #expect(report.contains("custom-header-count=2"))
         #expect(report.contains("interfaces=wifi"))
+        #expect(report.contains("home-data-ready samples=1 p50=0.250s cache-loads=1"))
+        #expect(report.contains("download-attempts completed=0 failed=1"))
     }
 
     @Test func bufferKeepsOnlyNewestEvents() {

@@ -167,7 +167,11 @@ struct DownloadQueuePersistenceTests {
         try await queue.removeOwner(.playlist("p"), serverID: server)
         #expect(await queue.snapshot().count == 1)
         #expect(await transport.cancelled.isEmpty)
+        try await queue.enqueue(track, serverID: server, owner: .track)
         try await queue.removeOwner(.album("a"), serverID: server)
+        #expect(await queue.snapshot().first?.owners == [.track])
+        #expect(await transport.requests.count == 1)
+        try await queue.cancel(songID: "a", serverID: server)
         #expect(await queue.snapshot().isEmpty)
     }
 

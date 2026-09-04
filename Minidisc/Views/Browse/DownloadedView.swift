@@ -48,8 +48,13 @@ private struct DownloadedContent: View {
         DownloadedAlbumMerger.merge(records: albums, tracks: tracks)
     }
 
+    private var standaloneSongs: [DisplayableSong] {
+        tracks.filter { $0.albumId == nil }.map { DisplayableSong(from: $0) }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
+
     var body: some View {
-        if displayAlbums.isEmpty && playlists.isEmpty &&
+        if displayAlbums.isEmpty && playlists.isEmpty && standaloneSongs.isEmpty &&
             container?.downloadActivity.transfers.contains(where: { $0.serverId == serverId }) != true {
             EmptyStateView(
                 systemImage: "arrow.down.circle",
@@ -65,6 +70,34 @@ private struct DownloadedContent: View {
         ScrollViewReader { proxy in
             List {
                 DownloadActivitySection(serverID: serverId)
+                if !standaloneSongs.isEmpty {
+                    Section("Songs") {
+                        ForEach(standaloneSongs) { song in
+                            Button {
+                                let songs = standaloneSongs
+                                guard let index = songs.firstIndex(where: { $0.id == song.id }) else { return }
+                                Task { await container?.toastService.perform {
+                                    try await container?.playerService.play(tracks: songs, startIndex: index)
+                                } }
+                            } label: {
+                                VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
+                                    Text(song.title).foregroundStyle(.primary)
+                                    if let artist = song.artist {
+                                        Text(artist).font(.subheadline).foregroundStyle(.secondary)
+                                    }
+                                }
+                                .frame(minHeight: 44, alignment: .leading)
+                            }
+                            .contextMenu {
+                                Button("Remove Download", systemImage: "trash", role: .destructive) {
+                                    Task { await container?.toastService.perform {
+                                        try await container?.downloadService.remove(songId: song.id, serverId: serverId)
+                                    } }
+                                }
+                            }
+                        }
+                    }
+                }
                 if !displayAlbums.isEmpty {
                     Section("Albums") {
                         ForEach(displayAlbums) { display in

@@ -30,11 +30,11 @@ actor FavoritesService: FavoritesServiceProtocol {
     // MARK: - Star
 
     func star(itemType: FavoriteType, itemId: String) async throws {
-        guard let serverId = await MainActor.run(body: { serverState.activeServer?.id }) else { return }
+        guard let serverId = await MainActor.run(body: { serverState.activeServer?.id }) else { throw MinidiscError.serverNotConfigured }
 
         let record = FavoriteRecord(itemType: itemType, itemId: itemId, starredDate: Date(), serverId: serverId)
         backgroundContext.insert(record)
-        try? backgroundContext.save()
+        try saveChanges()
 
         do {
             switch itemType {
@@ -45,7 +45,7 @@ actor FavoritesService: FavoritesServiceProtocol {
             Logger.favorites.info("Starred \(itemType.rawValue, privacy: .public) \(itemId, privacy: .public)")
         } catch {
             backgroundContext.delete(record)
-            try? backgroundContext.save()
+            try saveChanges()
             throw error
         }
     }
@@ -58,12 +58,12 @@ actor FavoritesService: FavoritesServiceProtocol {
             predicate: #Predicate<FavoriteRecord> { $0.id == compositeId }
         )
         descriptor.fetchLimit = 1
-        guard let record = try? backgroundContext.fetch(descriptor).first else { return }
+        guard let record = try backgroundContext.fetch(descriptor).first else { return }
 
         let capturedServerId = record.serverId
         let capturedDate = record.starredDate
         backgroundContext.delete(record)
-        try? backgroundContext.save()
+        try saveChanges()
 
         do {
             switch itemType {
@@ -75,7 +75,7 @@ actor FavoritesService: FavoritesServiceProtocol {
         } catch {
             let restored = FavoriteRecord(itemType: itemType, itemId: itemId, starredDate: capturedDate, serverId: capturedServerId)
             backgroundContext.insert(restored)
-            try? backgroundContext.save()
+            try saveChanges()
             throw error
         }
     }
@@ -86,11 +86,13 @@ actor FavoritesService: FavoritesServiceProtocol {
         guard let serverId = await MainActor.run(body: { serverState.activeServer?.id }) else { return }
 
         let starred = try await libraryService.getStarred2()
+        try Task.checkCancellation()
+        guard await MainActor.run(body: { serverState.activeServer?.id }) == serverId else { throw CancellationError() }
 
         let descriptor = FetchDescriptor<FavoriteRecord>(
             predicate: #Predicate<FavoriteRecord> { $0.serverId == serverId }
         )
-        let existing = (try? backgroundContext.fetch(descriptor)) ?? []
+        let existing = try backgroundContext.fetch(descriptor)
         let existingIds = Set(existing.map(\.id))
 
         var newIds = Set<String>()
@@ -115,7 +117,12 @@ actor FavoritesService: FavoritesServiceProtocol {
         let toRemove = existing.filter { !newIds.contains($0.id) }
         toRemove.forEach { backgroundContext.delete($0) }
 
-        try? backgroundContext.save()
+        try saveChanges()
         Logger.favorites.info("Favorites synced: \(added, privacy: .public) added, \(toRemove.count, privacy: .public) removed, \(unchanged, privacy: .public) unchanged")
     }
+    private func saveChanges() throws {
+        do { try backgroundContext.save() }
+        catch { backgroundContext.rollback(); throw error }
+    }
+
 }

@@ -147,10 +147,7 @@ final class PlaylistDetailViewModel {
 
     func cancelPlaylistDownload() async {
         guard let serverId = serverState.activeServer?.id else { return }
-        for song in songs {
-            do { try await downloadService.cancelDownload(songId: song.id, serverId: serverId) }
-            catch { toastService.showError(UserFacingError.from(error).displayMessage); return }
-        }
+        guard await toastService.perform({ try await downloadService.cancelDownloads(playlistId: playlistId, serverId: serverId) }) else { return }
         isDownloadingPlaylist = false
     }
 

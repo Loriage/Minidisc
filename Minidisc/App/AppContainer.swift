@@ -108,7 +108,7 @@ final class AppContainer {
         radioService = RadioService(serverService: server)
 
         let download = DownloadService(serverService: server, modelContainer: modelContainer, toastService: toastService,
-                                       transferTransport: BackgroundDownloadTransport.shared, diagnostics: playbackDiagnostics)
+                                       transferTransport: inMemory ? nil : BackgroundDownloadTransport.shared, diagnostics: playbackDiagnostics)
         downloadService = download
 
         let library = LibraryService(

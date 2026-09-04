@@ -1,5 +1,19 @@
 import Foundation
 
+nonisolated enum PlaybackWaitingReason: Sendable, Equatable {
+    case loading
+    case buffering
+    case reconnecting
+
+    var title: String {
+        switch self {
+        case .loading: String(localized: "Connecting…")
+        case .buffering: String(localized: "Buffering…")
+        case .reconnecting: String(localized: "Reconnecting…")
+        }
+    }
+}
+
 nonisolated enum PlaybackState: Sendable, Equatable {
     case idle
     case loading

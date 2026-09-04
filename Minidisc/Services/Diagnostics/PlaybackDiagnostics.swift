@@ -187,6 +187,7 @@ nonisolated final class PlaybackDiagnostics: Sendable {
     private struct State: Sendable {
         let startedAt: Date
         var entries: [Entry]
+        var experience = PlaybackExperienceMetrics()
     }
 
     private let capacity: Int
@@ -201,6 +202,7 @@ nonisolated final class PlaybackDiagnostics: Sendable {
     func record(_ event: Event) {
         let now = Date()
         state.withLock { state in
+            state.experience.observe(event, elapsed: max(0, now.timeIntervalSince(state.startedAt)))
             state.entries.append(
                 Entry(elapsed: max(0, now.timeIntervalSince(state.startedAt)), event: event)
             )
@@ -210,8 +212,15 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         }
     }
 
+    func recordProgress(_ position: TimeInterval) {
+        state.withLock { state in
+            state.experience.observeProgress(position, elapsed: max(0, Date().timeIntervalSince(state.startedAt)))
+        }
+    }
+
     func makeReport(context: ReportContext) -> String {
         let entries = state.withLock { $0.entries }
+        let experience = state.withLock { $0.experience.report }
         var lines = [
             "Minidisc Playback Diagnostics",
             "Generated: \(Date().formatted(.iso8601))",
@@ -221,6 +230,7 @@ nonisolated final class PlaybackDiagnostics: Sendable {
             "Network: \(context.networkPath.map(Self.describe) ?? "unavailable")",
             "Connection: \(context.connectionVersion?.description ?? "none")",
             "Privacy: song metadata, full URLs, credentials, header names/values and route names are excluded.",
+            experience,
             "",
             "Timeline (oldest to newest):"
         ]

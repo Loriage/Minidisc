@@ -34,15 +34,15 @@ struct MiniPlayerAccessoryView: View {
         let coverArtId = isLiveStream ? (playerState.currentRadio?.coverArt ?? "") : (playerState.currentTrack?.coverArtId ?? playerState.currentTrack?.id ?? "")
         let title = isLiveStream ? (playerState.currentRadio?.name ?? "") : (playerState.currentTrack?.title ?? "")
         let artist: String? = isLiveStream ? "Live Radio" : playerState.currentTrack?.artist
-        let isPlaying = playerState.playbackState == .playing
+        let isPlaying = playerState.wantsPlayback
         let isAvailable = playerState.isPlaybackAvailable
 
         Group {
             if isInline {
-                inlineBar(coverArtId: coverArtId, title: title, artist: artist, isPlaying: isPlaying, isAvailable: isAvailable, isLiveStream: isLiveStream)
+                inlineBar(coverArtId: coverArtId, title: title, artist: artist, isPlaying: isPlaying, isAvailable: isAvailable, isLiveStream: isLiveStream, status: playerState.playbackStatusMessage)
                     .transition(.opacity)
             } else {
-                expandedBar(playerState: playerState, coverArtId: coverArtId, title: title, artist: artist, isPlaying: isPlaying, isAvailable: isAvailable, isLiveStream: isLiveStream)
+                expandedBar(playerState: playerState, coverArtId: coverArtId, title: title, artist: artist, isPlaying: isPlaying, isAvailable: isAvailable, isLiveStream: isLiveStream, status: playerState.playbackStatusMessage)
                     .transition(.opacity)
             }
         }
@@ -51,10 +51,10 @@ struct MiniPlayerAccessoryView: View {
         .opacity(1.0 - min(abs(dragOffset) / 200, 0.4))
         .contentShape(Rectangle())
         .onTapGesture { showingFullPlayer = true }
-        .gesture(isAvailable && !isLiveStream ? swipeSkipGesture : nil)
+        .gesture(!playerState.queue.isEmpty && !isLiveStream ? swipeSkipGesture : nil)
     }
 
-    private func inlineBar(coverArtId: String, title: String, artist: String?, isPlaying: Bool, isAvailable: Bool, isLiveStream: Bool) -> some View {
+    private func inlineBar(coverArtId: String, title: String, artist: String?, isPlaying: Bool, isAvailable: Bool, isLiveStream: Bool, status: String?) -> some View {
         HStack(spacing: MinidiscSpacing.m) {
             CoverArtCard(id: coverArtId, size: 30)
                 .opacity(isAvailable ? 1.0 : 0.5)
@@ -64,8 +64,8 @@ struct MiniPlayerAccessoryView: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(typoColor)
                     .lineLimit(1)
-                if !isAvailable {
-                    Text("Reconnect to resume")
+                if let status {
+                    Text(status)
                         .font(.minidiscCaption)
                         .foregroundStyle(typoSecondaryColor)
                         .lineLimit(1)
@@ -88,7 +88,7 @@ struct MiniPlayerAccessoryView: View {
         .padding(.vertical, MinidiscSpacing.s)
     }
 
-    private func expandedBar(playerState: PlayerState, coverArtId: String, title: String, artist: String?, isPlaying: Bool, isAvailable: Bool, isLiveStream: Bool) -> some View {
+    private func expandedBar(playerState: PlayerState, coverArtId: String, title: String, artist: String?, isPlaying: Bool, isAvailable: Bool, isLiveStream: Bool, status: String?) -> some View {
         // While the full player covers the mini bar, skip reading position — that read is what drives the
         // capsule's per-tick (500ms) re-render, and the capsule is off-screen so its value can't be seen.
         // The `||` short-circuits before touching playerState.position when showingFullPlayer is true.
@@ -105,8 +105,8 @@ struct MiniPlayerAccessoryView: View {
                         .font(.minidiscCellTitle)
                         .foregroundStyle(typoColor)
                         .lineLimit(1)
-                    if !isAvailable {
-                        Text("Reconnect to resume")
+                    if let status {
+                        Text(status)
                             .font(.minidiscCaption)
                             .foregroundStyle(typoSecondaryColor)
                             .lineLimit(1)
@@ -126,7 +126,7 @@ struct MiniPlayerAccessoryView: View {
 
                 HStack(spacing: MinidiscSpacing.xxl) {
                     playPauseButton(isPlaying: isPlaying, isAvailable: isAvailable)
-                    if isAvailable && !isLiveStream {
+                    if !playerState.queue.isEmpty && !isLiveStream {
                         Button {
                             HapticFeedback.light.trigger()
                             Task { try? await container?.playerService.skipToNext() }
@@ -174,17 +174,15 @@ struct MiniPlayerAccessoryView: View {
         Button {
             HapticFeedback.medium.trigger()
             Task {
-                if isPlaying {
-                    await container?.playerService.pause()
-                } else {
-                    await container?.playerService.resume()
-                }
+                await container?.playerService.togglePlayPause()
             }
         } label: {
             Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                 .font(.title2)
                 .foregroundStyle(typoColor)
                 .opacity(isAvailable ? 1.0 : 0.3)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
         .disabled(!isAvailable)

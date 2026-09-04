@@ -638,11 +638,11 @@ private struct TrackInfoSection: View {
                 usesMarquee: isCurrent && !compact && !playerState.isLiveStream
             )
 
-            if !playerState.isPlaybackAvailable {
-                Label("Reconnect to resume", systemImage: "wifi.slash")
+            if isCurrent, let status = playerState.playbackStatusMessage {
+                Text(status)
                     .font(.callout)
                     .foregroundStyle(secondaryContentColor)
-                    .lineLimit(1)
+                    .lineLimit(2)
             } else if playerState.isLiveStream {
                 Text("Live Radio")
                     .font(.subheadline)
@@ -944,7 +944,7 @@ private struct PlaybackControlsView: View {
     let contentColor: Color
 
     var body: some View {
-        let showsPause = keepsPauseIcon || playerState.playbackState == .playing
+        let showsPause = keepsPauseIcon || playerState.wantsPlayback
 
         HStack(spacing: MinidiscSpacing.xxxxl) {
             if !playerState.isLiveStream {
@@ -957,18 +957,14 @@ private struct PlaybackControlsView: View {
                         .foregroundStyle(contentColor)
                         .frame(width: 56, height: 56)
                 }
-                .disabled(!isPlaybackAvailable)
+                .disabled(playerState.queue.isEmpty)
                 .accessibilityLabel("Skip to previous")
             }
 
             Button {
                 HapticFeedback.medium.trigger()
                 Task {
-                    if playerState.playbackState == .playing {
-                        await playerService?.pause()
-                    } else {
-                        await playerService?.resume()
-                    }
+                    await playerService?.togglePlayPause()
                 }
             } label: {
                 Image(systemName: showsPause ? "pause.fill" : "play.fill")
@@ -978,6 +974,7 @@ private struct PlaybackControlsView: View {
             }
             .disabled(!isPlaybackAvailable)
             .accessibilityLabel(showsPause ? "Pause" : "Play")
+            .accessibilityValue(playerState.playbackStatusMessage ?? "")
 
             if !playerState.isLiveStream {
                 Button {
@@ -989,7 +986,7 @@ private struct PlaybackControlsView: View {
                         .foregroundStyle(contentColor)
                         .frame(width: 56, height: 56)
                 }
-                .disabled(!isPlaybackAvailable)
+                .disabled(playerState.queue.isEmpty)
                 .accessibilityLabel("Skip to next")
             }
         }

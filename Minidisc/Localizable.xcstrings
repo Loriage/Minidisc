@@ -1,6 +1,40 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Buffering…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buffering…"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mise en mémoire tampon…"
+          }
+        }
+      }
+    },
+    "Reconnecting…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reconnecting…"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reconnexion…"
+          }
+        }
+      }
+    },
     "" : {
       "localizations" : {
         "de" : {

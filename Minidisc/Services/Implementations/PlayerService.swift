@@ -1693,7 +1693,7 @@ actor PlayerService: PlayerServiceProtocol {
     }
 
     func togglePlayPause() async {
-        let isPlaying = await MainActor.run { state.playbackState == .playing }
+        let isPlaying = await MainActor.run { state.wantsPlayback }
         if isPlaying { await pause() } else { await resume() }
     }
 
@@ -3051,6 +3051,9 @@ actor PlayerService: PlayerServiceProtocol {
     private func performProgressTick() async {
         let progress = engine.progress
         let audioDuration = engine.duration
+        if activeEngineState == .playing {
+            playbackDiagnostics.recordProgress(progress)
+        }
         let durationSnapshot = await MainActor.run {
             // Refine the duration BEFORE clamping the position against it. The engine's own
             // value lands as soon as the stream reports its length; clamping first pinned the
@@ -3580,6 +3583,19 @@ actor PlayerService: PlayerServiceProtocol {
         case .error: .error
         }
         playbackDiagnostics.record(.engineStateChanged(diagnosticState))
+        let isRecovering = networkReloadRequiredTrackID != nil
+        await MainActor.run {
+            guard state.wantsPlayback else { return }
+            switch newState {
+            case .playing: state.waitingReason = nil
+            case .buffering, .paused:
+                if isRecovering { state.waitingReason = .reconnecting }
+                else if state.waitingReason == nil { state.waitingReason = .buffering }
+            case .error: state.waitingReason = .reconnecting
+            case .stopped: break
+            }
+        }
+        guard isCurrentEngineEvent(playbackToken) else { return }
         switch newState {
         case .playing:
             if let info = pendingRestoreInfo {

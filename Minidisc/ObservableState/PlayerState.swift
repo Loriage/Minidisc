@@ -14,7 +14,26 @@ final class PlayerState {
     var currentTrack: DisplayableSong?
     var queue: [DisplayableSong] = []
     var currentIndex: Int = 0
-    var playbackState: PlaybackState = .idle
+    var playbackState: PlaybackState = .idle {
+        didSet {
+            switch playbackState {
+            case .loading: waitingReason = .loading
+            case .playing:
+                if oldValue == .paused { waitingReason = .loading }
+            case .idle, .paused, .error: waitingReason = nil
+            }
+        }
+    }
+    /// Waiting is presentation state, independent from the listener's Play/Pause intent.
+    var waitingReason: PlaybackWaitingReason?
+    var wantsPlayback: Bool { playbackState == .playing || playbackState == .loading }
+
+    var playbackStatusMessage: String? {
+        if wantsPlayback, let waitingReason { return waitingReason.title }
+        if case .error(let error) = playbackState { return UserFacingError.from(error).displayMessage }
+        if !isPlaybackAvailable { return String(localized: "Reconnect to resume") }
+        return nil
+    }
     var position: TimeInterval = 0
     var duration: TimeInterval = 0
     var repeatMode: RepeatMode = .off

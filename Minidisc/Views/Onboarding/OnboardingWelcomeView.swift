@@ -13,45 +13,12 @@ struct OnboardingWelcomeView: View {
         ZStack {
             MinidiscColors.backgroundPrimary.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                Spacer()
-
-                AnimatedMinidiscHero()
-                    .opacity(appeared ? 1 : 0)
-                    .scaleEffect(appeared ? 1 : 0.7)
-                    .animation(.spring(duration: 0.6, bounce: 0.4), value: appeared)
-
-                Spacer().frame(height: MinidiscSpacing.xxxxl)
-
-                VStack(spacing: MinidiscSpacing.m) {
-                    Text("Your music.\nYour rules.")
-                        .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                        .foregroundStyle(MinidiscColors.textPrimary)
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(4)
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 24)
-                        .animation(.spring(duration: 0.5, bounce: 0.3).delay(0.05), value: appeared)
-
-                    Text("Stream your library from your own server.\nNo subscriptions. No big tech.")
-                        .font(.system(.body, design: .rounded))
-                        .foregroundStyle(MinidiscColors.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(3)
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 24)
-                        .animation(.spring(duration: 0.5, bounce: 0.3).delay(0.1), value: appeared)
+            GeometryReader { geometry in
+                ScrollView {
+                    welcomeContent
+                        .frame(minHeight: geometry.size.height)
                 }
-                .padding(.horizontal, MinidiscSpacing.xxxl)
-
-                Spacer()
-
-                getStartedButton
-                    .padding(.horizontal, MinidiscSpacing.xxxl)
-                    .padding(.bottom, MinidiscSpacing.xxxl)
-                    .opacity(appeared ? 1 : 0)
-                    .offset(y: appeared ? 0 : 30)
-                    .animation(.spring(duration: 0.5, bounce: 0.3).delay(0.2), value: appeared)
+                .scrollBounceBehavior(.basedOnSize)
             }
         }
         .onAppear {
@@ -63,15 +30,56 @@ struct OnboardingWelcomeView: View {
             if connected { showingServerForm = false }
         }
         .sheet(isPresented: $showingServerForm, onDismiss: {
-            if container?.serverState.activeServer != nil {
-                onServerConnected()
-            }
+            if container?.serverState.activeServer != nil { onServerConnected() }
         }) {
             if let viewModel {
-                NavigationStack {
-                    ServerFormView(viewModel: viewModel)
-                }
+                NavigationStack { ServerFormView(viewModel: viewModel) }
             }
+        }
+    }
+
+    private var welcomeContent: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: MinidiscSpacing.xl)
+
+            AnimatedMinidiscHero()
+                .opacity(appeared ? 1 : 0)
+                .scaleEffect(appeared ? 1 : 0.7)
+                .animation(.spring(duration: 0.6, bounce: 0.4), value: appeared)
+
+            Spacer().frame(height: MinidiscSpacing.xxxxl)
+
+            VStack(spacing: MinidiscSpacing.m) {
+                Text("Your music.\nYour rules.")
+                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                    .foregroundStyle(MinidiscColors.textPrimary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(4)
+                    .opacity(appeared ? 1 : 0)
+                    .offset(y: appeared ? 0 : 24)
+                    .animation(.spring(duration: 0.5, bounce: 0.3).delay(0.05), value: appeared)
+
+                Text("Stream your library from your own server.\nNo subscriptions. No big tech.")
+                    .font(.system(.body, design: .rounded))
+                    .foregroundStyle(MinidiscColors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(3)
+                    .opacity(appeared ? 1 : 0)
+                    .offset(y: appeared ? 0 : 24)
+                    .animation(.spring(duration: 0.5, bounce: 0.3).delay(0.1), value: appeared)
+            }
+            .padding(.horizontal, MinidiscSpacing.xxxl)
+
+            Spacer(minLength: MinidiscSpacing.xl)
+
+            getStartedButton
+                .padding(.horizontal, MinidiscSpacing.xxxl)
+                .padding(.bottom, MinidiscSpacing.xxxl)
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared ? 0 : 30)
+                .animation(.spring(duration: 0.5, bounce: 0.3).delay(0.2), value: appeared)
         }
     }
 
@@ -82,6 +90,8 @@ struct OnboardingWelcomeView: View {
         } label: {
             Text("Get Started")
                 .font(.system(.body, design: .rounded, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
@@ -98,6 +108,7 @@ struct OnboardingWelcomeView: View {
 // MARK: - Animated Minidisc Hero
 
 private struct AnimatedMinidiscHero: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var discAngle: Double = 0
 
     private let side: CGFloat = 180
@@ -123,6 +134,7 @@ private struct AnimatedMinidiscHero: View {
 
             disc
                 .rotationEffect(.degrees(discAngle))
+                .animation(reduceMotion ? nil : .linear(duration: 3.5).repeatForever(autoreverses: false), value: discAngle)
                 .frame(width: w, height: h)
 
             MinidiscCartridgeIcon()
@@ -144,10 +156,8 @@ private struct AnimatedMinidiscHero: View {
                 .stroke(MinidiscColors.accent.opacity(0.65), lineWidth: 1.5)
                 .frame(width: w, height: h)
         }
-        .onAppear {
-            withAnimation(.linear(duration: 3.5).repeatForever(autoreverses: false)) {
-                discAngle = 360
-            }
+        .onChange(of: reduceMotion, initial: true) {
+            discAngle = reduceMotion ? 0 : 360
         }
     }
 

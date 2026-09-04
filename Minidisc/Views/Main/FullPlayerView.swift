@@ -340,7 +340,7 @@ struct FullPlayerView: View {
                 .padding(.horizontal, MinidiscSpacing.l)
                 .padding(.vertical, MinidiscSpacing.m)
 
-            upNextHeader(playerState)
+            upNextHeader
                 .padding(.horizontal, MinidiscSpacing.l)
                 .padding(.bottom, MinidiscSpacing.xs)
 
@@ -403,19 +403,11 @@ struct FullPlayerView: View {
         .accessibilityLabel(label)
     }
 
-    private func upNextHeader(_ playerState: PlayerState) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("Up Next")
-                .font(.minidiscSectionTitle)
-                .foregroundStyle(vm.contentColor)
-            if let album = playerState.currentTrack?.albumName, !album.isEmpty {
-                Text(album)
-                    .font(.minidiscCaption)
-                    .foregroundStyle(vm.secondaryContentColor)
-                    .lineLimit(1)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    private var upNextHeader: some View {
+        Text("Up Next")
+            .font(.minidiscSectionTitle)
+            .foregroundStyle(vm.contentColor)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func queueStatusLine(_ playerState: PlayerState) -> some View {

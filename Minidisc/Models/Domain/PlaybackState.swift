@@ -7,8 +7,7 @@ nonisolated enum PlaybackWaitingReason: Sendable, Equatable {
 
     var title: String {
         switch self {
-        case .loading: String(localized: "Connecting…")
-        case .buffering: String(localized: "Buffering…")
+        case .loading, .buffering: String(localized: "Loading…")
         case .reconnecting: String(localized: "Reconnecting…")
         }
     }

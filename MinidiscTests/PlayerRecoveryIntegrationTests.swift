@@ -186,6 +186,24 @@ private struct RecoveryHarness {
 @Suite("Player recovery integration", .serialized)
 @MainActor
 struct PlayerRecoveryIntegrationTests {
+    @Test func ordinaryNextDoesNotPresentAReconnection() async throws {
+        let h = try RecoveryHarness(startupGrace: .seconds(2))
+        try await h.play()
+        for _ in 0..<3 {
+            await h.player.handleEngineState(.buffering, playbackToken: h.engine.token)
+        }
+        #expect(h.state.waitingReason != .reconnecting)
+        h.engine.startAdvancing()
+        await h.player.handleEngineState(.playing, playbackToken: h.engine.token)
+        try await h.player.skipToNext()
+        #expect(h.state.currentTrack?.id == "b")
+        for _ in 0..<3 {
+            await h.player.handleEngineState(.buffering, playbackToken: h.engine.token)
+        }
+        #expect(h.state.waitingReason != .reconnecting)
+        #expect(!h.report.contains("attempt-started"))
+        await h.player.stop()
+    }
     @Test func slowStartupAndRepeatedBufferingDoNotRebuildEarly() async throws {
         let h = try RecoveryHarness(startupGrace: .seconds(2))
         try await h.play()
@@ -212,6 +230,7 @@ struct PlayerRecoveryIntegrationTests {
         }
         #expect(h.engine.stopCount == stops)
         #expect(h.state.playbackState == .playing)
+        #expect(h.state.waitingReason == .reconnecting)
         h.engine.startAdvancing()
         await h.player.handleEngineState(.playing, playbackToken: h.engine.token)
         try await h.waitUntil { h.report.contains("progress-validated") }

@@ -2815,6 +2815,14 @@ actor PlayerService: PlayerServiceProtocol {
                 .attemptStarted(number: attempt, pathGeneration: pathGeneration)
             )
         )
+        await MainActor.run {
+            guard state.currentTrack?.id == trackID, state.wantsPlayback else { return }
+            state.waitingReason = .reconnecting
+        }
+        guard !Task.isCancelled,
+              requestGeneration == networkRecoveryTaskGeneration,
+              expectedPlaybackGeneration == playbackGeneration,
+              expectedTransportGeneration == transportIntentGeneration else { return }
 
         let freshSource: MediaSource
         do {
@@ -3593,7 +3601,9 @@ actor PlayerService: PlayerServiceProtocol {
         case .error: .error
         }
         playbackDiagnostics.record(.engineStateChanged(diagnosticState))
-        let isRecovering = networkReloadRequiredTrackID != nil
+        // The reload marker also arms a watchdog during every ordinary stream startup.
+        // It only represents a reconnection once we actually retry or rebuild the item.
+        let isRecovering = networkReloadRequiredTrackID != nil && networkRecoveryAttemptBudget.attempts > 0
         await MainActor.run {
             guard state.wantsPlayback else { return }
             switch newState {
@@ -3601,7 +3611,7 @@ actor PlayerService: PlayerServiceProtocol {
             case .buffering, .paused:
                 if isRecovering { state.waitingReason = .reconnecting }
                 else if state.waitingReason == nil { state.waitingReason = .buffering }
-            case .error: state.waitingReason = .reconnecting
+            case .error: state.waitingReason = isRecovering ? .reconnecting : .buffering
             case .stopped: break
             }
         }

@@ -4,6 +4,25 @@ import Testing
 
 @Suite @MainActor
 struct PlaybackPresentationTests {
+    @Test func briefTrackLoadingDoesNotFlashAStatusAndPauseCancelsDelayedStatus() async throws {
+        let state = PlayerState(waitingMessageDelay: .milliseconds(40))
+        state.playbackState = .loading
+        #expect(state.playbackStatusMessage == nil)
+        state.playbackState = .playing
+        state.waitingReason = nil
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(state.playbackStatusMessage == nil)
+
+        state.playbackState = .loading
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(state.playbackStatusMessage == PlaybackWaitingReason.loading.title)
+        state.playbackState = .paused
+        #expect(state.playbackStatusMessage == nil)
+        state.playbackState = .loading
+        state.playbackState = .paused
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(state.playbackStatusMessage == nil)
+    }
     @Test func loadingCanBePausedAndLateBufferingDoesNotOverridePause() {
         let state = PlayerState()
         state.playbackState = .loading

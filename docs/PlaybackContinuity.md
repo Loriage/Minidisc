@@ -2,10 +2,11 @@
 
 ## Observable behavior
 
-- Preparing a queue, buffering and reconnecting have explicit waiting states. Pause and Next remain meaningful during recovery. A late queue preparation cannot override a newer transport command.
+- Preparing a queue, buffering and reconnecting have explicit waiting states. Brief waits remain hidden for 700 ms; the reconnection message requires an actual recovery attempt, not a preventive watchdog marker. Pause and Next remain meaningful during recovery. A late queue preparation cannot override a newer transport command.
 - A failed stream is checked against Navidrome before treating the song as removed. Only a structured `getSong`/`getPlaylist` not-found response confirms deletion; connectivity failures and proxy HTTP 404 responses do not.
 - Opening or starting an old playlist revalidates its content. A deleted playlist displays one explanation and retains its downloaded music. An unavailable queue advances through a bounded number of songs and stops safely when none are playable.
 - Home displays its last saved feed by server while offline. During a cold load, one slow section does not hold back the others. Pull-to-refresh applies its result together to preserve scroll layout.
+- Up Next shows the actual queued songs without presenting the current album as their source.
 - Failed playlist edits keep the editor and its draft open. Retrying after a partial save is safe. Explicit playback, favorite and download actions surface failures.
 - The selected tab and search text survive scene restoration. Changing server clears navigation paths that reference the previous server. Download and playback controls have explicit accessibility labels.
 
@@ -37,6 +38,6 @@ Playback startup is measured from transport command to observed playhead progres
 - `PlaylistEditCommitterTests` and `FavoritesFailureTests`: partial saves and persistent rollback after failed actions.
 - `PlaybackDiagnosticsTests`: redaction and local continuity counters.
 
-The complete Swift Testing run passed 843 tests in 137 suites on 5 September 2026. Subsequent changes passed 47 targeted tests (including two new favorites cases), followed by nine shared-download tests. Simulator UI proof and the physical iPhone installation are recorded separately from unit-test coverage.
+The complete Swift Testing run passed 843 tests in 137 suites on 5 September 2026. Subsequent changes passed 47 targeted tests (including two new favorites cases), followed by nine shared-download tests. The subsequent Next/reconnection correction passed 16 targeted tests, including a reproduced regression and verification that real retries remain visible. Simulator UI proof and the physical iPhone installation are recorded separately from unit-test coverage.
 
 Real cellular handoffs, telephone interruptions, AirPods route changes and long-running background scheduling still require physical-device observation; passing simulated tests alone does not validate those conditions.

@@ -17,7 +17,10 @@ final class PlayerState {
     var playbackState: PlaybackState = .idle {
         didSet {
             switch playbackState {
-            case .loading: waitingReason = .loading
+            case .loading:
+                // Each selected track gets its own presentation grace period.
+                waitingReason = nil
+                waitingReason = .loading
             case .playing:
                 if oldValue == .paused { waitingReason = .loading }
             case .idle, .paused, .error: waitingReason = nil
@@ -25,11 +28,19 @@ final class PlayerState {
         }
     }
     /// Waiting is presentation state, independent from the listener's Play/Pause intent.
-    var waitingReason: PlaybackWaitingReason?
+    var waitingReason: PlaybackWaitingReason? {
+        didSet {
+            guard oldValue != waitingReason else { return }
+            updateWaitingMessage()
+        }
+    }
+    private var visibleWaitingReason: PlaybackWaitingReason?
+    @ObservationIgnored private var waitingMessageTask: Task<Void, Never>?
+    @ObservationIgnored private let waitingMessageDelay: Duration
     var wantsPlayback: Bool { playbackState == .playing || playbackState == .loading }
 
     var playbackStatusMessage: String? {
-        if wantsPlayback, let waitingReason { return waitingReason.title }
+        if wantsPlayback, let visibleWaitingReason { return visibleWaitingReason.title }
         if case .error(let error) = playbackState { return UserFacingError.from(error).displayMessage }
         if !isPlaybackAvailable { return String(localized: "Reconnect to resume") }
         return nil
@@ -60,8 +71,30 @@ final class PlayerState {
     /// Reset to `nil` on play(tracks:), playRadio(), stop().
     var originalQueueEndIndex: Int?
 
-    init(isAutoExtendEnabled: Bool = false) {
+    init(isAutoExtendEnabled: Bool = false, waitingMessageDelay: Duration = .milliseconds(700)) {
         self.isAutoExtendEnabled = isAutoExtendEnabled
+        self.waitingMessageDelay = waitingMessageDelay
+    }
+
+    private func updateWaitingMessage() {
+        waitingMessageTask?.cancel()
+        waitingMessageTask = nil
+        guard let reason = waitingReason, wantsPlayback else {
+            visibleWaitingReason = nil
+            return
+        }
+        if visibleWaitingReason != nil {
+            visibleWaitingReason = reason
+            return
+        }
+        let delay = waitingMessageDelay
+        waitingMessageTask = Task { [weak self] in
+            do { try await Task.sleep(for: delay) }
+            catch { return }
+            guard let self, self.wantsPlayback, self.waitingReason == reason else { return }
+            self.visibleWaitingReason = reason
+            self.waitingMessageTask = nil
+        }
     }
 
     // MARK: - Derived UI state

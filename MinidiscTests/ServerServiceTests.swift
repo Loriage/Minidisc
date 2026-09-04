@@ -29,9 +29,10 @@ final class MockKeychain: KeychainServiceProtocol {
 
 @MainActor
 final class MockAudioStreamCache: AudioStreamCacheProtocol {
+    var localURL: URL?
     var usedBytes: Int64 = 0
     var trackCount: Int = 0
-    func cachedURL(forSongId songId: String, serverId: UUID) async -> URL? { nil }
+    func cachedURL(forSongId songId: String, serverId: UUID) async -> URL? { localURL }
     func store(fileAt sourceURL: URL, forSongId songId: String, serverId: UUID, mimeType: String) async throws -> URL {
         struct MockError: Error {}; throw MockError()
     }

@@ -11,19 +11,62 @@ actor MediaResolver: MediaResolverProtocol {
     private let serverService: any ServerServiceProtocol
     private let serverState: ServerState
     private let streamSettings: StreamSettings
+    private let songLookup: @Sendable (ServerConnection, String) async throws -> Void
 
     init(
         downloadService: any DownloadServiceProtocol,
         audioStreamCache: any AudioStreamCacheProtocol,
         serverService: any ServerServiceProtocol,
         serverState: ServerState,
-        streamSettings: StreamSettings
+        streamSettings: StreamSettings,
+        songLookup: @escaping @Sendable (ServerConnection, String) async throws -> Void = { connection, id in
+            // PlayerService owns retries. A diagnostic lookup must not introduce its own
+            // retry loop in front of each stream rebuild.
+            _ = try await connection.makeSwiftSonicClient(requestTimeout: 8, retryPolicy: .none).getSong(id: id)
+        }
     ) {
         self.downloadService = downloadService
         self.audioStreamCache = audioStreamCache
         self.serverService = serverService
         self.serverState = serverState
         self.streamSettings = streamSettings
+        self.songLookup = songLookup
+    }
+
+    func availability(songId: String, serverId: UUID) async -> MediaAvailability {
+        if await downloadService.downloadedURL(forSongId: songId, serverId: serverId) != nil {
+            return .available
+        }
+        if await audioStreamCache.cachedURL(forSongId: songId, serverId: serverId) != nil {
+            return .available
+        }
+        guard !Task.isCancelled,
+              await MainActor.run(body: { serverState.isOnline }),
+              let connection = try? await serverService.activeConnection(),
+              connection.version.serverID == serverId else { return .unknown }
+
+        let result: MediaAvailability
+        do {
+            try await songLookup(connection, songId)
+            result = .available
+        } catch {
+            result = Self.availability(after: error)
+        }
+        guard !Task.isCancelled,
+              await serverService.activeConnectionVersion() == connection.version else { return .unknown }
+        return result
+    }
+
+    nonisolated static func availability(after error: any Error) -> MediaAvailability {
+        // An HTTP 404 can be a reverse proxy or a missing API endpoint. Only Subsonic's
+        // structured "not found" response for getSong confirms that this song disappeared.
+        if let error = error as? SwiftSonicError,
+           case .api(let detail) = error,
+           detail.code == .notFound,
+           detail.endpoint == "getSong" {
+            return .missing
+        }
+        return .unknown
     }
 
     func resolve(songId: String, serverId: UUID) async throws -> MediaSource {

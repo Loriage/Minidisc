@@ -24,6 +24,53 @@ nonisolated struct AudioEnginePlaybackToken: Hashable, Sendable {
     }
 }
 
+/// Safe diagnostics copied before AVPlayer releases a failed item. Never retain userInfo,
+/// localized descriptions, error-log URLs, headers, or server-provided comments.
+nonisolated struct AudioEngineFailure: Sendable, Equatable {
+    struct Code: Sendable, Equatable {
+        enum Domain: String, Sendable {
+            case avFoundation, url, coreMedia, osStatus, other
+
+            init(_ domain: String) {
+                self = switch domain {
+                case "AVFoundationErrorDomain": .avFoundation
+                case NSURLErrorDomain: .url
+                case "CoreMediaErrorDomain": .coreMedia
+                case NSOSStatusErrorDomain: .osStatus
+                default: .other
+                }
+            }
+        }
+
+        let domain: Domain
+        let value: Int
+
+        init(domain: String, value: Int) {
+            self.domain = Domain(domain)
+            self.value = value
+        }
+    }
+
+    let codes: [Code]
+
+    init(error: (any Error)?, logCode: Code? = nil) {
+        var codes: [Code] = []
+        var current = error as NSError?
+        // A malformed NSError can even contain a cycle in its underlying-error chain.
+        for _ in 0..<5 {
+            guard let error = current else { break }
+            codes.append(Code(domain: error.domain, value: error.code))
+            current = error.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        if let logCode, !codes.contains(logCode) { codes.append(logCode) }
+        self.codes = codes
+    }
+
+    var diagnosticDescription: String {
+        codes.isEmpty ? "unknown" : codes.map { "\($0.domain.rawValue):\($0.value)" }.joined(separator: ",")
+    }
+}
+
 /// A standby item that the engine has already promoted to the active output.
 ///
 /// The orchestration layer uses this snapshot to adopt the exact physical playback without
@@ -54,7 +101,7 @@ nonisolated protocol AudioEngineDelegate: AnyObject, Sendable {
     func audioEngineDidChangeState(_ state: AudioEngineState, playbackToken: AudioEnginePlaybackToken)
     /// The current track finished on its own (end of file), not by a user stop/skip.
     func audioEngineDidReachEndOfTrack(_ transition: AudioEngineTrackEnd)
-    func audioEngineDidError(_ message: String, playbackToken: AudioEnginePlaybackToken)
+    func audioEngineDidError(_ failure: AudioEngineFailure, playbackToken: AudioEnginePlaybackToken)
 }
 
 /// The low-level audio player `PlayerService` drives. All the queue, now-playing, crossfade, and

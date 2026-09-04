@@ -13,6 +13,7 @@ final class MockServerService: ServerServiceProtocol {
     var testConnectionError: (any Error)? = nil
     var addServerError: (any Error)? = nil
     var addServerCalled = false
+    var connection: ServerConnection?
 
     func testConnection(
         url: String, username: String, password: String,
@@ -37,8 +38,11 @@ final class MockServerService: ServerServiceProtocol {
     func setAudioMuseConfig(serverId: UUID, urlString: String?, token: String?) async throws {}
     func testConnection() async throws {}
     func loadPersistedState() async {}
-    func activeConnectionVersion() async -> ServerConnection.Version? { nil }
-    func activeConnection() async throws -> ServerConnection { throw MinidiscError.notImplemented }
+    func activeConnectionVersion() async -> ServerConnection.Version? { connection?.version }
+    func activeConnection() async throws -> ServerConnection {
+        guard let connection else { throw MinidiscError.notImplemented }
+        return connection
+    }
 }
 
 // MARK: - Suite

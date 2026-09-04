@@ -172,6 +172,9 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         case sourcePrepared(SourceKind)
         case playbackStateChanged(PlaybackStatus)
         case engineStateChanged(EngineStatus)
+        case engineFailure(AudioEngineFailure, playbackToken: AudioEnginePlaybackToken)
+        case mediaAvailabilityChecked(MediaAvailability, playbackGeneration: UInt64)
+        case unavailableTrackSkipped(hasNext: Bool)
         case networkRecovery(NetworkRecoveryEvent)
         case audioSession(AudioSessionEvent)
     }
@@ -254,6 +257,12 @@ nonisolated final class PlaybackDiagnostics: Sendable {
             "playback state=\(status.rawValue)"
         case .engineStateChanged(let status):
             "engine state=\(status.rawValue)"
+        case .engineFailure(let failure, let token):
+            "engine failure item=\(token.rawValue) codes=\(failure.diagnosticDescription)"
+        case .mediaAvailabilityChecked(let availability, let generation):
+            "playback media-availability=\(availability.rawValue) generation=\(generation)"
+        case .unavailableTrackSkipped(let hasNext):
+            "playback unavailable-track has-next=\(hasNext)"
         case .networkRecovery(let recovery):
             "network-recovery \(describe(recovery))"
         case .audioSession(let audioSession):

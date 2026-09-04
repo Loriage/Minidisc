@@ -386,6 +386,9 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     func resume() {
         lock.lock()
         defer { lock.unlock() }
+        // Queued pause callbacks can arrive after this deck already resumed/began buffering.
+        // Reasserting play there restarts watchdog/overlap work without helping the connection.
+        guard !shouldBePlaying || activePlayer.timeControlStatus == .paused else { return }
         beginPlaying()
     }
 
@@ -934,12 +937,12 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         clearItemObservers()
         statusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             guard let self, item.status == .failed else { return }
-            let message = item.error?.localizedDescription ?? "AVPlayer item failed"
+            let failure = Self.failure(item: item, error: item.error)
             let playbackToken = self.lock.withLock {
                 item === self.currentItem ? self.currentPlaybackToken : nil
             }
             guard let playbackToken else { return }
-            self.delegate?.audioEngineDidError(message, playbackToken: playbackToken)
+            self.delegate?.audioEngineDidError(failure, playbackToken: playbackToken)
         }
         endObserver = NotificationCenter.default.addObserver(
             forName: AVPlayerItem.didPlayToEndTimeNotification,
@@ -971,14 +974,21 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         ) { [weak self, weak item] note in
             guard let self else { return }
             let error = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
-            let message = error?.localizedDescription ?? "Playback failed"
+            let failure = Self.failure(item: item, error: error)
             let playbackToken: AudioEnginePlaybackToken? = self.lock.withLock {
                 guard let item, item === self.currentItem else { return nil }
                 return self.currentPlaybackToken
             }
             guard let playbackToken else { return }
-            self.delegate?.audioEngineDidError(message, playbackToken: playbackToken)
+            self.delegate?.audioEngineDidError(failure, playbackToken: playbackToken)
         }
+    }
+
+    private static func failure(item: AVPlayerItem?, error: (any Error)?) -> AudioEngineFailure {
+        let logCode = item?.errorLog()?.events.last.map {
+            AudioEngineFailure.Code(domain: $0.errorDomain, value: $0.errorStatusCode)
+        }
+        return AudioEngineFailure(error: error, logCode: logCode)
     }
 
     private func clearItemObservers() {

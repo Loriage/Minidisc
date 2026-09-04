@@ -50,6 +50,20 @@ nonisolated enum PlaybackTransitionPlanner {
         }
     }
 
+    /// A failed item is never repeated. Each confirmed missing ID is tried at most once
+    /// during automatic advancement, including when Repeat All wraps or the queue has duplicates.
+    static func nextIndexAfterUnavailableTrack(
+        trackIDs: [String],
+        currentIndex: Int,
+        repeatMode: RepeatMode,
+        unavailableTrackIDs: Set<String>
+    ) -> Int? {
+        guard trackIDs.indices.contains(currentIndex) else { return nil }
+        let following = Array(trackIDs.indices.dropFirst(currentIndex + 1))
+        let wrapped = repeatMode == .all ? Array(trackIDs.indices.prefix(currentIndex)) : []
+        return (following + wrapped).first { !unavailableTrackIDs.contains(trackIDs[$0]) }
+    }
+
     private static func forwardPlan(
         snapshot: Snapshot,
         currentTrackOutcome: CurrentTrackOutcome

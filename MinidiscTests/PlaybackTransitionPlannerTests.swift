@@ -4,6 +4,28 @@ import Testing
 
 @Suite("Playback transition planner")
 struct PlaybackTransitionPlannerTests {
+    @Test func missingTrackNeverRepeatsItself() {
+        for mode in [RepeatMode.off, .one, .all] {
+            #expect(PlaybackTransitionPlanner.nextIndexAfterUnavailableTrack(
+                trackIDs: ["a", "a", "b"], currentIndex: 0, repeatMode: mode,
+                unavailableTrackIDs: ["a"]
+            ) == 2)
+            #expect(PlaybackTransitionPlanner.nextIndexAfterUnavailableTrack(
+                trackIDs: ["a", "a", "b"], currentIndex: 2, repeatMode: mode,
+                unavailableTrackIDs: ["a", "b"]
+            ) == nil)
+        }
+    }
+
+    @Test func missingLastTrackCanWrapToAnAvailableTrackOnlyInRepeatAll() {
+        #expect(PlaybackTransitionPlanner.nextIndexAfterUnavailableTrack(
+            trackIDs: ["a", "b"], currentIndex: 1, repeatMode: .all, unavailableTrackIDs: ["b"]
+        ) == 0)
+        #expect(PlaybackTransitionPlanner.nextIndexAfterUnavailableTrack(
+            trackIDs: ["a", "b"], currentIndex: 1, repeatMode: .off, unavailableTrackIDs: ["b"]
+        ) == nil)
+    }
+
     private func snapshot(
         queueCount: Int = 4,
         currentIndex: Int = 1,

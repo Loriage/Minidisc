@@ -4,6 +4,27 @@ import Testing
 
 @Suite("Playback diagnostics")
 struct PlaybackDiagnosticsTests {
+    @Test func engineFailureKeepsCodesWithoutErrorPayloads() {
+        let secret = "PRIVATE_TOKEN_AND_SONG"
+        let error = NSError(domain: "AVFoundationErrorDomain", code: -11800, userInfo: [
+            NSLocalizedDescriptionKey: secret,
+            NSUnderlyingErrorKey: NSError(domain: NSURLErrorDomain, code: -1008, userInfo: [
+                NSURLErrorFailingURLErrorKey: URL(string: "https://example.com/\(secret)")!
+            ])
+        ])
+        let failure = AudioEngineFailure(error: error, logCode: .init(domain: secret, value: 404))
+        let diagnostics = PlaybackDiagnostics()
+        diagnostics.record(.engineFailure(failure, playbackToken: .init(rawValue: 3)))
+        let report = diagnostics.makeReport(context: .init(
+            appVersion: "test", appBuild: "0", operatingSystem: "test", playbackStatus: .error,
+            isPlaybackAvailable: true, networkPath: nil, connectionVersion: nil
+        ))
+        #expect(report.contains("avFoundation:-11800,url:-1008,other:404"))
+        #expect(report.contains("item=3"))
+        #expect(!report.contains(secret))
+        #expect(!report.contains("example.com"))
+    }
+
     @Test func reportRedactsNetworkAndServerDetails() throws {
         let diagnostics = PlaybackDiagnostics(capacity: 10)
         let endpointURL = try #require(

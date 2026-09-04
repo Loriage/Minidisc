@@ -57,6 +57,14 @@ nonisolated enum NetworkPlaybackProgressValidationOutcome: Equatable, Sendable {
     case deferToEndOfTrack
 }
 
+nonisolated struct PlaybackNetworkRecoveryTiming: Sendable {
+    /// Opening a lossless stream or starting server transcoding can take several seconds on cellular.
+    var startupGrace: Duration = .seconds(15)
+    var stallGrace: Duration = .seconds(5)
+    var retryDelay: Duration = .seconds(2)
+    var validationDelay: Duration = .seconds(2)
+}
+
 /// Bounds automatic stream rebuilds without permanently wedging recovery after one early failure.
 /// A new track, network-path generation, or explicit Play starts with a fresh budget.
 nonisolated struct PlaybackNetworkRecoveryAttemptBudget: Sendable {
@@ -125,6 +133,7 @@ actor PlayerService: PlayerServiceProtocol {
     private let statsService: StatsService
     private let listenBrainzService: ListenBrainzService
     private let playbackDiagnostics: PlaybackDiagnostics
+    private let networkRecoveryTiming: PlaybackNetworkRecoveryTiming
 
     private let engine: AudioEngine
     private let engineBridge: AudioEngineBridge
@@ -185,6 +194,7 @@ actor PlayerService: PlayerServiceProtocol {
     /// Automatic retries are bounded per track/path. Manual Play resets the budget and remains
     /// available even after all background attempts were consumed.
     private var networkRecoveryAttemptBudget = PlaybackNetworkRecoveryAttemptBudget()
+    private var unavailableTrackIDs: Set<String> = []
     /// Orders user requests that must build a queue before calling `play`.
     /// It is separate from `playbackGeneration`, so a failed Smart Shuffle or
     /// Instant Mix lookup does not invalidate the playback already in progress.
@@ -202,6 +212,7 @@ actor PlayerService: PlayerServiceProtocol {
     /// Last callback from the active physical item. PlayerState deliberately represents user intent,
     /// so it cannot tell validation code whether AVPlayer is truly rendering or merely waiting.
     private var activeEngineState: AudioEngineState?
+    private var activeEngineStartedAt = ContinuousClock.now
     /// Changes only when the queue session is replaced (not on an ordinary skip).
     private var queueGeneration: UInt64 = 0
     /// Serializes the state/engine commit phase while still allowing a newer play
@@ -240,7 +251,8 @@ actor PlayerService: PlayerServiceProtocol {
         statsService: StatsService,
         listenBrainzService: ListenBrainzService,
         playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics(),
-        engine: AudioEngine
+        engine: AudioEngine,
+        networkRecoveryTiming: PlaybackNetworkRecoveryTiming = PlaybackNetworkRecoveryTiming()
     ) {
         self.state = state
         self.mediaResolver = mediaResolver
@@ -259,6 +271,7 @@ actor PlayerService: PlayerServiceProtocol {
         self.statsService = statsService
         self.listenBrainzService = listenBrainzService
         self.playbackDiagnostics = playbackDiagnostics
+        self.networkRecoveryTiming = networkRecoveryTiming
         let cacheConfig = URLSessionConfiguration.default
         cacheConfig.timeoutIntervalForRequest = 30
         cacheConfig.timeoutIntervalForResource = 300
@@ -317,6 +330,7 @@ actor PlayerService: PlayerServiceProtocol {
             transportIntentGeneration: transportIntentGeneration
         )
         activeEngineState = nil
+        activeEngineStartedAt = .now
     }
 
     private func isCurrentEngineEvent(_ token: AudioEnginePlaybackToken) -> Bool {
@@ -334,6 +348,8 @@ actor PlayerService: PlayerServiceProtocol {
         guard sourceIsRemoteStream else { return .none }
         guard isOnline else { return .reloadOnResume }
         switch playbackState {
+        case .error(.mediaNotFound):
+            return .reloadOnResume
         case .playing, .error:
             return .armAutomaticRecovery
         case .idle, .loading, .paused:
@@ -403,7 +419,8 @@ actor PlayerService: PlayerServiceProtocol {
         tracks: [DisplayableSong],
         startIndex: Int,
         preparedPlayback: PreparedNextPlayback?,
-        engineTransition: AudioEngineTrackEnd?
+        engineTransition: AudioEngineTrackEnd?,
+        skippingUnavailableTracks: Bool = false
     ) async throws {
         guard tracks.indices.contains(startIndex) else { return }
         playbackDiagnostics.record(.command(.play(queueCount: tracks.count, startIndex: startIndex)))
@@ -413,6 +430,7 @@ actor PlayerService: PlayerServiceProtocol {
         transportIntentGeneration &+= 1
         let generation = playbackGeneration
         let transportGeneration = transportIntentGeneration
+        if !skippingUnavailableTracks { unavailableTrackIDs.removeAll() }
         cancelNetworkRecoveryProbe()
         cancelNetworkRecoveryValidation()
         pendingSystemResume = nil
@@ -1539,6 +1557,7 @@ actor PlayerService: PlayerServiceProtocol {
         // An explicit Play is a fresh user intent and must remain able to recover even when the
         // previous path already exhausted its automatic retry budget.
         networkRecoveryAttemptBudget.reset()
+        unavailableTrackIDs.removeAll()
         isRestoringSession = false
 
         // Resuming after the queue ended restarts at track 0. A normal mid-track pause keeps the
@@ -2532,10 +2551,11 @@ actor PlayerService: PlayerServiceProtocol {
         let expectedPlaybackGeneration = playbackGeneration
         let expectedTransportGeneration = transportIntentGeneration
         let baselineProgress = engine.progress
+        let validationDelay = networkRecoveryTiming.validationDelay
 
         networkRecoveryValidationTask = Task { [weak self] in
             do {
-                try await Task.sleep(for: .seconds(2))
+                try await Task.sleep(for: validationDelay)
             } catch {
                 return
             }
@@ -2638,49 +2658,22 @@ actor PlayerService: PlayerServiceProtocol {
         delay: Duration,
         requireStall: Bool
     ) async {
+        // Keep one deadline per stalled item. KVO emits several paused/buffering callbacks
+        // during a load: they must neither shorten the startup grace nor cancel a rebuild
+        // already suspended in the resolver. Budget exhaustion is decided AFTER the wait.
+        guard networkRecoveryTask == nil else { return }
         let pathGeneration = latestNetworkPathEvent.generation
-        guard networkRecoveryAttemptBudget.canAttempt(
-            trackID: trackID,
-            pathGeneration: pathGeneration
-        ) else {
-            playbackDiagnostics.record(
-                .networkRecovery(.retryBudgetExhausted(pathGeneration: pathGeneration))
-            )
-            Logger.player.warning(
-                "[NETWORK-RECOVERY] retry budget exhausted track='\(trackID, privacy: .public)' path=\(pathGeneration, privacy: .public)"
-            )
-            let snapshot = await MainActor.run {
-                (trackID: state.currentTrack?.id, playbackState: state.playbackState)
-            }
-            let recoveryStillWanted: Bool = switch snapshot.playbackState {
-            case .playing, .error: true
-            case .idle, .loading, .paused: false
-            }
-            guard networkReloadRequiredTrackID == trackID,
-                  snapshot.trackID == trackID,
-                  recoveryStillWanted else { return }
-            cancelNetworkRecoveryValidation()
-            playbackProgressTracker.breakContinuity()
-            stopProgressTimer()
-            stopPositionSaveTimer()
-            cancelPendingCacheDownload()
-            cancelPendingPrefetch()
-            engine.stop()
-            activeEnginePlayback = nil
-            await MainActor.run { state.playbackState = .error(.timeout) }
-            playbackDiagnostics.record(.playbackStateChanged(.error))
-            return
-        }
-
-        cancelNetworkRecoveryProbe()
         let requestGeneration = networkRecoveryTaskGeneration
         let expectedPlaybackGeneration = playbackGeneration
         let expectedTransportGeneration = transportIntentGeneration
         let baselineProgress = engine.progress
+        let remainingStartupGrace = activeEnginePlayback == nil ? Duration.zero
+            : networkRecoveryTiming.startupGrace - activeEngineStartedAt.duration(to: .now)
+        let probeDelay = max(delay, remainingStartupGrace)
 
         networkRecoveryTask = Task { [weak self] in
             do {
-                try await Task.sleep(for: delay)
+                try await Task.sleep(for: probeDelay)
             } catch {
                 return
             }
@@ -2762,6 +2755,47 @@ actor PlayerService: PlayerServiceProtocol {
             return
         }
 
+        // A stream URL is constructed locally; resolving it again cannot detect a deleted song.
+        // Query getSong after a real failure/stall, while keeping the current item alive.
+        let availability = await mediaResolver.availability(songId: trackID, serverId: serverID)
+        guard !Task.isCancelled,
+              requestGeneration == networkRecoveryTaskGeneration,
+              pathGeneration == latestNetworkPathEvent.generation,
+              expectedPlaybackGeneration == playbackGeneration,
+              expectedTransportGeneration == transportIntentGeneration,
+              networkReloadRequiredTrackID == trackID else { return }
+        playbackDiagnostics.record(.mediaAvailabilityChecked(availability, playbackGeneration: expectedPlaybackGeneration))
+
+        // The server lookup itself may take time. Do not replace audio that recovered meanwhile.
+        if activeEngineState == .playing, engine.progress > currentProgress + 0.1 {
+            cancelNetworkRecoveryValidation()
+            networkReloadRequiredTrackID = nil
+            networkRecoveryAttemptBudget.reset()
+            playbackDiagnostics.record(.networkRecovery(.progressValidated(pathGeneration: pathGeneration)))
+            return
+        }
+        if availability == .missing {
+            networkRecoveryTask = nil
+            networkRecoveryTaskGeneration &+= 1
+            await handleUnavailableTrack(
+                trackID: trackID,
+                expectedPlaybackGeneration: expectedPlaybackGeneration,
+                expectedTransportGeneration: expectedTransportGeneration
+            )
+            return
+        }
+
+        guard networkRecoveryAttemptBudget.canAttempt(trackID: trackID, pathGeneration: pathGeneration) else {
+            playbackDiagnostics.record(.networkRecovery(.retryBudgetExhausted(pathGeneration: pathGeneration)))
+            networkRecoveryTask = nil
+            networkRecoveryTaskGeneration &+= 1
+            _ = await finishFailedPlayback(
+                error: .timeout,
+                expectedPlaybackGeneration: expectedPlaybackGeneration,
+                expectedTransportGeneration: expectedTransportGeneration
+            )
+            return
+        }
         guard let attempt = networkRecoveryAttemptBudget.beginAttempt(
             trackID: trackID,
             pathGeneration: pathGeneration
@@ -2776,6 +2810,10 @@ actor PlayerService: PlayerServiceProtocol {
         do {
             freshSource = try await mediaResolver.resolve(songId: trackID, serverId: serverID)
         } catch {
+            guard !Task.isCancelled,
+                  requestGeneration == networkRecoveryTaskGeneration,
+                  expectedPlaybackGeneration == playbackGeneration,
+                  expectedTransportGeneration == transportIntentGeneration else { return }
             playbackDiagnostics.record(
                 .networkRecovery(
                     .sourceRefreshFailed(number: attempt, pathGeneration: pathGeneration)
@@ -2784,7 +2822,9 @@ actor PlayerService: PlayerServiceProtocol {
             Logger.player.warning(
                 "[NETWORK-RECOVERY] source refresh attempt=\(attempt, privacy: .public) failed track='\(trackID, privacy: .public)': \(error, privacy: .public)"
             )
-            await armNetworkRecoveryProbe(trackID: trackID, delay: .seconds(2), requireStall: false)
+            networkRecoveryTask = nil
+            networkRecoveryTaskGeneration &+= 1
+            await armNetworkRecoveryProbe(trackID: trackID, delay: networkRecoveryTiming.retryDelay, requireStall: false)
             return
         }
         guard !Task.isCancelled,
@@ -2861,6 +2901,107 @@ actor PlayerService: PlayerServiceProtocol {
         Logger.player.info(
             "[NETWORK-RECOVERY] rebuild attempt=\(attempt, privacy: .public) track='\(trackID, privacy: .public)' at \(resumePosition, format: .fixed(precision: 1))s"
         )
+        guard !Task.isCancelled,
+              requestGeneration == networkRecoveryTaskGeneration,
+              expectedPlaybackGeneration == playbackGeneration,
+              expectedTransportGeneration == transportIntentGeneration else { return }
+        // Every attempt, including the last, gets a full startup window even if no more
+        // callbacks arrive. Retire this task without cancelling the task executing this method.
+        networkRecoveryTask = nil
+        networkRecoveryTaskGeneration &+= 1
+        await armNetworkRecoveryProbe(trackID: trackID, delay: networkRecoveryTiming.stallGrace, requireStall: true)
+    }
+
+    /// Serializes terminal failure against an in-flight play/skip commit. Stale timeouts can
+    /// never stop a newer track or overwrite a user pause.
+    private func finishFailedPlayback(
+        error: MinidiscError,
+        expectedPlaybackGeneration: UInt64,
+        expectedTransportGeneration: UInt64
+    ) async -> Bool {
+        await waitForTransitionCommit()
+        guard isCurrentPlaybackIntent(
+            playbackGeneration: expectedPlaybackGeneration,
+            transportIntentGeneration: expectedTransportGeneration
+        ) else { return false }
+        beginTransitionCommit()
+        defer { endTransitionCommit() }
+        cancelNetworkRecoveryProbe()
+        cancelNetworkRecoveryValidation()
+        networkReloadRequiredTrackID = nil
+        playbackProgressTracker.breakContinuity()
+        stopProgressTimer()
+        stopPositionSaveTimer()
+        cancelPendingCacheDownload()
+        cancelPendingPrefetch()
+        restorePauseTask?.cancel()
+        restorePauseTask = nil
+        pendingRestoreInfo = nil
+        engine.stop()
+        activeEnginePlayback = nil
+        activeEngineState = nil
+        if isMutedForRestore {
+            engine.volume = await playbackPreferences.restoredVolume
+            isMutedForRestore = false
+        }
+        guard isCurrentPlaybackIntent(
+            playbackGeneration: expectedPlaybackGeneration,
+            transportIntentGeneration: expectedTransportGeneration
+        ) else { return false }
+        await MainActor.run { state.playbackState = .error(error) }
+        playbackDiagnostics.record(.playbackStateChanged(.error))
+        await pushPositionSnapshot(rate: 0)
+        return isCurrentPlaybackIntent(
+            playbackGeneration: expectedPlaybackGeneration,
+            transportIntentGeneration: expectedTransportGeneration
+        )
+    }
+
+    private func handleUnavailableTrack(
+        trackID: String,
+        expectedPlaybackGeneration: UInt64,
+        expectedTransportGeneration: UInt64
+    ) async {
+        guard await finishFailedPlayback(
+            error: .mediaNotFound(songId: trackID),
+            expectedPlaybackGeneration: expectedPlaybackGeneration,
+            expectedTransportGeneration: expectedTransportGeneration
+        ) else { return }
+        let transition = await queueTransitionSnapshot()
+        guard isCurrentPlaybackIntent(
+            playbackGeneration: expectedPlaybackGeneration,
+            transportIntentGeneration: expectedTransportGeneration
+        ) else { return }
+        unavailableTrackIDs.insert(trackID)
+        let nextIndex = PlaybackTransitionPlanner.nextIndexAfterUnavailableTrack(
+            trackIDs: transition.queue.map(\.id),
+            currentIndex: transition.planner.currentIndex,
+            repeatMode: transition.planner.repeatMode,
+            unavailableTrackIDs: unavailableTrackIDs
+        )
+        playbackDiagnostics.record(.unavailableTrackSkipped(hasNext: nextIndex != nil))
+        await toastService.show(
+            String(localized: "This song is no longer available on the server."),
+            style: .error
+        )
+        guard let nextIndex,
+              isCurrentPlaybackIntent(
+                  playbackGeneration: expectedPlaybackGeneration,
+                  transportIntentGeneration: expectedTransportGeneration
+              ) else { return }
+        do {
+            try await play(
+                tracks: transition.queue,
+                startIndex: nextIndex,
+                preparedPlayback: nil,
+                engineTransition: nil,
+                skippingUnavailableTracks: true
+            )
+        } catch {
+            // play restores the prior error if source resolution fails. Keep the queue and
+            // explicit transport controls available instead of recursing on uncertain failures.
+            Logger.player.warning("[PLAYBACK] could not advance after an unavailable song")
+        }
     }
 
     // MARK: - Position save timer
@@ -3499,44 +3640,7 @@ actor PlayerService: PlayerServiceProtocol {
         case .stopped:
             playbackProgressTracker.breakContinuity()
         case .error:
-            if networkRecoveryValidationToken == playbackToken {
-                cancelNetworkRecoveryValidation()
-            }
-            let engineSnapshot = await MainActor.run {
-                (isLive: state.isLiveStream, trackID: state.currentTrack?.id)
-            }
-            guard isCurrentEngineEvent(playbackToken) else { return }
-            let liveStationName: String?
-            if engineSnapshot.isLive {
-                liveStationName = await MainActor.run { state.currentRadio?.name ?? "" }
-                guard isCurrentEngineEvent(playbackToken) else { return }
-            } else {
-                liveStationName = nil
-            }
-            if currentSourceIsRemoteStream, let trackID = engineSnapshot.trackID {
-                networkReloadRequiredTrackID = trackID
-            }
-            playbackProgressTracker.breakContinuity()
-            stopProgressTimer()
-            stopPositionSaveTimer()
-            cancelPendingCacheDownload()
-            cancelPendingPrefetch()
-            engine.stop()
-            activeEnginePlayback = nil
-            Logger.player.error("[PLAYER] engine entered error state")
-            if let liveStationName {
-                await handleLiveStreamFailure(stationName: liveStationName, error: nil)
-            } else {
-                await MainActor.run { state.playbackState = .error(.timeout) }
-                if let trackID = networkReloadRequiredTrackID,
-                   latestNetworkPathEvent.isOnline {
-                    await armNetworkRecoveryProbe(
-                        trackID: trackID,
-                        delay: .seconds(2),
-                        requireStall: false
-                    )
-                }
-            }
+            await handleEngineError(AudioEngineFailure(error: nil), playbackToken: playbackToken)
         }
     }
 
@@ -3611,31 +3715,28 @@ actor PlayerService: PlayerServiceProtocol {
         networkRecoveryValidationToken = playbackToken
         await armNetworkRecoveryProbe(
             trackID: trackID,
-            delay: isNewStall ? .seconds(3) : .seconds(2),
+            delay: networkRecoveryTiming.stallGrace,
             requireStall: true
         )
     }
 
     /// Called by the engine bridge on unexpected errors.
     func handleEngineError(
-        _ message: String,
+        _ failure: AudioEngineFailure,
         playbackToken: AudioEnginePlaybackToken
     ) async {
         guard isCurrentEngineEvent(playbackToken) else { return }
-        if networkRecoveryValidationToken == playbackToken {
-            cancelNetworkRecoveryValidation()
-        }
+        await waitForTransitionCommit()
+        guard isCurrentEngineEvent(playbackToken) else { return }
+        beginTransitionCommit()
+        var ownsTransitionCommit = true
+        defer { if ownsTransitionCommit { endTransitionCommit() } }
         let engineSnapshot = await MainActor.run {
-            (isLive: state.isLiveStream, trackID: state.currentTrack?.id)
+            (isLive: state.isLiveStream, trackID: state.currentTrack?.id, stationName: state.currentRadio?.name)
         }
         guard isCurrentEngineEvent(playbackToken) else { return }
-        let liveStationName: String?
-        if engineSnapshot.isLive {
-            liveStationName = await MainActor.run { state.currentRadio?.name ?? "" }
-            guard isCurrentEngineEvent(playbackToken) else { return }
-        } else {
-            liveStationName = nil
-        }
+        playbackDiagnostics.record(.engineFailure(failure, playbackToken: playbackToken))
+        cancelNetworkRecoveryValidation()
         if currentSourceIsRemoteStream, let trackID = engineSnapshot.trackID {
             networkReloadRequiredTrackID = trackID
         }
@@ -3646,19 +3747,23 @@ actor PlayerService: PlayerServiceProtocol {
         cancelPendingPrefetch()
         engine.stop()
         activeEnginePlayback = nil
-        Logger.player.error("[PLAYER] engine unexpected error: \(message, privacy: .public)")
-        if let liveStationName {
-            await handleLiveStreamFailure(stationName: liveStationName, error: nil)
+        activeEngineState = .error
+        Logger.player.error("[PLAYER] engine failure: \(failure.diagnosticDescription, privacy: .public)")
+        endTransitionCommit()
+        ownsTransitionCommit = false
+        if engineSnapshot.isLive {
+            await handleLiveStreamFailure(stationName: engineSnapshot.stationName ?? "", error: nil)
+        } else if let trackID = networkReloadRequiredTrackID, latestNetworkPathEvent.isOnline {
+            // Keep Play intent through a bounded recovery. Only terminal failure returns an error.
+            await armNetworkRecoveryProbe(
+                trackID: trackID,
+                delay: networkRecoveryTiming.retryDelay,
+                requireStall: false
+            )
         } else {
             await MainActor.run { state.playbackState = .error(.timeout) }
-            if let trackID = networkReloadRequiredTrackID,
-               latestNetworkPathEvent.isOnline {
-                await armNetworkRecoveryProbe(
-                    trackID: trackID,
-                    delay: .seconds(2),
-                    requireStall: false
-                )
-            }
+            playbackDiagnostics.record(.playbackStateChanged(.error))
+            await pushPositionSnapshot(rate: 0)
         }
     }
 
@@ -4193,9 +4298,9 @@ nonisolated final class AudioEngineBridge: AudioEngineDelegate, Sendable {
         Task { await service.handleEndOfTrack(transition) }
     }
 
-    func audioEngineDidError(_ message: String, playbackToken: AudioEnginePlaybackToken) {
+    func audioEngineDidError(_ failure: AudioEngineFailure, playbackToken: AudioEnginePlaybackToken) {
         guard let service = currentService() else { return }
-        Task { await service.handleEngineError(message, playbackToken: playbackToken) }
+        Task { await service.handleEngineError(failure, playbackToken: playbackToken) }
     }
 
     private func currentService() -> PlayerService? {

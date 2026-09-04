@@ -42,14 +42,19 @@ nonisolated struct ServerConnection: Sendable {
         self.credentials = credentials
     }
 
-    func makeSwiftSonicClient() -> SwiftSonicClient {
+    func makeSwiftSonicClient(
+        requestTimeout: TimeInterval = 30,
+        retryPolicy: RetryPolicy = .default
+    ) -> SwiftSonicClient {
         SwiftSonicClient(
             configuration: ServerConfiguration(
                 serverURL: baseURL,
                 username: server.username,
-                password: credentials.password
+                password: credentials.password,
+                requestTimeout: requestTimeout
             ),
             transport: CustomHeadersTransport(headers: credentials.customHeaders),
+            retryPolicy: retryPolicy,
             logSubsystem: "app.minidisc.server"
         )
     }

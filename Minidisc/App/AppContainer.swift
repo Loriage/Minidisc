@@ -20,6 +20,7 @@ final class AppContainer {
     let libraryService: any LibraryServiceProtocol
     let audioStreamCache: any AudioStreamCacheProtocol
     let downloadService: any DownloadServiceProtocol
+    let downloadActivity = DownloadActivityState()
     let mediaResolver: any MediaResolverProtocol
     let playerService: any PlayerServiceProtocol
     let nowPlayingService: any NowPlayingServiceProtocol
@@ -106,7 +107,8 @@ final class AppContainer {
         wrappedPlaylistService = WrappedPlaylistService(serverService: server, statsService: stats)
         radioService = RadioService(serverService: server)
 
-        let download = DownloadService(serverService: server, modelContainer: modelContainer, toastService: toastService)
+        let download = DownloadService(serverService: server, modelContainer: modelContainer, toastService: toastService,
+                                       transferTransport: BackgroundDownloadTransport.shared, diagnostics: playbackDiagnostics)
         downloadService = download
 
         let library = LibraryService(
@@ -203,6 +205,12 @@ final class AppContainer {
         searchHistoryService = SearchHistoryService(container: modelContainer)
 
         lifecycleTasks = [
+            Task { [download, downloadActivity] in
+                for await transfers in download.progressStream {
+                    guard !Task.isCancelled else { break }
+                    downloadActivity.transfers = transfers
+                }
+            },
             Task { [playlist] in
                 guard !Task.isCancelled else { return }
                 await playlist.retryMissingPlaylistDownloads()

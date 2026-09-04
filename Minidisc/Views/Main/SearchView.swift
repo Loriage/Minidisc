@@ -336,6 +336,9 @@ struct SearchView: View {
                                     try await container?.playerService.play(tracks: songs, startIndex: index)
                                 } catch {
                                     Logger.player.error("[PLAYBACK] play failed: \(error, privacy: .public)")
+                if !UserFacingError.isCancellation(error) {
+                    container?.toastService.showError(UserFacingError.from(error).displayMessage)
+                }
                                 }
                             }
                         }

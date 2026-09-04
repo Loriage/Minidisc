@@ -1692,6 +1692,16 @@ actor PlayerService: PlayerServiceProtocol {
         }
     }
 
+    func play(preparingQueue: @escaping @Sendable () async throws -> PreparedPlaybackQueue) async throws {
+        queueBuildGeneration &+= 1
+        let request = queueBuildGeneration
+        let transport = transportIntentGeneration
+        let queue = try await preparingQueue()
+        guard request == queueBuildGeneration, transport == transportIntentGeneration,
+              !Task.isCancelled else { return }
+        try await play(tracks: queue.tracks, startIndex: queue.startIndex)
+    }
+
     func togglePlayPause() async {
         let isPlaying = await MainActor.run { state.wantsPlayback }
         if isPlaying { await pause() } else { await resume() }

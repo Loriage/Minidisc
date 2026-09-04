@@ -178,16 +178,16 @@ struct PlaylistDetailView: View {
     private func playSongs(_ requested: [DisplayableSong], startIndex: Int) async {
         guard requested.indices.contains(startIndex), let vm = viewModel, let container else { return }
         let selectedID = requested[startIndex].id
-        let refreshed = await vm.playbackSongs(from: requested)
-        guard let index = refreshed.firstIndex(where: { $0.id == selectedID }) else {
-            if !vm.isRemovedFromServer {
-                container.toastService.showError(String(localized: "This song is no longer available on the server."))
-            }
-            return
-        }
-        do { try await container.playerService.play(tracks: refreshed, startIndex: index) }
-        catch {
-            if !UserFacingError.isCancellation(error) {
+        do {
+            try await container.playerService.play(preparingQueue: {
+                let refreshed = await vm.playbackSongs(from: requested)
+                guard let index = refreshed.firstIndex(where: { $0.id == selectedID }) else {
+                    throw UserFacingError.contentRemoved
+                }
+                return PreparedPlaybackQueue(tracks: refreshed, startIndex: index)
+            })
+        } catch {
+            if !UserFacingError.isCancellation(error), !vm.isRemovedFromServer {
                 container.toastService.showError(UserFacingError.from(error).displayMessage)
             }
         }
@@ -281,7 +281,7 @@ struct PlaylistDetailView: View {
                             Task { await vm.downloadSong(id: songId) }
                         },
                         onRemoveDownload: { songId in
-                            Task { try? await container?.downloadService.remove(songId: songId, serverId: serverId) }
+                            Task { await container?.toastService.perform { try await container?.downloadService.remove(songId: songId, serverId: serverId) } }
                         },
                         onRemove: removeTrack,
                         onContextRemove: removeTrack,
@@ -656,7 +656,7 @@ struct PlaylistDetailView: View {
 
     private func commitEdit() async {
         guard let c = container, let serverId = c.serverState.activeServer?.id else {
-            withAnimation(.smooth) { isEditing = false }
+            container?.toastService.showError(UserFacingError.serverUnreachable.displayMessage)
             return
         }
         let trimmedName = editName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -668,15 +668,16 @@ struct PlaylistDetailView: View {
         let songsChanged = editSongs.map(\.id) != originalSongs.map(\.id)
 
         let nameChanged = !trimmedName.isEmpty && trimmedName != currentName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if nameChanged {
-            try? await c.playlistService.renamePlaylist(id: playlistId, newName: trimmedName)
-        }
-        if songsChanged {
-            try? await c.playlistService.reorderTracks(playlistId: playlistId, orderedSongIds: editSongs.map(\.id))
-        }
-        // Reordering drops the server-side description, so restore it after the replace.
-        if (songsChanged && !trimmedComment.isEmpty) || commentChanged {
-            try? await c.playlistService.updateDescription(id: playlistId, description: trimmedComment)
+        let edits = PlaylistEdits(
+            name: nameChanged ? trimmedName : nil,
+            orderedSongIDs: songsChanged ? editSongs.map(\.id) : nil,
+            description: songsChanged || commentChanged ? trimmedComment : nil
+        )
+        guard await c.toastService.perform({
+            try await PlaylistEditCommitter.commit(edits, playlistID: playlistId, service: c.playlistService)
+        }) else {
+            // Leave the editor and all draft fields intact so Save can retry the same snapshot.
+            return
         }
         if coverDirty {
             await applyCoverInPlace(container: c, serverId: serverId, originalSongs: originalSongs)
@@ -865,6 +866,7 @@ struct PlaylistDetailView: View {
                             .minidiscSolidCircleButton(size: 44)
                     }
                     .disabled(resolvedSongs(vm).isEmpty)
+                    .accessibilityLabel("Shuffle")
                     .opacity(vm == nil ? 0.4 : 1)
 
                     PlayButton(action: {
@@ -885,6 +887,7 @@ struct PlaylistDetailView: View {
                                         .foregroundStyle(.white)
                                         .minidiscSolidCircleButton(size: 44)
                                 }
+                                .accessibilityLabel("Cancel Download")
                             } else {
                                 switch downloadState(for: vm) {
                                 case .notDownloaded:
@@ -895,6 +898,7 @@ struct PlaylistDetailView: View {
                                             .minidiscSolidCircleButton(size: 44)
                                     }
                                     .disabled(vm.songs.isEmpty)
+                                    .accessibilityLabel("Download Playlist")
                                 case .partiallyDownloaded:
                                     Button { Task { await vm.downloadMissingTracks() } } label: {
                                         Image(systemName: "arrow.down")
@@ -902,6 +906,7 @@ struct PlaylistDetailView: View {
                                             .foregroundStyle(.white)
                                             .minidiscSolidCircleButton(size: 44)
                                     }
+                                    .accessibilityLabel("Download Missing Tracks")
                                 case .fullyDownloaded:
                                     Button {
                                         HapticFeedback.heavy.trigger()
@@ -912,6 +917,7 @@ struct PlaylistDetailView: View {
                                             .foregroundStyle(.white)
                                             .minidiscSolidCircleButton(size: 44)
                                     }
+                                    .accessibilityLabel("Remove Download")
                                 }
                             }
                         } else {
@@ -922,6 +928,7 @@ struct PlaylistDetailView: View {
                                     .minidiscSolidCircleButton(size: 44)
                             }
                             .disabled(true)
+                            .accessibilityLabel("Download Playlist")
                             .opacity(0.4)
                         }
                     }

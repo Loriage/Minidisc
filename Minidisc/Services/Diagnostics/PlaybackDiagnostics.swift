@@ -188,6 +188,10 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         let startedAt: Date
         var entries: [Entry]
         var experience = PlaybackExperienceMetrics()
+        var homeReadyTimes: [TimeInterval] = []
+        var homeCacheLoads = 0
+        var completedDownloads = 0
+        var failedDownloads = 0
     }
 
     private let capacity: Int
@@ -218,9 +222,31 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         }
     }
 
+    /// Measures view-model content readiness, separately from rendered pixels or audio output.
+    func recordHomeContentReady(after duration: TimeInterval, fromCache: Bool) {
+        guard duration.isFinite, duration >= 0 else { return }
+        state.withLock {
+            $0.homeReadyTimes.append(duration)
+            if $0.homeReadyTimes.count > 100 { $0.homeReadyTimes.removeFirst() }
+            if fromCache { $0.homeCacheLoads += 1 }
+        }
+    }
+
+    func recordDownloadOutcome(succeeded: Bool) {
+        state.withLock {
+            if succeeded { $0.completedDownloads += 1 }
+            else { $0.failedDownloads += 1 }
+        }
+    }
+
     func makeReport(context: ReportContext) -> String {
         let entries = state.withLock { $0.entries }
         let experience = state.withLock { $0.experience.report }
+        let continuity = state.withLock { value in
+            let times = value.homeReadyTimes.sorted()
+            let median = times.isEmpty ? "unavailable" : String(format: "%.3fs", times[(times.count - 1) / 2])
+            return "Continuity (this launch): home-data-ready samples=\(times.count) p50=\(median) cache-loads=\(value.homeCacheLoads); download-attempts completed=\(value.completedDownloads) failed=\(value.failedDownloads). Home timing excludes rendering."
+        }
         var lines = [
             "Minidisc Playback Diagnostics",
             "Generated: \(Date().formatted(.iso8601))",
@@ -231,6 +257,7 @@ nonisolated final class PlaybackDiagnostics: Sendable {
             "Connection: \(context.connectionVersion?.description ?? "none")",
             "Privacy: song metadata, full URLs, credentials, header names/values and route names are excluded.",
             experience,
+            continuity,
             "",
             "Timeline (oldest to newest):"
         ]

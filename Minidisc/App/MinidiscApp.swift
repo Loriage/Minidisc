@@ -6,6 +6,7 @@ import BackgroundTasks
 
 @main
 struct MinidiscApp: App {
+    @UIApplicationDelegateAdaptor(MinidiscAppDelegate.self) private var appDelegate
     @State private var launchState: AppLaunchState = .launching
     @State private var launchAttempt = 1
     @Environment(\.scenePhase) private var scenePhase
@@ -63,6 +64,7 @@ struct MinidiscApp: App {
                 }
                 .task(id: activeContainer?.serverState.libraryIndexPreparationSnapshot) {
                     guard let container = activeContainer else { return }
+                    await container.downloadService.restorePendingDownloads()
                     let snapshot = container.serverState.libraryIndexPreparationSnapshot
                     guard snapshot.isOnline else { return }
                     await container.listenBrainzService.flushOfflineQueue()

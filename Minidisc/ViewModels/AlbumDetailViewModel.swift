@@ -117,8 +117,10 @@ final class AlbumDetailViewModel {
     func downloadAlbum() async {
         guard let album = loadedAlbum, let serverId = serverState.activeServer?.id else { return }
         isDownloadingAlbum = true
-        try? await downloadService.download(album: album, serverId: serverId)
+        defer { isDownloadingAlbum = false }
+        await toastService.perform { try await downloadService.download(album: album, serverId: serverId) }
         let downloadedIds = await downloadService.downloadedSongIds(serverId: serverId)
+        guard serverState.activeServer?.id == serverId else { return }
         songs = songs.map { $0.withDownloaded(downloadedIds.contains($0.id)) }
         isDownloadingAlbum = false
     }
@@ -126,7 +128,8 @@ final class AlbumDetailViewModel {
     func cancelAlbumDownload() async {
         guard let serverId = serverState.activeServer?.id else { return }
         for song in songs {
-            await downloadService.cancelDownload(songId: song.id, serverId: serverId)
+            do { try await downloadService.cancelDownload(songId: song.id, serverId: serverId) }
+            catch { toastService.showError(UserFacingError.from(error).displayMessage); return }
         }
         isDownloadingAlbum = false
     }
@@ -136,7 +139,7 @@ final class AlbumDetailViewModel {
               let serverId = serverState.activeServer?.id else { return }
         downloadingIds.insert(id)
         defer { downloadingIds.remove(id) }
-        try? await downloadService.download(song: song, serverId: serverId)
+        await toastService.perform { try await downloadService.download(song: song, serverId: serverId) }
         let allDownloaded = await downloadService.downloadedSongIds(serverId: serverId)
         if let idx = songs.firstIndex(where: { $0.id == id }) {
             songs[idx] = songs[idx].withDownloaded(allDownloaded.contains(id))
@@ -144,24 +147,15 @@ final class AlbumDetailViewModel {
     }
 
     func downloadMissingTracks() async {
-        guard let album = loadedAlbum,
-              let serverId = serverState.activeServer?.id,
-              let allSongs = album.song else { return }
-        let downloadedIds = Set(songs.filter { $0.isDownloaded }.map(\.id))
-        let missing = allSongs.filter { !downloadedIds.contains($0.id) }
-        guard !missing.isEmpty else { return }
-        isDownloadingAlbum = true
-        for song in missing {
-            try? await downloadService.download(song: song, serverId: serverId)
-        }
-        let allDownloaded = await downloadService.downloadedSongIds(serverId: serverId)
-        songs = songs.map { $0.withDownloaded(allDownloaded.contains($0.id)) }
-        isDownloadingAlbum = false
+        // The service skips existing files and persists every missing member before starting.
+        await downloadAlbum()
     }
 
     func deleteDownload() async {
         guard let serverId = serverState.activeServer?.id else { return }
-        try? await downloadService.remove(albumId: albumId, serverId: serverId)
-        songs = songs.map { $0.withDownloaded(false) }
+        guard await toastService.perform({ try await downloadService.remove(albumId: albumId, serverId: serverId) }) else { return }
+        let downloadedIds = await downloadService.downloadedSongIds(serverId: serverId)
+        guard serverState.activeServer?.id == serverId else { return }
+        songs = songs.map { $0.withDownloaded(downloadedIds.contains($0.id)) }
     }
 }

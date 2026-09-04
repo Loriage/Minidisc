@@ -105,7 +105,7 @@ nonisolated struct LibraryIndexedPlaylistDetail: Sendable {
 
 /// SwiftSonic intentionally exposes playlists as decode-only response types. This local boundary
 /// type preserves every field with Codable storage without widening the values to dictionaries.
-private nonisolated struct IndexedPlaylistPayload: Codable, Sendable {
+nonisolated struct IndexedPlaylistPayload: Codable, Sendable {
     let id: String
     let name: String
     let comment: String?

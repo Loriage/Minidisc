@@ -1,7 +1,7 @@
 import Foundation
 import SwiftSonic
 
-nonisolated enum UserFacingError: LocalizedError, Identifiable, Sendable {
+nonisolated enum UserFacingError: LocalizedError, Identifiable, Sendable, Codable {
     case noNetwork
     case serverUnreachable
     case authenticationFailed

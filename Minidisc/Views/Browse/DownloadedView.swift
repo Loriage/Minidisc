@@ -24,6 +24,7 @@ struct DownloadedView: View {
 // MARK: - Content
 
 private struct DownloadedContent: View {
+    @Environment(\.appContainer) private var container
     let serverId: UUID
     @Query private var albums: [DownloadedAlbum]
     @Query private var playlists: [DownloadedPlaylist]
@@ -48,7 +49,8 @@ private struct DownloadedContent: View {
     }
 
     var body: some View {
-        if displayAlbums.isEmpty && playlists.isEmpty {
+        if displayAlbums.isEmpty && playlists.isEmpty &&
+            container?.downloadActivity.transfers.contains(where: { $0.serverId == serverId }) != true {
             EmptyStateView(
                 systemImage: "arrow.down.circle",
                 title: "Nothing downloaded",
@@ -62,6 +64,7 @@ private struct DownloadedContent: View {
     private var downloadedListiOS: some View {
         ScrollViewReader { proxy in
             List {
+                DownloadActivitySection(serverID: serverId)
                 if !displayAlbums.isEmpty {
                     Section("Albums") {
                         ForEach(displayAlbums) { display in

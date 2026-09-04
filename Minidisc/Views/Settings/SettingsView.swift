@@ -41,7 +41,8 @@ struct SettingsView: View {
                 downloadsVM = DownloadsViewModel(
                     modelContainer: container.modelContainer,
                     downloadService: container.downloadService,
-                    serverState: container.serverState
+                    serverState: container.serverState,
+                    toastService: container.toastService
                 )
             }
             await downloadsVM?.loadData()

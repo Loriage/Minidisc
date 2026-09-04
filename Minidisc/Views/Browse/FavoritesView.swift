@@ -65,7 +65,7 @@ struct FavoritesView: View {
                     Button {
                         HapticFeedback.medium.trigger()
                         Task {
-                            try? await container?.playerService.play(tracks: songs, startIndex: 0)
+                            await container?.toastService.perform { try await container?.playerService.play(tracks: songs, startIndex: 0) }
                         }
                     } label: {
                         Label("Play", systemImage: "play.fill")
@@ -77,7 +77,7 @@ struct FavoritesView: View {
                         HapticFeedback.medium.trigger()
                         Task {
                             let idx = Int.random(in: 0..<songs.count)
-                            try? await container?.playerService.play(tracks: songs, startIndex: idx)
+                            await container?.toastService.perform { try await container?.playerService.play(tracks: songs, startIndex: idx) }
                             if container?.playerState.isShuffled != true {
                                 await container?.playerService.toggleShuffle()
                             }
@@ -103,6 +103,9 @@ struct FavoritesView: View {
                                     try await container?.playerService.play(tracks: songs, startIndex: index)
                                 } catch {
                                     Logger.player.error("[PLAYBACK] play failed: \(error, privacy: .public)")
+                if !UserFacingError.isCancellation(error) {
+                    container?.toastService.showError(UserFacingError.from(error).displayMessage)
+                }
                                 }
                             }
                         }

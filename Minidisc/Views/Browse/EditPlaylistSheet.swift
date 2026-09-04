@@ -70,6 +70,8 @@ struct EditPlaylistSheet: View {
             .navigationBarTitleDisplayModeInline()
             .environment(\.editMode, .constant(.active))
             .toolbar { toolbar }
+            .interactiveDismissDisabled(isSaving)
+            .disabled(isSaving)
             .sheet(isPresented: $showAddMusic) {
                 if let c = container {
                     AddMusicSheet(
@@ -256,15 +258,16 @@ struct EditPlaylistSheet: View {
         let songsChanged = editSongs.map(\.id) != songs.map(\.id)
 
         let nameChanged = !trimmedName.isEmpty && trimmedName != currentName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if nameChanged {
-            try? await c.playlistService.renamePlaylist(id: playlistId, newName: trimmedName)
-        }
-        if songsChanged {
-            try? await c.playlistService.reorderTracks(playlistId: playlistId, orderedSongIds: editSongs.map(\.id))
-        }
-        // Reordering drops the server-side description, so restore it after the replace.
-        if (songsChanged && !trimmedComment.isEmpty) || commentChanged {
-            try? await c.playlistService.updateDescription(id: playlistId, description: trimmedComment)
+        let edits = PlaylistEdits(
+            name: nameChanged ? trimmedName : nil,
+            orderedSongIDs: songsChanged ? editSongs.map(\.id) : nil,
+            description: songsChanged || commentChanged ? trimmedComment : nil
+        )
+        guard await c.toastService.perform({
+            try await PlaylistEditCommitter.commit(edits, playlistID: playlistId, service: c.playlistService)
+        }) else {
+            // Leave the editor and all draft fields intact so Save can retry the same snapshot.
+            return
         }
         if coverDirty {
             await applyCover(container: c)

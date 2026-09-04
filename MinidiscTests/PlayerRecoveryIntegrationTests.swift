@@ -299,4 +299,32 @@ struct PlayerRecoveryIntegrationTests {
         #expect(h.engine.playCount == 2)
         await h.player.stop()
     }
+    @Test func pauseWinsOverPlaylistPreparation() async throws {
+        let h = try RecoveryHarness(startupGrace: .seconds(3))
+        try await h.play()
+        let tracks = h.state.queue
+        let gate = PlaylistPreparationGate()
+        let request = Task {
+            try await h.player.play(preparingQueue: {
+                await gate.wait()
+                return PreparedPlaybackQueue(tracks: tracks, startIndex: 1)
+            })
+        }
+        try await h.waitUntil { await gate.isWaiting }
+        await h.player.pause()
+        await gate.release()
+        try await request.value
+        #expect(h.state.currentTrack?.id == "a")
+        #expect(h.state.playbackState == .paused)
+        #expect(h.engine.playCount == 1)
+        await h.player.stop()
+    }
+
+}
+
+private actor PlaylistPreparationGate {
+    private var continuation: CheckedContinuation<Void, Never>?
+    var isWaiting: Bool { continuation != nil }
+    func wait() async { await withCheckedContinuation { continuation = $0 } }
+    func release() { continuation?.resume(); continuation = nil }
 }

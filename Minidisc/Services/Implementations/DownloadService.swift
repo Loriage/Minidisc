@@ -172,8 +172,7 @@ nonisolated enum DownloadCancellationPolicy {
     }
 }
 
-// TODO(v1.x): switch to background URLSession with resume-after-kill support.
-// v1 uses foreground URLSession — the user must keep the app open during download.
+// Audio transfers use a durable queue and a system-owned background session.
 actor DownloadService: DownloadServiceProtocol {
     private let serverService: any ServerServiceProtocol
     private let modelContainer: ModelContainer
@@ -183,18 +182,30 @@ actor DownloadService: DownloadServiceProtocol {
     private let offlineRemovalCoordinator: OfflineLibraryRemovalCoordinator
     private var progressContinuation: AsyncStream<[DownloadProgress]>.Continuation?
     private let transferCoordinator = SharedDownloadTaskCoordinator()
+    private let intents = DownloadIntentRegistry()
     private var activeAlbumDownloads: Set<String> = []
     private var activePlaylistDownloads: Set<String> = []
     private var isRemovingAllDownloads = false
     private let toastService: ToastService
     private let downloadSession: URLSession
+    private let transferTransport: (any DownloadTransport)?
+    private let journalURL: URL
+    private let diagnostics: PlaybackDiagnostics?
+    private var queueController: DownloadQueueController?
 
     nonisolated let progressStream: AsyncStream<[DownloadProgress]>
 
-    init(serverService: any ServerServiceProtocol, modelContainer: ModelContainer, toastService: ToastService) {
+    init(serverService: any ServerServiceProtocol, modelContainer: ModelContainer, toastService: ToastService,
+         transferTransport: (any DownloadTransport)? = nil, journalURL: URL? = nil,
+         diagnostics: PlaybackDiagnostics? = nil) {
         self.serverService = serverService
         self.modelContainer = modelContainer
         self.toastService = toastService
+        self.transferTransport = transferTransport
+        self.diagnostics = diagnostics
+        self.journalURL = journalURL ?? (transferTransport == nil
+            ? URL.temporaryDirectory.appendingPathComponent("minidisc-test-downloads-\(UUID())/queue.json")
+            : URL.applicationSupportDirectory.appendingPathComponent("minidisc-downloads/queue.json"))
 
         let sessionConfig = URLSessionConfiguration.default
         sessionConfig.timeoutIntervalForRequest = 30
@@ -232,6 +243,92 @@ actor DownloadService: DownloadServiceProtocol {
     }
 
     // MARK: - Lookup
+
+    private func downloadsQueue() -> DownloadQueueController {
+        if let queueController { return queueController }
+        let server = serverService
+        let transport = transferTransport ?? BackgroundDownloadTransport(
+            inbox: journalURL.deletingLastPathComponent().appendingPathComponent("inbox", isDirectory: true)
+        )
+        let queue = DownloadQueueController(
+            journalURL: journalURL, transport: transport,
+            connection: { serverID in
+                let connection = try await server.activeConnection()
+                guard connection.version.serverID == serverID else { throw MinidiscError.serverNotFound(id: serverID) }
+                return connection
+            },
+            isDownloaded: { [weak self] songID, serverID in
+                await self?.isDownloaded(songId: songID, serverId: serverID) ?? false
+            },
+            commit: { [weak self] song, serverID, url, response in
+                guard let self else { throw CancellationError() }
+                try await self.commitDownloadedSong(song, serverId: serverID, tempURL: url, response: response)
+            },
+            onProgress: { [weak self] values in await self?.publishDownloadProgress(values) },
+            diagnostics: diagnostics
+        )
+        queueController = queue
+        return queue
+    }
+
+    private func publishDownloadProgress(_ values: [DownloadProgress]) {
+        progressContinuation?.yield(values)
+    }
+
+    func restorePendingDownloads() async {
+        do { try await downloadsQueue().resumePending() }
+        catch { await toastService.showError(UserFacingError.from(error).displayMessage) }
+    }
+
+    func retryDownload(songId: String, serverId: UUID) async throws {
+        try await downloadsQueue().retry(songID: songId, serverID: serverId)
+    }
+
+    @MainActor
+    private static func refreshCollectionCounts(context: ModelContext, serverID: UUID) throws {
+        let tracks = try context.fetch(FetchDescriptor<DownloadedTrack>(predicate: #Predicate { $0.serverId == serverID }))
+        let ids = Set(tracks.map(\.songId))
+        let albums = try context.fetch(FetchDescriptor<DownloadedAlbum>(predicate: #Predicate { $0.serverId == serverID }))
+        for album in albums { album.tracksCount = tracks.filter { $0.albumId == album.albumId }.count }
+        let playlists = try context.fetch(FetchDescriptor<DownloadedPlaylist>(predicate: #Predicate { $0.serverId == serverID }))
+        for playlist in playlists { playlist.tracksCount = playlist.songIds.filter { ids.contains($0) }.count }
+    }
+
+    private func persistAlbumIntent(_ album: AlbumID3, serverID: UUID, intent: DownloadIntentRegistry.Token) async throws {
+        try await MainActor.run {
+            try intent.check()
+            let context = ModelContext(modelContainer)
+            let id = album.id
+            let existing = try context.fetch(FetchDescriptor<DownloadedAlbum>(predicate: #Predicate { $0.serverId == serverID && $0.albumId == id })).first
+            if let existing {
+                existing.totalTracksCount = album.song?.count ?? 0
+            } else {
+                context.insert(DownloadedAlbum(albumId: id, serverId: serverID, name: album.name, artist: album.artist,
+                                               tracksCount: 0, totalTracksCount: album.song?.count ?? 0, coverArtId: album.coverArt))
+            }
+            try Self.refreshCollectionCounts(context: context, serverID: serverID)
+            try context.save()
+        }
+    }
+
+    private func persistPlaylistIntent(_ playlist: PlaylistWithSongs, serverID: UUID, intent: DownloadIntentRegistry.Token) async throws {
+        try await MainActor.run {
+            try intent.check()
+            let context = ModelContext(modelContainer)
+            let id = playlist.id
+            let ids = (playlist.entry ?? []).map(\.id)
+            let existing = try context.fetch(FetchDescriptor<DownloadedPlaylist>(predicate: #Predicate { $0.serverId == serverID && $0.playlistId == id })).first
+            if let existing {
+                existing.songIds = ids
+                existing.totalTracksCount = ids.count
+            } else {
+                context.insert(DownloadedPlaylist(playlistId: id, serverId: serverID, name: playlist.name, comment: playlist.comment,
+                                                  tracksCount: 0, totalTracksCount: ids.count, coverArtId: playlist.coverArt, songIds: ids))
+            }
+            try Self.refreshCollectionCounts(context: context, serverID: serverID)
+            try context.save()
+        }
+    }
 
     func downloadedURL(forSongId songId: String, serverId: UUID) async -> URL? {
         await offlineLibraryReader.downloadedURL(forSongId: songId, serverId: serverId)
@@ -348,6 +445,7 @@ actor DownloadService: DownloadServiceProtocol {
 
     func download(song: Song, serverId: UUID) async throws {
         try checkDownloadCancellation()
+        let intent = try intents.capture(.init(serverID: serverId, owner: .track, songID: song.id))
         guard await !isDownloaded(songId: song.id, serverId: serverId) else {
             Logger.download.debug("Song '\(song.id, privacy: .public)' already downloaded — skipping.")
             return
@@ -359,34 +457,27 @@ actor DownloadService: DownloadServiceProtocol {
         // overlapping album/playlist requests count a still-running (or later failing)
         // transfer as a success.
         try await transferCoordinator.run(key: key) {
-            try await self._downloadSong(song, serverId: serverId)
+            try await self._downloadSong(song, serverId: serverId, intent: intent)
         }
     }
 
-    private func _downloadSong(_ song: Song, serverId: UUID) async throws {
+    private func _downloadSong(_ song: Song, serverId: UUID, intent: DownloadIntentRegistry.Token) async throws {
         try checkDownloadCancellation()
-        // A caller can observe a stale preflight miss while this actor is re-entrant and a previous
-        // transfer commits. Recheck inside the physical operation before touching the network.
-        guard await !isDownloaded(songId: song.id, serverId: serverId) else { return }
-        try checkDownloadCancellation()
-        let connection = try await serverService.activeConnection()
-        try checkDownloadCancellation()
-        let client = connection.makeSwiftSonicClient()
-        try checkDownloadCancellation()
-        guard let streamURL = client.streamURL(id: song.id) else {
-            throw MinidiscError.mediaNotFound(songId: song.id)
+        try intent.check()
+        let queue = downloadsQueue()
+        try await queue.enqueue([song], serverID: serverId, owner: .track, isCurrent: { intent.isCurrent })
+        await toastService.show(String(localized: "Download queued"), subtitle: song.title, action: .navigateToDownloads)
+        try await queue.wait(songID: song.id, serverID: serverId)
+    }
+
+    private func awaitQueuedSong(_ song: Song, serverId: UUID) async throws {
+        try await transferCoordinator.run(key: taskKey(songId: song.id, serverId: serverId)) {
+            try await self.downloadsQueue().wait(songID: song.id, serverID: serverId)
         }
+    }
 
-        var request = URLRequest(url: streamURL)
-        for (key, value) in connection.authorizationHeaders(for: streamURL) {
-            request.setValue(value, forHTTPHeaderField: key)
-        }
-
-        emit(progress: DownloadProgress(songId: song.id, serverId: serverId, progress: 0, totalBytes: nil, receivedBytes: 0))
-
-        let (tempURL, response) = try await downloadSession.download(for: request)
+    private func commitDownloadedSong(_ song: Song, serverId: UUID, tempURL: URL, response: URLResponse) async throws {
         try checkDownloadCancellation()
-
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? -1
             struct HTTPError: Error & Sendable { let statusCode: Int }
@@ -427,7 +518,7 @@ actor DownloadService: DownloadServiceProtocol {
         if FileManager.default.fileExists(atPath: fileURL.path) {
             try FileManager.default.removeItem(at: fileURL)
         }
-        try FileManager.default.moveItem(at: tempURL, to: fileURL)
+        try FileManager.default.copyItem(at: tempURL, to: fileURL)
         incompleteFileURL = fileURL
 
         // Faststart-remux non-faststart m4a in place so it keeps a streamable faststart layout
@@ -461,23 +552,14 @@ actor DownloadService: DownloadServiceProtocol {
         let rgBaseGain     = song.replayGain?.baseGain
         let rgFallbackGain = song.replayGain?.fallbackGain
 
-        // Best-effort: persist cover art so it's available offline (compilations, playlist tracks).
-        // song.coverArt may differ from album.coverArt on some servers — download it per track.
-        // _downloadCoverArt is idempotent (physical file check), so no redundant network hit
-        // when all tracks in a standard album share the same coverArtId.
-        if let cid = coverArtId {
-            do {
-                try await _downloadCoverArt(id: cid)
-            } catch let cancellation as CancellationError {
-                throw cancellation
-            } catch {
-                try checkDownloadCancellation()
-                Logger.download.error("Cover art download failed for song '\(songId, privacy: .public)' (coverArtId: \(cid, privacy: .public)): \(error, privacy: .public)")
-            }
-        }
-
         try checkDownloadCancellation()
-        await MainActor.run {
+        try await MainActor.run {
+            try Task.checkCancellation()
+            let context = ModelContext(modelContainer)
+            let existing = try context.fetch(FetchDescriptor<DownloadedTrack>(
+                predicate: #Predicate { $0.songId == songId && $0.serverId == serverId }
+            ))
+            existing.forEach { context.delete($0) }
             let record = DownloadedTrack(
                 songId: songId,
                 serverId: serverId,
@@ -502,16 +584,15 @@ actor DownloadService: DownloadServiceProtocol {
                 replayGainBaseGain: rgBaseGain,
                 replayGainFallbackGain: rgFallbackGain
             )
-            modelContainer.mainContext.insert(record)
-            do {
-                try modelContainer.mainContext.save()
-            } catch {
-                Logger.download.error("DownloadService: track record save failed for '\(songId, privacy: .public)' — \(error)")
-            }
+            context.insert(record)
+            try Self.refreshCollectionCounts(context: context, serverID: serverId)
+            try context.save()
         }
         incompleteFileURL = nil
 
-        emit(progress: DownloadProgress(songId: song.id, serverId: serverId, progress: 1.0, totalBytes: fileSize, receivedBytes: fileSize))
+        if let coverArtId {
+            Task { [weak self] in try? await self?._downloadCoverArt(id: coverArtId, serverID: serverId) }
+        }
         Logger.download.info("Downloaded '\(song.id, privacy: .public)' (\(fileSize) bytes)")
     }
 
@@ -519,12 +600,17 @@ actor DownloadService: DownloadServiceProtocol {
 
     func download(album: AlbumID3, serverId: UUID) async throws {
         try checkDownloadCancellation()
+        let intent = try intents.capture(.init(serverID: serverId, owner: .album(album.id)))
         guard let songs = album.song else { return }
         activeAlbumDownloads.insert(album.id)
         defer { activeAlbumDownloads.remove(album.id) }
         let total = songs.count
         var succeeded = 0
         let aid = album.id
+        try await persistAlbumIntent(album, serverID: serverId, intent: intent)
+        try await downloadsQueue().enqueue(songs, serverID: serverId, owner: .album(aid), isCurrent: { intent.isCurrent })
+        try intent.check()
+        await toastService.show(String(localized: "Downloads queued"), subtitle: album.name, action: .navigateToDownloads)
 
         let maxConcurrent = 3
         try await withThrowingTaskGroup(of: Bool.self) { group in
@@ -562,7 +648,7 @@ actor DownloadService: DownloadServiceProtocol {
         var localCoverPath: String? = nil
         if let coverArtId = album.coverArt {
             do {
-                try await _downloadCoverArt(id: coverArtId)
+                try await _downloadCoverArt(id: coverArtId, serverID: serverId)
                 localCoverPath = coverArtId
             } catch let cancellation as CancellationError {
                 throw cancellation
@@ -581,9 +667,10 @@ actor DownloadService: DownloadServiceProtocol {
         let totalTracks = total
         let coverPath = localCoverPath
 
-        await MainActor.run {
+        try await MainActor.run {
+            try intent.check()
             let context = ModelContext(modelContainer)
-            let existing = (try? context.fetch(FetchDescriptor<DownloadedAlbum>()))?
+            let existing = try context.fetch(FetchDescriptor<DownloadedAlbum>())
                 .first(where: { $0.albumId == albumId && $0.serverId == serverId })
 
             if let existing {
@@ -604,27 +691,28 @@ actor DownloadService: DownloadServiceProtocol {
                 )
                 context.insert(record)
             }
-            do {
-                try context.save()
-            } catch {
-                Logger.download.debug("DownloadService: album record save failed — \(error)")
-            }
+            try context.save()
         }
         Logger.download.info("Album '\(album.id, privacy: .public)': \(succeeded)/\(total) tracks downloaded.")
         if succeeded == total {
             await toastService.showSuccess(String(localized: "\(album.name) downloaded"))
-        }
+        } else { throw UserFacingError.downloadFailed }
     }
 
     // MARK: - Playlist download
 
     func download(playlist: PlaylistWithSongs, serverId: UUID) async throws {
         try checkDownloadCancellation()
+        let intent = try intents.capture(.init(serverID: serverId, owner: .playlist(playlist.id)))
         let songs = playlist.entry ?? []
         let total = songs.count
         let pid = playlist.id
         activePlaylistDownloads.insert(playlist.id)
         defer { activePlaylistDownloads.remove(playlist.id) }
+        try await persistPlaylistIntent(playlist, serverID: serverId, intent: intent)
+        try await downloadsQueue().enqueue(songs, serverID: serverId, owner: .playlist(pid), isCurrent: { intent.isCurrent })
+        try intent.check()
+        await toastService.show(String(localized: "Downloads queued"), subtitle: playlist.name, action: .navigateToDownloads)
 
         let maxConcurrent = 3
         try await withThrowingTaskGroup(of: Void.self) { group in
@@ -665,7 +753,7 @@ actor DownloadService: DownloadServiceProtocol {
         var localCoverPath: String? = nil
         if let coverArtId = playlist.coverArt {
             do {
-                try await _downloadCoverArt(id: coverArtId)
+                try await _downloadCoverArt(id: coverArtId, serverID: serverId)
                 localCoverPath = coverArtId
             } catch let cancellation as CancellationError {
                 throw cancellation
@@ -682,12 +770,13 @@ actor DownloadService: DownloadServiceProtocol {
         let coverArt = playlist.coverArt
         let tracksSucceeded = succeededIds.count
         let totalTracks = total
-        let ids = succeededIds
+        let ids = songs.map(\.id)
         let coverPath = localCoverPath
 
-        await MainActor.run {
+        try await MainActor.run {
+            try intent.check()
             let context = ModelContext(modelContainer)
-            let existing = (try? context.fetch(FetchDescriptor<DownloadedPlaylist>()))?
+            let existing = try context.fetch(FetchDescriptor<DownloadedPlaylist>())
                 .first(where: { $0.playlistId == playlistId && $0.serverId == serverId })
 
             if let existing {
@@ -710,56 +799,75 @@ actor DownloadService: DownloadServiceProtocol {
                 )
                 context.insert(record)
             }
-            do {
-                try context.save()
-            } catch {
-                Logger.download.debug("DownloadService: playlist record save failed — \(error)")
-            }
+            try context.save()
         }
         Logger.download.info("Playlist '\(playlist.id, privacy: .public)': \(tracksSucceeded)/\(total) tracks downloaded.")
         if tracksSucceeded == totalTracks {
             await toastService.showSuccess(String(localized: "\(playlist.name) downloaded"))
-        }
+        } else { throw UserFacingError.downloadFailed }
     }
 
     func isDownloading(songId: String, serverId: UUID) async -> Bool {
-        await transferCoordinator.contains(taskKey(songId: songId, serverId: serverId))
+        if await transferCoordinator.contains(taskKey(songId: songId, serverId: serverId)) { return true }
+        return await queueController?.snapshot().contains { $0.serverID == serverId && $0.song.id == songId && $0.status != .failed } ?? false
     }
 
     func isDownloadingAlbum(_ albumId: String) async -> Bool {
-        activeAlbumDownloads.contains(albumId)
+        if activeAlbumDownloads.contains(albumId) { return true }
+        let serverID = await MainActor.run { serverService.state.activeServer?.id }
+        return await queueController?.snapshot().contains { $0.serverID == serverID && $0.owners.contains(.album(albumId)) && $0.status != .failed } ?? false
     }
 
     func isDownloadingPlaylist(_ playlistId: String) async -> Bool {
-        activePlaylistDownloads.contains(playlistId)
+        if activePlaylistDownloads.contains(playlistId) { return true }
+        let serverID = await MainActor.run { serverService.state.activeServer?.id }
+        return await queueController?.snapshot().contains { $0.serverID == serverID && $0.owners.contains(.playlist(playlistId)) && $0.status != .failed } ?? false
     }
 
     // MARK: - Cancel
 
-    func cancelDownload(songId: String, serverId: UUID) async {
+    func cancelDownload(songId: String, serverId: UUID) async throws {
+        let intentKey = DownloadIntentRegistry.Key(serverID: serverId, owner: .track, songID: songId)
+        intents.beginRemoval(intentKey)
+        defer { intents.endRemoval(intentKey) }
         let key = taskKey(songId: songId, serverId: serverId)
+        try await downloadsQueue().cancel(songID: songId, serverID: serverId)
         await transferCoordinator.cancel(key: key)
     }
 
     // MARK: - Remove
 
     func remove(songId: String, serverId: UUID) async throws {
+        let key = DownloadIntentRegistry.Key(serverID: serverId, owner: .track, songID: songId)
+        intents.beginRemoval(key)
+        defer { intents.endRemoval(key) }
+        try await cancelDownload(songId: songId, serverId: serverId)
         try await offlineRemovalCoordinator.remove(.track(songId: songId), serverId: serverId)
     }
 
     func remove(albumId: String, serverId: UUID) async throws {
+        let key = DownloadIntentRegistry.Key(serverID: serverId, owner: .album(albumId))
+        intents.beginRemoval(key)
+        defer { intents.endRemoval(key) }
+        try await downloadsQueue().removeOwner(.album(albumId), serverID: serverId)
         try await offlineRemovalCoordinator.remove(.album(albumId: albumId), serverId: serverId)
     }
 
     func remove(playlistId: String, serverId: UUID) async throws {
+        let key = DownloadIntentRegistry.Key(serverID: serverId, owner: .playlist(playlistId))
+        intents.beginRemoval(key)
+        defer { intents.endRemoval(key) }
+        try await downloadsQueue().removeOwner(.playlist(playlistId), serverID: serverId)
         try await offlineRemovalCoordinator.remove(.playlist(playlistId: playlistId), serverId: serverId)
     }
 
     func removeAll() async throws {
         guard !isRemovingAllDownloads else { return }
         isRemovingAllDownloads = true
-        defer { isRemovingAllDownloads = false }
+        intents.beginRemovingAll()
+        defer { isRemovingAllDownloads = false; intents.endRemovingAll() }
 
+        try await downloadsQueue().cancelAll()
         await transferCoordinator.cancelAllAndWait()
 
         try await offlineRemovalCoordinator.removeAll()
@@ -779,7 +887,7 @@ actor DownloadService: DownloadServiceProtocol {
     ) async throws -> Bool {
         try checkDownloadCancellation()
         do {
-            try await download(song: song, serverId: serverId)
+            try await awaitQueuedSong(song, serverId: serverId)
             try checkDownloadCancellation()
             return true
         } catch is CancellationError {
@@ -809,7 +917,7 @@ actor DownloadService: DownloadServiceProtocol {
     ) async throws {
         try checkDownloadCancellation()
         do {
-            try await download(song: song, serverId: serverId)
+            try await awaitQueuedSong(song, serverId: serverId)
             try checkDownloadCancellation()
         } catch is CancellationError {
             guard !DownloadCancellationPolicy.shouldPropagate(
@@ -843,7 +951,7 @@ actor DownloadService: DownloadServiceProtocol {
 
     /// Downloads a cover art image to `coverArtsDirectory/<id>`. No-op if the file already exists.
     /// Throws on network or write error — callers must catch and treat as best-effort.
-    private func _downloadCoverArt(id: String) async throws {
+    private func _downloadCoverArt(id: String, serverID: UUID? = nil) async throws {
         try checkDownloadCancellation()
         let fileURL = coverArtsDirectory.appendingPathComponent(id)
         guard !FileManager.default.fileExists(atPath: fileURL.path) else {
@@ -853,6 +961,7 @@ actor DownloadService: DownloadServiceProtocol {
 
         let connection = try await serverService.activeConnection()
         try checkDownloadCancellation()
+        if let serverID, connection.version.serverID != serverID { throw CancellationError() }
         let client = connection.makeSwiftSonicClient()
         try checkDownloadCancellation()
         guard let artURL = client.coverArtURL(id: id, size: 600) else {

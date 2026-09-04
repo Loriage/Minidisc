@@ -57,15 +57,21 @@ private final class PDDownloadStub: DownloadServiceProtocol {
 /// All playlist mutations throw — unused by the offline-load paths under test.
 @MainActor
 private final class PDPlaylistStub: PlaylistServiceProtocol {
+    var calls: [String] = []
+    var failsAt: String?
+    private func record(_ operation: String) throws {
+        calls.append(operation)
+        if failsAt == operation { throw URLError(.timedOut) }
+    }
     func listPlaylists() async throws -> [Playlist] { throw URLError(.unknown) }
     func getPlaylist(id: String) async throws -> PlaylistWithSongs { throw URLError(.unknown) }
     @discardableResult
     func createPlaylist(name: String, description: String?) async throws -> PlaylistWithSongs { throw URLError(.unknown) }
-    func renamePlaylist(id: String, newName: String) async throws { throw URLError(.unknown) }
-    func updateDescription(id: String, description: String) async throws { throw URLError(.unknown) }
+    func renamePlaylist(id: String, newName: String) async throws { try record("rename") }
+    func updateDescription(id: String, description: String) async throws { try record("description:\(description)") }
     func addTracks(playlistId: String, songs: [Song]) async throws { throw URLError(.unknown) }
     func removeTracks(playlistId: String, indices: [Int]) async throws { throw URLError(.unknown) }
-    func reorderTracks(playlistId: String, orderedSongIds: [String]) async throws { throw URLError(.unknown) }
+    func reorderTracks(playlistId: String, orderedSongIds: [String]) async throws { try record("reorder") }
     func deletePlaylist(id: String, purgeDownloads: Bool) async throws { throw URLError(.unknown) }
 }
 
@@ -207,4 +213,35 @@ struct PlaylistDetailOfflineTests {
         #expect(vm.error != nil)
     }
 
+}
+
+@Suite @MainActor
+struct PlaylistEditCommitterTests {
+    @Test func metadataFollowsReplacementIncludingEmptyDescription() async throws {
+        let service = PDPlaylistStub()
+        try await PlaylistEditCommitter.commit(.init(name: "New", orderedSongIDs: ["2", "1"], description: ""), playlistID: "p", service: service)
+        #expect(service.calls == ["reorder", "rename", "description:"])
+    }
+
+    @Test func failureStopsTheCommitAndAllowsAnIdempotentRetry() async {
+        let service = PDPlaylistStub()
+        let toast = ToastService()
+        service.failsAt = "rename"
+        let edits = PlaylistEdits(name: "New", orderedSongIDs: ["2", "1"], description: "Notes")
+        let first = await toast.perform { try await PlaylistEditCommitter.commit(edits, playlistID: "p", service: service) }
+        #expect(!first)
+        #expect(service.calls == ["reorder", "rename"])
+        #expect(toast.current?.style == .error)
+        service.failsAt = nil
+        let retry = await toast.perform { try await PlaylistEditCommitter.commit(edits, playlistID: "p", service: service) }
+        #expect(retry)
+        #expect(service.calls == ["reorder", "rename", "reorder", "rename", "description:Notes"])
+    }
+
+    @Test func cancellationDoesNotShowAnError() async {
+        let toast = ToastService()
+        let saved = await toast.perform { throw CancellationError() }
+        #expect(!saved)
+        #expect(toast.current == nil)
+    }
 }

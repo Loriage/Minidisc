@@ -8,19 +8,16 @@ struct HomeView: View {
     @Environment(ArtworkImageCache.self) private var artworkImageCache
     @State private var viewModel: HomeFeedViewModel?
     @State private var showSettings = false
+    @State private var loadedServerID: UUID?
+
+    private struct LoadIdentity: Hashable { let serverID: UUID?; let online: Bool }
     @Namespace private var homeZoomNamespace
 
     private var isOnline: Bool { container?.serverState.isOnline == true }
 
     var body: some View {
         Group {
-            if !isOnline {
-                EmptyStateView(
-                    systemImage: "wifi.slash",
-                    title: "You're Offline",
-                    subtitle: "Your downloaded music lives in the Library tab."
-                )
-            } else if let vm = viewModel {
+            if let vm = viewModel {
                 content(vm)
             } else {
                 LoadingStateView()
@@ -37,11 +34,17 @@ struct HomeView: View {
         .navigationDestination(for: HomeDestination.self) { destination in
             resolve(destination)
         }
-        .task(id: container?.serverState.isOnline) {
-            guard let svc = container?.libraryService else { return }
-            if viewModel == nil { viewModel = HomeFeedViewModel(libraryService: svc) }
-            guard isOnline else { return }
-            await viewModel?.load()
+        .task(id: LoadIdentity(serverID: container?.serverState.activeServer?.id, online: isOnline)) {
+            guard let c = container, let serverID = c.serverState.activeServer?.id else { return }
+            if viewModel == nil || loadedServerID != serverID {
+                loadedServerID = serverID
+                viewModel = HomeFeedViewModel(libraryService: c.libraryService, cache: HomeFeedCache.shared, serverID: serverID,
+                                              diagnostics: c.playbackDiagnostics)
+            }
+            await viewModel?.load(isOnline: isOnline)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .minidiscPlaylistDeleted)) { _ in
+            Task { await viewModel?.load(isOnline: isOnline, preserveLayout: true) }
         }
     }
 
@@ -49,16 +52,16 @@ struct HomeView: View {
 
     @ViewBuilder
     private func content(_ vm: HomeFeedViewModel) -> some View {
-        if vm.isLoading && vm.isEmpty {
-            LoadingStateView()
-        } else if let error = vm.error, vm.isEmpty {
+        if !vm.isLoading, vm.isEmpty, !isOnline {
+            OfflineHomeInfo()
+        } else if let error = vm.error, vm.isEmpty, !vm.isLoading {
             EmptyStateView(
                 systemImage: "exclamationmark.triangle",
                 title: "Unable to Load",
                 subtitle: LocalizedStringKey(error.displayMessage),
                 action: .init(label: "Retry") { Task { await vm.load() } }
             )
-        } else if vm.isEmpty {
+        } else if vm.isEmpty && !vm.isLoading {
             EmptyStateView(
                 systemImage: "music.note.list",
                 title: "No music yet",
@@ -70,6 +73,21 @@ struct HomeView: View {
                 // content height is cheap — and a LazyVStack's estimated height confuses the
                 // pull-to-refresh inset math, stranding the ScrollView with a blank gap at the top.
                 VStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
+                    if !isOnline {
+                        OfflineHomeInfo()
+                    } else if vm.hasPartialFailure {
+                        HStack(alignment: .center) {
+                            Text("Some sections could not be refreshed. Your saved library is still available.")
+                                .font(.subheadline)
+                            Spacer()
+                            Button("Retry") { Task { await vm.load(isOnline: isOnline, preserveLayout: true) } }
+                                .frame(minHeight: 44)
+                        }
+                        .padding(.horizontal, MinidiscSpacing.l)
+                    }
+                    if vm.topPicks.isEmpty, vm.pendingSections.contains(.playlists) {
+                        HomeShelfPlaceholder(title: "Top Picks for You", side: 250)
+                    }
                     if !vm.topPicks.isEmpty {
                         MinidiscShelf {
                             MinidiscCarouselHeaderLink(
@@ -87,6 +105,9 @@ struct HomeView: View {
                             }
                         }
                     }
+                    if vm.recentlyPlayed.isEmpty, vm.pendingSections.contains(.history) {
+                        HomeShelfPlaceholder(title: "Recently Played", side: 160)
+                    }
                     if !vm.recentlyPlayed.isEmpty {
                         MinidiscShelf {
                             MinidiscCarouselHeaderLink(
@@ -103,6 +124,9 @@ struct HomeView: View {
                                 AlbumShelfCard(album: album)
                             }
                         }
+                    }
+                    if vm.recentlyAdded.isEmpty, vm.pendingSections.contains(.recent) {
+                        HomeShelfPlaceholder(title: "Recently Added", side: 160)
                     }
                     if !vm.recentlyAdded.isEmpty {
                         MinidiscShelf {
@@ -142,7 +166,7 @@ struct HomeView: View {
                 .padding(.top, MinidiscSpacing.m)
                 .padding(.bottom, MinidiscSpacing.xl)
             }
-            .refreshable { await vm.load() }
+            .refreshable { await vm.load(isOnline: isOnline, preserveLayout: true) }
         }
     }
 
@@ -227,5 +251,47 @@ private struct TopPickCard: View {
             .frame(width: side, alignment: .leading)
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct OfflineHomeInfo: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
+            Label("You're Offline", systemImage: "wifi.slash").font(.headline)
+            Text("Your saved library stays here. Downloaded music is ready to play.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            NavigationLink(value: HomeDestination.libraryDownloads) {
+                Label("Downloaded Music", systemImage: "arrow.down.circle")
+                    .frame(minHeight: 44)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, MinidiscSpacing.l)
+    }
+}
+
+private struct HomeShelfPlaceholder: View {
+    let title: LocalizedStringResource
+    let side: CGFloat
+    var body: some View {
+        MinidiscShelf {
+            MinidiscCarouselHeader(title, showsChevron: false)
+        } content: {
+            ForEach(0..<3) { _ in
+                VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
+                    RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard)
+                        .fill(.quaternary).frame(width: side, height: side)
+                    Text("Loading…").font(.subheadline)
+                    Text("Loading…").font(.caption)
+                }
+                .redacted(reason: .placeholder)
+                .frame(width: side, alignment: .leading)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(title))
+        .accessibilityValue("Loading")
     }
 }

@@ -1,12 +1,19 @@
 import Foundation
 import SwiftSonic
 
+nonisolated enum DownloadTransferStatus: String, Sendable, Codable {
+    case queued, downloading, waiting, processing, failed
+}
+
 nonisolated struct DownloadProgress: Sendable {
     let songId: String
     let serverId: UUID
     let progress: Double    // 0.0 → 1.0
     let totalBytes: Int64?
     let receivedBytes: Int64
+    var title: String? = nil
+    var status: DownloadTransferStatus = .downloading
+    var error: UserFacingError? = nil
 }
 
 nonisolated struct LocalAlbumData: Sendable {
@@ -76,8 +83,7 @@ protocol DownloadServiceProtocol: AnyObject, Sendable {
     /// Lets pre-migration downloads become readable offline after one online open.
     func backfillPlaylistSongIds(playlistId: String, serverId: UUID, orderedSongIds: [String]) async
 
-    // TODO(v1.x): switch to background URLSession with resume support.
-    // v1 uses foreground URLSession — user must keep the app open during download.
+    /// Requests are persisted before system-owned transfers start.
     func download(song: Song, serverId: UUID) async throws
     func download(album: AlbumID3, serverId: UUID) async throws
     func download(playlist: PlaylistWithSongs, serverId: UUID) async throws
@@ -86,10 +92,17 @@ protocol DownloadServiceProtocol: AnyObject, Sendable {
     func isDownloading(songId: String, serverId: UUID) async -> Bool
     func isDownloadingAlbum(_ albumId: String) async -> Bool
     func isDownloadingPlaylist(_ playlistId: String) async -> Bool
-    func cancelDownload(songId: String, serverId: UUID) async
+    func cancelDownload(songId: String, serverId: UUID) async throws
     /// Commits offline metadata first; audio-file cleanup then runs best-effort.
     func remove(songId: String, serverId: UUID) async throws
     func remove(albumId: String, serverId: UUID) async throws
     func remove(playlistId: String, serverId: UUID) async throws
     func removeAll() async throws
+    func restorePendingDownloads() async
+    func retryDownload(songId: String, serverId: UUID) async throws
+}
+
+extension DownloadServiceProtocol {
+    func restorePendingDownloads() async {}
+    func retryDownload(songId: String, serverId: UUID) async throws {}
 }

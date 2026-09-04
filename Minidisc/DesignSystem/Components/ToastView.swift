@@ -12,9 +12,9 @@ struct ToastView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(LocalizedStringKey(toast.message))
                     .font(.minidiscCellTitle)
-                    .lineLimit(1)
+                    .lineLimit(4)
                 if let subtitle = toast.subtitle {
-                    Text(LocalizedStringKey(subtitle))
+                    Text(subtitle)
                         .font(.minidiscCaption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -60,6 +60,7 @@ struct ToastView: View {
 struct ToastOverlay: ViewModifier {
     @Environment(ToastService.self) private var toastService
     @Environment(\.appContainer) private var container
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Mirrors MainTabView.hasTrack — true while the mini player bar is on screen.
     private var miniPlayerVisible: Bool {
@@ -76,16 +77,24 @@ struct ToastOverlay: ViewModifier {
         content
             .overlay(alignment: .bottom) {
                 if let toast = toastService.current {
-                    ToastView(toast: toast)
+                    toastContent(toast)
                         .padding(.bottom, bottomInset)
                         .id(toast.id)
-                        // Only tappable toasts intercept touches; plain ones stay non-interactive so
-                        // taps pass through to the content underneath (unchanged behaviour).
-                        .allowsHitTesting(toast.action != nil)
-                        .onTapGesture { handleTap(toast) }
                 }
             }
-            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: toastService.current)
+            .animation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.8), value: toastService.current)
+    }
+
+    @ViewBuilder
+    private func toastContent(_ toast: ToastService.Toast) -> some View {
+        if toast.action != nil {
+            Button { handleTap(toast) } label: {
+                ToastView(toast: toast).frame(minHeight: 44)
+            }
+            .buttonStyle(.plain)
+        } else {
+            ToastView(toast: toast).allowsHitTesting(false)
+        }
     }
 
     /// Resolves a tappable toast: dismiss it, then navigate via the existing notification pattern
@@ -94,6 +103,8 @@ struct ToastOverlay: ViewModifier {
         guard let action = toast.action else { return }
         toastService.dismiss()
         switch action {
+        case .navigateToDownloads:
+            NotificationCenter.default.post(name: .minidiscNavigateToDownloads, object: nil)
         case let .navigateToPlaylist(id, name, coverArtId):
             postNavigateToPlaylist(playlistId: id, name: name, coverArtId: coverArtId)
         }

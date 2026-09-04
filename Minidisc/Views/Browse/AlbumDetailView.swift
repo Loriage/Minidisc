@@ -223,6 +223,7 @@ struct AlbumDetailView: View {
                 .padding(.top, MinidiscSpacing.xl)
 
                 AlbumPlaybackActions(
+                    albumId: albumId,
                     songs: songs,
                     mode: mode,
                     viewModel: viewModel,
@@ -275,6 +276,9 @@ struct AlbumDetailView: View {
                                         try await container?.playerService.play(tracks: songs, startIndex: index)
                                     } catch {
                                         Logger.player.error("[PLAYBACK] play failed: \(error, privacy: .public)")
+                if !UserFacingError.isCancellation(error) {
+                    container?.toastService.showError(UserFacingError.from(error).displayMessage)
+                }
                                     }
                                 }
                             },
@@ -282,7 +286,7 @@ struct AlbumDetailView: View {
                                 Task { await vm.downloadSong(id: songId) }
                             },
                             onRemoveDownload: { songId in
-                                Task { try? await container?.downloadService.remove(songId: songId, serverId: serverId) }
+                                Task { await container?.toastService.perform { try await container?.downloadService.remove(songId: songId, serverId: serverId) } }
                             },
                             onAddToPlaylist: playlistAddition.present
                         )
@@ -348,9 +352,9 @@ struct AlbumDetailView: View {
                     HapticFeedback.light.trigger()
                     Task {
                         if isAlbumFavorite {
-                            try? await container?.favoritesService.unstar(itemType: .album, itemId: albumId)
+                            await container?.toastService.perform { try await container?.favoritesService.unstar(itemType: .album, itemId: albumId) }
                         } else {
-                            try? await container?.favoritesService.star(itemType: .album, itemId: albumId)
+                            await container?.toastService.perform { try await container?.favoritesService.star(itemType: .album, itemId: albumId) }
                         }
                     }
                 }
@@ -678,6 +682,7 @@ private struct AlbumMetadataLine: View {
 }
 
 private struct AlbumPlaybackActions: View {
+    let albumId: String
     let songs: [DisplayableSong]
     let mode: AlbumDetailMode
     let viewModel: AlbumDetailViewModel?
@@ -696,7 +701,7 @@ private struct AlbumPlaybackActions: View {
                     HapticFeedback.medium.trigger()
                     Task {
                         guard !songs.isEmpty else { return }
-                        try? await container?.playerService.play(tracks: songs.shuffled(), startIndex: 0)
+                        await container?.toastService.perform { try await container?.playerService.play(tracks: songs.shuffled(), startIndex: 0) }
                     }
                 } label: {
                     AlbumCircularActionLabel(
@@ -706,15 +711,16 @@ private struct AlbumPlaybackActions: View {
                     )
                 }
                 .disabled(songs.isEmpty)
+                .accessibilityLabel("Shuffle")
 
                 PlayButton(
                     action: {
                         Task {
                             guard !songs.isEmpty else { return }
-                            try? await container?.playerService.play(tracks: songs, startIndex: 0)
+                            await container?.toastService.perform { try await container?.playerService.play(tracks: songs, startIndex: 0) }
                         }
                     },
-                    isDisabled: songs.isEmpty || (mode == .full && viewModel?.isDownloadingAlbum == true),
+                    isDisabled: songs.isEmpty,
                     accentColor: .white,
                     labelColor: playLabelColor,
                     height: 48
@@ -722,6 +728,7 @@ private struct AlbumPlaybackActions: View {
                 .frame(maxWidth: 220)
 
                 AlbumDownloadActionButton(
+                    albumId: albumId,
                     mode: mode,
                     viewModel: viewModel,
                     downloadedAlbumTracks: downloadedAlbumTracks,
@@ -759,6 +766,7 @@ private struct AlbumCircularActionLabel: View {
 }
 
 private struct AlbumDownloadActionButton: View {
+    let albumId: String
     let mode: AlbumDetailMode
     let viewModel: AlbumDetailViewModel?
     let downloadedAlbumTracks: [DownloadedTrack]
@@ -795,6 +803,16 @@ private struct AlbumDownloadActionButton: View {
         }
         .disabled(state == .unavailable)
         .opacity(state == .unavailable ? 0.4 : 1)
+        .accessibilityLabel(Text(actionLabel))
+    }
+
+    private var actionLabel: LocalizedStringResource {
+        switch state {
+        case .unavailable, .download: "Download Album"
+        case .downloadMissing: "Download Missing Tracks"
+        case .cancel: "Cancel Download"
+        case .removeDownloaded: "Remove Download"
+        }
     }
 
     private func performAction() {
@@ -810,10 +828,10 @@ private struct AlbumDownloadActionButton: View {
         case .removeDownloaded:
             if mode == .downloadedOnly {
                 HapticFeedback.heavy.trigger()
-                let serverId = container?.serverState.activeServer?.id ?? UUID()
+                guard let container, let serverId = container.serverState.activeServer?.id else { return }
                 Task {
-                    for track in downloadedAlbumTracks {
-                        try? await container?.downloadService.remove(songId: track.songId, serverId: serverId)
+                    await container.toastService.perform {
+                        try await container.downloadService.remove(albumId: albumId, serverId: serverId)
                     }
                 }
             } else {

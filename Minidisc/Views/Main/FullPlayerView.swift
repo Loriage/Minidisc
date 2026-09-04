@@ -736,9 +736,9 @@ private struct TrackInfoSection: View {
         let wasFavorite = isFavorite
         Task {
             if wasFavorite {
-                try? await container?.favoritesService.unstar(itemType: .song, itemId: songId)
+                await container?.toastService.perform { try await container?.favoritesService.unstar(itemType: .song, itemId: songId) }
             } else {
-                try? await container?.favoritesService.star(itemType: .song, itemId: songId)
+                await container?.toastService.perform { try await container?.favoritesService.star(itemType: .song, itemId: songId) }
             }
         }
     }
@@ -937,6 +937,7 @@ struct ProgressSlider: View {
 // MARK: - Playback controls
 
 private struct PlaybackControlsView: View {
+    @Environment(\.appContainer) private var container
     let playerState: PlayerState
     let playerService: (any PlayerServiceProtocol)?
     var isPlaybackAvailable: Bool = true
@@ -950,7 +951,7 @@ private struct PlaybackControlsView: View {
             if !playerState.isLiveStream {
                 Button {
                     HapticFeedback.light.trigger()
-                    Task { try? await playerService?.skipToPrevious() }
+                    Task { await container?.toastService.perform { try await playerService?.skipToPrevious() } }
                 } label: {
                     Image(systemName: "backward.fill")
                         .font(.title)
@@ -979,7 +980,7 @@ private struct PlaybackControlsView: View {
             if !playerState.isLiveStream {
                 Button {
                     HapticFeedback.light.trigger()
-                    Task { try? await playerService?.skipToNext() }
+                    Task { await container?.toastService.perform { try await playerService?.skipToNext() } }
                 } label: {
                     Image(systemName: "forward.fill")
                         .font(.title)

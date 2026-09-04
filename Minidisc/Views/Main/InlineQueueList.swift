@@ -69,6 +69,9 @@ private struct QueueRow: View {
                         try await container?.playerService.play(tracks: [song], startIndex: 0)
                     } catch {
                         Logger.player.error("[PLAYBACK] play failed: \(error, privacy: .public)")
+                if !UserFacingError.isCancellation(error) {
+                    container?.toastService.showError(UserFacingError.from(error).displayMessage)
+                }
                     }
                 }
             } label: {
@@ -102,9 +105,9 @@ private struct QueueRow: View {
                 let fav = isFavorite
                 Task {
                     if fav {
-                        try? await container?.favoritesService.unstar(itemType: .song, itemId: song.id)
+                        await container?.toastService.perform { try await container?.favoritesService.unstar(itemType: .song, itemId: song.id) }
                     } else {
-                        try? await container?.favoritesService.star(itemType: .song, itemId: song.id)
+                        await container?.toastService.perform { try await container?.favoritesService.star(itemType: .song, itemId: song.id) }
                     }
                 }
             } label: {
@@ -177,6 +180,9 @@ struct InlineQueueList: View {
                                     _ = try await container?.playerService.selectQueueTrack(selection)
                                 } catch {
                                     Logger.player.error("[PLAYBACK] play failed: \(error, privacy: .public)")
+                if !UserFacingError.isCancellation(error) {
+                    container?.toastService.showError(UserFacingError.from(error).displayMessage)
+                }
                                 }
                             }
                         }

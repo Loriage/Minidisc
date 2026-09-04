@@ -5,6 +5,7 @@ import SwiftUI
 /// The tap is resolved by ToastOverlay, which reuses the existing notification-nav pattern.
 enum ToastAction: Equatable, Sendable {
     case navigateToPlaylist(id: String, name: String, coverArtId: String?)
+    case navigateToDownloads
 }
 
 @MainActor
@@ -65,6 +66,21 @@ final class ToastService {
 
     func showError(_ message: String) {
         show(message, style: .error, duration: 4.0)
+    }
+
+    /// A shared boundary for explicit user actions. Callers only apply success UI after true.
+    /// Cancellation is an abandoned request, not an error to show to the listener.
+    @discardableResult
+    func perform(_ operation: () async throws -> Void) async -> Bool {
+        do {
+            try await operation()
+            return true
+        } catch {
+            if !UserFacingError.isCancellation(error) {
+                showError(UserFacingError.from(error).displayMessage)
+            }
+            return false
+        }
     }
 
     func showSuccess(_ message: String) {

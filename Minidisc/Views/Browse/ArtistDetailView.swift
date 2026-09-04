@@ -298,9 +298,9 @@ struct ArtistDetailView: View {
                     HapticFeedback.light.trigger()
                     Task {
                         if isArtistFavorite {
-                            try? await container?.favoritesService.unstar(itemType: .artist, itemId: artist.id)
+                            await container?.toastService.perform { try await container?.favoritesService.unstar(itemType: .artist, itemId: artist.id) }
                         } else {
-                            try? await container?.favoritesService.star(itemType: .artist, itemId: artist.id)
+                            await container?.toastService.perform { try await container?.favoritesService.star(itemType: .artist, itemId: artist.id) }
                         }
                     }
                 } label: {
@@ -470,7 +470,7 @@ struct ArtistDetailView: View {
                 sectionHeader("Liked Songs")
                 Spacer()
                 Button {
-                    Task { try? await container?.playerService.play(tracks: songs.shuffled(), startIndex: 0) }
+                    Task { await container?.toastService.perform { try await container?.playerService.play(tracks: songs.shuffled(), startIndex: 0) } }
                 } label: {
                     Image(systemName: "shuffle")
                         .font(.minidiscSectionTitle)
@@ -483,7 +483,7 @@ struct ArtistDetailView: View {
             VStack(spacing: 0) {
                 ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
                     Button {
-                        Task { try? await container?.playerService.play(tracks: songs, startIndex: index) }
+                        Task { await container?.toastService.perform { try await container?.playerService.play(tracks: songs, startIndex: index) } }
                     } label: {
                         SongRow(
                             song: song,
@@ -534,7 +534,7 @@ struct ArtistDetailView: View {
         defer { viewModel?.isPlayLoading = false }
         // Offline the catalogue fetch can't run — shuffle what's on disk instead.
         if let offline = viewModel?.offlineTracks, viewModel?.isOffline == true, !offline.isEmpty {
-            try? await c.playerService.play(tracks: offline.shuffled(), startIndex: 0)
+            await c.toastService.perform { try await c.playerService.play(tracks: offline.shuffled(), startIndex: 0) }
             return
         }
         do {
@@ -718,7 +718,7 @@ private struct ArtistTopSongsList: View {
 
     private func play(_ song: DisplayableSong) {
         guard let index = playbackSongs.firstIndex(where: { $0.id == song.id }) else { return }
-        Task { try? await container?.playerService.play(tracks: playbackSongs, startIndex: index) }
+        Task { await container?.toastService.perform { try await container?.playerService.play(tracks: playbackSongs, startIndex: index) } }
     }
 }
 

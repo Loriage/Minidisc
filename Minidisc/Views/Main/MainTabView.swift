@@ -2,17 +2,18 @@ import SwiftUI
 
 struct MainTabView: View {
     @Environment(\.appContainer) private var container
-    @State private var searchText = ""
+    @SceneStorage("minidisc.searchText") private var searchText = ""
     @State private var searchPath = NavigationPath()
     @State private var homePath = NavigationPath()
     @State private var libraryPath = NavigationPath()
-    @State private var selectedTab: AppTab = .home
+    @State private var discoverPath = NavigationPath()
+    @SceneStorage("minidisc.selectedTab") private var selectedTab: AppTab = .home
     @State private var showingFullPlayer = false
     @State private var playlistAddition = PlaylistAddition()
     @Namespace private var playerZoom
     @AppStorage("minidisc.appTheme") private var theme: AppTheme = .system
 
-    private enum AppTab: Hashable { case home, discover, library, lidarr, search }
+    private enum AppTab: String, Hashable { case home, discover, library, lidarr, search }
     private let fullPlayerZoomID = "full-player"
 
     private var lidarrConnected: Bool { container?.lidarrSettings.isConnected == true }
@@ -59,7 +60,7 @@ struct MainTabView: View {
             }
 
             Tab("Discover", systemImage: "square.grid.2x2.fill", value: AppTab.discover) {
-                NavigationStack {
+                NavigationStack(path: $discoverPath) {
                     DiscoverView()
                 }
             }
@@ -91,6 +92,16 @@ struct MainTabView: View {
         }
         .accentColor(.minidiscAccent)
         .preferredColorScheme(theme.colorScheme)
+        .onChange(of: container?.serverState.activeServer?.id) {
+            homePath = NavigationPath()
+            libraryPath = NavigationPath()
+            discoverPath = NavigationPath()
+            searchPath = NavigationPath()
+            searchText = ""
+        }
+        .onChange(of: lidarrConnected, initial: true) {
+            if !lidarrConnected, selectedTab == .lidarr { selectedTab = .home }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .minidiscNavigateToLibrary)) { _ in
             showingFullPlayer = false
             libraryPath = NavigationPath()

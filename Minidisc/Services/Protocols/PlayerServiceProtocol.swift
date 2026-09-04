@@ -8,6 +8,8 @@ protocol PlayerServiceProtocol: AnyObject, Sendable {
     var state: PlayerState { get }
 
     func play(tracks: [DisplayableSong], startIndex: Int) async throws
+    /// Resolves a fresh queue without allowing a late result to override Pause, Next or another Play.
+    func play(preparingQueue: @escaping @Sendable () async throws -> PreparedPlaybackQueue) async throws
     func resume() async
     func pause() async
     func stop() async
@@ -61,4 +63,16 @@ protocol PlayerServiceProtocol: AnyObject, Sendable {
     /// Stops the audio engine synchronously without going through the actor.
     /// Only safe to call during app termination (single-threaded, no concurrent access).
     nonisolated func stopAudioEngineSync()
+}
+
+nonisolated struct PreparedPlaybackQueue: Sendable {
+    let tracks: [DisplayableSong]
+    let startIndex: Int
+}
+
+extension PlayerServiceProtocol {
+    nonisolated func play(preparingQueue: @escaping @Sendable () async throws -> PreparedPlaybackQueue) async throws {
+        let queue = try await preparingQueue()
+        try await play(tracks: queue.tracks, startIndex: queue.startIndex)
+    }
 }

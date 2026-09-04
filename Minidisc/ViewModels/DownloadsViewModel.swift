@@ -24,15 +24,18 @@ final class DownloadsViewModel {
     private let modelContainer: ModelContainer
     private let downloadService: any DownloadServiceProtocol
     private let serverState: ServerState
+    private let toastService: ToastService
 
     init(
         modelContainer: ModelContainer,
         downloadService: any DownloadServiceProtocol,
-        serverState: ServerState
+        serverState: ServerState,
+        toastService: ToastService? = nil
     ) {
         self.modelContainer = modelContainer
         self.downloadService = downloadService
         self.serverState = serverState
+        self.toastService = toastService ?? ToastService()
     }
 
     func loadData() async {
@@ -63,12 +66,12 @@ final class DownloadsViewModel {
         // DownloadService applies the same reference-counting rules whether or not a
         // DownloadedAlbum intent record exists. Deleting inferred tracks one by one
         // bypassed those rules and could break a downloaded playlist sharing them.
-        try? await downloadService.remove(albumId: display.albumId, serverId: display.serverId)
+        guard await toastService.perform({ try await downloadService.remove(albumId: display.albumId, serverId: display.serverId) }) else { return }
         await loadData()
     }
 
     func removePlaylist(_ dto: DownloadedPlaylistDTO) async {
-        try? await downloadService.remove(playlistId: dto.playlistId, serverId: dto.serverId)
+        guard await toastService.perform({ try await downloadService.remove(playlistId: dto.playlistId, serverId: dto.serverId) }) else { return }
         await loadData()
     }
 
@@ -76,11 +79,7 @@ final class DownloadsViewModel {
         isClearingAll = true
         defer { isClearingAll = false }
 
-        do {
-            try await downloadService.removeAll()
-        } catch {
-            Logger.download.error("Failed to clear offline library: \(error, privacy: .public)")
-        }
+        guard await toastService.perform({ try await downloadService.removeAll() }) else { return }
         await loadData()
     }
 }

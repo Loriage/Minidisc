@@ -129,7 +129,7 @@ struct MiniPlayerAccessoryView: View {
                     if !playerState.queue.isEmpty && !isLiveStream {
                         Button {
                             HapticFeedback.light.trigger()
-                            Task { try? await container?.playerService.skipToNext() }
+                            Task { await container?.toastService.perform { try await container?.playerService.skipToNext() } }
                         } label: {
                             Image(systemName: "forward.fill")
                                 .font(.title2)
@@ -230,9 +230,9 @@ struct MiniPlayerAccessoryView: View {
 
         Task {
             if goNext {
-                try? await container?.playerService.skipToNext()
+                await container?.toastService.perform { try await container?.playerService.skipToNext() }
             } else {
-                try? await container?.playerService.skipToPrevious()
+                await container?.toastService.perform { try await container?.playerService.skipToPrevious() }
             }
 
             let entryOffset: CGFloat = goNext ? 300 : -300

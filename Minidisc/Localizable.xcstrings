@@ -12423,7 +12423,22 @@
       }
     },
     "Downloading…" : {
-
+      "generatesSymbol" : false,
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloading…"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Téléchargement…"
+          }
+        }
+      }
     },
     "Downloads" : {
       "localizations" : {

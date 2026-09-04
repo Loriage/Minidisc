@@ -6,7 +6,7 @@
 - A failed stream is checked against Navidrome before treating the song as removed. Only a structured `getSong`/`getPlaylist` not-found response confirms deletion; connectivity failures and proxy HTTP 404 responses do not.
 - Opening or starting an old playlist revalidates its content. A deleted playlist displays one explanation and retains its downloaded music. An unavailable queue advances through a bounded number of songs and stops safely when none are playable.
 - Home displays its last saved feed by server while offline. During a cold load, one slow section does not hold back the others. Pull-to-refresh applies its result together to preserve scroll layout.
-- Up Next shows the actual queued songs without presenting the current album as their source.
+- The player queue shows the actual upcoming songs directly below its playback modes, without an Up Next heading or an album presented as their source.
 - Failed playlist edits keep the editor and its draft open. Retrying after a partial save is safe. Explicit playback, favorite and download actions surface failures.
 - The selected tab and search text survive scene restoration. Changing server clears navigation paths that reference the previous server. Download and playback controls have explicit accessibility labels.
 

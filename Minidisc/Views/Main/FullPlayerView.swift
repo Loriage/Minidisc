@@ -340,10 +340,6 @@ struct FullPlayerView: View {
                 .padding(.horizontal, MinidiscSpacing.l)
                 .padding(.vertical, MinidiscSpacing.m)
 
-            upNextHeader
-                .padding(.horizontal, MinidiscSpacing.l)
-                .padding(.bottom, MinidiscSpacing.xs)
-
             InlineQueueList(
                 playerState: playerState,
                 contentColor: vm.contentColor,
@@ -401,13 +397,6 @@ struct FullPlayerView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
-    }
-
-    private var upNextHeader: some View {
-        Text("Up Next")
-            .font(.minidiscSectionTitle)
-            .foregroundStyle(vm.contentColor)
-            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func queueStatusLine(_ playerState: PlayerState) -> some View {

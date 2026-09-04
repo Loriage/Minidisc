@@ -12,8 +12,10 @@ private final class PDLibraryStub: PlaylistBrowsing {
     /// When set, `playlist(id:)` returns this instead of throwing — used to drive the
     /// empty-but-successful (200, no entries) path that the catch block can't catch.
     var playlistResult: PlaylistWithSongs?
+    var failure: SwiftSonicError?
     @MainActor
     func playlist(id: String) async throws -> PlaylistWithSongs {
+        if let failure { throw failure }
         if let playlistResult { return playlistResult }
         throw URLError(.notConnectedToInternet)
     }
@@ -84,7 +86,7 @@ struct PlaylistDetailOfflineTests {
         )
     }
 
-    private func makeVM(playlistData: LocalPlaylistData?, isOnline: Bool, apiPlaylist: PlaylistWithSongs? = nil) -> PlaylistDetailViewModel {
+    private func makeVM(playlistData: LocalPlaylistData?, isOnline: Bool, apiPlaylist: PlaylistWithSongs? = nil, failure: SwiftSonicError? = nil) -> PlaylistDetailViewModel {
         let state = ServerState()
         state.isOnline = isOnline
         state.activeServer = ServerSnapshot(from: ServerConfig(
@@ -94,6 +96,7 @@ struct PlaylistDetailOfflineTests {
         download.playlistData = playlistData
         let library = PDLibraryStub()
         library.playlistResult = apiPlaylist
+        library.failure = failure
         return PlaylistDetailViewModel(
             playlistId: "playlist-1",
             libraryService: library,
@@ -173,4 +176,35 @@ struct PlaylistDetailOfflineTests {
         #expect(vm.songs.isEmpty)
         #expect(vm.error == nil)
     }
+    @Test func removedPlaylistPreservesDownloadedCopy() async throws {
+        let vm = makeVM(playlistData: downloadedPlaylist, isOnline: true, failure: try await playlistServerError())
+        await vm.load()
+        #expect(vm.isRemovedFromServer)
+        #expect(vm.songs.map(\.id) == ["1", "2"])
+        #expect(vm.playlistDetail == nil)
+        #expect(vm.error == nil)
+        let playable = await vm.playbackSongs(from: downloadedPlaylist.songs)
+        #expect(playable.map(\.id) == ["1", "2"])
+    }
+
+    @Test func removedPlaylistClearsAnOldScreenAndDoesNotStartDeadTracks() async throws {
+        let vm = makeVM(playlistData: nil, isOnline: true, failure: try await playlistServerError())
+        vm.songs = downloadedPlaylist.songs
+        await vm.load()
+        #expect(vm.isRemovedFromServer)
+        #expect(vm.songs.isEmpty)
+        #expect(await vm.playbackSongs(from: downloadedPlaylist.songs).isEmpty)
+    }
+
+    @Test func proxy404DoesNotConfirmPlaylistRemoval() async {
+        let vm = makeVM(playlistData: nil, isOnline: true, failure: .httpError(
+            statusCode: 404, endpoint: "getPlaylist", serverHost: "s.example.com"
+        ))
+        vm.songs = downloadedPlaylist.songs
+        await vm.load()
+        #expect(!vm.isRemovedFromServer)
+        #expect(vm.songs.count == 2)
+        #expect(vm.error != nil)
+    }
+
 }

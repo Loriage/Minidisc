@@ -48,7 +48,6 @@ actor PlaylistService: PlaylistServiceProtocol {
 
     func listPlaylists() async throws -> [Playlist] {
         _ = try await client()
-        if let cached = listCache { return cached }
         let playlists = try await libraryCatalog.playlists()
         listCache = playlists
         return playlists
@@ -56,8 +55,7 @@ actor PlaylistService: PlaylistServiceProtocol {
 
     func getPlaylist(id: String) async throws -> PlaylistWithSongs {
         _ = try await client()
-        if let cached = detailCache[id] { return cached }
-        let playlist = try await libraryCatalog.playlist(id: id)
+        let playlist = try await libraryCatalog.refreshPlaylist(id: id)
         detailCache[id] = playlist
         return playlist
     }

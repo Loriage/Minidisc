@@ -175,7 +175,26 @@ struct PlaylistDetailView: View {
         }
     }
 
+    private func playSongs(_ requested: [DisplayableSong], startIndex: Int) async {
+        guard requested.indices.contains(startIndex), let vm = viewModel, let container else { return }
+        let selectedID = requested[startIndex].id
+        let refreshed = await vm.playbackSongs(from: requested)
+        guard let index = refreshed.firstIndex(where: { $0.id == selectedID }) else {
+            if !vm.isRemovedFromServer {
+                container.toastService.showError(String(localized: "This song is no longer available on the server."))
+            }
+            return
+        }
+        do { try await container.playerService.play(tracks: refreshed, startIndex: index) }
+        catch {
+            if !UserFacingError.isCancellation(error) {
+                container.toastService.showError(UserFacingError.from(error).displayMessage)
+            }
+        }
+    }
+
     private func resolvedSongs(_ vm: PlaylistDetailViewModel?) -> [DisplayableSong] {
+        if vm?.isRemovedFromServer == true { return vm?.songs ?? [] }
         if let songs = vm?.songs, !songs.isEmpty { return songs }
         return downloadedFallbackSongs
     }
@@ -202,7 +221,26 @@ struct PlaylistDetailView: View {
                 editableSongRows
             } else if let vm = viewModel {
                 let songs = sortedSongs(resolvedSongs(vm))
-                if songs.isEmpty, let error = vm.error {
+                if vm.isRemovedFromServer {
+                    VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
+                        Label("Playlist removed from server", systemImage: "music.note.list")
+                            .font(.headline)
+                        Text(songs.isEmpty
+                             ? String(localized: "This playlist is no longer available. Choose another playlist to continue listening.")
+                             : String(localized: "This playlist is no longer on the server. Your downloaded songs are still available."))
+                            .font(.subheadline)
+                        Button("Back to Library") {
+                            NotificationCenter.default.post(name: .minidiscNavigateToLibrary, object: nil)
+                        }
+                            .frame(minHeight: 44)
+                    }
+                    .foregroundStyle(headerTextColor)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(bodyColor)
+                }
+                if songs.isEmpty, vm.isRemovedFromServer {
+                    EmptyView()
+                } else if songs.isEmpty, let error = vm.error {
                     EmptyStateView(
                         systemImage: "exclamationmark.triangle",
                         title: "Unable to Load Playlist",
@@ -236,11 +274,7 @@ struct PlaylistDetailView: View {
                         secondaryColor: headerSecondaryColor,
                         onTap: { index in
                             Task {
-                                do {
-                                    try await container?.playerService.play(tracks: songs, startIndex: index)
-                                } catch {
-                                    Logger.player.error("[PLAYBACK] play failed: \(error, privacy: .public)")
-                                }
+                                await playSongs(songs, startIndex: index)
                             }
                         },
                         onDownload: (vm.isOffline || vm.isDownloadingPlaylist) ? nil : { songId in
@@ -822,7 +856,7 @@ struct PlaylistDetailView: View {
                         Task {
                             let shuffled = resolvedSongs(vm).shuffled()
                             guard !shuffled.isEmpty else { return }
-                            try? await container?.playerService.play(tracks: shuffled, startIndex: 0)
+                            await playSongs(shuffled, startIndex: 0)
                         }
                     } label: {
                         Image(systemName: "shuffle")
@@ -837,9 +871,9 @@ struct PlaylistDetailView: View {
                         Task {
                             let songs = sortedSongs(resolvedSongs(vm))
                             guard !songs.isEmpty else { return }
-                            try? await container?.playerService.play(tracks: songs, startIndex: 0)
+                            await playSongs(songs, startIndex: 0)
                         }
-                    }, isDisabled: resolvedSongs(vm).isEmpty || (vm?.isDownloadingPlaylist == true), accentColor: .white, labelColor: MinidiscColors.accentForeground(on: .white), height: 44)
+                    }, isDisabled: resolvedSongs(vm).isEmpty, accentColor: .white, labelColor: MinidiscColors.accentForeground(on: .white), height: 44)
                     .frame(maxWidth: 220)
 
                     if vm?.isOffline != true {

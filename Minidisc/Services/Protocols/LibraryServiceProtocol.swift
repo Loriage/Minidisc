@@ -40,6 +40,13 @@ nonisolated protocol SongBrowsing: AnyObject, Sendable {
 nonisolated protocol PlaylistBrowsing: AnyObject, Sendable {
     func playlists() async throws -> [Playlist]
     func playlist(id: String) async throws -> PlaylistWithSongs
+    func cachedPlaylist(id: String) async -> PlaylistWithSongs?
+    func refreshPlaylist(id: String) async throws -> PlaylistWithSongs
+}
+
+extension PlaylistBrowsing {
+    nonisolated func cachedPlaylist(id: String) async -> PlaylistWithSongs? { nil }
+    nonisolated func refreshPlaylist(id: String) async throws -> PlaylistWithSongs { try await playlist(id: id) }
 }
 
 nonisolated protocol StarredBrowsing: AnyObject, Sendable {

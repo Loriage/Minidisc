@@ -68,11 +68,19 @@ actor LibraryService: LibraryServiceProtocol {
     }
 
     func playlists() async throws -> [Playlist] {
-        try await client().getPlaylists()
+        try await catalog.playlists()
     }
 
     func playlist(id: String) async throws -> PlaylistWithSongs {
-        try await client().getPlaylist(id: id)
+        try await catalog.playlist(id: id)
+    }
+
+    func cachedPlaylist(id: String) async -> PlaylistWithSongs? {
+        await catalog.cachedPlaylist(id: id)
+    }
+
+    func refreshPlaylist(id: String) async throws -> PlaylistWithSongs {
+        try await catalog.refreshPlaylist(id: id)
     }
 
     func search(_ query: String) async throws -> SearchResult3 {

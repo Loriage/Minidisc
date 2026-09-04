@@ -51,6 +51,8 @@ func postPlaylistDeleted() {
 }
 
 extension Notification.Name {
+    static let minidiscNavigateToLibrary = Notification.Name("minidiscNavigateToLibrary")
+    static let minidiscNavigateToDownloads = Notification.Name("minidiscNavigateToDownloads")
     static let minidiscNavigateToAlbum    = Notification.Name("minidiscNavigateToAlbum")
     static let minidiscNavigateToArtist   = Notification.Name("minidiscNavigateToArtist")
     static let minidiscNavigateToPlaylist = Notification.Name("minidiscNavigateToPlaylist")

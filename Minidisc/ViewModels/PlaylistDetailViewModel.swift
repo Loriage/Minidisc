@@ -12,6 +12,9 @@ final class PlaylistDetailViewModel {
     var songs: [DisplayableSong] = []
     var isOffline: Bool = false
     var isLoading = false
+    private(set) var isRemovedFromServer = false
+    private var loadGeneration: UInt64 = 0
+    private var lastValidatedAt: Date?
     var error: UserFacingError?
     var isDownloadingPlaylist = false
     var downloadingIds: Set<String> = []
@@ -41,57 +44,88 @@ final class PlaylistDetailViewModel {
     }
 
     func load() async {
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        guard let serverId = serverState.activeServer?.id else { return }
         isLoading = true
         error = nil
+        defer { if generation == loadGeneration { isLoading = false } }
+
+        // Draw the cached snapshot first; server validation continues without blanking the list.
+        if songs.isEmpty, !isRemovedFromServer,
+           let cached = await libraryService.cachedPlaylist(id: playlistId) {
+            let downloaded = await downloadService.downloadedSongIds(serverId: serverId)
+            guard isCurrent(generation, serverId: serverId) else { return }
+            apply(cached, downloadedIDs: downloaded)
+        }
+        guard isCurrent(generation, serverId: serverId) else { return }
         if serverState.isOnline {
-            await loadFromAPI()
+            do {
+                let fresh = try await libraryService.refreshPlaylist(id: playlistId)
+                let downloaded = await downloadService.downloadedSongIds(serverId: serverId)
+                guard isCurrent(generation, serverId: serverId) else { return }
+                isRemovedFromServer = false
+                lastValidatedAt = .now
+                // Keep intentional downloaded copies even when the remote playlist becomes empty.
+                if (fresh.entry ?? []).isEmpty,
+                   await loadFromLocal(generation: generation, serverId: serverId) { return }
+                guard isCurrent(generation, serverId: serverId) else { return }
+                apply(fresh, downloadedIDs: downloaded)
+                isOffline = false
+                await downloadService.backfillPlaylistSongIds(
+                    playlistId: playlistId, serverId: serverId,
+                    orderedSongIds: (fresh.entry ?? []).map(\.id)
+                )
+            } catch {
+                guard isCurrent(generation, serverId: serverId),
+                      !UserFacingError.isCancellation(error) else { return }
+                if PlaylistAvailability.isConfirmedMissing(error) {
+                    isRemovedFromServer = true
+                    playlistDetail = nil
+                    songs = []
+                    isOffline = true
+                    _ = await loadFromLocal(generation: generation, serverId: serverId)
+                } else if !(await loadFromLocal(generation: generation, serverId: serverId)) {
+                    guard isCurrent(generation, serverId: serverId) else { return }
+                    self.error = UserFacingError.from(error)
+                }
+            }
         } else {
             isOffline = true
-            await loadFromLocal()
+            _ = await loadFromLocal(generation: generation, serverId: serverId)
         }
-        isLoading = false
-        isDownloadingPlaylist = await downloadService.isDownloadingPlaylist(playlistId)
+        let downloading = await downloadService.isDownloadingPlaylist(playlistId)
+        guard isCurrent(generation, serverId: serverId) else { return }
+        isDownloadingPlaylist = downloading
     }
 
-    private func loadFromAPI() async {
-        do {
-            let apiPlaylist = try await libraryService.playlist(id: playlistId)
-            // Empty-success guard: behind a captive proxy / Cloudflare-WARP edge the server
-            // is reachable but answers 200 with no entries. That never throws, so the catch
-            // below can't help — treat an empty result exactly like a failure and prefer the
-            // downloaded copy before clobbering the UI with an "Empty Playlist" state.
-            if (apiPlaylist.entry ?? []).isEmpty, await loadFromLocal() { return }
-            playlistDetail = apiPlaylist
-            guard let serverId = serverState.activeServer?.id else { return }
-            let downloadedIds = await downloadService.downloadedSongIds(serverId: serverId)
-            name = apiPlaylist.name
-            owner = apiPlaylist.owner
-            coverArtId = apiPlaylist.coverArt
-            songs = (apiPlaylist.entry ?? []).map { DisplayableSong(from: $0, isDownloaded: downloadedIds.contains($0.id)) }
-            isOffline = false
-            // Self-heal: if this playlist was downloaded before songIds existed (or with an
-            // empty list), repair it now from the authoritative order so it reads offline next time.
-            await downloadService.backfillPlaylistSongIds(
-                playlistId: playlistId,
-                serverId: serverId,
-                orderedSongIds: (apiPlaylist.entry ?? []).map(\.id)
-            )
-        } catch {
-            // Server unreachable (airplane mode with stale isOnline, VPN-satisfied path,
-            // server down): fall back to the downloaded copy before surfacing an error.
-            if await loadFromLocal() { return }
-            self.error = UserFacingError.from(error)
+    /// Revalidate an old screen before creating a new queue. A removed playlist never causes
+    /// dozens of dead streams to be started; its downloaded copy remains playable.
+    func playbackSongs(from requested: [DisplayableSong]) async -> [DisplayableSong] {
+        if serverState.isOnline, lastValidatedAt.map({ Date().timeIntervalSince($0) > 30 }) ?? true {
+            await load()
         }
+        guard !Task.isCancelled else { return [] }
+        let current = Dictionary(songs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return requested.compactMap { current[$0.id] }
     }
 
-    /// Returns true when a downloaded copy with at least one track was loaded.
-    /// Sets isOffline only on success — a transient online failure must not flip
-    /// the UI into offline mode while songs from a previous load are still shown.
+    private func isCurrent(_ generation: UInt64, serverId: UUID) -> Bool {
+        generation == loadGeneration && serverState.activeServer?.id == serverId && !Task.isCancelled
+    }
+
+    private func apply(_ playlist: PlaylistWithSongs, downloadedIDs: Set<String>) {
+        playlistDetail = playlist
+        name = playlist.name
+        owner = playlist.owner
+        coverArtId = playlist.coverArt
+        songs = (playlist.entry ?? []).map { DisplayableSong(from: $0, isDownloaded: downloadedIDs.contains($0.id)) }
+    }
+
     @discardableResult
-    private func loadFromLocal() async -> Bool {
-        guard let serverId = serverState.activeServer?.id,
-              let data = await downloadService.localPlaylistData(playlistId: playlistId, serverId: serverId),
-              !data.songs.isEmpty else { return false }
+    private func loadFromLocal(generation: UInt64, serverId: UUID) async -> Bool {
+        guard let data = await downloadService.localPlaylistData(playlistId: playlistId, serverId: serverId),
+              isCurrent(generation, serverId: serverId), !data.songs.isEmpty else { return false }
         name = data.name
         coverArtId = data.coverArtId
         songs = data.songs

@@ -334,17 +334,32 @@ actor LibraryCatalog {
         }
     }
 
+    func cachedPlaylist(id: String) async -> PlaylistWithSongs? {
+        guard let serverID = try? await source.activeServerID() else { return nil }
+        return try? await store.playlist(id: id, serverID: serverID)?.playlist
+    }
+
     func playlist(id: String) async throws -> PlaylistWithSongs {
+        try await loadPlaylist(id: id, forceRefresh: false)
+    }
+
+    func refreshPlaylist(id: String) async throws -> PlaylistWithSongs {
+        try await loadPlaylist(id: id, forceRefresh: true)
+    }
+
+    private func loadPlaylist(id: String, forceRefresh: Bool) async throws -> PlaylistWithSongs {
         let serverID = try await source.activeServerID()
         let local = try await store.playlist(id: id, serverID: serverID)
-        if let local, local.isCurrent { return local.playlist }
+        if !forceRefresh, let local, local.isCurrent { return local.playlist }
         guard await source.isOnline() else {
-            if let local { return local.playlist }
+            if !forceRefresh, let local { return local.playlist }
             throw URLError(.notConnectedToInternet)
         }
 
         do {
             let remote = try await source.playlist(id: id, serverID: serverID)
+            try Task.checkCancellation()
+            guard try await source.activeServerID() == serverID else { throw CancellationError() }
             do {
                 try await store.cachePlaylistDetail(remote, serverID: serverID)
             } catch {
@@ -356,7 +371,11 @@ actor LibraryCatalog {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            if Self.canServeStaleData(after: error), let local { return local.playlist }
+            if PlaylistAvailability.isConfirmedMissing(error) {
+                // Preserve audio and offline ownership; remove only discardable metadata.
+                try? await store.removePlaylist(id: id, serverID: serverID)
+            }
+            if !forceRefresh, Self.canServeStaleData(after: error), let local { return local.playlist }
             throw error
         }
     }

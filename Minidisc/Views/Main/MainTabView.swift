@@ -5,6 +5,7 @@ struct MainTabView: View {
     @State private var searchText = ""
     @State private var searchPath = NavigationPath()
     @State private var homePath = NavigationPath()
+    @State private var libraryPath = NavigationPath()
     @State private var selectedTab: AppTab = .home
     @State private var showingFullPlayer = false
     @State private var playlistAddition = PlaylistAddition()
@@ -64,7 +65,7 @@ struct MainTabView: View {
             }
 
             Tab("Library", systemImage: "music.note.square.stack.fill", value: AppTab.library) {
-                NavigationStack {
+                NavigationStack(path: $libraryPath) {
                     LibraryView()
                 }
             }
@@ -90,6 +91,16 @@ struct MainTabView: View {
         }
         .accentColor(.minidiscAccent)
         .preferredColorScheme(theme.colorScheme)
+        .onReceive(NotificationCenter.default.publisher(for: .minidiscNavigateToLibrary)) { _ in
+            showingFullPlayer = false
+            libraryPath = NavigationPath()
+            selectedTab = .library
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .minidiscNavigateToDownloads)) { _ in
+            showingFullPlayer = false
+            libraryPath = NavigationPath([HomeDestination.libraryDownloads])
+            selectedTab = .library
+        }
 
         .task(id: container?.serverState.isOnline) {
             guard container?.serverState.isOnline == true else { return }

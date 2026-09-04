@@ -1,6 +1,125 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Playlist removed from server" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlist removed from server"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlist supprimée du serveur"
+          }
+        }
+      }
+    },
+    "This playlist is no longer available. Choose another playlist to continue listening." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This playlist is no longer available. Choose another playlist to continue listening."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette playlist n’est plus disponible. Choisissez une autre playlist pour continuer l’écoute."
+          }
+        }
+      }
+    },
+    "This playlist is no longer on the server. Your downloaded songs are still available." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This playlist is no longer on the server. Your downloaded songs are still available."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette playlist n’existe plus sur le serveur. Vos morceaux téléchargés restent disponibles."
+          }
+        }
+      }
+    },
+    "Back to Library" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back to Library"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retour à la bibliothèque"
+          }
+        }
+      }
+    },
+    "This content is no longer available on the server." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This content is no longer available on the server."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce contenu n’est plus disponible sur le serveur."
+          }
+        }
+      }
+    },
+    "Choose another track or a downloaded copy." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose another track or a downloaded copy."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisissez un autre morceau ou une copie téléchargée."
+          }
+        }
+      }
+    },
+    "Check your connection and try syncing again." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check your connection and try syncing again."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vérifiez votre connexion et relancez la synchronisation."
+          }
+        }
+      }
+    },
     "Buffering…" : {
       "extractionState" : "manual",
       "localizations" : {

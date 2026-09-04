@@ -17,6 +17,7 @@ private nonisolated struct StaticLibrarySource: LibraryRemoteSource {
     var songPages: [Int: [Song]] = [:]
     var playlistSummaries: [Playlist] = []
     var playlistDetails: [String: PlaylistWithSongs] = [:]
+    var playlistFailure: SwiftSonicError?
     var failingAlbumOffset: Int?
     var failingSongOffset: Int?
 
@@ -51,6 +52,7 @@ private nonisolated struct StaticLibrarySource: LibraryRemoteSource {
     }
     func playlists(serverID: UUID) async throws -> [Playlist] { playlistSummaries }
     func playlist(id: String, serverID: UUID) async throws -> PlaylistWithSongs {
+        if let playlistFailure { throw playlistFailure }
         guard let playlist = playlistDetails[id] else { throw LibrarySourceStubError.unavailable }
         return playlist
     }
@@ -744,6 +746,31 @@ struct LibraryIndexTests {
             serverHost: "music.example.com"
         )))
         #expect(!LibraryCatalog.canServeStaleData(after: SwiftSonicError.invalidConfiguration("bad URL")))
+    }
+
+    @Test("explicit playlist refresh bypasses current cache and evicts confirmed removal")
+    func refreshDetectsRemovedPlaylist() async throws {
+        let serverID = UUID()
+        let store = try makeStore()
+        try await store.cachePlaylistDetail(PlaylistWithSongs(id: "gone", name: "Gone", songCount: 1, duration: 10), serverID: serverID)
+        let source = StaticLibrarySource(serverID: serverID, playlistFailure: try await playlistServerError())
+        let catalog = LibraryCatalog(source: source, store: store, synchronizer: LibraryIndexSynchronizer(source: source, store: store))
+        #expect(await catalog.cachedPlaylist(id: "gone") != nil)
+        await #expect(throws: SwiftSonicError.self) { try await catalog.refreshPlaylist(id: "gone") }
+        #expect(await catalog.cachedPlaylist(id: "gone") == nil)
+    }
+
+    @Test("a proxy failure preserves cached playlist metadata")
+    func refreshFailureKeepsPlaylistCache() async throws {
+        let serverID = UUID()
+        let store = try makeStore()
+        try await store.cachePlaylistDetail(PlaylistWithSongs(id: "kept", name: "Kept", songCount: 1, duration: 10), serverID: serverID)
+        let source = StaticLibrarySource(serverID: serverID, playlistFailure: .httpError(
+            statusCode: 404, endpoint: "getPlaylist", serverHost: "server.invalid"
+        ))
+        let catalog = LibraryCatalog(source: source, store: store, synchronizer: LibraryIndexSynchronizer(source: source, store: store))
+        await #expect(throws: SwiftSonicError.self) { try await catalog.refreshPlaylist(id: "kept") }
+        #expect(await catalog.cachedPlaylist(id: "kept") != nil)
     }
 
     private func makeStore() throws -> LibraryIndexStore {

@@ -85,7 +85,7 @@ struct MainTabView: View {
                 NavigationStack(path: $searchPath) {
                     SearchView(searchQuery: $searchText, path: $searchPath)
                         .navigationTitle("Search")
-                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbarTitleDisplayMode(.inlineLarge)
                 }
                 .searchable(text: $searchText, prompt: "Artists, albums, songs\u{2026}")
             }

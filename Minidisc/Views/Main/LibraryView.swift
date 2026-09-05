@@ -109,6 +109,7 @@ struct LibraryView: View {
             .padding(.bottom, MinidiscSpacing.xl)
         }
         .navigationTitle("Library")
+        .toolbarTitleDisplayMode(.inlineLarge)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("New Playlist", systemImage: "text.badge.plus") {

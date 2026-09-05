@@ -24,6 +24,7 @@ struct HomeView: View {
             }
         }
         .navigationTitle("Home")
+        .toolbarTitleDisplayMode(.inlineLarge)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Settings", systemImage: "gearshape.fill") { showSettings = true }

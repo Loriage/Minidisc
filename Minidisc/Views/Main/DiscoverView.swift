@@ -37,6 +37,7 @@ struct DiscoverView: View {
             .padding(.bottom, MinidiscSpacing.miniPlayerBottomMargin)
         }
         .navigationTitle("Discover")
+        .toolbarTitleDisplayMode(.inlineLarge)
         .minidiscContentWidth()
         .task {
             guard let container else { return }

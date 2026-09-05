@@ -90,6 +90,13 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         case routeChanged(reasonCode: UInt, outputs: [AudioOutputKind])
         case systemPauseArmed(requiresPersonalRoute: Bool)
         case systemResumeAttempted
+        case mediaServicesReset
+        case recoveryAttemptStarted(number: Int)
+        case recoveryActivationFailed(code: Int)
+        case recoveryWaitingForRoute
+        case recoveryProgressValidated
+        case recoveryExhausted
+        case recoveryInterrupted
     }
 
     struct NetworkPath: Sendable, Equatable {
@@ -362,6 +369,20 @@ nonisolated final class PlaybackDiagnostics: Sendable {
             "system-pause-armed requires-personal-route=\(requiresPersonalRoute)"
         case .systemResumeAttempted:
             "system-resume-attempted"
+        case .mediaServicesReset:
+            "media-services-reset players-recreated=true"
+        case .recoveryAttemptStarted(let number):
+            "audio-recovery attempt-started number=\(number)"
+        case .recoveryActivationFailed(let code):
+            "audio-recovery activation-failed code=\(code)"
+        case .recoveryWaitingForRoute:
+            "audio-recovery waiting-for-route"
+        case .recoveryProgressValidated:
+            "audio-recovery progress-validated"
+        case .recoveryExhausted:
+            "audio-recovery exhausted"
+        case .recoveryInterrupted:
+            "audio-recovery interrupted"
         }
     }
 }

@@ -10,7 +10,7 @@ import AVFAudio
 /// `Notification` and its `[AnyHashable: Any]` payload are not `Sendable`. Decode the two values
 /// PlayerService needs on NotificationCenter's delivery queue, then cross the actor boundary with
 /// this enum instead of the Foundation notification.
-private nonisolated enum AudioSessionInterruptionEvent: Sendable {
+nonisolated enum AudioSessionInterruptionEvent: Sendable {
     case began(routeDisconnected: Bool)
     case ended(shouldResume: Bool)
 
@@ -33,13 +33,6 @@ private nonisolated enum AudioSessionInterruptionEvent: Sendable {
             return nil
         }
     }
-}
-
-/// Value-only route information extracted on NotificationCenter's delivery queue.
-/// `AVAudioSessionPortDescription` itself must not cross into the PlayerService actor.
-private nonisolated struct AudioRouteOutputSnapshot: Sendable, Equatable {
-    let uid: String
-    let portType: AVAudioSession.Port
 }
 
 nonisolated enum NetworkPlaybackRecoveryAction: Equatable, Sendable {
@@ -142,9 +135,15 @@ actor PlayerService: PlayerServiceProtocol {
     private var currentSource: MediaSource?
     private var liveStreamStallTask: Task<Void, Never>?
 
-    private var audioSessionConfigured = false
+    private let audioSession: any AudioSessionControlling
+    private let audioRecoveryTiming: PlaybackAudioRecoveryTiming
+    private var audioSystemRecovery: AudioSystemRecovery?
+    private var audioSystemRecoveryTask: Task<Void, Never>?
+    private var audioSystemRecoveryGeneration: UInt64 = 0
+    private var lastKnownAudioOutputs: [AudioRouteOutputSnapshot] = []
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
+    private var mediaServicesResetObserver: NSObjectProtocol?
     private var sessionActivationRetryTask: Task<Void, Never>?
     private var isAudioSessionInterrupted = false
     /// Keeps user playback intent distinct from a temporary iOS suspension. It is generation-bound,
@@ -208,7 +207,17 @@ actor PlayerService: PlayerServiceProtocol {
         let playbackGeneration: UInt64
         let transportIntentGeneration: UInt64
     }
-    private var activeEnginePlayback: ActiveEnginePlayback?
+    /// Retained when invalidating physical players so a pending Next/Play is still distinguishable
+    /// from the selected source during a global reset notification with no item token.
+    private var lastCommittedAudioIntent: (playback: UInt64, transport: UInt64)?
+    private var activeEnginePlayback: ActiveEnginePlayback? {
+        didSet {
+            // Also covers rebinding an existing item after a failed queue/radio resolution.
+            if let binding = activeEnginePlayback {
+                lastCommittedAudioIntent = (binding.playbackGeneration, binding.transportIntentGeneration)
+            }
+        }
+    }
     /// Last callback from the active physical item. PlayerState deliberately represents user intent,
     /// so it cannot tell validation code whether AVPlayer is truly rendering or merely waiting.
     private var activeEngineState: AudioEngineState?
@@ -252,7 +261,9 @@ actor PlayerService: PlayerServiceProtocol {
         listenBrainzService: ListenBrainzService,
         playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics(),
         engine: AudioEngine,
-        networkRecoveryTiming: PlaybackNetworkRecoveryTiming = PlaybackNetworkRecoveryTiming()
+        networkRecoveryTiming: PlaybackNetworkRecoveryTiming = PlaybackNetworkRecoveryTiming(),
+        audioSession: any AudioSessionControlling = SystemAudioSessionController(),
+        audioRecoveryTiming: PlaybackAudioRecoveryTiming = PlaybackAudioRecoveryTiming()
     ) {
         self.state = state
         self.mediaResolver = mediaResolver
@@ -272,6 +283,8 @@ actor PlayerService: PlayerServiceProtocol {
         self.listenBrainzService = listenBrainzService
         self.playbackDiagnostics = playbackDiagnostics
         self.networkRecoveryTiming = networkRecoveryTiming
+        self.audioSession = audioSession
+        self.audioRecoveryTiming = audioRecoveryTiming
         let cacheConfig = URLSessionConfiguration.default
         cacheConfig.timeoutIntervalForRequest = 30
         cacheConfig.timeoutIntervalForResource = 300
@@ -348,7 +361,7 @@ actor PlayerService: PlayerServiceProtocol {
         guard sourceIsRemoteStream else { return .none }
         guard isOnline else { return .reloadOnResume }
         switch playbackState {
-        case .error(.mediaNotFound):
+        case .error(.mediaNotFound), .error(.audioSystemUnavailable):
             return .reloadOnResume
         case .playing, .error:
             return .armAutomaticRecovery
@@ -428,6 +441,7 @@ actor PlayerService: PlayerServiceProtocol {
         stoppedAtEndOfQueue = false
         playbackGeneration &+= 1
         transportIntentGeneration &+= 1
+        cancelAudioSystemRecovery()
         let generation = playbackGeneration
         let transportGeneration = transportIntentGeneration
         if !skippingUnavailableTracks { unavailableTrackIDs.removeAll() }
@@ -811,6 +825,7 @@ actor PlayerService: PlayerServiceProtocol {
         queueBuildGeneration &+= 1
         playbackGeneration &+= 1
         transportIntentGeneration &+= 1
+        cancelAudioSystemRecovery()
         let generation = playbackGeneration
         let transportGeneration = transportIntentGeneration
         cancelNetworkRecoveryProbe()
@@ -1517,6 +1532,7 @@ actor PlayerService: PlayerServiceProtocol {
         playbackDiagnostics.record(.command(.pause))
         queueBuildGeneration &+= 1
         transportIntentGeneration &+= 1
+        cancelAudioSystemRecovery()
         let transportGeneration = transportIntentGeneration
         cancelNetworkRecoveryProbe()
         cancelNetworkRecoveryValidation()
@@ -1538,7 +1554,7 @@ actor PlayerService: PlayerServiceProtocol {
         guard transportGeneration == transportIntentGeneration, !Task.isCancelled else { return }
         sessionActivationRetryTask?.cancel()
         sessionActivationRetryTask = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        audioSession.deactivate()
         stopProgressTimer()
         stopPositionSaveTimer()
         await pushPositionSnapshot(rate: 0.0)
@@ -1550,6 +1566,7 @@ actor PlayerService: PlayerServiceProtocol {
         playbackDiagnostics.record(.command(.resume))
         queueBuildGeneration &+= 1
         transportIntentGeneration &+= 1
+        cancelAudioSystemRecovery()
         let transportGeneration = transportIntentGeneration
         cancelNetworkRecoveryProbe()
         cancelNetworkRecoveryValidation()
@@ -1715,6 +1732,7 @@ actor PlayerService: PlayerServiceProtocol {
         queueBuildGeneration &+= 1
         playbackGeneration &+= 1
         transportIntentGeneration &+= 1
+        cancelAudioSystemRecovery()
         let generation = playbackGeneration
         let transportGeneration = transportIntentGeneration
         cancelNetworkRecoveryProbe()
@@ -1755,7 +1773,7 @@ actor PlayerService: PlayerServiceProtocol {
         activeEnginePlayback = nil
         sessionActivationRetryTask?.cancel()
         sessionActivationRetryTask = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        audioSession.deactivate()
         playbackProgressTracker.reset()
         engine.applyReplayGain(dB: 0)
         currentSource = nil
@@ -1813,6 +1831,13 @@ actor PlayerService: PlayerServiceProtocol {
             return
         }
         seekGeneration &+= 1
+        if audioSystemRecovery != nil {
+            audioSystemRecovery?.position = target
+            invalidateAudioRecoveryPlayback()
+            await MainActor.run { state.position = target }
+            await pushPositionSnapshot(rate: 0)
+            return
+        }
         let requestedSeekGeneration = seekGeneration
         let requestedPlaybackGeneration = playbackGeneration
         let before = engine.progress
@@ -2279,6 +2304,7 @@ actor PlayerService: PlayerServiceProtocol {
         queueBuildGeneration &+= 1
         playbackGeneration &+= 1
         transportIntentGeneration &+= 1
+        cancelAudioSystemRecovery()
         let generation = playbackGeneration
         let transportGeneration = transportIntentGeneration
 
@@ -2465,6 +2491,7 @@ actor PlayerService: PlayerServiceProtocol {
               event.generation > latestNetworkPathEvent.generation else { return }
 
         latestNetworkPathEvent = event
+        guard audioSystemRecovery == nil else { return }
         cancelNetworkRecoveryProbe()
         cancelNetworkRecoveryValidation()
         cancelPendingPrefetch()
@@ -2704,7 +2731,7 @@ actor PlayerService: PlayerServiceProtocol {
         // Keep one deadline per stalled item. KVO emits several paused/buffering callbacks
         // during a load: they must neither shorten the startup grace nor cancel a rebuild
         // already suspended in the resolver. Budget exhaustion is decided AFTER the wait.
-        guard networkRecoveryTask == nil else { return }
+        guard audioSystemRecovery == nil, networkRecoveryTask == nil else { return }
         let pathGeneration = latestNetworkPathEvent.generation
         let requestGeneration = networkRecoveryTaskGeneration
         let expectedPlaybackGeneration = playbackGeneration
@@ -3100,9 +3127,12 @@ actor PlayerService: PlayerServiceProtocol {
     }
 
     private func performProgressTick() async {
+        guard audioSystemRecovery == nil else { return }
         let progress = engine.progress
         let audioDuration = engine.duration
         if activeEngineState == .playing {
+            let outputs = currentAudioRouteOutputs()
+            if !outputs.isEmpty { lastKnownAudioOutputs = outputs }
             playbackDiagnostics.recordProgress(progress)
         }
         let durationSnapshot = await MainActor.run {
@@ -3602,7 +3632,7 @@ actor PlayerService: PlayerServiceProtocol {
         activeEnginePlayback = nil
         sessionActivationRetryTask?.cancel()
         sessionActivationRetryTask = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        audioSession.deactivate()
         pendingRestoreInfo = nil
         stoppedAtEndOfQueue = true
 
@@ -3655,9 +3685,15 @@ actor PlayerService: PlayerServiceProtocol {
                 pendingRestoreInfo = nil
                 // Seek while the engine is running. AVPlayer may still accept the request while its
                 // seekable ranges are being populated, so isSeekable is diagnostic rather than a gate.
-                if info.seekTime > 1 {
+                let recoveringAudio = audioSystemRecovery?.token == playbackToken
+                if info.seekTime > (recoveringAudio ? 0 : 1) {
+                    let requestedSeekGeneration = seekGeneration
                     let succeeded = await engine.seek(to: info.seekTime)
-                    guard isCurrentEngineEvent(playbackToken) else { return }
+                    guard isCurrentEngineEvent(playbackToken), requestedSeekGeneration == seekGeneration else { return }
+                    if recoveringAudio, !succeeded {
+                        invalidateAudioRecoveryPlayback()
+                        return
+                    }
                     Logger.player.info(
                         "[RESTORE] seek target=\(info.seekTime, format: .fixed(precision: 3))s completed=\(succeeded, privacy: .public) landed=\(self.engine.progress, format: .fixed(precision: 3))s"
                     )
@@ -3682,12 +3718,18 @@ actor PlayerService: PlayerServiceProtocol {
                     break
                 }
                 if isMutedForRestore {
-                    engine.volume = await playbackPreferences.restoredVolume
+                    let volume = await playbackPreferences.restoredVolume
+                    guard isCurrentEngineEvent(playbackToken) else { return }
+                    engine.volume = volume
                     isMutedForRestore = false
                 }
                 isRestoringSession = false
             } else {
                 playbackProgressTracker.establishBaselineIfNeeded(engine.progress)
+            }
+
+            if audioSystemRecovery?.token == playbackToken, !isMutedForRestore {
+                audioSystemRecovery?.restored = true
             }
 
             if networkRecoveryValidationToken == playbackToken {
@@ -3721,6 +3763,7 @@ actor PlayerService: PlayerServiceProtocol {
     private func resumeAfterNetworkPauseIfNeeded(
         playbackToken: AudioEnginePlaybackToken
     ) async {
+        guard audioSystemRecovery == nil else { return }
         guard currentSourceIsRemoteStream,
               latestNetworkPathEvent.isOnline else { return }
         let snapshot = await MainActor.run {
@@ -3751,10 +3794,11 @@ actor PlayerService: PlayerServiceProtocol {
     private func armRecoveryForUnexpectedEngineStall(
         playbackToken: AudioEnginePlaybackToken
     ) async {
+        guard audioSystemRecovery == nil else { return }
         let snapshot = await MainActor.run {
             (trackID: state.currentTrack?.id, playbackState: state.playbackState)
         }
-        guard isCurrentEngineEvent(playbackToken),
+        guard audioSystemRecovery == nil, isCurrentEngineEvent(playbackToken),
               let trackID = snapshot.trackID,
               Self.shouldRecoverUnexpectedEngineStall(
                   sourceIsRemoteStream: currentSourceIsRemoteStream,
@@ -3795,6 +3839,11 @@ actor PlayerService: PlayerServiceProtocol {
         playbackToken: AudioEnginePlaybackToken
     ) async {
         guard isCurrentEngineEvent(playbackToken) else { return }
+        if failure.isMediaServicesReset {
+            playbackDiagnostics.record(.engineFailure(failure, playbackToken: playbackToken))
+            await handleMediaServicesReset(failedPlaybackToken: playbackToken)
+            return
+        }
         await waitForTransitionCommit()
         guard isCurrentEngineEvent(playbackToken) else { return }
         beginTransitionCommit()
@@ -3805,6 +3854,7 @@ actor PlayerService: PlayerServiceProtocol {
         }
         guard isCurrentEngineEvent(playbackToken) else { return }
         playbackDiagnostics.record(.engineFailure(failure, playbackToken: playbackToken))
+        cancelAudioSystemRecovery()
         cancelNetworkRecoveryValidation()
         if currentSourceIsRemoteStream, let trackID = engineSnapshot.trackID {
             networkReloadRequiredTrackID = trackID
@@ -4012,28 +4062,16 @@ actor PlayerService: PlayerServiceProtocol {
 // MARK: - iOS Audio Session
 
 extension PlayerService {
-    /// Sets the category (once) and activates the session.
-    ///
-    /// No category options, deliberately. `.allowAirPlay` and `.allowBluetoothHFP` are both documented
-    /// as settable only on `.playAndRecord` (HFP also on `.record`); pairing either with `.playback`
-    /// made `setCategory` fail with -50 (paramErr) on every call. Because the failure threw before
-    /// `audioSessionConfigured = true`, the flag never latched, the category was never applied, and
-    /// `setActive` below was never reached — playback only started once the retry fired 0.5 s later,
-    /// which is the delay felt on every Play. Neither option is needed: `.playback` already routes to
-    /// AirPlay and to Bluetooth A2DP.
     private func activateAudioSession() throws {
-        let session = AVAudioSession.sharedInstance()
-        if !audioSessionConfigured {
-            try session.setCategory(.playback)
-            audioSessionConfigured = true
+        try audioSession.activate()
+        if audioSystemRecovery == nil {
+            let outputs = currentAudioRouteOutputs()
+            if !outputs.isEmpty { lastKnownAudioOutputs = outputs }
         }
-        // Always re-activate — iOS may have deactivated the session during a background interruption
-        // (phone call, Siri, other audio app) even after a successful initial setup. Without this,
-        // resume() silently fails on the lock screen.
-        try session.setActive(true)
     }
 
     private func retryAudioSessionActivation() {
+        guard audioSystemRecovery == nil else { return }
         do {
             try activateAudioSession()
         } catch {
@@ -4042,15 +4080,22 @@ extension PlayerService {
     }
 
     func configureAudioSessionIfNeeded() {
+        if mediaServicesResetObserver == nil {
+            mediaServicesResetObserver = NotificationCenter.default.addObserver(
+                forName: AVAudioSession.mediaServicesWereResetNotification,
+                object: AVAudioSession.sharedInstance(),
+                queue: .main
+            ) { [weak self] _ in
+                Task { await self?.handleMediaServicesReset() }
+            }
+        }
         do {
             try activateAudioSession()
         } catch let error as NSError {
-            // The retry re-runs the CATEGORY too. The old one re-tried activation alone, so a failed
-            // setCategory left the app on the default category for the whole session — no guaranteed
-            // background audio, silenced by the ring switch. `configured` says which call failed.
             Logger.player.warning(
-                "AVAudioSession configuration failed (code \(error.code, privacy: .public), configured=\(self.audioSessionConfigured, privacy: .public)) — retrying in 0.5s"
+                "AVAudioSession configuration failed (code \(error.code, privacy: .public)) — retrying in 0.5s"
             )
+            sessionActivationRetryTask?.cancel()
             sessionActivationRetryTask = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(0.5))
                 guard !Task.isCancelled else { return }
@@ -4094,13 +4139,273 @@ extension PlayerService {
         }
     }
 
-    private func handleAudioSessionInterruption(_ event: AudioSessionInterruptionEvent) async {
+    private func cancelAudioSystemRecovery() {
+        audioSystemRecoveryTask?.cancel()
+        audioSystemRecoveryTask = nil
+        audioSystemRecovery = nil
+        audioSystemRecoveryGeneration &+= 1
+    }
+
+    private func isCurrentAudioRecovery(_ id: UInt64) -> Bool {
+        guard let recovery = audioSystemRecovery else { return false }
+        return recovery.id == id
+            && recovery.playbackGeneration == playbackGeneration
+            && recovery.transportIntentGeneration == transportIntentGeneration
+            && !Task.isCancelled
+    }
+
+    /// Discard every object backed by the old media service, including the standby deck.
+    /// The queue, selected track, and listener's transport generation are unchanged.
+    private func invalidateAudioRecoveryPlayback() {
+        activeEnginePlayback = nil
+        activeEngineState = nil
+        pendingRestoreInfo = nil
+        audioSystemRecovery?.token = nil
+        audioSystemRecovery?.restored = false
+        audioSystemRecovery?.progressBaseline = nil
+        audioSession.invalidateConfiguration()
+        engine.resetAfterMediaServicesReset()
+    }
+
+    /// Global reset notifications and typed item failures share one incident. A system suspension
+    /// can retain Play intent even when PlayerState temporarily says paused.
+    func handleMediaServicesReset(failedPlaybackToken: AudioEnginePlaybackToken? = nil) async {
+        await waitForTransitionCommit()
+        if let failedPlaybackToken, !isCurrentEngineEvent(failedPlaybackToken) { return }
+        beginTransitionCommit()
+        defer { endTransitionCommit() }
+
+        let generation = playbackGeneration
+        let transport = transportIntentGeneration
+        let hasNewerIntent = lastCommittedAudioIntent.map {
+            $0.playback != generation || $0.transport != transport
+        } ?? true
+        let pendingResume = pendingSystemResume.flatMap {
+            $0.playbackGeneration == generation && $0.transportIntentGeneration == transport ? $0 : nil
+        }
+        let position = max(engine.progress, pendingRestoreInfo?.seekTime ?? 0)
+        cancelNetworkRecoveryProbe()
+        cancelNetworkRecoveryValidation()
+        networkReloadRequiredTrackID = nil
+        networkRecoveryAttemptBudget.reset()
+        sessionActivationRetryTask?.cancel()
+        sessionActivationRetryTask = nil
+        restorePauseTask?.cancel()
+        restorePauseTask = nil
+        liveStreamStallTask?.cancel()
+        liveStreamStallTask = nil
+        cancelPendingCacheDownload()
+        cancelPendingPrefetch()
+        stopProgressTimer()
+        stopPositionSaveTimer()
+        playbackProgressTracker.breakContinuity()
+
+        // Notification + error keep the first checkpoint, route and budget.
+        let existingRecovery = audioSystemRecovery
+        invalidateAudioRecoveryPlayback()
+        playbackDiagnostics.record(.audioSession(.mediaServicesReset))
+        if let existingRecovery, isCurrentAudioRecovery(existingRecovery.id) { return }
+
+        let snapshot = await MainActor.run {
+            (trackID: state.currentTrack?.id ?? state.currentRadio?.id,
+             wantsPlayback: state.wantsPlayback,
+             position: state.position, duration: state.duration, isLive: state.isLiveStream)
+        }
+        guard generation == playbackGeneration, transport == transportIntentGeneration else { return }
+        let checkpoint = snapshot.isLive ? 0 : max(snapshot.position, position)
+        await MainActor.run {
+            if checkpoint.isFinite {
+                state.position = snapshot.duration > 0 ? min(checkpoint, snapshot.duration) : checkpoint
+            }
+        }
+        guard generation == playbackGeneration, transport == transportIntentGeneration else { return }
+        // A Next still resolving its source owns the next commit. Never restart the previous song.
+        guard !hasNewerIntent, snapshot.wantsPlayback || pendingResume != nil,
+              let trackID = snapshot.trackID, let source = currentSource else { return }
+
+        var expectedOutputs = lastKnownAudioOutputs
+        if let pendingResume, pendingResume.requiresPersonalRoute {
+            expectedOutputs = pendingResume.expectedPersonalRouteUIDs.map {
+                AudioRouteOutputSnapshot(uid: $0, portType: pendingResume.expectedPersonalPortTypes.first ?? .bluetoothA2DP)
+            }
+            if expectedOutputs.isEmpty {
+                expectedOutputs = pendingResume.expectedPersonalPortTypes.map {
+                    AudioRouteOutputSnapshot(uid: "", portType: $0)
+                }
+            }
+        }
+        if expectedOutputs.isEmpty { expectedOutputs = currentAudioRouteOutputs() }
+        pendingSystemResume = nil
+        audioSystemRecoveryGeneration &+= 1
+        let id = audioSystemRecoveryGeneration
+        audioSystemRecovery = AudioSystemRecovery(
+            id: id,
+            deadline: .now + audioRecoveryTiming.routeGrace
+                + (audioRecoveryTiming.startupGrace + audioRecoveryTiming.retryDelay) * AudioSystemRecovery.maximumAttempts,
+            playbackGeneration: generation, transportIntentGeneration: transport,
+            trackID: trackID, source: source, duration: snapshot.duration,
+            position: checkpoint.isFinite ? max(0, checkpoint) : 0, expectedOutputs: expectedOutputs,
+            resumeAfterRouteDisconnect: pendingResume?.requiresPersonalRoute == true
+        )
+        await MainActor.run {
+            state.playbackState = .playing
+            state.waitingReason = .buffering
+        }
+        guard isCurrentAudioRecovery(id) else { return }
+        audioSystemRecoveryTask = Task { [weak self] in
+            await self?.runAudioSystemRecovery(id: id)
+        }
+    }
+
+    /// Each rebuilt player gets its full startup window. Neither HTTP probes nor repeated reset
+    /// callbacks can reset the incident's finite attempt budget.
+    private func runAudioSystemRecovery(id: UInt64) async {
+        while isCurrentAudioRecovery(id) {
+            do { try await Task.sleep(for: audioRecoveryTiming.retryDelay) } catch { return }
+            guard isCurrentAudioRecovery(id), let recovery = audioSystemRecovery else { return }
+            guard recovery.attempts < AudioSystemRecovery.maximumAttempts,
+                  ContinuousClock.now < recovery.deadline else { break }
+
+            let routeDeadline = min(recovery.deadline, ContinuousClock.now + audioRecoveryTiming.routeGrace)
+            while isCurrentAudioRecovery(id), isAudioSessionInterrupted {
+                if ContinuousClock.now >= routeDeadline {
+                    _ = await finishAudioSystemRecovery(id: id, succeeded: false)
+                    return
+                }
+                do { try await Task.sleep(for: audioRecoveryTiming.pollInterval) } catch { return }
+            }
+            guard isCurrentAudioRecovery(id) else { return }
+            // Activation itself may restore the route; it must be checked again before any Play.
+            do {
+                try activateAudioSession()
+            } catch {
+                audioSystemRecovery?.attempts += 1
+                playbackDiagnostics.record(.audioSession(.recoveryActivationFailed(code: (error as NSError).code)))
+                continue
+            }
+            if !recovery.acceptsRoute(currentAudioRouteOutputs()) {
+                playbackDiagnostics.record(.audioSession(.recoveryWaitingForRoute))
+            }
+            while isCurrentAudioRecovery(id),
+                  isAudioSessionInterrupted || !(audioSystemRecovery?.acceptsRoute(currentAudioRouteOutputs()) ?? false) {
+                if ContinuousClock.now >= routeDeadline {
+                    _ = await finishAudioSystemRecovery(id: id, succeeded: false)
+                    return
+                }
+                do { try await Task.sleep(for: audioRecoveryTiming.pollInterval) } catch { return }
+            }
+            let volume = await playbackPreferences.restoredVolume
+            guard isCurrentAudioRecovery(id) else { return }
+            await waitForTransitionCommit()
+            guard isCurrentAudioRecovery(id), var attempt = audioSystemRecovery else { return }
+            beginTransitionCommit()
+            guard !isAudioSessionInterrupted, attempt.acceptsRoute(currentAudioRouteOutputs()) else {
+                endTransitionCommit()
+                continue
+            }
+            // A reset can arrive while waiting for Bluetooth and invalidate session configuration.
+            do {
+                try activateAudioSession()
+            } catch {
+                audioSystemRecovery?.attempts += 1
+                playbackDiagnostics.record(.audioSession(.recoveryActivationFailed(code: (error as NSError).code)))
+                endTransitionCommit()
+                continue
+            }
+            guard attempt.acceptsRoute(currentAudioRouteOutputs()) else {
+                endTransitionCommit()
+                continue
+            }
+            attempt.attempts += 1
+            audioSystemRecovery = attempt
+            engine.volume = attempt.position > 0 ? 0 : volume
+            isMutedForRestore = attempt.position > 0
+            pendingRestoreInfo = (seekTime: attempt.position, pause: false)
+            let token = engine.play(trackID: attempt.trackID, url: attempt.source.url, headers: attempt.source.customHeaders)
+            registerActiveEnginePlayback(
+                token, playbackGeneration: attempt.playbackGeneration,
+                transportIntentGeneration: attempt.transportIntentGeneration
+            )
+            engine.setTrackDuration(attempt.duration)
+            audioSystemRecovery?.token = token
+            playbackDiagnostics.record(.audioSession(.recoveryAttemptStarted(number: attempt.attempts)))
+            endTransitionCommit()
+
+            let deadline = ContinuousClock.now + audioRecoveryTiming.startupGrace
+            while isCurrentAudioRecovery(id), audioSystemRecovery?.token == token {
+                guard let current = audioSystemRecovery else { return }
+                if isAudioSessionInterrupted || !current.acceptsRoute(currentAudioRouteOutputs()) {
+                    invalidateAudioRecoveryPlayback()
+                    break
+                }
+                if current.restored, activeEngineState == .playing {
+                    let progress = engine.progress
+                    if let baseline = current.progressBaseline, progress > baseline + 0.25 {
+                        if await finishAudioSystemRecovery(id: id, succeeded: true) { return }
+                        break
+                    }
+                    if current.progressBaseline == nil, progress.isFinite {
+                        audioSystemRecovery?.progressBaseline = progress
+                    }
+                } else {
+                    audioSystemRecovery?.progressBaseline = nil
+                }
+                if ContinuousClock.now >= min(deadline, current.deadline) { break }
+                do { try await Task.sleep(for: audioRecoveryTiming.pollInterval) } catch { return }
+            }
+            guard isCurrentAudioRecovery(id) else { return }
+            if audioSystemRecovery?.token != nil { invalidateAudioRecoveryPlayback() }
+        }
+        _ = await finishAudioSystemRecovery(id: id, succeeded: false)
+    }
+
+    /// Returns false only when a proposed success lost its route before the commit.
+    private func finishAudioSystemRecovery(id: UInt64, succeeded: Bool, interrupted: Bool = false) async -> Bool {
+        await waitForTransitionCommit()
+        guard isCurrentAudioRecovery(id), let recovery = audioSystemRecovery else { return true }
+        beginTransitionCommit()
+        defer { endTransitionCommit() }
+        let transport = transportIntentGeneration
+        if succeeded, isAudioSessionInterrupted || !recovery.acceptsRoute(currentAudioRouteOutputs()) {
+            invalidateAudioRecoveryPlayback()
+            return false
+        }
+        audioSystemRecovery = nil
+        audioSystemRecoveryTask = nil
+        if succeeded {
+            lastKnownAudioOutputs = currentAudioRouteOutputs()
+            playbackProgressTracker.setBaseline(engine.progress)
+            await MainActor.run { state.waitingReason = nil }
+            guard transport == transportIntentGeneration else { return true }
+            playbackDiagnostics.record(.audioSession(.recoveryProgressValidated))
+            startProgressTimer()
+            startPositionSaveTimer()
+            await pushPositionSnapshot(rate: 1)
+        } else {
+            engine.stop()
+            activeEnginePlayback = nil
+            pendingRestoreInfo = nil
+            playbackDiagnostics.record(.audioSession(interrupted ? .recoveryInterrupted : .recoveryExhausted))
+            await MainActor.run { state.playbackState = interrupted ? .paused : .error(.audioSystemUnavailable) }
+            guard transport == transportIntentGeneration else { return true }
+            await pushPositionSnapshot(rate: 0)
+        }
+        return true
+    }
+
+    func handleAudioSessionInterruption(_ event: AudioSessionInterruptionEvent) async {
         switch event {
         case .began(let routeDisconnected):
             playbackDiagnostics.record(
                 .audioSession(.interruptionBegan(routeDisconnected: routeDisconnected))
             )
             isAudioSessionInterrupted = true
+            if audioSystemRecovery != nil {
+                let canResumeAfterDisconnect = audioSystemRecovery?.resumeAfterRouteDisconnect == true || routeDisconnected
+                audioSystemRecovery?.resumeAfterRouteDisconnect = canResumeAfterDisconnect
+                invalidateAudioRecoveryPlayback()
+                return
+            }
             await suspendPlaybackForSystem(
                 reason: "interruption",
                 requiresPersonalRoute: routeDisconnected,
@@ -4115,6 +4420,12 @@ extension PlayerService {
                 .audioSession(.interruptionEnded(shouldResume: shouldResume))
             )
             isAudioSessionInterrupted = false
+            if let recovery = audioSystemRecovery {
+                if !shouldResume, !recovery.resumeAfterRouteDisconnect {
+                    _ = await finishAudioSystemRecovery(id: recovery.id, succeeded: false, interrupted: true)
+                }
+                return
+            }
             let requiresPersonalRoute = pendingSystemResume?.requiresPersonalRoute == true
             Logger.player.info(
                 "[INTERRUPTION] ended shouldResume=\(shouldResume, privacy: .public) requiresPersonalRoute=\(requiresPersonalRoute, privacy: .public)"
@@ -4141,7 +4452,7 @@ extension PlayerService {
         )
     }
 
-    private func handleRouteChange(
+    func handleRouteChange(
         _ reason: AVAudioSession.RouteChangeReason,
         previousRouteOutputs: [AudioRouteOutputSnapshot]
     ) async {
@@ -4161,6 +4472,12 @@ extension PlayerService {
             "[ROUTE] routeChange reason=\(reason.logDescription, privacy: .public) outputs=[\(outputDescription, privacy: .public)]"
         )
 
+        if let recovery = audioSystemRecovery {
+            if !recovery.acceptsRoute(currentOutputs), recovery.token != nil {
+                invalidateAudioRecoveryPlayback()
+            }
+            return
+        }
         switch reason {
         case .oldDeviceUnavailable:
             guard PlayerService.shouldSuspendForRouteDisconnect(
@@ -4194,9 +4511,7 @@ extension PlayerService {
     }
 
     private func currentAudioRouteOutputs() -> [AudioRouteOutputSnapshot] {
-        AVAudioSession.sharedInstance().currentRoute.outputs.map {
-            AudioRouteOutputSnapshot(uid: $0.uid, portType: $0.portType)
-        }
+        audioSession.outputs
     }
 
     private func suspendPlaybackForSystem(
@@ -4265,7 +4580,8 @@ extension PlayerService {
     }
 
     private func resumeSystemPauseIfEligible(trigger: String) async {
-        guard !isAudioSessionInterrupted, let pending = pendingSystemResume else { return }
+        guard audioSystemRecovery == nil,
+              !isAudioSessionInterrupted, let pending = pendingSystemResume else { return }
 
         guard Date().timeIntervalSince(pending.startedAt) <= Self.personalRouteReconnectGrace else {
             pendingSystemResume = nil

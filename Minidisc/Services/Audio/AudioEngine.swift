@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 /// The low-level playback state an `AudioEngine` reports, independent of any concrete backend so
@@ -66,6 +67,14 @@ nonisolated struct AudioEngineFailure: Sendable, Equatable {
         self.codes = codes
     }
 
+    /// This invalidates the player objects, not the media URL. Network retries on the
+    /// same objects cannot recover, even when a different track is selected.
+    var isMediaServicesReset: Bool {
+        codes.contains {
+            $0.domain == .avFoundation && $0.value == AVError.Code.mediaServicesWereReset.rawValue
+        }
+    }
+
     var diagnosticDescription: String {
         codes.isEmpty ? "unknown" : codes.map { "\($0.domain.rawValue):\($0.value)" }.joined(separator: ",")
     }
@@ -118,6 +127,9 @@ nonisolated protocol AudioEngine: AnyObject, Sendable {
     func pause()
     func resume()
     func stop()
+    /// Disposes invalid system audio objects. Preserves volume and monotonically increasing
+    /// playback tokens, but leaves playback stopped until the caller starts a fresh item.
+    func resetAfterMediaServicesReset()
     /// Repositions the active deck and returns only after AVPlayer has completed (or rejected) the seek.
     /// `false` also covers a deck transition that made the request stale while it was in flight.
     func seek(to seconds: Double) async -> Bool

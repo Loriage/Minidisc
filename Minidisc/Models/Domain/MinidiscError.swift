@@ -26,6 +26,8 @@ nonisolated enum MinidiscError: Error, Sendable {
     case artistTracksUnavailable
     /// An operation exceeded its allowed time budget and was cancelled.
     case timeout
+    /// iOS audio resources could not recover within the automatic recovery budget.
+    case audioSystemUnavailable
 }
 
 extension MinidiscError: LocalizedError {
@@ -65,6 +67,8 @@ extension MinidiscError: LocalizedError {
             return String(localized: "No similar tracks found for an Instant Mix. Your server may not have similarity data for this yet.")
         case .artistTracksUnavailable:
             return String(localized: "Unable to load tracks for this artist. Please check your connection and try again.")
+        case .audioSystemUnavailable:
+            return String(localized: "Audio output is unavailable.")
         case .timeout:
             return String(localized: "The operation timed out. Please check your connection and try again.")
         }

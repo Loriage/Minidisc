@@ -43,10 +43,11 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         set { lock.withLock { storedDelegate = newValue } }
     }
 
-    private let deckA = AVPlayer()
-    private let deckB = AVPlayer()
-    private let contextA = ReplayGainTapContext()
-    private let contextB = ReplayGainTapContext()
+    private let playerFactory: @Sendable () -> AVPlayer
+    private var deckA: AVPlayer
+    private var deckB: AVPlayer
+    private var contextA = ReplayGainTapContext()
+    private var contextB = ReplayGainTapContext()
     /// Accessed only while `lock` is held. Separate counters allow both physical decks to prepare
     /// their taps concurrently without one deck invalidating the other's request.
     private var replayGainGenerationA: UInt64 = 0
@@ -120,7 +121,16 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     private var periodicToken: Any?
     private var periodicOwner: AVPlayer?
 
-    init() {
+    init(playerFactory: @escaping @Sendable () -> AVPlayer = { AVPlayer() }) {
+        self.playerFactory = playerFactory
+        deckA = playerFactory()
+        deckB = playerFactory()
+        configurePlayers()
+    }
+
+    /// Installs observers on the current physical players, including after a system reset.
+    /// Caller holds the lock, except during initialization.
+    private func configurePlayers() {
         for deck in [deckA, deckB] {
             deck.automaticallyWaitsToMinimizeStalling = true
             deck.actionAtItemEnd = .pause
@@ -204,6 +214,12 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     func play(trackID: String, url: URL, headers: [String: String]) -> AudioEnginePlaybackToken {
         lock.lock()
         defer { lock.unlock() }
+
+        // A Next command may beat the failed item's callback to PlayerService. A failed
+        // AVPlayer is terminal: replacing its AVPlayerItem is not enough to revive it.
+        if deckA.status == .failed || deckB.status == .failed {
+            recreatePlayers()
+        }
 
         // Adopt a hand-off the engine already performed at the natural end of the previous track.
         if trackID == handedOffTrackID,
@@ -396,6 +412,33 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         resetDecks()
+    }
+
+    func resetAfterMediaServicesReset() {
+        lock.withLock { recreatePlayers() }
+    }
+
+    /// Caller holds the lock. Discard both decks, their observers, and all pending work
+    /// tied to the old media services. Tokens never restart, even if the same song reloads.
+    private func recreatePlayers() {
+        let activeGain = activeContext.gain
+        timeControlObservers.forEach { $0.invalidate() }
+        timeControlObservers.removeAll()
+        replayGainTaskA?.cancel()
+        replayGainTaskB?.cancel()
+        replayGainTaskA = nil
+        replayGainTaskB = nil
+        replayGainGenerationA &+= 1
+        replayGainGenerationB &+= 1
+        resetDecks()
+        deckA = playerFactory()
+        deckB = playerFactory()
+        contextA = ReplayGainTapContext()
+        contextB = ReplayGainTapContext()
+        activeIsA = true
+        contextA.gain = activeGain
+        configurePlayers()
+        applyDeckVolumes()
     }
 
     func seek(to seconds: Double) async -> Bool {

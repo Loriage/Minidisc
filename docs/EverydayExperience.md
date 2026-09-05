@@ -72,9 +72,10 @@ Stations for You uses actual favorite and recently/frequently heard library arti
 can start immediately while the existing artist Instant Mix fills the queue behind it. Distinct artists
 with the same name remain separate. Failed history and favorites requests do not hide each other's
 stations, and a failed refresh retains the previous collection. Smart Shuffle has an illustrated card
-with library artwork and preparation feedback. Artist captions wrap fully at accessibility text sizes;
-the play symbol stays bounded by its 44-point disk. Fresh Releases is absent when its result collection is
-empty, including for a connected ListenBrainz account.
+with library artwork and preparation feedback. Stations show the artist's name as the title and
+Similar Artists as the subtitle, with no overlaid play control. The whole card starts playback and its
+subtitle shows preparation feedback. Captions wrap fully at accessibility text sizes. Fresh Releases is
+absent when its result collection is empty, including for a connected ListenBrainz account.
 
 Playlists, Albums, Artists, Songs, Favorites and Downloads use inline titles. Favorites has no redundant
 Songs heading. Album and artist indexes work in lists, grids and downloaded fallbacks; selecting a
@@ -109,6 +110,11 @@ album/artist list and grid indexes, all four Downloads letter buckets, mixed Fav
 artist-seeded playback and Smart Shuffle queue progression. Final French captures were inspected at
 normal and Accessibility XXXL sizes. The signed Debug build containing these refinements was also
 installed and launched on the physical iPhone on 5 September 2026.
+
+The simplified station presentation was then checked in two focused UI tests at normal and
+Accessibility XXXL sizes: artist-only titles, separate Similar Artists subtitles, and no play overlay.
+Tapping the card still starts the exact artist seed, with confirmed audio progress. The corresponding
+signed Debug build was installed and launched on the same iPhone.
 
 The empty Fresh Releases UI check uses an account without ListenBrainz configured; the connected-empty
 case is covered by model tests and the view condition, not a connected-account UI fixture.

@@ -56,28 +56,6 @@
         }
       }
     },
-    "%@ & Similar Artists" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ et artistes similaires"
-          }
-        }
-      }
-    },
-    "Artist Station" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Station d’artiste"
-          }
-        }
-      }
-    },
     "Play an artist station" : {
       "extractionState" : "manual",
       "localizations" : {

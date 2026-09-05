@@ -26,31 +26,21 @@ struct ArtistStationCard: View {
                         .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         .padding(side * 0.09)
-                    ZStack {
-                        Circle().fill(.black.opacity(0.75))
-                        if isStarting {
-                            ProgressView().tint(.white)
-                        } else {
-                            Image(systemName: "play.fill").font(.system(size: 20)).foregroundStyle(.white)
-                        }
-                    }
-                    .frame(width: 44, height: 44)
-                    .padding(12)
                 }
                 .frame(width: side, height: side)
                 .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard))
                 .accessibilityHidden(true)
-                CoverCardMetadata(title: String(localized: "\(station.artist.name) & Similar Artists"),
-                                  subtitle: String(localized: "Artist Station"))
+                CoverCardMetadata(title: station.artist.name,
+                                  subtitle: isStarting ? String(localized: "Preparing…") : String(localized: "Similar Artists"))
             }
             .frame(width: side, alignment: .leading)
         }
         .buttonStyle(.plain)
         .disabled(isStarting)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("\(station.artist.name) & Similar Artists"))
+        .accessibilityLabel(Text(station.artist.name))
         .accessibilityHint("Play an artist station")
-        .accessibilityValue(isStarting ? Text("Loading") : Text(""))
+        .accessibilityValue(isStarting ? Text("Preparing…") : Text("Similar Artists"))
         .accessibilityIdentifier("discover.station.\(station.id)")
     }
 }

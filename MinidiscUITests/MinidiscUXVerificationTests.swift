@@ -548,7 +548,7 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try tapTab("Découvrir")
         let station = searchElement("discover.station.ux-search-artist")
         try require(station, timeout: 10)
-        XCTAssertTrue(station.label.contains("Aurore Ensemble"), "Favorite/history artist must determine the station.")
+        try assertStationCardLabels(station)
         // No ListenBrainz account is configured in this disposable fixture.
         XCTAssertFalse(searchElement("discover.freshReleases").exists)
         captureHierarchy("discover-stations-without-empty-fresh-releases")
@@ -591,17 +591,7 @@ final class MinidiscUXVerificationTests: XCTestCase {
     }
 
     func testFixtureRefinementLargeText() async throws {
-        try await launchFixtureApp(homeCatalog: true, contentSize: "UICTContentSizeCategoryAccessibilityXXXL")
-        try tapTab("Découvrir")
-        let station = searchElement("discover.station.ux-search-artist")
-        try require(station, timeout: 10)
-        try scrollCardToTop(station, named: "discover-large-station")
-        let stationTitle = station.descendants(matching: .staticText)
-            .matching(identifier: "Aurore Ensemble et artistes similaires").firstMatch
-        try require(stationTitle)
-        XCTAssertTrue(stationTitle.isHittable && stationTitle.frame.maxY < app.frame.maxY - 130)
-        captureHierarchy("discover-large-text-station-card")
-        try await Task.sleep(for: .seconds(3))
+        try await captureFixtureStationLargeText()
         let shuffle = searchElement("discover.smartShuffle")
         try scrollCardToTop(shuffle, named: "discover-large-shuffle")
         XCTAssertLessThanOrEqual(shuffle.frame.maxY, app.frame.maxY - 110)
@@ -619,6 +609,33 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try require(app.buttons["songs.selection.ux-search-song-exact"])
         try require(app.buttons["songs.selection.ux-search-song-prefix"])
         captureHierarchy("search-large-text-selection-sheet")
+        try await Task.sleep(for: .seconds(3))
+    }
+
+    func testFixtureStationLargeText() async throws {
+        try await captureFixtureStationLargeText()
+    }
+
+    private func assertStationCardLabels(_ station: XCUIElement) throws {
+        XCTAssertEqual(station.label, "Aurore Ensemble", "The station title contains only its fixture artist name.")
+        XCTAssertEqual(station.value as? String, "Artistes similaires")
+        for label in ["Aurore Ensemble", "Artistes similaires"] {
+            try require(station.descendants(matching: .staticText).matching(identifier: label).firstMatch)
+        }
+    }
+
+    private func captureFixtureStationLargeText() async throws {
+        try await launchFixtureApp(homeCatalog: true, contentSize: "UICTContentSizeCategoryAccessibilityXXXL")
+        try tapTab("Découvrir")
+        let station = searchElement("discover.station.ux-search-artist")
+        try require(station, timeout: 10)
+        try scrollCardToTop(station, named: "discover-large-station")
+        try assertStationCardLabels(station)
+        for label in ["Aurore Ensemble", "Artistes similaires"] {
+            let text = station.descendants(matching: .staticText).matching(identifier: label).firstMatch
+            XCTAssertTrue(text.isHittable && text.frame.maxY < app.frame.maxY - 130)
+        }
+        captureHierarchy("discover-large-text-station-card")
         try await Task.sleep(for: .seconds(3))
     }
 

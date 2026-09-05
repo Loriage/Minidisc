@@ -125,8 +125,8 @@ struct MiniPlayerAccessoryView: View {
 
                 Spacer(minLength: 0)
 
-                // Equal touch targets provide the spacing between the transport symbols.
-                HStack(spacing: 0) {
+                // Keep a small gap between the two 44-point touch targets in the expanded bar.
+                HStack(spacing: MinidiscSpacing.s) {
                     playPauseButton(isPlaying: isPlaying, isAvailable: isAvailable)
                     if !playerState.queue.isEmpty && !isLiveStream {
                         Button {

@@ -35,6 +35,7 @@ struct MainTabView: View {
             .fullScreenCover(isPresented: $showingFullPlayer) {
                 FullPlayerView()
                     .minidiscZoomTransition(sourceID: fullPlayerZoomID, in: playerZoom)
+                    .toastOverlay(reservesMiniPlayerSpace: false)
             }
             .sheet(item: $playlistAddition.selectedSong) { song in
                 AddToPlaylistSheet(song: song)

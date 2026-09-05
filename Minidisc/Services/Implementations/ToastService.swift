@@ -6,6 +6,7 @@ import SwiftUI
 enum ToastAction: Equatable, Sendable {
     case navigateToPlaylist(id: String, name: String, coverArtId: String?)
     case navigateToDownloads
+    case undoQueueRemoval(QueueRemoval)
 }
 
 @MainActor

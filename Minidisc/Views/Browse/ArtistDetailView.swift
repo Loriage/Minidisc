@@ -149,6 +149,7 @@ struct ArtistDetailView: View {
                         }
                         .ignoresSafeArea(.container, edges: .top)
                         .minidiscHideTopScrollEdgeEffect()
+                        .minidiscSongSwipeContainer()
                         .background(bodyColor.ignoresSafeArea())
                         .refreshable {
                             await vm.load()

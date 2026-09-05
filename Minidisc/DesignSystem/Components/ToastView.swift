@@ -23,7 +23,11 @@ struct ToastView: View {
             .multilineTextAlignment(.leading)
 
             // Chevron only when the toast is tappable (e.g. add-to-playlist → opens the playlist).
-            if toast.action != nil {
+            if case .undoQueueRemoval = toast.action {
+                Text("Undo").font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.minidiscAccent)
+                    .padding(.leading, MinidiscSpacing.s)
+            } else if toast.action != nil {
                 Image(systemName: "chevron.forward")
                     .font(.minidiscCaption.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -58,6 +62,7 @@ struct ToastView: View {
 // MARK: - Overlay modifier
 
 struct ToastOverlay: ViewModifier {
+    var reservesMiniPlayerSpace = true
     @Environment(ToastService.self) private var toastService
     @Environment(\.appContainer) private var container
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -70,7 +75,7 @@ struct ToastOverlay: ViewModifier {
     /// Bottom inset so the toast floats just above the mini player when it is shown, otherwise just
     /// above the tab bar / home indicator. Tunable if the gap needs nudging on device.
     private var bottomInset: CGFloat {
-        miniPlayerVisible ? MinidiscSpacing.miniPlayerBottomMargin + MinidiscSpacing.s : MinidiscSpacing.l
+        reservesMiniPlayerSpace && miniPlayerVisible ? MinidiscSpacing.miniPlayerBottomMargin + MinidiscSpacing.s : MinidiscSpacing.l
     }
 
     func body(content: Content) -> some View {
@@ -103,6 +108,14 @@ struct ToastOverlay: ViewModifier {
         guard let action = toast.action else { return }
         toastService.dismiss()
         switch action {
+        case .undoQueueRemoval(let removal):
+            Task {
+                if await container?.playerService.restoreQueueTrack(removal) == true {
+                    toastService.showConfirmation(String(localized: "Restored to queue"), coverArtId: removal.song.coverArtId)
+                } else {
+                    toastService.show(String(localized: "The queue has changed. This removal can no longer be undone."))
+                }
+            }
         case .navigateToDownloads:
             NotificationCenter.default.post(name: .minidiscNavigateToDownloads, object: nil)
         case let .navigateToPlaylist(id, name, coverArtId):
@@ -112,7 +125,7 @@ struct ToastOverlay: ViewModifier {
 }
 
 extension View {
-    func toastOverlay() -> some View {
-        modifier(ToastOverlay())
+    func toastOverlay(reservesMiniPlayerSpace: Bool = true) -> some View {
+        modifier(ToastOverlay(reservesMiniPlayerSpace: reservesMiniPlayerSpace))
     }
 }

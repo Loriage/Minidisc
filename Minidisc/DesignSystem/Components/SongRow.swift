@@ -112,6 +112,7 @@ struct SongRow: View {
         } preview: {
             SongContextPreview(coverImage: coverImage, song: song)
         }
+        .modifier(SongQuickActions(song: song, onAddToPlaylist: onAddToPlaylist))
     }
 
     private var primaryContent: some View {

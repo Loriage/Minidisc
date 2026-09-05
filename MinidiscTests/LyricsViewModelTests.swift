@@ -27,6 +27,9 @@ final class MockPlayerService: PlayerServiceProtocol {
     func addToQueue(_ song: DisplayableSong) async {}
     func addToQueue(_ songs: [DisplayableSong]) async {}
     func removeFromQueue(at index: Int) async {}
+    func removeQueueTrack(_ selection: QueueTrackSelection) async -> QueueRemoval? { nil }
+    func restoreQueueTrack(_ removal: QueueRemoval) async -> Bool { false }
+    func moveQueueTrack(_ selection: QueueTrackSelection, toIndex: Int) async {}
     func moveInQueue(fromIndex: Int, toIndex: Int) async {}
     func restoreSession() async {}
     func handleNetworkPathChanged(_ event: NetworkPathEvent) async {}

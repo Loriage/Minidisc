@@ -2148,6 +2148,38 @@ actor PlayerService: PlayerServiceProtocol {
         await MainActor.run { toastService.showConfirmation(message, coverArtId: coverArtId) }
     }
 
+    func removeQueueTrack(_ selection: QueueTrackSelection) async -> QueueRemoval? {
+        guard selection.queueGeneration == queueGeneration else { return nil }
+        let previousNextTrackID = await queuedNextTrackID()
+        guard let removal = await MainActor.run(body: { QueueEditing.remove(selection, from: state) }) else { return nil }
+        guard removal.queueGeneration == queueGeneration else { return nil }
+        originalQueueOrder = nil
+        await invalidatePrefetchIfNextTrackChanged(from: previousNextTrackID, reason: "queue swipe removed next track")
+        await saveSession()
+        return removal
+    }
+
+    func restoreQueueTrack(_ removal: QueueRemoval) async -> Bool {
+        guard removal.queueGeneration == queueGeneration else { return false }
+        let previousNextTrackID = await queuedNextTrackID()
+        guard await MainActor.run(body: { QueueEditing.restore(removal, in: state) }) else { return false }
+        guard removal.queueGeneration == queueGeneration else { return false }
+        originalQueueOrder = nil
+        await invalidatePrefetchIfNextTrackChanged(from: previousNextTrackID, reason: "queue undo restored next track")
+        await saveSession()
+        return true
+    }
+
+    func moveQueueTrack(_ selection: QueueTrackSelection, toIndex: Int) async {
+        guard selection.queueGeneration == queueGeneration else { return }
+        let previousNextTrackID = await queuedNextTrackID()
+        guard await MainActor.run(body: { QueueEditing.move(selection, to: toIndex, in: state) }),
+              selection.queueGeneration == queueGeneration else { return }
+        originalQueueOrder = nil
+        await invalidatePrefetchIfNextTrackChanged(from: previousNextTrackID, reason: "queue drag changed next track")
+        await saveSession()
+    }
+
     func removeFromQueue(at index: Int) async {
         guard await MainActor.run(body: { !state.isLiveStream }) else {
             Logger.player.debug("removeFromQueue ignored — live stream mode")

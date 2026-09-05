@@ -4,6 +4,7 @@
 /// changes. Indexes remain part of the request because the same song may legitimately appear more than once.
 nonisolated struct QueueTrackSelection: Equatable, Sendable {
     let queueGeneration: UInt64
+    let queueRevision: UInt64
     let currentIndex: Int
     let currentTrackID: String
     let destinationIndex: Int
@@ -23,6 +24,7 @@ nonisolated struct QueueTrackSelection: Equatable, Sendable {
         }
 
         self.queueGeneration = playerState.queueGeneration
+        self.queueRevision = playerState.queueRevision
         self.currentIndex = currentIndex
         self.currentTrackID = currentTrack.id
         self.destinationIndex = destinationIndex
@@ -34,6 +36,7 @@ nonisolated struct QueueTrackSelection: Equatable, Sendable {
     func resolve(in playerState: PlayerState) -> Int? {
         let queue = playerState.queue
         guard playerState.queueGeneration == queueGeneration,
+              playerState.queueRevision == queueRevision,
               playerState.currentIndex == currentIndex,
               playerState.currentTrack?.id == currentTrackID,
               queue.indices.contains(currentIndex),

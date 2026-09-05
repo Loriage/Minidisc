@@ -11,8 +11,13 @@ final class PlayerState {
     /// Internal identity of the current queue session. Async producers verify it
     /// before committing results so an old session cannot append into a replacement.
     @ObservationIgnored var queueGeneration: UInt64 = 0
+    /// Every structural queue edit invalidates row actions captured before that edit, including
+    /// edits involving two occurrences of the same song.
+    @ObservationIgnored private(set) var queueRevision: UInt64 = 0
     var currentTrack: DisplayableSong?
-    var queue: [DisplayableSong] = []
+    var queue: [DisplayableSong] = [] {
+        didSet { queueRevision &+= 1 }
+    }
     var currentIndex: Int = 0
     var playbackState: PlaybackState = .idle {
         didSet {

@@ -27,6 +27,9 @@ protocol PlayerServiceProtocol: AnyObject, Sendable {
     func addToQueue(_ song: DisplayableSong) async
     func addToQueue(_ songs: [DisplayableSong]) async
     func removeFromQueue(at index: Int) async
+    func removeQueueTrack(_ selection: QueueTrackSelection) async -> QueueRemoval?
+    func restoreQueueTrack(_ removal: QueueRemoval) async -> Bool
+    func moveQueueTrack(_ selection: QueueTrackSelection, toIndex: Int) async
     func moveInQueue(fromIndex: Int, toIndex: Int) async
     func restoreSession() async
     /// Invalidates network-bound playback resources after a meaningful path transition.

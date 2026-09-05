@@ -12,6 +12,7 @@ private struct QueueRow: View {
     var contentColor: Color = .primary
     var secondaryContentColor: Color = .secondary
     var loadArtwork: Bool = true
+    var showsReorderHint: Bool = false
 
     @Environment(\.appContainer) private var container
     @Environment(PlaylistAddition.self) private var playlistAddition
@@ -19,13 +20,15 @@ private struct QueueRow: View {
     @Query private var favoriteMatches: [FavoriteRecord]
 
     init(song: DisplayableSong, isCurrent: Bool, onRemove: (() -> Void)? = nil,
-         contentColor: Color = .primary, secondaryContentColor: Color = .secondary, loadArtwork: Bool = true) {
+         contentColor: Color = .primary, secondaryContentColor: Color = .secondary, loadArtwork: Bool = true,
+         showsReorderHint: Bool = false) {
         self.song = song
         self.isCurrent = isCurrent
         self.onRemove = onRemove
         self.contentColor = contentColor
         self.secondaryContentColor = secondaryContentColor
         self.loadArtwork = loadArtwork
+        self.showsReorderHint = showsReorderHint
         let cid = "song:\(song.id)"
         _favoriteMatches = Query(filter: #Predicate<FavoriteRecord> { $0.id == cid })
     }
@@ -57,7 +60,10 @@ private struct QueueRow: View {
 
             if isCurrent {
                 NowPlayingBarsIndicator(isPlaying: isPlaying)
-            } else {
+            } else if showsReorderHint {
+                Image(systemName: "line.3.horizontal")
+                    .foregroundStyle(secondaryContentColor.opacity(0.5))
+                    .accessibilityHidden(true)
             }
         }
         .padding(.vertical, MinidiscSpacing.xs)
@@ -127,86 +133,159 @@ private struct QueueRow: View {
             }
             .tint(.primary)
         }
+        .modifier(SongQuickActions(song: song, onAddToPlaylist: playlistAddition.present, onRemove: onRemove))
     }
 }
 
-/// The iOS Up Next reorder list on FullPlayerView's inline queue surface.
-/// Native `List` + `.onMove` (always-on edit mode) — offset-based, so
-/// duplicate-safe — rendered transparently over the player's blurred background. Removal is via the row
-/// context menu (no edit-mode delete circles); tap-to-play stays in the queue surface.
+/// The next songs remain directly below the playback modes. Native drag and swipe can coexist
+/// on iOS 27; the earlier system keeps the existing always-visible reorder handles.
 struct InlineQueueList: View {
     let playerState: PlayerState
     var contentColor: Color = .primary
     var secondaryContentColor: Color = .secondary
-    /// Defer row artwork loads until the queue is actually visible (it is mounted at opacity 0 for the
-    /// morph). The List stays mounted with stable identity — only the per-row artwork task is gated.
     var loadArtwork: Bool = true
+
+    var body: some View {
+        let entries = QueueRowSnapshot.capture(playerState)
+        if entries.isEmpty {
+            EmptyStateView(systemImage: "list.bullet", title: "Nothing up next",
+                           subtitle: "Tracks you add to the queue appear here.")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if #available(iOS 27, *) {
+            ReorderableQueueList(entries: entries, queueCount: playerState.queue.count,
+                                 contentColor: contentColor, secondaryContentColor: secondaryContentColor,
+                                 loadArtwork: loadArtwork)
+        } else {
+            LegacyQueueList(entries: entries, queueCount: playerState.queue.count,
+                            contentColor: contentColor, secondaryContentColor: secondaryContentColor,
+                            loadArtwork: loadArtwork)
+        }
+    }
+}
+
+private struct QueueRowSnapshot: Identifiable {
+    struct ID: Hashable {
+        let generation: UInt64
+        let songID: String
+        let occurrence: Int
+    }
+    let id: ID
+    let song: DisplayableSong
+    let selection: QueueTrackSelection
+
+    @MainActor
+    static func capture(_ state: PlayerState) -> [Self] {
+        var occurrences: [String: Int] = [:]
+        return state.queue.enumerated().compactMap { index, song in
+            let occurrence = occurrences[song.id, default: 0]
+            occurrences[song.id] = occurrence + 1
+            guard index > state.currentIndex,
+                  let selection = QueueTrackSelection(playerState: state, destinationIndex: index,
+                                                      destinationTrackID: song.id) else { return nil }
+            return Self(id: ID(generation: state.queueGeneration, songID: song.id, occurrence: occurrence),
+                        song: song, selection: selection)
+        }
+    }
+}
+
+private struct QueueEntryRow: View {
+    let entry: QueueRowSnapshot
+    let contentColor: Color
+    let secondaryContentColor: Color
+    let loadArtwork: Bool
+    var showsReorderHint = false
     @Environment(\.appContainer) private var container
 
     var body: some View {
-        let queue = playerState.queue
-        let currentIndex = playerState.currentIndex
-        let upNext = Array(queue.dropFirst(currentIndex + 1))
-
-        if upNext.isEmpty {
-            EmptyStateView(
-                systemImage: "list.bullet",
-                title: "Nothing up next",
-                subtitle: "Tracks you add to the queue appear here."
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            List {
-                ForEach(Array(upNext.enumerated()), id: \.offset) { offset, song in
-                    let absoluteIndex = currentIndex + 1 + offset
-                    QueueRow(song: song, isCurrent: false, onRemove: { removeFromQueue(at: absoluteIndex) },
-                             contentColor: contentColor, secondaryContentColor: secondaryContentColor,
-                             loadArtwork: loadArtwork)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            HapticFeedback.medium.trigger()
-                            Task {
-                                do {
-                                    guard let playerState = container?.playerState,
-                                          let selection = QueueTrackSelection(
-                                              playerState: playerState,
-                                              destinationIndex: absoluteIndex,
-                                              destinationTrackID: song.id
-                                          ) else {
-                                        return
-                                    }
-                                    _ = try await container?.playerService.selectQueueTrack(selection)
-                                } catch {
-                                    Logger.player.error("[PLAYBACK] play failed: \(error, privacy: .public)")
-                if !UserFacingError.isCancellation(error) {
-                    container?.toastService.showError(UserFacingError.from(error).displayMessage)
-                }
-                                }
-                            }
-                        }
-                }
-                .onMove { source, destination in
-                    // Native offset-based reorder — duplicate-safe; destination is the moveInQueue toOffset.
-                    guard let relativeSource = source.first else { return }
-                    let absoluteSource = currentIndex + 1 + relativeSource
-                    let absoluteDestination = currentIndex + 1 + destination
-                    HapticFeedback.light.trigger()
-                    Task { await container?.playerService.moveInQueue(fromIndex: absoluteSource, toIndex: absoluteDestination) }
+        QueueRow(song: entry.song, isCurrent: false, onRemove: remove,
+                 contentColor: contentColor, secondaryContentColor: secondaryContentColor,
+                 loadArtwork: loadArtwork, showsReorderHint: showsReorderHint)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .contentShape(Rectangle())
+            .accessibilityIdentifier("queue.track.\(entry.song.id).\(entry.id.occurrence)")
+            .onTapGesture {
+                HapticFeedback.medium.trigger()
+                Task {
+                    await container?.toastService.perform {
+                        _ = try await container?.playerService.selectQueueTrack(entry.selection)
+                    }
                 }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .environment(\.editMode, .constant(.active))
-        }
     }
 
-    private func removeFromQueue(at index: Int) {
+    private func remove() {
         Task {
-            guard let queue = container?.playerState.queue, index >= 0, index < queue.count else { return }
+            guard let removal = await container?.playerService.removeQueueTrack(entry.selection) else { return }
             HapticFeedback.light.trigger()
-            await container?.playerService.removeFromQueue(at: index)
+            container?.toastService.show(String(localized: "Removed from queue"), subtitle: removal.song.title,
+                                         style: .success, duration: 6, coverArtId: removal.song.coverArtId,
+                                         action: .undoQueueRemoval(removal))
         }
+    }
+}
+
+@available(iOS 27, *)
+private struct ReorderableQueueList: View {
+    let entries: [QueueRowSnapshot]
+    let queueCount: Int
+    let contentColor: Color
+    let secondaryContentColor: Color
+    let loadArtwork: Bool
+    @Environment(\.appContainer) private var container
+
+    var body: some View {
+        List {
+            ForEach(entries) { entry in
+                QueueEntryRow(entry: entry, contentColor: contentColor, secondaryContentColor: secondaryContentColor,
+                              loadArtwork: loadArtwork, showsReorderHint: true)
+            }
+            .reorderable()
+        }
+        .reorderContainer(for: QueueRowSnapshot.self) { difference in
+            guard difference.sources.count == 1,
+                  let source = difference.sources.first,
+                  let entry = entries.first(where: { $0.id == source }) else { return }
+            let destination: Int
+            switch difference.destination.position {
+            case .before(let id):
+                guard let target = entries.first(where: { $0.id == id }) else { return }
+                destination = target.selection.destinationIndex
+            case .end:
+                destination = queueCount
+            }
+            HapticFeedback.light.trigger()
+            Task { await container?.playerService.moveQueueTrack(entry.selection, toIndex: destination) }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+    }
+}
+
+private struct LegacyQueueList: View {
+    let entries: [QueueRowSnapshot]
+    let queueCount: Int
+    let contentColor: Color
+    let secondaryContentColor: Color
+    let loadArtwork: Bool
+    @Environment(\.appContainer) private var container
+
+    var body: some View {
+        List {
+            ForEach(entries) { entry in
+                QueueEntryRow(entry: entry, contentColor: contentColor, secondaryContentColor: secondaryContentColor,
+                              loadArtwork: loadArtwork)
+            }
+            .onMove { sources, destination in
+                guard let source = sources.first, entries.indices.contains(source) else { return }
+                let entry = entries[source]
+                let target = entries.indices.contains(destination) ? entries[destination].selection.destinationIndex : queueCount
+                HapticFeedback.light.trigger()
+                Task { await container?.playerService.moveQueueTrack(entry.selection, toIndex: target) }
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .environment(\.editMode, .constant(.active))
     }
 }

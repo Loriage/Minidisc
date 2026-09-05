@@ -350,9 +350,6 @@ struct FullPlayerView: View {
             .environment(\.colorScheme, .dark)
             .frame(maxWidth: .infinity, minHeight: 120, maxHeight: .infinity)
 
-            queueStatusLine(playerState)
-                .padding(.horizontal, MinidiscSpacing.l)
-                .padding(.vertical, MinidiscSpacing.s)
         }
     }
 
@@ -397,23 +394,6 @@ struct FullPlayerView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
-    }
-
-    private func queueStatusLine(_ playerState: PlayerState) -> some View {
-        let upNextCount = max(playerState.queue.count - playerState.currentIndex - 1, 0)
-        var bits: [String] = ["\(upNextCount) up next"]
-        if playerState.repeatMode == .all {
-            bits.append("Repeating all")
-        } else if playerState.repeatMode == .one {
-            bits.append("Repeating one")
-        }
-        if playerState.isShuffled { bits.append("Shuffled") }
-        if playerState.isAutoExtendEnabled { bits.append("Auto-extend on") }
-        return Text(bits.joined(separator: " · "))
-            .font(.minidiscCaption)
-            .foregroundStyle(vm.secondaryContentColor)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .lineLimit(1)
     }
 
     private var topBar: some View {

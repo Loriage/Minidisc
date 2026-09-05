@@ -6,7 +6,7 @@
 - A failed stream is checked against Navidrome before treating the song as removed. Only a structured `getSong`/`getPlaylist` not-found response confirms deletion; connectivity failures and proxy HTTP 404 responses do not.
 - Opening or starting an old playlist revalidates its content. A deleted playlist displays one explanation and retains its downloaded music. An unavailable queue advances through a bounded number of songs and stops safely when none are playable.
 - Home displays its last saved feed by server while offline. During a cold load, one slow section does not hold back the others. Pull-to-refresh applies its result together to preserve scroll layout.
-- The player queue shows the actual upcoming songs directly below its playback modes, without an Up Next heading or an album presented as their source.
+- The player queue shows the actual upcoming songs directly below its playback modes, without an Up Next heading, footer or an album presented as their source.
 - Failed playlist edits keep the editor and its draft open. Retrying after a partial save is safe. Explicit playback, favorite and download actions surface failures.
 - The selected tab and search text survive scene restoration. Changing server clears navigation paths that reference the previous server. Download and playback controls have explicit accessibility labels.
 
@@ -38,6 +38,10 @@ Playback startup is measured from transport command to observed playhead progres
 - `PlaylistEditCommitterTests` and `FavoritesFailureTests`: partial saves and persistent rollback after failed actions.
 - `PlaybackDiagnosticsTests`: redaction and local continuity counters.
 
-The complete Swift Testing run passed 843 tests in 137 suites on 5 September 2026. Subsequent changes passed 47 targeted tests (including two new favorites cases), followed by nine shared-download tests. The subsequent Next/reconnection correction passed 16 targeted tests, including a reproduced regression and verification that real retries remain visible. Simulator UI proof and the physical iPhone installation are recorded separately from unit-test coverage.
+The complete Swift Testing run passed 843 tests in 137 suites on 5 September 2026. Subsequent changes passed 47 targeted tests (including two new favorites cases), followed by nine shared-download tests. The subsequent Next/reconnection correction passed 16 targeted tests, including a reproduced regression and verification that real retries remain visible.
+
+Separate simulator UI runs passed onboarding with a local fixture, playlist playback/Pause/Next, concurrent download progress and completion, and welcome-screen readability at accessibility XXXL. Local playback was checked by observing the playhead advance while the fixture rejected all streams; Pause stopped that progression. A final queue scenario confirmed the upcoming song was visible with no album subtitle, Up Next heading or footer. Reproduction instructions are in [Scripts/Testing/README.md](../Scripts/Testing/README.md).
+
+The signed Debug app, version 26.8.3 (25), was installed and launched on the paired iPhone. This verifies delivery and startup, separately from the simulator's functional coverage.
 
 Real cellular handoffs, telephone interruptions, AirPods route changes and long-running background scheduling still require physical-device observation; passing simulated tests alone does not validate those conditions.

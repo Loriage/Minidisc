@@ -11,12 +11,14 @@ final class HomeFeedViewModel {
         var id: String { name }
     }
 
-    nonisolated enum Section: Hashable, Sendable { case playlists, history, recent, genres }
+    nonisolated enum Section: Hashable, Sendable { case playlists, history, recent, genres, favorites, habits }
     private nonisolated enum SectionResult: Sendable {
         case playlists([Playlist])
         case history([AlbumID3])
         case recent([AlbumID3])
         case genres([GenreShelf])
+        case favorites(HomeFavorites)
+        case habits([AlbumID3])
         case failure(Section, UserFacingError)
         case cancelled(Section)
 
@@ -26,6 +28,8 @@ final class HomeFeedViewModel {
             case .history: .history
             case .recent: .recent
             case .genres: .genres
+            case .favorites: .favorites
+            case .habits: .habits
             case .failure(let section, _), .cancelled(let section): section
             }
         }
@@ -35,11 +39,26 @@ final class HomeFeedViewModel {
     private(set) var recentlyPlayed: [AlbumID3] = []
     private(set) var recentlyAdded: [AlbumID3] = []
     private(set) var genreShelves: [GenreShelf] = []
+    private(set) var favorites = HomeFavorites()
+    private(set) var mostPlayed: [AlbumID3] = []
+    var heavyRotation: [AlbumID3] {
+        Array(HomePersonalization.unique(mostPlayed, excluding: Set((recentlyPlayed + favorites.albums).map(\.id))).prefix(12))
+    }
+    var rediscovery: [AlbumID3] {
+        HomePersonalization.rediscovery(favorites: [], frequent: mostPlayed,
+                                        recent: recentlyPlayed + favorites.albums + heavyRotation)
+    }
+    var relevantAdditions: [AlbumID3] {
+        HomePersonalization.relevantAdditions(recentlyAdded, favorites: favorites, frequent: mostPlayed)
+    }
+    var otherAdditions: [AlbumID3] {
+        HomePersonalization.unique(recentlyAdded, excluding: Set(relevantAdditions.map(\.id)))
+    }
     private(set) var pendingSections: Set<Section> = []
     private(set) var hasPartialFailure = false
     var isLoading = false
     var error: UserFacingError?
-    var isEmpty: Bool { topPicks.isEmpty && recentlyPlayed.isEmpty && recentlyAdded.isEmpty && genreShelves.isEmpty }
+    var isEmpty: Bool { topPicks.isEmpty && recentlyPlayed.isEmpty && recentlyAdded.isEmpty && genreShelves.isEmpty && favorites.songs.isEmpty && favorites.albums.isEmpty && mostPlayed.isEmpty }
 
     private let libraryService: any PlaylistBrowsing & RecentlyAddedAlbumBrowsing & ListeningHistoryBrowsing & GenreBrowsing
     private let cache: HomeFeedCache?
@@ -82,7 +101,9 @@ final class HomeFeedViewModel {
         // These two catalogue capabilities can answer from the persistent local index.
         // History and genre requests are skipped while offline.
         if !isOnline, !isEmpty { return }
-        pendingSections = isOnline ? [.playlists, .history, .recent, .genres] : [.playlists, .recent]
+        let starredService = libraryService as? any StarredBrowsing
+        pendingSections = isOnline ? [.playlists, .history, .recent, .genres, .habits] : [.playlists, .recent]
+        if isOnline && starredService != nil { pendingSections.insert(.favorites) }
         let service = libraryService
         var staged = snapshot
         await withTaskGroup(of: SectionResult.self) { group in
@@ -93,8 +114,18 @@ final class HomeFeedViewModel {
                     })
                 }
             }
-            group.addTask { await Self.fetch(.recent) { .recent(try await service.recentlyAddedAlbums(size: 20)) } }
+            group.addTask { await Self.fetch(.recent) { .recent(try await service.recentlyAddedAlbums(size: 60)) } }
             if isOnline {
+                group.addTask { await Self.fetch(.habits) { .habits(try await service.mostPlayedAlbums(size: 40)) } }
+                if let starredService {
+                    group.addTask {
+                        await Self.fetch(.favorites) {
+                            let starred = try await starredService.getStarred2()
+                            return .favorites(HomeFavorites(songs: Array((starred.song ?? []).prefix(60)),
+                                albums: Array((starred.album ?? []).prefix(40)), artists: Array((starred.artist ?? []).prefix(100))))
+                        }
+                    }
+                }
                 group.addTask { await Self.fetch(.history) { .history(try await service.recentlyPlayedAlbums(size: 20)) } }
                 group.addTask {
                     await Self.fetch(.genres) {
@@ -119,6 +150,8 @@ final class HomeFeedViewModel {
                 case .history(let values): staged.recentlyPlayed = values
                 case .recent(let values): staged.recentlyAdded = values
                 case .genres(let values): staged.genres = values
+                case .favorites(let values): staged.favorites = values
+                case .habits(let values): staged.mostPlayed = HomePersonalization.unique(values)
                 case .failure(_, let failure):
                     hasPartialFailure = true
                     error = error ?? failure
@@ -149,7 +182,7 @@ final class HomeFeedViewModel {
     }
 
     private var snapshot: HomeFeedSnapshot {
-        HomeFeedSnapshot(playlists: topPicks.map(IndexedPlaylistPayload.init), recentlyPlayed: recentlyPlayed, recentlyAdded: recentlyAdded, genres: genreShelves)
+        HomeFeedSnapshot(playlists: topPicks.map(IndexedPlaylistPayload.init), recentlyPlayed: recentlyPlayed, recentlyAdded: recentlyAdded, genres: genreShelves, favorites: favorites, mostPlayed: mostPlayed)
     }
 
     private func apply(_ snapshot: HomeFeedSnapshot) {
@@ -157,5 +190,7 @@ final class HomeFeedViewModel {
         recentlyPlayed = snapshot.recentlyPlayed
         recentlyAdded = snapshot.recentlyAdded
         genreShelves = snapshot.genres
+        favorites = snapshot.favorites ?? HomeFavorites()
+        mostPlayed = snapshot.mostPlayed ?? []
     }
 }

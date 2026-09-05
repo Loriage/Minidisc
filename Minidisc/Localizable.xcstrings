@@ -1,6 +1,393 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%lld songs in your queue" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld morceau dans votre file"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld morceaux dans votre file"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld song in your queue"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld songs in your queue"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld songs selected" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld morceau sélectionné"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld morceaux sélectionnés"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld song selected"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld songs selected"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld songs added" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld morceau ajouté"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld morceaux ajoutés"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld song added"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld songs added"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Deselect All" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tout désélectionner"
+          }
+        }
+      }
+    },
+    "Select All" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tout sélectionner"
+          }
+        }
+      }
+    },
+    "Playback progress" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Progression de la lecture"
+          }
+        }
+      }
+    },
+    "Recently Added from Your Artists" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajouts récents de vos artistes"
+          }
+        }
+      }
+    },
+    "Rediscover" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "À redécouvrir"
+          }
+        }
+      }
+    },
+    "In Heavy Rotation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Souvent écoutés"
+          }
+        }
+      }
+    },
+    "Your Favorite Albums" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vos albums favoris"
+          }
+        }
+      }
+    },
+    "Your Favorite Songs" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vos morceaux favoris"
+          }
+        }
+      }
+    },
+    "Your Playlists" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vos playlists"
+          }
+        }
+      }
+    },
+    "Continue Listening" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reprendre l’écoute"
+          }
+        }
+      }
+    },
+    "Save Queue as Playlist" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrer la file comme playlist"
+          }
+        }
+      }
+    },
+    "Select Songs" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sélectionner des morceaux"
+          }
+        }
+      }
+    },
+    "Some selected songs are already in this playlist." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Certains morceaux sélectionnés sont déjà dans cette playlist."
+          }
+        }
+      }
+    },
+    "Add Only New Songs" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajouter uniquement les nouveaux morceaux"
+          }
+        }
+      }
+    },
+    "These songs are already in the playlist." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ces morceaux sont déjà dans la playlist."
+          }
+        }
+      }
+    },
+    "The playlist was created. Retry to finish adding your songs." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La playlist a été créée. Réessayez pour terminer l’ajout des morceaux."
+          }
+        }
+      }
+    },
+    "Your selection is kept. Try adding it again." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre sélection est conservée. Réessayez de l’ajouter."
+          }
+        }
+      }
+    },
+    "Your selection is kept. Tap the playlist to try again." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre sélection est conservée. Touchez la playlist pour réessayer."
+          }
+        }
+      }
+    },
+    "No matching playlists" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucune playlist correspondante"
+          }
+        }
+      }
+    },
+    "Recent Playlists" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlists récentes"
+          }
+        }
+      }
+    },
+    "Find a song" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechercher un morceau"
+          }
+        }
+      }
+    },
+    "Find a playlist" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechercher une playlist"
+          }
+        }
+      }
+    },
+    "The queue has changed. This removal can no longer be undone." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La file a changé. Cette suppression ne peut plus être annulée."
+          }
+        }
+      }
+    },
+    "Restored to queue" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rétabli dans la file"
+          }
+        }
+      }
+    },
     "Try another category or search term." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -27862,7 +28249,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Retiré de la file d'attente"
+            "value" : "Retiré de la file"
           }
         },
         "it" : {

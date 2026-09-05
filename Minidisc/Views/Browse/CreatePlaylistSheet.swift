@@ -10,6 +10,7 @@ struct CreatePlaylistSheet: View {
     @State private var selectedGradient: PlaylistGradientShape?
     @State private var photoIsCover = false
     @State private var showAddMusic = false
+    @State private var isCommitting = false
     @State private var pendingSongs: [DisplayableSong] = []
 
     var onCreated: ((PlaylistWithSongs) -> Void)? = nil
@@ -36,10 +37,10 @@ struct CreatePlaylistSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close", systemImage: "xmark") { dismiss() }
                         .tint(.primary)
-                        .disabled(viewModel?.isCreating == true)
+                        .disabled(isCommitting || viewModel?.isCreating == true)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    if viewModel?.isCreating == true {
+                    if isCommitting || viewModel?.isCreating == true {
                         ProgressView()
                             .controlSize(.small)
                     } else {
@@ -47,9 +48,11 @@ struct CreatePlaylistSheet: View {
                         Button("Create Playlist", systemImage: "checkmark") {
                             guard let vm = viewModel, let c = container else { return }
                             Task {
+                                isCommitting = true
+                                defer { isCommitting = false }
                                 if let created = await vm.create() {
                                     await applyCover(playlistId: created.id, title: created.name, coverArtId: created.coverArt, container: c)
-                                    await addPendingSongs(playlistId: created.id, title: created.name, coverArtId: created.coverArt, container: c)
+                                    guard await addPendingSongs(playlistId: created.id, title: created.name, coverArtId: created.coverArt, container: c) else { return }
                                     onCreated?(created)
                                     dismiss()
                                 }
@@ -79,6 +82,7 @@ struct CreatePlaylistSheet: View {
             Button("Cancel", role: .cancel) {}
         }
         .tint(.primary)
+        .interactiveDismissDisabled(isCommitting)
         .sheet(isPresented: $showAddMusic) {
             if let c = container {
                 AddMusicSheet(
@@ -86,6 +90,7 @@ struct CreatePlaylistSheet: View {
                     existingTrackIds: pendingSongs.map(\.id)
                 ) { added in
                     pendingSongs.append(contentsOf: added)
+                    return true
                 }
                 .environment(colorExtractor)
                 .environment(c.artworkImageCache)
@@ -135,6 +140,7 @@ struct CreatePlaylistSheet: View {
         ScrollView {
             VStack(spacing: MinidiscSpacing.xl) {
                 TextField("Playlist Title", text: Bindable(vm).name)
+                    .disabled(vm.createdPlaylist != nil || isCommitting)
                     .font(.system(.largeTitle, design: .rounded, weight: .bold))
                     .submitLabel(.done)
                     .padding(.vertical, MinidiscSpacing.s)
@@ -293,9 +299,10 @@ struct CreatePlaylistSheet: View {
         }
     }
 
-    private func addPendingSongs(playlistId: String, title: String, coverArtId: String?, container c: AppContainer) async {
-        guard !pendingSongs.isEmpty, let serverId = c.serverState.activeServer?.id else { return }
-        await AddMusicCommitter.commit(
+    private func addPendingSongs(playlistId: String, title: String, coverArtId: String?, container c: AppContainer) async -> Bool {
+        guard !pendingSongs.isEmpty else { return true }
+        guard let serverId = c.serverState.activeServer?.id else { return false }
+        return await AddMusicCommitter.commit(
             addedSongs: pendingSongs,
             playlistId: playlistId,
             playlistName: title,

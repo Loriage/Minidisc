@@ -6,6 +6,9 @@ nonisolated struct HomeFeedSnapshot: Codable, Sendable {
     var recentlyPlayed: [AlbumID3] = []
     var recentlyAdded: [AlbumID3] = []
     var genres: [HomeFeedViewModel.GenreShelf] = []
+    // Optional fields preserve compatibility with the previous on-disk feed.
+    var favorites: HomeFavorites?
+    var mostPlayed: [AlbumID3]?
 }
 
 /// Small, server-scoped presentation cache. Contains metadata only and is safe to discard.

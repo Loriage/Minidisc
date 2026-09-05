@@ -37,8 +37,8 @@ struct MainTabView: View {
                     .minidiscZoomTransition(sourceID: fullPlayerZoomID, in: playerZoom)
                     .toastOverlay(reservesMiniPlayerSpace: false)
             }
-            .sheet(item: $playlistAddition.selectedSong) { song in
-                AddToPlaylistSheet(song: song)
+            .sheet(item: $playlistAddition.request) { request in
+                AddToPlaylistSheet(request: request)
             }
             .environment(playlistAddition)
     }
@@ -56,7 +56,7 @@ struct MainTabView: View {
         TabView(selection: $selectedTab) {
             Tab("Home", image: "HomeTabIcon", value: AppTab.home) {
                 NavigationStack(path: $homePath) {
-                    HomeView()
+                    HomeView(onOpenPlayer: { showingFullPlayer = true })
                 }
             }
 

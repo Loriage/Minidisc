@@ -73,6 +73,7 @@ struct PlaylistDetailView: View {
 
     @Environment(\.appContainer) private var container
     @Environment(PlaylistAddition.self) private var playlistAddition
+    @State private var songSelection: SongSelectionRequest?
     @Environment(\.dismiss) private var dismiss
     @Environment(DominantColorExtractor.self) private var colorExtractor
     @Environment(\.colorScheme) private var colorScheme
@@ -357,6 +358,7 @@ struct PlaylistDetailView: View {
         } message: {
             Text("They'll be removed from the playlist when you save.")
         }
+        .sheet(item: $songSelection) { SongSelectionSheet(request: $0) }
         .sheet(isPresented: $showThemeColorSheet) {
             ThemeColorSheet(
                 color: Binding(
@@ -377,7 +379,7 @@ struct PlaylistDetailView: View {
                     playlistName: vm.name,
                     existingTrackIds: resolvedSongs(vm).map(\.id)
                 ) { added in
-                    await AddMusicCommitter.commit(
+                    let saved = await AddMusicCommitter.commit(
                         addedSongs: added,
                         playlistId: playlistId,
                         playlistName: vm.name,
@@ -388,8 +390,11 @@ struct PlaylistDetailView: View {
                         container: c,
                         colorExtractor: colorExtractor
                     )
-                    await vm.load()
-                    coverRefreshID = UUID()
+                    if saved {
+                        await vm.load()
+                        coverRefreshID = UUID()
+                    }
+                    return saved
                 }
                 .environment(colorExtractor)
                 .environment(c.artworkImageCache)
@@ -498,6 +503,11 @@ struct PlaylistDetailView: View {
             ToolbarItem(placement: .primaryAction) {
                 Menu("More options", systemImage: "ellipsis") {
                     Group {
+                        Button("Select Songs", systemImage: "checkmark.circle") {
+                            songSelection = SongSelectionRequest(songs: sortedSongs(resolvedSongs(viewModel)))
+                        }
+                        .disabled(container?.serverState.isOnline != true || sortedSongs(resolvedSongs(viewModel)).isEmpty)
+                        Divider()
                         let canEdit = container?.serverState.isOnline == true && viewModel?.playlistDetail != nil
                         Button("Add Music", systemImage: "plus") {
                             showAddMusic = true

@@ -69,19 +69,19 @@ enum AddMusicSongSource: Hashable {
 /// Apple-Music-style "Add to <playlist>" browse + multi-select sheet. Reuses
 /// the Home "Library" navigation layout (Playlists / Albums / Artists / Favorites / Downloads / Recently
 /// added) + Recently played, in a SELECTION mode: drill to songs, tap `+` to add, commit adds them all at
-/// once. Browse only — no create/edit playlist here. The actual commit (atomic full-list replace + first-track
-/// color derivation + comment guard) is `onCommit`, injected by the caller so this view stays presentation.
+/// once. The caller confirms a successful append before this view discards the selection.
 struct AddMusicSheet: View {
     let playlistName: String
-    /// Commit handler: receives the ordered new-song selection. Returns when the server replace is done.
-    let onCommit: ([DisplayableSong]) async -> Void
+    /// Returns true only after the selected songs have been saved.
+    let onCommit: ([DisplayableSong]) async -> Bool
 
     @Environment(\.dismiss) private var dismiss
     @State private var selection: AddMusicSelection
     @State private var searchText = ""
     @State private var isSaving = false
+    @State private var saveFailed = false
 
-    init(playlistName: String, existingTrackIds: [String], onCommit: @escaping ([DisplayableSong]) async -> Void) {
+    init(playlistName: String, existingTrackIds: [String], onCommit: @escaping ([DisplayableSong]) async -> Bool) {
         self.playlistName = playlistName
         self.onCommit = onCommit
         _selection = State(initialValue: AddMusicSelection(existingIds: existingTrackIds))
@@ -105,6 +105,16 @@ struct AddMusicSheet: View {
         }
         .searchable(text: $searchText, prompt: "Find in library")
         .tint(.primary)
+        .interactiveDismissDisabled(isSaving)
+        .safeAreaInset(edge: .bottom) {
+            if saveFailed {
+                Text("Your selection is kept. Try adding it again.")
+                    .font(.subheadline)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(.regularMaterial)
+            }
+        }
         .environment(selection)
     }
 
@@ -165,9 +175,10 @@ struct AddMusicSheet: View {
                 Button("Add Selection", systemImage: "checkmark") {
                     Task {
                         isSaving = true
-                        await onCommit(selection.selected)
+                        saveFailed = false
+                        let saved = await onCommit(selection.selected)
                         isSaving = false
-                        dismiss()
+                        if saved { dismiss() } else { saveFailed = true }
                     }
                 }
                 .buttonStyle(.borderedProminent)
@@ -718,6 +729,7 @@ private struct AddMusicPhaseView: View {
 /// flag are preserved; later adds never re-derive (the resolver result is frozen in the cover store).
 @MainActor
 enum AddMusicCommitter {
+    @discardableResult
     static func commit(
         addedSongs: [DisplayableSong],
         playlistId: String,
@@ -728,39 +740,32 @@ enum AddMusicCommitter {
         currentComment: String,
         container: AppContainer,
         colorExtractor: DominantColorExtractor
-    ) async {
-        guard !addedSongs.isEmpty else { return }
-        let wasEmpty = existingTrackIds.isEmpty
-
-        // Atomic full-list replace — the SINGLE track-mutation path (same primitive as reorder/multi-remove).
-        // The picker disables already-in-playlist songs, so the selection never collides with existingTrackIds
-        // and a plain append is dedup-safe. NOT a naive incremental songIdToAdd.
-        let finalIds = existingTrackIds + addedSongs.map(\.id)
+    ) async -> Bool {
+        guard !addedSongs.isEmpty else { return true }
+        guard container.serverState.activeServer?.id == serverId else { return false }
         do {
-            try await container.playlistService.reorderTracks(playlistId: playlistId, orderedSongIds: finalIds)
+            let current = try await container.playlistService.getPlaylist(id: playlistId)
+            guard container.serverState.activeServer?.id == serverId else { return false }
+            let intent = PlaylistAppendIntent(songs: addedSongs, existingIDs: existingTrackIds)
+            let remaining = intent.remaining(after: current.entry?.map(\.id) ?? [])
+            if !remaining.isEmpty {
+                try await container.playlistService.addTracks(playlistId: playlistId, songs: remaining.map { $0.asSong() })
+            }
+            await deriveFirstTrackCoverIfNeeded(
+                wasEmpty: existingTrackIds.isEmpty, firstSong: addedSongs.first,
+                playlistId: playlistId, playlistName: playlistName, coverArtId: coverArtId,
+                serverId: serverId, container: container, colorExtractor: colorExtractor)
+            RecentPlaylistDestinations(serverID: serverId.uuidString).record(playlistId)
+            container.toastService.showConfirmation(String(localized: "\(addedSongs.count) songs added"),
+                subtitle: playlistName, coverArtId: coverArtId,
+                action: .navigateToPlaylist(id: playlistId, name: playlistName, coverArtId: coverArtId))
+            return true
         } catch {
-            Logger.playlist.error("[ADD-MUSIC] atomic replace failed: \(error, privacy: .public)")
-            container.toastService.showError("Couldn't add to playlist")
-            return
+            if !UserFacingError.isCancellation(error) {
+                container.toastService.showError(UserFacingError.from(error).displayMessage)
+            }
+            return false
         }
-
-        // R1 guard: re-assert a non-empty comment AFTER the replace (createPlaylist replace doesn't carry it).
-        // No name re-assert (omitted = unchanged).
-        let trimmedComment = currentComment.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedComment.isEmpty {
-            try? await container.playlistService.updateDescription(id: playlistId, description: trimmedComment)
-        }
-
-        await deriveFirstTrackCoverIfNeeded(
-            wasEmpty: wasEmpty,
-            firstSong: addedSongs.first,
-            playlistId: playlistId,
-            playlistName: playlistName,
-            coverArtId: coverArtId,
-            serverId: serverId,
-            container: container,
-            colorExtractor: colorExtractor
-        )
     }
 
     /// Piège #1 — the empty→first-track color derivation, shared by `commit` (detail entry points) AND the

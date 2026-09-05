@@ -79,6 +79,7 @@ struct EditPlaylistSheet: View {
                         existingTrackIds: editSongs.map(\.id)
                     ) { added in
                         editSongs.append(contentsOf: added)
+                        return true
                     }
                     .environment(colorExtractor)
                     .environment(c.artworkImageCache)

@@ -595,7 +595,8 @@ actor PlayerService: PlayerServiceProtocol {
             if state.currentRadio != nil {
                 Logger.player.debug("Ending live stream session — switching to queue playback")
             }
-            state.queue = tracks
+            // Moving within an unchanged queue must keep an outstanding removal's Undo valid.
+            if state.queue != tracks { state.queue = tracks }
             state.queueGeneration = committedQueueGeneration
             state.currentIndex = startIndex
             state.currentRadio = nil

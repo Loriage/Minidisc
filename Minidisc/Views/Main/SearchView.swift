@@ -20,6 +20,7 @@ struct SearchView: View {
     @Environment(PlaylistAddition.self) private var playlistAddition
     @State private var viewModel: SearchViewModel?
     @State private var scope: LibrarySearchScope = .all
+    @State private var songSelection: SongSelectionRequest?
     @State private var loadedServerId: String?
     @Namespace private var albumZoomNamespace
 
@@ -137,6 +138,22 @@ struct SearchView: View {
         .task(id: SearchRequest(serverId: loadedServerId, query: searchQuery)) {
             await viewModel?.search(query: searchQuery)
         }
+        .toolbar {
+            if !trimmed.isEmpty, scope == .all || scope == .songs {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Select Songs", systemImage: "checkmark.circle") {
+                        let songs = viewModel?.matches.compactMap { match -> DisplayableSong? in
+                            if case .song(let song) = match { return song }
+                            return nil
+                        } ?? []
+                        songSelection = SongSelectionRequest(songs: songs)
+                    }
+                    .disabled(container?.serverState.isOnline != true || viewModel?.matches.contains { $0.scope == .songs } != true)
+                    .accessibilityIdentifier("search.selectSongs")
+                }
+            }
+        }
+        .sheet(item: $songSelection) { SongSelectionSheet(request: $0) }
         .minidiscContentWidth()
     }
 

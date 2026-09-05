@@ -7,6 +7,7 @@ import OSLog
 /// A–Z jump bar when sorted by title.
 struct SongsListView: View {
     @Environment(\.appContainer) private var container
+    @State private var songSelection: SongSelectionRequest?
     @State private var viewModel: SongsListViewModel?
     /// Persisted sort — Title by default, plus Artist / Recently Added / Release Date.
     @AppStorage("minidisc.songSort") private var songSort: SongSort = .title
@@ -21,7 +22,14 @@ struct SongsListView: View {
         }
         .minidiscContentWidth()
         .navigationTitle("Songs")
+        .sheet(item: $songSelection) { SongSelectionSheet(request: $0) }
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Select Songs", systemImage: "checkmark.circle") {
+                    songSelection = SongSelectionRequest(songs: viewModel?.displaySongs ?? [])
+                }
+                .disabled(container?.serverState.isOnline != true || viewModel?.displaySongs.isEmpty != false)
+            }
             ToolbarItem(placement: .primaryAction) {
                 SongSortMenu(sort: $songSort)
                     .tint(.primary)

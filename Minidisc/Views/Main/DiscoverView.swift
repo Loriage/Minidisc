@@ -4,8 +4,6 @@ import SwiftSonic
 struct DiscoverView: View {
     @Environment(\.appContainer) private var container
     @State private var vm: DiscoverViewModel?
-    @Namespace private var recentlyPlayedNS
-    @Namespace private var mostPlayedNS
     @State private var yearlyPlaylists: [WrappedYearlyPlaylist] = []
     @State private var radioStations: [InternetRadioStation] = []
     @Namespace private var freshReleaseZoomNamespace
@@ -20,13 +18,7 @@ struct DiscoverView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
                 if let vm {
-                    if vm.isErrorState {
-                        errorBanner(vm: vm)
-                    } else {
-                        freshReleasesSection(vm: vm)
-                        recentlyPlayedSection(vm: vm)
-                        mostPlayedSection(vm: vm)
-                    }
+                    freshReleasesSection(vm: vm)
                     smartShuffleSection
                     moodsSection
                     wrappedSection
@@ -51,7 +43,6 @@ struct DiscoverView: View {
                 allReleasesVM = AllFreshReleasesViewModel(recommendationService: container.recommendationService)
             }
             await loadRadioStations(forceRefresh: false)
-            await vm?.load()
             isListenBrainzConnected = await container.listenBrainzService.currentSnapshot().isEnabled
             await vm?.loadFreshReleases()
             guard let serverId = container.serverState.activeServer?.id.uuidString else { return }
@@ -60,7 +51,6 @@ struct DiscoverView: View {
         }
         .refreshable {
             await loadRadioStations(forceRefresh: true)
-            await vm?.load(forceRefresh: true)
             isListenBrainzConnected = await container?.listenBrainzService.currentSnapshot().isEnabled ?? false
             await vm?.loadFreshReleases()
         }
@@ -136,26 +126,6 @@ struct DiscoverView: View {
                 zoomNamespace: freshReleaseZoomNamespace
             )
         }
-    }
-
-    private func recentlyPlayedSection(vm: DiscoverViewModel) -> some View {
-        DiscoverAlbumCarouselSection(
-            title: "Recently Played",
-            albums: vm.recentlyPlayed,
-            isLoading: vm.isInitialLoading,
-            emptyMessage: "No history yet — start playing some tracks.",
-            namespace: recentlyPlayedNS
-        )
-    }
-
-    private func mostPlayedSection(vm: DiscoverViewModel) -> some View {
-        DiscoverAlbumCarouselSection(
-            title: "Most Played",
-            albums: vm.mostPlayed,
-            isLoading: vm.isInitialLoading,
-            emptyMessage: "No frequent plays yet — your top tracks will appear here.",
-            namespace: mostPlayedNS
-        )
     }
 
     private var smartShuffleSection: some View {

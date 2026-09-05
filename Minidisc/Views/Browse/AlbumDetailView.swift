@@ -63,6 +63,7 @@ struct AlbumDetailView: View {
 
     @Environment(\.appContainer) private var container
     @Environment(PlaylistAddition.self) private var playlistAddition
+    @State private var songSelection: SongSelectionRequest?
     @Environment(\.dismiss) private var dismiss
     @Environment(DominantColorExtractor.self) private var colorExtractor
     @Environment(ArtworkImageCache.self) private var artworkImageCache
@@ -366,6 +367,11 @@ struct AlbumDetailView: View {
             ToolbarItem(placement: .primaryAction) {
                 Menu("More options", systemImage: "ellipsis") {
                     Group {
+                        Button("Select Songs", systemImage: "checkmark.circle") {
+                            songSelection = SongSelectionRequest(songs: displaySongs())
+                        }
+                        .disabled(container?.serverState.isOnline != true || displaySongs().isEmpty)
+                        Divider()
                         Button("Instant Mix", systemImage: instantMixSymbol) {
                             HapticFeedback.medium.trigger()
                             startInstantMix(from: .album(id: albumId), using: container)
@@ -389,6 +395,7 @@ struct AlbumDetailView: View {
                 .tint(palette.contentColor)
             }
         }
+        .sheet(item: $songSelection) { SongSelectionSheet(request: $0) }
         .sheet(isPresented: $showThemeColorSheet) {
             ThemeColorSheet(
                 color: Binding(

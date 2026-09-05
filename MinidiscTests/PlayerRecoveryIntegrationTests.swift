@@ -186,6 +186,22 @@ private struct RecoveryHarness {
 @Suite("Player recovery integration", .serialized)
 @MainActor
 struct PlayerRecoveryIntegrationTests {
+    @Test func queueUndoSurvivesNextWithoutRestartingPlayback() async throws {
+        let h = try RecoveryHarness(startupGrace: .seconds(10))
+        try await h.play(["a", "b", "c", "d"])
+        let selection = try #require(QueueTrackSelection(playerState: h.state, destinationIndex: 1, destinationTrackID: "b"))
+        let removal = try #require(await h.player.removeQueueTrack(selection))
+        try await h.player.skipToNext()
+        #expect(h.state.currentTrack?.id == "c")
+        let plays = h.engine.playCount
+        #expect(await h.player.restoreQueueTrack(removal))
+        #expect(h.state.queue.map(\.id) == ["a", "b", "c", "d"])
+        #expect(h.state.currentIndex == 2)
+        #expect(h.state.currentTrack?.id == "c")
+        #expect(h.engine.playCount == plays)
+        await h.player.stop()
+    }
+
     @Test func ordinaryNextDoesNotPresentAReconnection() async throws {
         let h = try RecoveryHarness(startupGrace: .seconds(2))
         try await h.play()

@@ -254,6 +254,7 @@ private struct SongActions: View {
     let onGetInfo: (() -> Void)?
 
     @Environment(\.appContainer) private var container
+    @Environment(PlaylistAddition.self) private var playlistAddition: PlaylistAddition?
 
     private var isOnline: Bool { container?.serverState.isOnline == true }
 
@@ -290,11 +291,12 @@ private struct SongActions: View {
 
             Section {
                 Button {
-                    onAddToPlaylist?(song)
+                    if let onAddToPlaylist { onAddToPlaylist(song) }
+                    else { playlistAddition?.present(song) }
                 } label: {
                     Label("Add to Playlist...", systemImage: "music.note.list")
                 }
-                .disabled(!isOnline)
+                .disabled(!isOnline || (onAddToPlaylist == nil && playlistAddition == nil))
             }
 
             Section {

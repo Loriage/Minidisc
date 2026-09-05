@@ -2,179 +2,173 @@ import SwiftUI
 import SwiftSonic
 
 struct AddToPlaylistSheet: View {
-    let song: DisplayableSong
-
+    let request: PlaylistAdditionRequest
+    var onAdded: (() -> Void)? = nil
     @Environment(\.appContainer) private var container
     @Environment(\.dismiss) private var dismiss
     @State private var vm: AddToPlaylistViewModel?
-    @State private var showCreateSheet = false
-    @State private var pendingDuplicate: DuplicateConfirmation?
+    @State private var searchText = ""
+    @State private var showCreate = false
+    @State private var pendingDuplicate: Playlist?
 
     var body: some View {
-        Group {
-            NavigationStack {
-                Group {
-                    if let vm {
-                        content(vm)
-                    } else {
-                        ProgressView()
+        NavigationStack {
+            Group {
+                if let vm {
+                    PlaylistDestinationsList(vm: vm, query: searchText, onCreate: { showCreate = true }) { playlist in
+                        Task {
+                            switch await vm.checkAndAdd(to: playlist) {
+                            case .added: finish()
+                            case .duplicate: pendingDuplicate = playlist
+                            case .failed: break
+                            }
+                        }
                     }
+                } else { ProgressView() }
+            }
+            .navigationTitle("Add to Playlist")
+            .navigationBarTitleDisplayModeInline()
+            .searchable(text: $searchText, prompt: "Find a playlist")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.disabled(vm?.isSaving == true)
                 }
-                .navigationTitle("Add to Playlist")
-                .navigationBarTitleDisplayModeInline()
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { dismiss() }
-                    }
-                }
+            }
+            .navigationDestination(isPresented: $showCreate) {
+                if let vm { NewPlaylistDestinationForm(vm: vm, onSaved: finish) }
             }
         }
-        .onAppear {
-            guard vm == nil,
-                  let svc = container?.playlistService,
-                  let toast = container?.toastService else { return }
-            let newVM = AddToPlaylistViewModel(
-                song: song,
-                playlistService: svc,
-                toastService: toast
-            )
-            vm = newVM
-            Task { @MainActor in
-                await newVM.load()
-            }
+        .interactiveDismissDisabled(vm?.isSaving == true)
+        .task {
+            guard vm == nil, let container else { return }
+            let model = AddToPlaylistViewModel(songs: request.songs, playlistService: container.playlistService,
+                toastService: container.toastService,
+                recents: RecentPlaylistDestinations(serverID: container.serverState.activeServer?.id.uuidString ?? ""))
+            vm = model
+            showCreate = request.createsPlaylist
+            await model.load()
         }
-        .sheet(isPresented: $showCreateSheet) {
-            CreatePlaylistSheet { playlist in
-                Task {
-                    if await vm?.handleNewPlaylistCreated(playlist) == true {
-                        dismiss()
-                    }
-                }
-            }
-        }
-        .alert(
-            "Already in Playlist",
-            isPresented: Binding(
-                get: { pendingDuplicate != nil },
-                set: { if !$0 { pendingDuplicate = nil } }
-            ),
-            presenting: pendingDuplicate
-        ) { dup in
-            Button("Cancel", role: .cancel) {
-                pendingDuplicate = nil
-            }
-            Button("Add Anyway") {
-                guard let vm else { return }
-                let playlist = dup.playlist
-                pendingDuplicate = nil
-                Task {
-                    if await vm.forceAdd(to: playlist) {
-                        dismiss()
-                    }
-                }
-            }
-        } message: { dup in
-            Text("\"\(dup.songName)\" is already in \"\(dup.playlistName)\". Add it again?")
+        .confirmationDialog("Already in Playlist", isPresented: Binding(
+            get: { pendingDuplicate != nil }, set: { if !$0 { pendingDuplicate = nil } }
+        ), titleVisibility: .visible, presenting: pendingDuplicate) { playlist in
+            Button("Add Only New Songs") { add(to: playlist, skippingDuplicates: true) }
+            Button("Add Anyway") { add(to: playlist, skippingDuplicates: false) }
+            Button("Cancel", role: .cancel) { pendingDuplicate = nil }
+        } message: { _ in
+            Text("Some selected songs are already in this playlist.")
         }
         .tint(.primary)
     }
 
-    @ViewBuilder
-    private func content(_ vm: AddToPlaylistViewModel) -> some View {
-        if vm.isLoading && vm.playlists.isEmpty {
-            ProgressView()
-        } else {
-            List {
-                Section {
-                    Button {
-                        showCreateSheet = true
-                    } label: {
-                        Label("New Playlist", systemImage: "plus.circle")
-                            .foregroundStyle(Color.minidiscAccent)
-                    }
-                }
+    private func finish() {
+        dismiss()
+        onAdded?()
+    }
 
-                if vm.playlists.isEmpty {
-                    Section {
-                        Text("No playlists yet. Create one above.")
-                            .font(.minidiscCaption)
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    Section {
-                        ForEach(vm.playlists) { playlist in
-                            Button {
-                                HapticFeedback.light.trigger()
-                                Task {
-                                    let result = await vm.checkAndAdd(to: playlist)
-                                    switch result {
-                                    case .added:
-                                        dismiss()
-                                    case .duplicate:
-                                        pendingDuplicate = DuplicateConfirmation(
-                                            playlist: playlist,
-                                            songName: song.title
-                                        )
-                                    case .failed:
-                                        break
-                                    }
-                                }
-                            } label: {
-                                AddToPlaylistRow(playlist: playlist, vm: vm)
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(vm.addingToPlaylistIds.contains(playlist.id))
-                        }
-                    }
-                }
-            }
-            .minidiscSheetListStyle()
-        }
+    private func add(to playlist: Playlist, skippingDuplicates: Bool) {
+        pendingDuplicate = nil
+        Task { if await vm?.forceAdd(to: playlist, skippingDuplicates: skippingDuplicates) == true { finish() } }
     }
 }
 
-// MARK: - Duplicate alert data
-
-private struct DuplicateConfirmation {
-    let playlist: Playlist
-    let songName: String
-    var playlistName: String { playlist.name }
-}
-
-// MARK: - Row (label-only, no tap logic)
-
-private struct AddToPlaylistRow: View {
-    let playlist: Playlist
+private struct PlaylistDestinationsList: View {
     let vm: AddToPlaylistViewModel
-
-    @Environment(ArtworkImageCache.self) private var artworkImageCache
-    @State private var coverImage: PlatformImage?
-
-    private var isAdding: Bool { vm.addingToPlaylistIds.contains(playlist.id) }
+    let query: String
+    let onCreate: () -> Void
+    let onSelect: (Playlist) -> Void
 
     var body: some View {
-        HStack(spacing: MinidiscSpacing.m) {
-            PlaylistCoverThumbnail(playlistId: playlist.id, serverId: nil, coverArtId: playlist.coverArt ?? playlist.id, title: playlist.name, size: 44)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(playlist.name)
-                    .font(.minidiscCellTitle)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text("\(playlist.songCount) tracks")
-                    .font(.minidiscCaption)
+        List {
+            Section {
+                Button("New Playlist", systemImage: "plus.circle", action: onCreate)
+                    .foregroundStyle(Color.minidiscAccent)
+                    .accessibilityIdentifier("playlist.destination.new")
+            } footer: {
+                Text("\(vm.songs.count) songs selected")
+            }
+            if let error = vm.error {
+                Section {
+                    Text(error.displayMessage).font(.subheadline)
+                    if vm.playlists.isEmpty { Button("Retry") { Task { await vm.load() } } }
+                    else { Text("Your selection is kept. Tap the playlist to try again.").font(.subheadline).foregroundStyle(.secondary) }
+                }
+            }
+            if vm.isLoading && vm.playlists.isEmpty { ProgressView() }
+            let recent = vm.destinations(query: query, recent: true)
+            let other = vm.destinations(query: query, recent: false)
+            if !recent.isEmpty {
+                Section("Recent Playlists") {
+                    ForEach(recent) { playlist in destination(playlist) }
+                }
+            }
+            if !other.isEmpty {
+                Section("Playlists") {
+                    ForEach(other) { playlist in destination(playlist) }
+                }
+            }
+            if recent.isEmpty && other.isEmpty && !vm.isLoading && vm.error == nil {
+                Text(query.isEmpty ? LocalizedStringResource("No playlists yet. Create one above.") : LocalizedStringResource("No matching playlists"))
                     .foregroundStyle(.secondary)
             }
-            Spacer(minLength: 0)
-            if isAdding {
-                ProgressView()
-                    .scaleEffect(0.8)
-                    .frame(width: 22, height: 22)
+        }
+        .minidiscSheetListStyle()
+        .disabled(vm.isSaving)
+        .refreshable { await vm.load() }
+    }
+
+    private func destination(_ playlist: Playlist) -> some View {
+        Button { onSelect(playlist) } label: {
+            HStack(spacing: MinidiscSpacing.m) {
+                PlaylistCoverThumbnail(playlistId: playlist.id, serverId: nil,
+                    coverArtId: playlist.coverArt ?? playlist.id, title: playlist.name, size: 44)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(playlist.name).font(.minidiscCellTitle).lineLimit(2)
+                    Text("\(playlist.songCount) tracks").font(.minidiscCaption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                if vm.addingToPlaylistIds.contains(playlist.id) { ProgressView() }
+            }
+            .padding(.vertical, MinidiscSpacing.xs)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("playlist.destination.\(playlist.id)")
+    }
+}
+
+private struct NewPlaylistDestinationForm: View {
+    @Bindable var vm: AddToPlaylistViewModel
+    let onSaved: () -> Void
+
+    var body: some View {
+        Form {
+            Section {
+                TextField("Playlist Title", text: $vm.newPlaylistName)
+                    .disabled(vm.createdPlaylist != nil || vm.isSaving)
+                    .accessibilityIdentifier("playlist.new.name")
+            } footer: { Text("\(vm.songs.count) songs selected") }
+            if let error = vm.error {
+                Section {
+                    Text(error.displayMessage)
+                    if vm.createdPlaylist != nil {
+                        Text("The playlist was created. Retry to finish adding your songs.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Section {
+                Button {
+                    Task { if await vm.createAndAdd() { onSaved() } }
+                } label: {
+                    if vm.isSaving { ProgressView() }
+                    else { Text(vm.createdPlaylist == nil ? LocalizedStringResource("Create Playlist") : LocalizedStringResource("Retry")) }
+                }
+                .disabled(!vm.canCreate)
+                .accessibilityIdentifier("playlist.new.save")
             }
         }
-        .padding(.vertical, MinidiscSpacing.xs)
-        .contentShape(Rectangle())
-        .task(id: playlist.id) {
-            coverImage = await artworkImageCache.load(coverArtId: playlist.coverArt ?? playlist.id)
-        }
+        .navigationTitle("New Playlist")
+        .navigationBarTitleDisplayModeInline()
+        .navigationBarBackButtonHidden(vm.isSaving)
     }
 }

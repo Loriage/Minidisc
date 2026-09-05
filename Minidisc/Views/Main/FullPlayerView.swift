@@ -149,8 +149,8 @@ struct FullPlayerView: View {
                     lyricsViewModel = newVM
                     await newVM.load()
                 }
-                .sheet(item: $playlistAddition.selectedSong) { song in
-                    AddToPlaylistSheet(song: song)
+                .sheet(item: $playlistAddition.request) { request in
+                    AddToPlaylistSheet(request: request)
                 }
                 .environment(playlistAddition)
         }
@@ -522,6 +522,11 @@ private struct TrackInfoSection: View {
                         }
                         .disabled(playerState.currentTrack == nil)
                         Divider()
+                        Button("Save Queue as Playlist", systemImage: "text.badge.plus") {
+                            playlistAddition.present(songs: playerState.queue, createsPlaylist: true)
+                        }
+                        .disabled(!isOnline || playerState.queue.isEmpty)
+                        .accessibilityIdentifier("queue.savePlaylist")
                         Button("Add to Playlist...", systemImage: "music.note.list") {
                             if let track = playerState.currentTrack {
                                 playlistAddition.present(track)

@@ -97,9 +97,15 @@ struct ToastOverlay: ViewModifier {
                 ToastView(toast: toast).frame(minHeight: 44)
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier(undoIdentifier(toast))
         } else {
             ToastView(toast: toast).allowsHitTesting(false)
         }
+    }
+
+    private func undoIdentifier(_ toast: ToastService.Toast) -> String {
+        if case .undoQueueRemoval = toast.action { return "toast.undoQueue" }
+        return "toast.action"
     }
 
     /// Resolves a tappable toast: dismiss it, then navigate via the existing notification pattern

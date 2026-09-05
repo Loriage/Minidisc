@@ -1,9 +1,9 @@
 import SwiftUI
 import SwiftSonic
 
-/// Personalized Home feed: Top Picks (freshest playlists), Recently Played,
-/// then one shelf per top library genre. The full library lives in the Library tab.
+/// Listening continuity and familiar music, with server-scoped cached shelves.
 struct HomeView: View {
+    var onOpenPlayer: () -> Void = {}
     @Environment(\.appContainer) private var container
     @Environment(ArtworkImageCache.self) private var artworkImageCache
     @State private var viewModel: HomeFeedViewModel?
@@ -53,16 +53,17 @@ struct HomeView: View {
 
     @ViewBuilder
     private func content(_ vm: HomeFeedViewModel) -> some View {
-        if !vm.isLoading, vm.isEmpty, !isOnline {
+        let hasResume = container?.playerState.currentTrack != nil && container?.playerState.isLiveStream == false
+        if !vm.isLoading, vm.isEmpty, !isOnline, !hasResume {
             OfflineHomeInfo()
-        } else if let error = vm.error, vm.isEmpty, !vm.isLoading {
+        } else if let error = vm.error, vm.isEmpty, !vm.isLoading, !hasResume {
             EmptyStateView(
                 systemImage: "exclamationmark.triangle",
                 title: "Unable to Load",
                 subtitle: LocalizedStringKey(error.displayMessage),
                 action: .init(label: "Retry") { Task { await vm.load() } }
             )
-        } else if vm.isEmpty && !vm.isLoading {
+        } else if vm.isEmpty && !vm.isLoading && !hasResume {
             EmptyStateView(
                 systemImage: "music.note.list",
                 title: "No music yet",
@@ -86,17 +87,20 @@ struct HomeView: View {
                         }
                         .padding(.horizontal, MinidiscSpacing.l)
                     }
+                    HomeResumeCard(onOpenPlayer: onOpenPlayer)
+                    HomeFavoriteSongsSection(songs: vm.favorites.songs)
+                    HomeAlbumSection(title: "Your Favorite Albums", albums: vm.favorites.albums, identifier: "home.favoriteAlbums")
                     if vm.topPicks.isEmpty, vm.pendingSections.contains(.playlists) {
-                        HomeShelfPlaceholder(title: "Top Picks for You", side: 250)
+                        HomeShelfPlaceholder(title: "Your Playlists", side: 250)
                     }
                     if !vm.topPicks.isEmpty {
                         MinidiscShelf {
                             MinidiscCarouselHeaderLink(
-                                "Top Picks for You",
+                                "Your Playlists",
                                 itemCount: vm.topPicks.count
                             ) {
                                 PlaylistCarouselCollectionView(
-                                    "Top Picks for You",
+                                    "Your Playlists",
                                     playlists: vm.topPicks
                                 )
                             }
@@ -109,43 +113,14 @@ struct HomeView: View {
                     if vm.recentlyPlayed.isEmpty, vm.pendingSections.contains(.history) {
                         HomeShelfPlaceholder(title: "Recently Played", side: 160)
                     }
-                    if !vm.recentlyPlayed.isEmpty {
-                        MinidiscShelf {
-                            MinidiscCarouselHeaderLink(
-                                "Recently Played",
-                                itemCount: vm.recentlyPlayed.count
-                            ) {
-                                AlbumCarouselCollectionView(
-                                    "Recently Played",
-                                    albums: vm.recentlyPlayed
-                                )
-                            }
-                        } content: {
-                            ForEach(Array(vm.recentlyPlayed.prefix(MinidiscCarouselMetrics.previewLimit))) { album in
-                                AlbumShelfCard(album: album)
-                            }
-                        }
-                    }
+                    HomeAlbumSection(title: "Recently Played", albums: vm.recentlyPlayed, identifier: "home.recentlyPlayed")
+                    HomeAlbumSection(title: "In Heavy Rotation", albums: vm.heavyRotation, identifier: "home.heavyRotation")
+                    HomeAlbumSection(title: "Rediscover", albums: vm.rediscovery, identifier: "home.rediscover")
+                    HomeAlbumSection(title: "Recently Added from Your Artists", albums: vm.relevantAdditions, identifier: "home.relevantAdditions")
                     if vm.recentlyAdded.isEmpty, vm.pendingSections.contains(.recent) {
                         HomeShelfPlaceholder(title: "Recently Added", side: 160)
                     }
-                    if !vm.recentlyAdded.isEmpty {
-                        MinidiscShelf {
-                            MinidiscCarouselHeaderLink(
-                                "Recently Added",
-                                itemCount: vm.recentlyAdded.count
-                            ) {
-                                AlbumCarouselCollectionView(
-                                    "Recently Added",
-                                    albums: vm.recentlyAdded
-                                )
-                            }
-                        } content: {
-                            ForEach(Array(vm.recentlyAdded.prefix(MinidiscCarouselMetrics.previewLimit))) { album in
-                                AlbumShelfCard(album: album)
-                            }
-                        }
-                    }
+                    HomeAlbumSection(title: "Recently Added", albums: vm.otherAdditions, identifier: "home.recentlyAdded")
                     ForEach(vm.genreShelves) { shelf in
                         MinidiscShelf {
                             MinidiscCarouselHeaderLink(
@@ -167,6 +142,7 @@ struct HomeView: View {
                 .padding(.top, MinidiscSpacing.m)
                 .padding(.bottom, MinidiscSpacing.xl)
             }
+            .minidiscSongSwipeContainer()
             .refreshable { await vm.load(isOnline: isOnline, preserveLayout: true) }
         }
     }

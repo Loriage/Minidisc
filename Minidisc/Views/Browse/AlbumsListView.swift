@@ -24,6 +24,7 @@ struct AlbumsListView: View {
         }
         .minidiscContentWidth()
         .navigationTitle("Albums")
+        .toolbarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 AlbumSortMenu(sort: $albumSort)
@@ -37,6 +38,7 @@ struct AlbumsListView: View {
                     gridLayout.toggle()
                 }
                 .tint(.primary)
+                .accessibilityIdentifier("browse.albums.layout")
             }
         }
         .task(id: loadID) {
@@ -84,11 +86,11 @@ struct AlbumsListView: View {
         }
     }
 
-    /// List of AlbumRow (with the A–Z jump bar on iOS when sorted by name).
+    /// A letter jump also selects name ordering, keeping the index and rows consistent.
     @ViewBuilder
     private func albumsList(_ vm: AlbumListViewModel) -> some View {
         let albums = sortedAlbums(vm)
-        ScrollViewReader { proxy in
+        AlphabetIndexedContent(entries: albumIndex(vm), prepareJump: { albumSort = .name }) {
             List(albums) { album in
                 NavigationLink(value: HomeDestination.album(album)) {
                     AlbumRow(
@@ -100,43 +102,36 @@ struct AlbumsListView: View {
                     )
                 }
                 .id(album.id)
+                .accessibilityIdentifier("browse.album.\(album.id)")
             }
             .listStyle(.plain)
             .refreshable { await refresh(vm) }
-            .safeAreaInset(edge: .trailing, spacing: 0) {
-                // The A–Z jump bar only makes sense when sorted by name.
-                if albumSort == .name && albums.count >= 20 {
-                    AlphabetJumpBar(
-                        availableLetters: albums.availableAlphabetLetters(keyPath: \.name),
-                        onLetterTap: { letter in
-                            if let id = firstAlphabetItemID(forLetter: letter, in: albums, keyPath: \.name) {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    proxy.scrollTo(id, anchor: .top)
-                                }
-                            }
-                        }
-                    )
-                    .padding(.trailing, 4)
-                }
-            }
         }
     }
 
     /// Grid of AlbumGridCell — adaptive column count.
     @ViewBuilder
     private func albumsGrid(_ vm: AlbumListViewModel) -> some View {
-        ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110, maximum: 180), spacing: MinidiscSpacing.l)], spacing: MinidiscSpacing.l) {
-                ForEach(sortedAlbums(vm)) { album in
-                    NavigationLink(value: HomeDestination.album(album)) {
-                        AlbumGridCell(album: album)
+        AlphabetIndexedContent(entries: albumIndex(vm), prepareJump: { albumSort = .name }) {
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 110, maximum: 180), spacing: MinidiscSpacing.l)], spacing: MinidiscSpacing.l) {
+                    ForEach(sortedAlbums(vm)) { album in
+                        NavigationLink(value: HomeDestination.album(album)) {
+                            AlbumGridCell(album: album)
+                        }
+                        .buttonStyle(.plain)
+                        .id(album.id)
+                        .accessibilityIdentifier("browse.album.\(album.id)")
                     }
-                    .buttonStyle(.plain)
                 }
+                .padding(MinidiscSpacing.l)
             }
-            .padding(MinidiscSpacing.l)
+            .refreshable { await refresh(vm) }
         }
-        .refreshable { await refresh(vm) }
+    }
+
+    private func albumIndex(_ vm: AlbumListViewModel) -> [AlphabetScrollEntry] {
+        AlbumSort.name.sorted(vm.albums).map { AlphabetScrollEntry(id: $0.id, name: $0.sortName ?? $0.name) }
     }
 
     private var loadID: ServerAccessSnapshot? {
@@ -181,22 +176,26 @@ private struct OfflineAlbumsContent: View {
                 subtitle: "No downloaded albums available. Download albums while online to listen offline."
             )
         } else {
-            List {
-                Section("Downloaded Albums") {
-                    ForEach(displayAlbums) { display in
-                        NavigationLink(value: HomeDestination.downloadedAlbum(display)) {
-                            AlbumRow(
-                                albumId: display.albumId,
-                                name: display.name,
-                                artist: display.artist,
-                                year: nil,
-                                coverArtId: display.coverArtId
-                            )
+            AlphabetIndexedContent(entries: displayAlbums.map { AlphabetScrollEntry(id: $0.id, name: $0.name) }) {
+                List {
+                    Section("Downloaded Albums") {
+                        ForEach(displayAlbums) { display in
+                            NavigationLink(value: HomeDestination.downloadedAlbum(display)) {
+                                AlbumRow(
+                                    albumId: display.albumId,
+                                    name: display.name,
+                                    artist: display.artist,
+                                    year: nil,
+                                    coverArtId: display.coverArtId
+                                )
+                            }
+                            .id(display.id)
+                            .accessibilityIdentifier("browse.album.\(display.albumId)")
                         }
                     }
                 }
+                .listStyle(.plain)
             }
-            .listStyle(.plain)
         }
     }
 }

@@ -22,6 +22,7 @@ struct SongsListView: View {
         }
         .minidiscContentWidth()
         .navigationTitle("Songs")
+        .toolbarTitleDisplayMode(.inline)
         .sheet(item: $songSelection) { SongSelectionSheet(request: $0) }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

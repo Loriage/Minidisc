@@ -27,6 +27,7 @@ struct SearchScopeBar: View {
             }
             .padding(.horizontal, MinidiscSpacing.l)
         }
+        .clipped()
         .padding(.vertical, MinidiscSpacing.s)
     }
 }
@@ -35,6 +36,8 @@ struct SearchResultsContent: View {
     let matches: [LibrarySearchMatch]
     @Binding var scope: LibrarySearchScope
     let onAddToPlaylist: (DisplayableSong) -> Void
+    let canSelectSongs: Bool
+    let onSelectSongs: () -> Void
     @Query private var favorites: [FavoriteRecord]
 
     private var songs: [DisplayableSong] {
@@ -50,10 +53,13 @@ struct SearchResultsContent: View {
         let favoriteIds = Set(favorites.map(\.id))
         let best = scope == .all ? matches.first : nil
         if let best {
-            Section("Top Result") {
+            Section {
                 SearchMatchRow(match: best, songs: songs, isFavorite: favoriteIds.contains(best.id),
                                onAddToPlaylist: onAddToPlaylist)
                     .accessibilityIdentifier("search.topResult.\(best.id)")
+            } header: {
+                SearchResultsHeader(title: "Top Result", canSelectSongs: canSelectSongs,
+                                    onSelectSongs: best.scope == .songs ? onSelectSongs : nil)
             }
         }
         ForEach(scope == .all ? groups : [scope]) { group in
@@ -70,10 +76,35 @@ struct SearchResultsContent: View {
                             .frame(minHeight: 44)
                     }
                 } header: {
-                    Text(group.title)
+                    SearchResultsHeader(title: group.title, canSelectSongs: canSelectSongs,
+                                        onSelectSongs: group == .songs && best?.scope != .songs ? onSelectSongs : nil)
                 }
             }
         }
+    }
+}
+
+private struct SearchResultsHeader: View {
+    let title: LocalizedStringResource
+    let canSelectSongs: Bool
+    let onSelectSongs: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: MinidiscSpacing.s) {
+            Text(title)
+            Spacer(minLength: 0)
+            if let onSelectSongs {
+                Button("Select", action: onSelectSongs)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.minidiscAccent)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .buttonStyle(.plain)
+                    .disabled(!canSelectSongs)
+                    .accessibilityLabel("Select Songs")
+                    .accessibilityIdentifier("search.selectSongs")
+            }
+        }
+        .textCase(nil)
     }
 }
 

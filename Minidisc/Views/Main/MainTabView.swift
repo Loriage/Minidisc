@@ -56,7 +56,7 @@ struct MainTabView: View {
         TabView(selection: $selectedTab) {
             Tab("Home", image: "HomeTabIcon", value: AppTab.home) {
                 NavigationStack(path: $homePath) {
-                    HomeView(onOpenPlayer: { showingFullPlayer = true })
+                    HomeView()
                 }
             }
 
@@ -88,7 +88,8 @@ struct MainTabView: View {
                         .navigationTitle("Search")
                         .toolbarTitleDisplayMode(.inlineLarge)
                 }
-                .searchable(text: $searchText, prompt: "Artists, albums, songs\u{2026}")
+                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always),
+                            prompt: "Artists, albums, songs, playlists…")
             }
         }
         .accentColor(.minidiscAccent)

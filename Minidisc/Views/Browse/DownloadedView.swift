@@ -18,6 +18,7 @@ struct DownloadedView: View {
         }
         .minidiscContentWidth()
         .navigationTitle("Downloads")
+        .toolbarTitleDisplayMode(.inline)
     }
 }
 
@@ -67,14 +68,19 @@ private struct DownloadedContent: View {
     }
 
     private var downloadedListiOS: some View {
-        ScrollViewReader { proxy in
+        let songs = standaloneSongs
+        let albums = displayAlbums
+        let orderedPlaylists = playlists.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        let index = songs.map { AlphabetScrollEntry(id: "song:\($0.id)", name: $0.title) }
+            + albums.map { AlphabetScrollEntry(id: "album:\($0.id)", name: $0.name) }
+            + orderedPlaylists.map { AlphabetScrollEntry(id: "playlist:\($0.playlistId)", name: $0.name) }
+        return AlphabetIndexedContent(entries: index) {
             List {
                 DownloadActivitySection(serverID: serverId)
-                if !standaloneSongs.isEmpty {
+                if !songs.isEmpty {
                     Section("Songs") {
-                        ForEach(standaloneSongs) { song in
+                        ForEach(songs) { song in
                             Button {
-                                let songs = standaloneSongs
                                 guard let index = songs.firstIndex(where: { $0.id == song.id }) else { return }
                                 Task { await container?.toastService.perform {
                                     try await container?.playerService.play(tracks: songs, startIndex: index)
@@ -88,6 +94,8 @@ private struct DownloadedContent: View {
                                 }
                                 .frame(minHeight: 44, alignment: .leading)
                             }
+                            .id("song:\(song.id)")
+                            .accessibilityIdentifier("downloads.song.\(song.id)")
                             .contextMenu {
                                 Button("Remove Download", systemImage: "trash", role: .destructive) {
                                     Task { await container?.toastService.perform {
@@ -98,9 +106,9 @@ private struct DownloadedContent: View {
                         }
                     }
                 }
-                if !displayAlbums.isEmpty {
+                if !albums.isEmpty {
                     Section("Albums") {
-                        ForEach(displayAlbums) { display in
+                        ForEach(albums) { display in
                             NavigationLink(value: HomeDestination.downloadedAlbum(display)) {
                                 HStack(spacing: MinidiscSpacing.m) {
                                     CoverArtCard(id: display.coverArtId ?? display.albumId, size: 56)
@@ -122,14 +130,15 @@ private struct DownloadedContent: View {
                                 }
                                 .padding(.vertical, MinidiscSpacing.xs)
                             }
-                            .id(display.id)
+                            .id("album:\(display.id)")
+                            .accessibilityIdentifier("downloads.album.\(display.albumId)")
                         }
                     }
                 }
 
-                if !playlists.isEmpty {
+                if !orderedPlaylists.isEmpty {
                     Section("Playlists") {
-                        ForEach(playlists) { playlist in
+                        ForEach(orderedPlaylists) { playlist in
                             NavigationLink(value: HomeDestination.playlistById(id: playlist.playlistId, name: playlist.name, coverArtId: playlist.coverArtId)) {
                                 HStack(spacing: MinidiscSpacing.m) {
                                     CoverArtCard(id: playlist.coverArtId ?? playlist.playlistId, size: 56)
@@ -145,26 +154,13 @@ private struct DownloadedContent: View {
                                 }
                                 .padding(.vertical, MinidiscSpacing.xs)
                             }
+                            .id("playlist:\(playlist.playlistId)")
+                            .accessibilityIdentifier("downloads.playlist.\(playlist.playlistId)")
                         }
                     }
                 }
             }
             .listStyle(.plain)
-            .safeAreaInset(edge: .trailing, spacing: 0) {
-                if displayAlbums.count >= 20 {
-                    AlphabetJumpBar(
-                        availableLetters: displayAlbums.availableAlphabetLetters(keyPath: \.name),
-                        onLetterTap: { letter in
-                            if let id = firstAlphabetItemID(forLetter: letter, in: displayAlbums, keyPath: \.name) {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    proxy.scrollTo(id, anchor: .top)
-                                }
-                            }
-                        }
-                    )
-                    .padding(.trailing, 4)
-                }
-            }
         }
     }
 }

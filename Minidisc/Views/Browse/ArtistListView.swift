@@ -20,6 +20,7 @@ struct ArtistListView: View {
         }
         .minidiscContentWidth()
         .navigationTitle("Artists")
+        .toolbarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 ArtistSortMenu(sort: $artistSort)
@@ -33,6 +34,7 @@ struct ArtistListView: View {
                     gridLayout.toggle()
                 }
                 .tint(.primary)
+                .accessibilityIdentifier("browse.artists.layout")
             }
         }
         .task(id: loadID) {
@@ -71,71 +73,48 @@ struct ArtistListView: View {
             )
         } else if gridLayout {
             artistsGrid(vm)
-        } else if artistSort == .name {
-            indexedList(vm)
         } else {
             flatList(vm)
         }
     }
 
-    /// Alphabetical indexed list with section headers + A–Z jump bar (Name sort, list mode).
-    private func indexedList(_ vm: ArtistListViewModel) -> some View {
-        ScrollViewReader { proxy in
-            List {
-                ForEach(vm.indexes, id: \.name) { index in
-                    Section(index.name) {
-                        ForEach(index.artist) { artist in
-                            NavigationLink(value: HomeDestination.artist(artist)) {
-                                ArtistRow(artist: artist)
-                            }
-                        }
-                    }
-                    .id(index.name)
+    /// The same rows and name index in both available sort orders.
+    private func flatList(_ vm: ArtistListViewModel) -> some View {
+        AlphabetIndexedContent(entries: artistIndex(vm), prepareJump: { artistSort = .name }) {
+            List(artistSort.sorted(vm.indexes.flatMap(\.artist))) { artist in
+                NavigationLink(value: HomeDestination.artist(artist)) {
+                    ArtistRow(artist: artist)
                 }
+                .id(artist.id)
+                .accessibilityIdentifier("browse.artist.\(artist.id)")
             }
             .listStyle(.plain)
             .refreshable { await refresh(vm) }
-            .safeAreaInset(edge: .trailing, spacing: 0) {
-                if vm.indexes.count >= 5 {
-                    AlphabetJumpBar(
-                        availableLetters: Set(vm.indexes.map(\.name)),
-                        onLetterTap: { letter in
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                proxy.scrollTo(letter, anchor: .top)
-                            }
-                        }
-                    )
-                    .padding(.trailing, 4)
-                }
-            }
         }
-    }
-
-    /// Flat list in the chosen order (Album Count sort, list mode).
-    private func flatList(_ vm: ArtistListViewModel) -> some View {
-        List(artistSort.sorted(vm.indexes.flatMap(\.artist))) { artist in
-            NavigationLink(value: HomeDestination.artist(artist)) {
-                ArtistRow(artist: artist)
-            }
-        }
-        .listStyle(.plain)
-        .refreshable { await refresh(vm) }
     }
 
     /// Grid of artist avatars in the chosen order.
     private func artistsGrid(_ vm: ArtistListViewModel) -> some View {
-        ScrollView {
-            LazyVGrid(columns: gridColumns, spacing: MinidiscSpacing.l) {
-                ForEach(artistSort.sorted(vm.indexes.flatMap(\.artist))) { artist in
-                    NavigationLink(value: HomeDestination.artist(artist)) {
-                        ArtistGridCard(artist: artist)
+        AlphabetIndexedContent(entries: artistIndex(vm), prepareJump: { artistSort = .name }) {
+            ScrollView {
+                LazyVGrid(columns: gridColumns, spacing: MinidiscSpacing.l) {
+                    ForEach(artistSort.sorted(vm.indexes.flatMap(\.artist))) { artist in
+                        NavigationLink(value: HomeDestination.artist(artist)) {
+                            ArtistGridCard(artist: artist)
+                        }
+                        .buttonStyle(.plain)
+                        .id(artist.id)
+                        .accessibilityIdentifier("browse.artist.\(artist.id)")
                     }
-                    .buttonStyle(.plain)
                 }
+                .padding(MinidiscSpacing.l)
             }
-            .padding(MinidiscSpacing.l)
+            .refreshable { await refresh(vm) }
         }
-        .refreshable { await refresh(vm) }
+    }
+
+    private func artistIndex(_ vm: ArtistListViewModel) -> [AlphabetScrollEntry] {
+        ArtistSort.name.sorted(vm.indexes.flatMap(\.artist)).map { AlphabetScrollEntry(id: $0.id, name: $0.sortName ?? $0.name) }
     }
 
     private var loadID: ServerAccessSnapshot? {
@@ -234,18 +213,22 @@ private struct OfflineBrowseContent: View {
                 subtitle: "No downloaded music available. Download albums or playlists while online to listen offline."
             )
         } else {
-            List {
-                Section("Downloaded Artists") {
-                    ForEach(artistSummaries) { artist in
-                        // With an artist id the real artist screen can rebuild itself from downloads —
-                        // covers, album grid, working Play. Without one, the flat album list is all we can offer.
-                        NavigationLink(value: destination(for: artist)) {
-                            OfflineArtistRow(artist: artist)
+            AlphabetIndexedContent(entries: artistSummaries.map { AlphabetScrollEntry(id: $0.id, name: $0.name) }) {
+                List {
+                    Section("Downloaded Artists") {
+                        ForEach(artistSummaries) { artist in
+                            // With an artist id the real artist screen can rebuild itself from downloads —
+                            // covers, album grid, working Play. Without one, the flat album list is all we can offer.
+                            NavigationLink(value: destination(for: artist)) {
+                                OfflineArtistRow(artist: artist)
+                            }
+                            .id(artist.id)
+                            .accessibilityIdentifier("browse.artist.\(artist.id)")
                         }
                     }
                 }
+                .listStyle(.plain)
             }
-            .listStyle(.plain)
         }
     }
 

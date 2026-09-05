@@ -19,6 +19,7 @@ struct PlaylistListView: View {
         }
         .minidiscContentWidth()
         .navigationTitle("Playlists")
+        .toolbarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {

@@ -17,7 +17,7 @@ struct FavoritesView: View {
         }
         .minidiscContentWidth()
         .navigationTitle("Favorites")
-        .navigationBarTitleDisplayModeInline()
+        .toolbarTitleDisplayMode(.inline)
         .onAppear {
             guard let svc = container?.libraryService else { return }
             if viewModel == nil { viewModel = FavoritesViewModel(libraryService: svc) }
@@ -45,20 +45,28 @@ struct FavoritesView: View {
             )
         } else {
             let displayableSongs = vm.songs.map { DisplayableSong(from: $0) }
-            List {
-                songsSection(displayableSongs)
-                albumsSection(vm.albums)
-                artistsSection(vm.artists)
+                .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+            let albums = AlbumSort.name.sorted(vm.albums)
+            let artists = ArtistSort.name.sorted(vm.artists)
+            let index = displayableSongs.map { AlphabetScrollEntry(id: "song:\($0.id)", name: $0.title) }
+                + albums.map { AlphabetScrollEntry(id: "album:\($0.id)", name: $0.sortName ?? $0.name) }
+                + artists.map { AlphabetScrollEntry(id: "artist:\($0.id)", name: $0.sortName ?? $0.name) }
+            AlphabetIndexedContent(entries: index) {
+                List {
+                    songsSection(displayableSongs)
+                    albumsSection(albums)
+                    artistsSection(artists)
+                }
+                .listStyle(.plain)
+                .refreshable { await vm.load() }
             }
-            .listStyle(.plain)
-            .refreshable { await vm.load() }
         }
     }
 
     @ViewBuilder
     private func songsSection(_ songs: [DisplayableSong]) -> some View {
         if !songs.isEmpty {
-            Section("Songs") {
+            Section {
                 // Same header as SongsListView — `.bordered` on both, so Play keeps its glyph and the
                 // pair reads as one control rather than a primary/secondary split.
                 HStack(spacing: MinidiscSpacing.m) {
@@ -96,6 +104,8 @@ struct FavoritesView: View {
 
                 ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
                     SongRow(song: song, index: index + 1, showCoverArt: true, isFavorite: true, onAddToPlaylist: playlistAddition.present)
+                        .id("song:\(song.id)")
+                        .accessibilityIdentifier("favorites.song.\(song.id)")
                         .contentShape(Rectangle())
                         .onTapGesture {
                             Task {
@@ -103,9 +113,9 @@ struct FavoritesView: View {
                                     try await container?.playerService.play(tracks: songs, startIndex: index)
                                 } catch {
                                     Logger.player.error("[PLAYBACK] play failed: \(error, privacy: .public)")
-                if !UserFacingError.isCancellation(error) {
-                    container?.toastService.showError(UserFacingError.from(error).displayMessage)
-                }
+                                    if !UserFacingError.isCancellation(error) {
+                                        container?.toastService.showError(UserFacingError.from(error).displayMessage)
+                                    }
                                 }
                             }
                         }
@@ -128,6 +138,7 @@ struct FavoritesView: View {
                             coverArtId: album.coverArt
                         )
                     }
+                    .id("album:\(album.id)")
                 }
             }
         }
@@ -141,6 +152,7 @@ struct FavoritesView: View {
                     NavigationLink(value: HomeDestination.artist(artist)) {
                         ArtistRow(artist: artist)
                     }
+                    .id("artist:\(artist.id)")
                 }
             }
         }

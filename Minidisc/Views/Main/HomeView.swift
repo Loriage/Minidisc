@@ -3,7 +3,6 @@ import SwiftSonic
 
 /// Listening continuity and familiar music, with server-scoped cached shelves.
 struct HomeView: View {
-    var onOpenPlayer: () -> Void = {}
     @Environment(\.appContainer) private var container
     @Environment(ArtworkImageCache.self) private var artworkImageCache
     @State private var viewModel: HomeFeedViewModel?
@@ -53,17 +52,16 @@ struct HomeView: View {
 
     @ViewBuilder
     private func content(_ vm: HomeFeedViewModel) -> some View {
-        let hasResume = container?.playerState.currentTrack != nil && container?.playerState.isLiveStream == false
-        if !vm.isLoading, vm.isEmpty, !isOnline, !hasResume {
+        if !vm.isLoading, vm.isEmpty, !isOnline {
             OfflineHomeInfo()
-        } else if let error = vm.error, vm.isEmpty, !vm.isLoading, !hasResume {
+        } else if let error = vm.error, vm.isEmpty, !vm.isLoading {
             EmptyStateView(
                 systemImage: "exclamationmark.triangle",
                 title: "Unable to Load",
                 subtitle: LocalizedStringKey(error.displayMessage),
                 action: .init(label: "Retry") { Task { await vm.load() } }
             )
-        } else if vm.isEmpty && !vm.isLoading && !hasResume {
+        } else if vm.isEmpty && !vm.isLoading {
             EmptyStateView(
                 systemImage: "music.note.list",
                 title: "No music yet",
@@ -87,9 +85,6 @@ struct HomeView: View {
                         }
                         .padding(.horizontal, MinidiscSpacing.l)
                     }
-                    HomeResumeCard(onOpenPlayer: onOpenPlayer)
-                    HomeFavoriteSongsSection(songs: vm.favorites.songs)
-                    HomeAlbumSection(title: "Your Favorite Albums", albums: vm.favorites.albums, identifier: "home.favoriteAlbums")
                     if vm.topPicks.isEmpty, vm.pendingSections.contains(.playlists) {
                         HomeShelfPlaceholder(title: "Your Playlists", side: 250)
                     }
@@ -109,7 +104,10 @@ struct HomeView: View {
                                 TopPickCard(playlist: playlist, namespace: homeZoomNamespace)
                             }
                         }
+                        .accessibilityIdentifier("home.playlists")
                     }
+                    HomeFavoriteSongsSection(songs: vm.favorites.songs)
+                    HomeAlbumSection(title: "Your Favorite Albums", albums: vm.favorites.albums, identifier: "home.favoriteAlbums")
                     if vm.recentlyPlayed.isEmpty, vm.pendingSections.contains(.history) {
                         HomeShelfPlaceholder(title: "Recently Played", side: 160)
                     }
@@ -222,12 +220,14 @@ private struct TopPickCard: View {
                 .minidiscMatchedTransitionSource(id: playlist.id, in: namespace)
                 CoverCardMetadata(
                     title: playlist.name,
-                    subtitle: String(localized: "\(playlist.songCount) tracks")
+                    subtitle: playlist.changed.map { String(localized: "Updated \($0.formatted(.relative(presentation: .named)))") },
+                    detail: String(localized: "\(playlist.songCount) tracks")
                 )
             }
             .frame(width: side, alignment: .leading)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("home.playlist.\(playlist.id)")
     }
 }
 

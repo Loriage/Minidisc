@@ -13,29 +13,38 @@ struct AlphabetJumpBar: View {
     ]
 
     var body: some View {
-        iOSBody
+        GeometryReader { geometry in
+            let step = min(18, max(10, (geometry.size.height - 16) / CGFloat(Self.letters.count)))
+            index(step: step)
+                .frame(maxHeight: .infinity)
+        }
+        .frame(width: 24)
     }
 
-    private var iOSBody: some View {
-        VStack(spacing: 2) {
+    private func index(step: CGFloat) -> some View {
+        VStack(spacing: 0) {
             ForEach(Self.letters, id: \.self) { letter in
                 Text(letter)
-                    .font(.system(size: 11, weight: .semibold))
-                    .frame(width: 14, height: 16)
+                    .font(.system(size: min(11, step), weight: .semibold))
+                    .frame(width: 24, height: step)
                     .foregroundStyle(
                         availableLetters.contains(letter)
                             ? Color.minidiscAccent
                             : Color.secondary.opacity(0.3)
                     )
+                    .accessibilityIdentifier("alphabet.jump.\(letter)")
+                    .accessibilityLabel(Text("Jump to \(letter)"))
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHidden(!availableLetters.contains(letter))
+                    .accessibilityAction { onLetterTap(letter) }
             }
         }
         .padding(.vertical, 8)
-        .padding(.horizontal, 4)
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
-                    let index = max(0, min(Self.letters.count - 1, Int((value.location.y - 8) / 18)))
+                    let index = max(0, min(Self.letters.count - 1, Int((value.location.y - 8) / step)))
                     let letter = Self.letters[index]
                     let now = Date()
                     guard letter != lastLetterReported,

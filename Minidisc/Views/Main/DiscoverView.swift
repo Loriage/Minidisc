@@ -4,6 +4,9 @@ import SwiftSonic
 struct DiscoverView: View {
     @Environment(\.appContainer) private var container
     @State private var vm: DiscoverViewModel?
+    @State private var loadedServerID: UUID?
+    @State private var isStartingShuffle = false
+    @State private var startingStationID: String?
     @State private var yearlyPlaylists: [WrappedYearlyPlaylist] = []
     @State private var radioStations: [InternetRadioStation] = []
     @Namespace private var freshReleaseZoomNamespace
@@ -19,7 +22,10 @@ struct DiscoverView: View {
             LazyVStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
                 if let vm {
                     freshReleasesSection(vm: vm)
-                    smartShuffleSection
+                    stationsSection(vm)
+                    SmartShuffleCard(coverIDs: shuffleCoverIDs(vm), isStarting: isStartingShuffle) {
+                        Task { await triggerSmartShuffle() }
+                    }
                     moodsSection
                     wrappedSection
                     internetRadioSection
@@ -31,29 +37,22 @@ struct DiscoverView: View {
         .navigationTitle("Discover")
         .toolbarTitleDisplayMode(.inlineLarge)
         .minidiscContentWidth()
-        .task {
+        .task(id: container?.serverState.accessSnapshot) {
             guard let container else { return }
-            if vm == nil {
-                vm = DiscoverViewModel(
-                    libraryService: container.libraryService,
-                    recommendationService: container.recommendationService
-                )
-            }
-            if allReleasesVM == nil {
+            let serverID = container.serverState.activeServer?.id
+            if vm == nil || loadedServerID != serverID {
+                loadedServerID = serverID
+                vm = DiscoverViewModel(libraryService: container.libraryService,
+                                       recommendationService: container.recommendationService)
                 allReleasesVM = AllFreshReleasesViewModel(recommendationService: container.recommendationService)
+                radioStations = []
+                yearlyPlaylists = []
+                availableMoods = []
+                isListenBrainzConnected = false
             }
-            await loadRadioStations(forceRefresh: false)
-            isListenBrainzConnected = await container.listenBrainzService.currentSnapshot().isEnabled
-            await vm?.loadFreshReleases()
-            guard let serverId = container.serverState.activeServer?.id.uuidString else { return }
-            yearlyPlaylists = await container.wrappedPlaylistService.fetchYearlyPlaylists(serverId: serverId)
-            await refreshMoods(serverId: serverId)
+            await refreshDiscover(forceRefresh: false)
         }
-        .refreshable {
-            await loadRadioStations(forceRefresh: true)
-            isListenBrainzConnected = await container?.listenBrainzService.currentSnapshot().isEnabled ?? false
-            await vm?.loadFreshReleases()
-        }
+        .refreshable { await refreshDiscover(forceRefresh: true) }
         .navigationDestination(for: AlbumRecommendation.self) { release in
             FreshReleaseDetailView(
                 release: release,
@@ -109,6 +108,7 @@ struct DiscoverView: View {
                 found.append((mood, id))
             }
         }
+        guard !Task.isCancelled else { return }
         availableMoods = found
     }
 
@@ -117,62 +117,94 @@ struct DiscoverView: View {
     // Hidden entirely when ListenBrainz is not connected — no "connect in Settings" teaser.
     @ViewBuilder
     private func freshReleasesSection(vm: DiscoverViewModel) -> some View {
-        if isListenBrainzConnected {
+        if isListenBrainzConnected, !vm.freshReleases.isEmpty {
             FreshReleasesCard(
                 releases: vm.freshReleases,
-                isLoading: vm.isLoadingFreshReleases,
+                isLoading: false,
                 isListenBrainzConnected: isListenBrainzConnected,
                 onSeeAll: { showAllFreshReleases = true },
                 zoomNamespace: freshReleaseZoomNamespace
             )
+            .accessibilityIdentifier("discover.freshReleases")
         }
     }
 
-    private var smartShuffleSection: some View {
-        section(title: "Smart Shuffle") {
-            Button {
-                Task { await triggerSmartShuffle() }
-            } label: {
-                HStack(spacing: MinidiscSpacing.s) {
-                    Image(systemName: "shuffle.circle.fill")
-                        .font(.title2)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Rediscover Your Library")
-                            .font(.minidiscCellTitle)
-                        Text("A random mix from your library")
-                            .font(.minidiscCaption)
-                            .foregroundStyle(.secondary)
+    @ViewBuilder
+    private func stationsSection(_ vm: DiscoverViewModel) -> some View {
+        if !vm.stations.isEmpty {
+            MinidiscShelf {
+                MinidiscCarouselHeader("Stations for You", showsChevron: false)
+                    .accessibilityIdentifier("discover.stations")
+            } content: {
+                ForEach(vm.stations) { station in
+                    ArtistStationCard(station: station, isStarting: startingStationID == station.id) {
+                        Task { await playStation(station) }
                     }
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
-                .padding(MinidiscSpacing.l)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.minidiscAccent.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard, style: .continuous))
-                .foregroundStyle(.primary)
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, MinidiscSpacing.l)
         }
+    }
+
+    private func shuffleCoverIDs(_ vm: DiscoverViewModel) -> [String] {
+        var seen = Set<String>()
+        return (vm.recentlyPlayed + vm.mostPlayed).map { $0.coverArt ?? $0.id }
+            .filter { seen.insert($0).inserted }.prefix(3).map { $0 }
+    }
+
+    private func playStation(_ station: ArtistStation) async {
+        guard let container else { return }
+        startingStationID = station.id
+        HapticFeedback.medium.trigger()
+        defer { if startingStationID == station.id { startingStationID = nil } }
+        await container.toastService.perform {
+            try await container.playerService.playInstantMix(from: .artist(id: station.id), startingWith: station.starter)
+        }
+    }
+
+    private func refreshDiscover(forceRefresh: Bool) async {
+        guard let vm else { return }
+        async let personal: Void = vm.load(forceRefresh: forceRefresh)
+        async let releases: Void = refreshFreshReleases(vm)
+        async let radio: Void = loadRadioStations(forceRefresh: forceRefresh)
+        async let mixes: Void = refreshServerMixes()
+        _ = await (personal, releases, radio, mixes)
+    }
+
+    private func refreshFreshReleases(_ model: DiscoverViewModel) async {
+        guard let container else { return }
+        let connected = await container.listenBrainzService.currentSnapshot().isEnabled
+        guard !Task.isCancelled else { return }
+        isListenBrainzConnected = connected
+        if connected { await model.loadFreshReleases() }
+    }
+
+    private func refreshServerMixes() async {
+        guard let container, let serverID = container.serverState.activeServer?.id.uuidString else { return }
+        let playlists = await container.wrappedPlaylistService.fetchYearlyPlaylists(serverId: serverID)
+        guard !Task.isCancelled else { return }
+        yearlyPlaylists = playlists
+        await refreshMoods(serverId: serverID)
     }
 
     private func triggerSmartShuffle() async {
-        guard let container else { return }
+        guard let container, !isStartingShuffle else { return }
+        isStartingShuffle = true
+        HapticFeedback.medium.trigger()
+        defer { isStartingShuffle = false }
         do {
             try await container.playerService.playSmartShuffle()
         } catch {
-            container.toastService.showError(smartShuffleErrorMessage(from: error))
+            if !UserFacingError.isCancellation(error) {
+                container.toastService.showError(smartShuffleErrorMessage(from: error))
+            }
         }
     }
 
     private func smartShuffleErrorMessage(from error: Error) -> String {
         if case MinidiscError.smartShuffleEmpty = error {
-            return "Smart Shuffle unavailable — try playing some tracks first or download more music for offline use."
+            return String(localized: "Smart Shuffle unavailable — try playing some tracks first or download more music for offline use.")
         }
-        return "Smart Shuffle failed. Please try again."
+        return String(localized: "Smart Shuffle failed. Please try again.")
     }
 
     private var wrappedSection: some View {
@@ -280,53 +312,9 @@ struct DiscoverView: View {
     private func loadRadioStations(forceRefresh: Bool) async {
         guard let radioService = container?.radioService else { return }
         if let stations = try? await radioService.listStations(forceRefresh: forceRefresh) {
+            guard !Task.isCancelled else { return }
             radioStations = stations
         }
-    }
-
-    // MARK: - Helpers
-
-    private func section<Content: View>(title: LocalizedStringKey, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
-            Text(title)
-                .font(.minidiscShelfTitle)
-                .padding(.horizontal, MinidiscSpacing.l)
-            content()
-        }
-    }
-
-    private func errorBanner(vm: DiscoverViewModel) -> some View {
-        VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
-            HStack(spacing: MinidiscSpacing.s) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.yellow) // warning state — not brand accent
-                Text("Unable to load Discover")
-                    .font(.minidiscCellTitle)
-            }
-            if let message = vm.loadError?.localizedDescription {
-                Text(message)
-                    .font(.minidiscCaption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-            }
-            Button {
-                Task { await vm.load(forceRefresh: true) }
-            } label: {
-                Text("Retry")
-                    .font(.minidiscCellTitle)
-                    .padding(.horizontal, MinidiscSpacing.l)
-                    .padding(.vertical, MinidiscSpacing.s)
-                    .background(Color.minidiscAccent)
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard, style: .continuous))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(MinidiscSpacing.l)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.yellow.opacity(0.12)) // warning state — not brand accent
-        .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard, style: .continuous))
-        .padding(.horizontal, MinidiscSpacing.l)
     }
 
 }
@@ -345,83 +333,5 @@ private enum WrappedCarouselItem: Identifiable {
         case .month(let year, let month):
             "month-\(year)-\(month)"
         }
-    }
-}
-
-private struct DiscoverAlbumCarouselSection: View {
-    let title: LocalizedStringResource
-    let albums: [AlbumID3]
-    let isLoading: Bool
-    let emptyMessage: LocalizedStringResource
-    let namespace: Namespace.ID
-
-    @Environment(ArtworkImageCache.self) private var artworkImageCache
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
-            MinidiscCarouselHeaderLink(title, itemCount: albums.count) {
-                AlbumCarouselCollectionView(title, albums: albums)
-            }
-
-            if isLoading {
-                skeletonScroll
-            } else if albums.isEmpty {
-                Text(emptyMessage)
-                    .font(.minidiscCaption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, MinidiscSpacing.l)
-                    .padding(.horizontal, MinidiscSpacing.l)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: MinidiscSpacing.s) {
-                        ForEach(Array(albums.prefix(MinidiscCarouselMetrics.previewLimit))) { album in
-                            NavigationLink {
-                                AlbumDetailView(
-                                    album: album,
-                                    zoomSourceId: album.id,
-                                    zoomNamespace: namespace,
-                                    initialCoverImage: artworkImageCache.cachedImage(
-                                        for: album.coverArt ?? album.id
-                                    )
-                                )
-                            } label: {
-                                AlbumCard(album: album)
-                                    .minidiscMatchedTransitionSource(id: album.id, in: namespace)
-                                    .task(id: album.id) {
-                                        await artworkImageCache.load(
-                                            coverArtId: album.coverArt ?? album.id
-                                        )
-                                    }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, MinidiscSpacing.l)
-                }
-            }
-        }
-    }
-
-    private var skeletonScroll: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: MinidiscSpacing.s) {
-                ForEach(0..<6, id: \.self) { _ in
-                    VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
-                        SkeletonBlock(
-                            width: 140,
-                            height: 140,
-                            cornerRadius: MinidiscCornerRadius.standard
-                        )
-                        SkeletonBlock(width: 110, height: 12)
-                        SkeletonBlock(width: 80, height: 10)
-                    }
-                    .frame(width: 140)
-                }
-            }
-            .padding(.horizontal, MinidiscSpacing.l)
-        }
-        .allowsHitTesting(false)
     }
 }

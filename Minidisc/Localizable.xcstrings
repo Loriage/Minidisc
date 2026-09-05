@@ -1,6 +1,127 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Select" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sélectionner"
+          }
+        }
+      }
+    },
+    "Smart Shuffle unavailable — try playing some tracks first or download more music for offline use." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le mix aléatoire est indisponible. Écoutez quelques titres ou téléchargez davantage de musique pour une écoute hors ligne."
+          }
+        }
+      }
+    },
+    "Smart Shuffle failed. Please try again." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de lancer le mix aléatoire. Réessayez."
+          }
+        }
+      }
+    },
+    "Artists, albums, songs, playlists…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Artistes, albums, titres, playlists…"
+          }
+        }
+      }
+    },
+    "Stations for You" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stations pour vous"
+          }
+        }
+      }
+    },
+    "%@ & Similar Artists" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ et artistes similaires"
+          }
+        }
+      }
+    },
+    "Artist Station" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Station d’artiste"
+          }
+        }
+      }
+    },
+    "Play an artist station" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Écouter une station d’artiste"
+          }
+        }
+      }
+    },
+    "A new mix, every time" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un nouveau mix à chaque écoute"
+          }
+        }
+      }
+    },
+    "Play a new mix from your library" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Écouter un nouveau mix de votre bibliothèque"
+          }
+        }
+      }
+    },
+    "Jump to %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aller à %@"
+          }
+        }
+      }
+    },
     "Updated %@" : {
       "extractionState" : "manual",
       "localizations" : {

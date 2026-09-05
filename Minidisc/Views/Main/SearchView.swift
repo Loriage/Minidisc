@@ -35,7 +35,7 @@ struct SearchView: View {
 
     var body: some View {
         let trimmed = searchQuery.trimmingCharacters(in: .whitespaces)
-        Group {
+        VStack(spacing: 0) {
             if trimmed.isEmpty {
                 SearchHistoryListView(
                     serverId: serverId,
@@ -43,20 +43,7 @@ struct SearchView: View {
                 )
             } else {
                 VStack(spacing: 0) {
-                    HStack(spacing: 0) {
-                        SearchScopeBar(selection: $scope)
-                        Button("Select Songs", systemImage: "checkmark.circle") {
-                            songSelection = SongSelectionRequest(songs: selectableSongs)
-                        }
-                        .labelStyle(.iconOnly)
-                        .font(.title3)
-                        .frame(width: 44, height: 44)
-                        .background(Color.primary.opacity(0.06), in: Circle())
-                        .buttonStyle(.plain)
-                        .disabled(container?.serverState.isOnline != true || selectableSongs.isEmpty || (scope != .all && scope != .songs))
-                        .accessibilityIdentifier("search.selectSongs")
-                        .padding(.trailing, MinidiscSpacing.l)
-                    }
+                    SearchScopeBar(selection: $scope)
                     List {
                         if let vm = viewModel {
                             activeSearchContent(vm)
@@ -134,15 +121,17 @@ struct SearchView: View {
                 AlbumDetailView(albumId: entry.itemId, albumName: entry.displayName, coverArtId: entry.coverArtId)
             }
         }
-        .onChange(of: serverId, initial: true) {
-            guard let container, loadedServerId != serverId else { return }
-            loadedServerId = serverId
-            scope = .all
-            viewModel = SearchViewModel(libraryService: container.libraryService,
-                                        serverState: container.serverState,
-                                        playlistBrowser: container.libraryService)
-        }
-        .task(id: loadedServerId) {
+        .task(id: serverId) {
+            guard let container else { return }
+            // Initialize and load on the same stable view task. Switching from history
+            // to results must not cancel a separate initial playlist load.
+            if loadedServerId != serverId {
+                scope = .all
+                viewModel = SearchViewModel(libraryService: container.libraryService,
+                                            serverState: container.serverState,
+                                            playlistBrowser: container.libraryService)
+                loadedServerId = serverId
+            }
             await viewModel?.loadPlaylists()
         }
         .onReceive(NotificationCenter.default.publisher(for: .minidiscPlaylistsChanged)) { _ in
@@ -174,7 +163,9 @@ struct SearchView: View {
         let matches = vm.matches
         if !matches.isEmpty {
             SearchResultsContent(matches: matches, scope: $scope,
-                                 onAddToPlaylist: playlistAddition.present)
+                                 onAddToPlaylist: playlistAddition.present,
+                                 canSelectSongs: container?.serverState.isOnline == true && !selectableSongs.isEmpty,
+                                 onSelectSongs: { songSelection = SongSelectionRequest(songs: selectableSongs) })
         }
         if vm.isSearching || (scope == .playlists && vm.isLoadingPlaylists) {
             let title: LocalizedStringResource = matches.isEmpty ? "Searching…" : "Updating results…"

@@ -14,6 +14,9 @@ final class DiscoverViewModel {
 
     private(set) var recentlyPlayed: [AlbumID3] = []
     private(set) var mostPlayed: [AlbumID3] = []
+    private(set) var stations: [ArtistStation] = []
+    private var favorites = HomeFavorites()
+    private var generation = 0
     private(set) var isLoading: Bool = false
     private(set) var loadError: Error?
     private(set) var freshReleases: [AlbumRecommendation] = []
@@ -46,24 +49,28 @@ final class DiscoverViewModel {
     // MARK: - Loading
 
     func load(forceRefresh: Bool = false) async {
-        if !forceRefresh, !recentlyPlayed.isEmpty, !mostPlayed.isEmpty {
+        if !forceRefresh, !stations.isEmpty {
             return
         }
 
+        generation += 1
+        let request = generation
         isLoading = true
-        defer { isLoading = false }
+        defer { if request == generation { isLoading = false } }
 
-        do {
-            async let recent = libraryService.recentlyPlayedAlbums(size: 35)
-            async let frequent = libraryService.mostPlayedAlbums(size: 35)
-            let (recentResult, frequentResult) = try await (recent, frequent)
-            self.recentlyPlayed = recentResult
-            self.mostPlayed = frequentResult
-            self.loadError = nil
-        } catch {
-            self.loadError = error
-            Logger.discover.error("Failed to load Discover sections: \(error, privacy: .public)")
+        // A history outage must not hide stations derived from favorites, and vice versa.
+        async let recent = try? libraryService.recentlyPlayedAlbums(size: 35)
+        async let frequent = try? libraryService.mostPlayedAlbums(size: 35)
+        async let starred = try? (libraryService as? any StarredBrowsing)?.getStarred2()
+        let (recentResult, frequentResult, starredResult) = await (recent, frequent, starred)
+        guard request == generation, !Task.isCancelled else { return }
+        if let recentResult { recentlyPlayed = recentResult }
+        if let frequentResult { mostPlayed = frequentResult }
+        if let starredResult {
+            favorites = HomeFavorites(songs: starredResult.song ?? [], albums: starredResult.album ?? [], artists: starredResult.artist ?? [])
         }
+        stations = ArtistStation.suggestions(favorites: favorites, recent: recentlyPlayed, frequent: mostPlayed)
+        loadError = recentResult == nil && frequentResult == nil && starredResult == nil ? URLError(.cannotLoadFromNetwork) : nil
     }
 
     func loadFreshReleases() async {

@@ -16,44 +16,89 @@ final class SearchViewModel {
     /// so the view falls back to downloaded tracks.
     var isOffline = false
 
-    private let libraryService: any LibrarySearching
-    private let serverState: ServerState
+    private(set) var playlists: [Playlist] = []
+    private(set) var isLoadingPlaylists = false
+    private(set) var playlistError: UserFacingError?
+    private(set) var resultsQuery = ""
+    private var requestedQuery = ""
+    private var requestGeneration = 0
+    private var playlistGeneration = 0
 
-    init(libraryService: any LibrarySearching, serverState: ServerState) {
+    var matches: [LibrarySearchMatch] {
+        LibrarySearchRanking.matches(query: resultsQuery.isEmpty ? requestedQuery : resultsQuery,
+                                     results: searchResults, playlists: playlists)
+    }
+
+    private let libraryService: any LibrarySearching
+    private let playlistBrowser: (any PlaylistBrowsing)?
+    private let serverState: ServerState
+    private let debounce: Duration
+
+    init(libraryService: any LibrarySearching, serverState: ServerState,
+         playlistBrowser: (any PlaylistBrowsing)? = nil, debounce: Duration = SearchViewModel.searchDebounce) {
         self.libraryService = libraryService
         self.serverState = serverState
+        self.playlistBrowser = playlistBrowser
+        self.debounce = debounce
+    }
+
+    func loadPlaylists() async {
+        guard let playlistBrowser else { return }
+        playlistGeneration += 1
+        let generation = playlistGeneration
+        isLoadingPlaylists = true
+        defer { if generation == playlistGeneration { isLoadingPlaylists = false } }
+        do {
+            let values = try await playlistBrowser.playlists()
+            try Task.checkCancellation()
+            guard generation == playlistGeneration else { return }
+            playlists = values
+            playlistError = nil
+        } catch {
+            guard generation == playlistGeneration, !Self.isCancellation(error) else { return }
+            playlistError = UserFacingError.from(error)
+        }
     }
 
     func search(query: String) async {
+        requestGeneration += 1
+        let generation = requestGeneration
+        defer { if generation == requestGeneration { isSearching = false } }
         let trimmed = query.trimmingCharacters(in: .whitespaces)
+        requestedQuery = trimmed
         guard !trimmed.isEmpty else {
             // Cleared query: drop stale state immediately — no request, no debounce wait.
             searchResults = nil
             searchError = nil
             isSearching = false
             isOffline = false
+            resultsQuery = ""
             return
         }
         isOffline = false
         do {
-            try await Task.sleep(for: Self.searchDebounce)
+            try await Task.sleep(for: debounce)
+            guard generation == requestGeneration else { return }
             // Spinner reflects the actual in-flight request, not the debounce wait.
             isSearching = true
             searchError = nil
-            defer { isSearching = false }
             let results = try await libraryService.search(trimmed)
             // Superseded between response and assignment — let the newer query win.
             try Task.checkCancellation()
+            guard generation == requestGeneration else { return }
             searchResults = results
+            resultsQuery = trimmed
         } catch where Self.isCancellation(error) {
             // Superseded by a newer query — not a user-facing error.
         } catch {
+            guard generation == requestGeneration else { return }
             if serverState.isOnline {
                 searchError = UserFacingError.from(error)
             } else {
                 searchResults = nil
                 searchError = nil
                 isOffline = true
+                resultsQuery = trimmed
             }
         }
     }

@@ -19,6 +19,8 @@ struct SearchView: View {
     @Environment(\.appContainer) private var container
     @Environment(PlaylistAddition.self) private var playlistAddition
     @State private var viewModel: SearchViewModel?
+    @State private var scope: LibrarySearchScope = .all
+    @State private var loadedServerId: String?
     @Namespace private var albumZoomNamespace
 
     init(searchQuery: Binding<String>, path: Binding<NavigationPath>) {
@@ -38,20 +40,16 @@ struct SearchView: View {
                     serverId: serverId,
                     path: $path
                 )
-            } else if let vm = viewModel, !vm.isSearching,
-                      let results = vm.searchResults, !hasAnyResults(results) {
-                EmptyStateView(
-                    systemImage: "magnifyingglass",
-                    title: "No results",
-                    subtitle: "Try a different search term."
-                )
             } else {
-                List {
-                    if let vm = viewModel {
-                        activeSearchContent(vm)
+                VStack(spacing: 0) {
+                    SearchScopeBar(selection: $scope)
+                    List {
+                        if let vm = viewModel {
+                            activeSearchContent(vm)
+                        }
                     }
+                    .listStyle(.plain)
                 }
-                .listStyle(.plain)
             }
         }
         .navigationDestination(for: ArtistID3.self) { artist in
@@ -78,6 +76,15 @@ struct SearchView: View {
         }
         .navigationDestination(for: HomeDestination.self) { destination in
             switch destination {
+            case .playlist(let playlist):
+                HistoryRecordingView {
+                    await container?.searchHistoryService.record(
+                        itemId: playlist.id, itemType: "playlist", displayName: playlist.name,
+                        coverArtId: playlist.coverArt, serverId: serverId
+                    )
+                } content: {
+                    PlaylistDetailView(playlist: playlist)
+                }
             case .album(let album):
                 AlbumDetailView(
                     album: album,
@@ -107,100 +114,76 @@ struct SearchView: View {
             switch entry.itemType {
             case "artist":
                 ArtistDetailView(artistId: entry.itemId, artistName: entry.displayName, coverArtId: entry.coverArtId)
+            case "playlist":
+                PlaylistDetailView(playlistId: entry.itemId, name: entry.displayName, coverArtId: entry.coverArtId)
             default:
                 AlbumDetailView(albumId: entry.itemId, albumName: entry.displayName, coverArtId: entry.coverArtId)
             }
         }
-        .onAppear {
-            guard let svc = container?.libraryService else { return }
-            if viewModel == nil, let state = container?.serverState {
-                viewModel = SearchViewModel(libraryService: svc, serverState: state)
-            }
+        .onChange(of: serverId, initial: true) {
+            guard let container, loadedServerId != serverId else { return }
+            loadedServerId = serverId
+            scope = .all
+            viewModel = SearchViewModel(libraryService: container.libraryService,
+                                        serverState: container.serverState,
+                                        playlistBrowser: container.libraryService)
         }
-        .task(id: searchQuery) {
+        .task(id: loadedServerId) {
+            await viewModel?.loadPlaylists()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .minidiscPlaylistDeleted)) { _ in
+            Task { await viewModel?.loadPlaylists() }
+        }
+        .task(id: SearchRequest(serverId: loadedServerId, query: searchQuery)) {
             await viewModel?.search(query: searchQuery)
         }
         .minidiscContentWidth()
     }
 
-    // MARK: - Active search state
+    private struct SearchRequest: Equatable {
+        let serverId: String?
+        let query: String
+    }
 
+    // Search results live below this view's navigation owner. In particular, favorites and
+    // downloaded-track queries must never invalidate the navigation destinations themselves.
     @ViewBuilder
     private func activeSearchContent(_ vm: SearchViewModel) -> some View {
-        if vm.isOffline {
-            LocalSearchResultsSection(
-                query: searchQuery.trimmingCharacters(in: .whitespaces),
-                onAddToPlaylist: playlistAddition.present
-            )
-        } else if vm.isSearching {
-            HStack {
-                Spacer()
+        let matches = vm.matches
+        if !matches.isEmpty {
+            SearchResultsContent(matches: matches, scope: $scope,
+                                 onAddToPlaylist: playlistAddition.present)
+        }
+        if vm.isSearching || (scope == .playlists && vm.isLoadingPlaylists) {
+            let title: LocalizedStringResource = matches.isEmpty ? "Searching…" : "Updating results…"
+            HStack(spacing: MinidiscSpacing.s) {
                 ProgressView()
-                Spacer()
+                Text(title)
+                    .font(.subheadline).foregroundStyle(.secondary)
             }
             .listRowSeparator(.hidden)
-            .padding(.vertical, MinidiscSpacing.xl)
+        }
+        if (scope == .all || scope == .playlists), let error = vm.playlistError {
+            SearchRetryRow(message: error.displayMessage) { Task { await vm.loadPlaylists() } }
         } else if let error = vm.searchError {
-            EmptyStateView(
-                systemImage: "exclamationmark.triangle",
-                title: "Search Unavailable",
-                subtitle: LocalizedStringKey(error.localizedDescription),
-                action: .init(label: "Retry") { Task { await vm.search(query: searchQuery) } }
-            )
-            .listRowSeparator(.hidden)
-            // The server is unreachable while the device still has a path (server down, off-VPN):
-            // downloads are the only thing we can still answer with.
+            SearchRetryRow(message: error.displayMessage) { Task { await vm.search(query: searchQuery) } }
+        }
+        if (vm.isOffline || vm.searchError != nil), scope != .playlists {
             LocalSearchResultsSection(
                 query: searchQuery.trimmingCharacters(in: .whitespaces),
+                scope: scope,
                 onAddToPlaylist: playlistAddition.present
             )
-        } else if let results = vm.searchResults, hasAnyResults(results) {
-            artistResultsSection(visibleArtists(from: results))
-            albumResultsSection(results.album ?? [])
-            SearchSongResultsSection(
-                songs: (results.song ?? []).map { DisplayableSong(from: $0) },
-                onAddToPlaylist: playlistAddition.present
+        } else if matches.filter({ scope == .all || $0.scope == scope }).isEmpty,
+                  !vm.isSearching, !vm.isLoadingPlaylists,
+                  vm.resultsQuery == searchQuery.trimmingCharacters(in: .whitespaces),
+                  vm.searchError == nil, (scope != .playlists || vm.playlistError == nil) {
+            EmptyStateView(
+                systemImage: "magnifyingglass",
+                title: "No results",
+                subtitle: "Try another category or search term."
             )
-        }
-    }
-
-    private func visibleArtists(from results: SearchResult3) -> [ArtistID3] {
-        (results.artist ?? []).filter { ($0.albumCount ?? 0) > 0 }
-    }
-
-    private func hasAnyResults(_ results: SearchResult3) -> Bool {
-        !visibleArtists(from: results).isEmpty || !(results.album?.isEmpty ?? true) || !(results.song?.isEmpty ?? true)
-    }
-
-    @ViewBuilder
-    private func artistResultsSection(_ artists: [ArtistID3]) -> some View {
-        if !artists.isEmpty {
-            Section("Artists") {
-                ForEach(artists) { artist in
-                    NavigationLink(value: artist) {
-                        ArtistRow(artist: artist)
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func albumResultsSection(_ albums: [AlbumID3]) -> some View {
-        if !albums.isEmpty {
-            Section("Albums") {
-                ForEach(albums) { album in
-                    NavigationLink(value: album) {
-                        AlbumRow(
-                            albumId: album.id,
-                            name: album.name,
-                            artist: album.artist,
-                            year: album.year,
-                            coverArtId: album.coverArt
-                        )
-                    }
-                }
-            }
+            .listRowSeparator(.hidden)
         }
     }
 
@@ -211,6 +194,7 @@ struct SearchView: View {
 
     private struct LocalSearchResultsSection: View {
         let query: String
+        let scope: LibrarySearchScope
         let onAddToPlaylist: (DisplayableSong) -> Void
 
         @Environment(\.appContainer) private var container
@@ -270,7 +254,10 @@ struct SearchView: View {
             let songs = matchingTracks
                 .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
                 .map { DisplayableSong(from: $0) }
-            if songs.isEmpty && artists.isEmpty && albums.isEmpty {
+            let hasVisibleResults = ((scope == .all || scope == .songs) && !songs.isEmpty)
+                || ((scope == .all || scope == .artists) && !artists.isEmpty)
+                || ((scope == .all || scope == .albums) && !albums.isEmpty)
+            if !hasVisibleResults {
                 EmptyStateView(
                     systemImage: "wifi.slash",
                     title: "No Downloaded Matches",
@@ -278,14 +265,14 @@ struct SearchView: View {
                 )
                 .listRowSeparator(.hidden)
             } else {
-                if !artists.isEmpty {
+                if !artists.isEmpty, scope == .all || scope == .artists {
                     Section("Artists") {
                         ForEach(artists) { artist in
                             NavigationLink(value: artist) { ArtistRow(artist: artist) }
                         }
                     }
                 }
-                if !albums.isEmpty {
+                if !albums.isEmpty, scope == .all || scope == .albums {
                     Section("Albums") {
                         ForEach(albums) { album in
                             NavigationLink(value: album) {
@@ -300,7 +287,9 @@ struct SearchView: View {
                         }
                     }
                 }
-                SearchSongResultsSection(songs: songs, onAddToPlaylist: onAddToPlaylist)
+                if scope == .all || scope == .songs {
+                    SearchSongResultsSection(songs: songs, onAddToPlaylist: onAddToPlaylist)
+                }
             }
         }
     }

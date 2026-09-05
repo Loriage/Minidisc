@@ -11,13 +11,14 @@ import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-STATE = {"removed": False, "fail_stream": False, "slow_stream": False, "search_catalog": False, "queue_catalog": False, "home_catalog": False}
+STATE = {"removed": False, "fail_stream": False, "slow_stream": False, "search_catalog": False, "queue_catalog": False, "home_catalog": False, "browse_catalog": False}
 # Mode changes represent completed server scans, so persistent app indexes can refresh.
 LAST_SCAN = time.time()
 LOCK = threading.RLock()
 PLAYLIST_OVERRIDES = {}
 DELETED_PLAYLISTS = set()
 MUTATIONS = []
+REQUESTS = []
 SONGS = [
     {"id": "ux-song-1", "title": "Matin tranquille", "artist": "Atelier Minidisc", "artistId": "ux-artist", "album": "Horizons de test", "albumId": "ux-album", "duration": 30, "track": 1, "size": 960044, "suffix": "wav", "contentType": "audio/wav", "isDir": False, "coverArt": "ux-cover"},
     {"id": "ux-song-2", "title": "Une très longue promenade au bord de la mer pour vérifier la lisibilité", "artist": "Atelier Minidisc", "artistId": "ux-artist", "album": "Horizons de test", "albumId": "ux-album", "duration": 30, "track": 2, "size": 960044, "suffix": "wav", "contentType": "audio/wav", "isDir": False, "coverArt": "ux-cover"},
@@ -58,6 +59,34 @@ HOME_FREQUENT_SONGS = [
 ]
 
 
+# Twenty-four distinct records make every alphabet jump visibly move both lists
+# and grids. Accents fold to E; digits belong to #. Existing fixture IDs stay intact.
+BROWSE_GROUPS = [
+    ("a", "A capella", "Atlas", "Aube"),
+    ("e", "Écho", "Éclat", "Élan"),
+    ("z", "Zénith", "Zénith", "Zéphyr"),
+    ("hash", "001 Orbites", "001 Satellites", "001 Pulsations"),
+]
+BROWSE_ARTISTS = []
+BROWSE_ALBUMS = []
+BROWSE_SONGS = []
+for bucket, artist_name, album_name, song_title in BROWSE_GROUPS:
+    for index in range(1, 7):
+        suffix = f"{bucket}-{index:02d}"
+        artist = {**ARTIST, "id": f"ux-browse-artist-{suffix}", "name": f"{artist_name} {index:02d}"}
+        album = {**ALBUM, "id": f"ux-browse-album-{suffix}", "name": f"{album_name} {index:02d}",
+                 "artist": artist["name"], "artistId": artist["id"], "songCount": 1, "duration": 30}
+        song = {**SONGS[0], "id": f"ux-browse-song-{suffix}", "title": f"{song_title} {index:02d}",
+                "artist": artist["name"], "artistId": artist["id"], "album": album["name"], "albumId": album["id"]}
+        BROWSE_ARTISTS.append(artist)
+        BROWSE_ALBUMS.append(album)
+        BROWSE_SONGS.append(song)
+BROWSE_PLAYLIST = {**PLAYLIST, "id": "ux-browse-playlist", "name": "Index alphabétique",
+                   "songCount": len(BROWSE_SONGS), "duration": len(BROWSE_SONGS) * 30,
+                   "changed": "2026-09-05T09:00:00Z"}
+BROWSE_FAVORITE_ARTIST = {**ARTIST, "id": "ux-browse-favorite-artist", "name": "Iris Ensemble", "albumCount": 0}
+
+
 def fixture_catalog(state):
     if state["removed"]:
         return {"songs": [], "albums": [], "artists": [], "playlists": []}
@@ -73,6 +102,11 @@ def fixture_catalog(state):
         catalog["albums"] += [HOME_ALBUM] + HOME_FREQUENT_ALBUMS
         catalog["artists"] = [{**item, "albumCount": 15 if item["id"] == ARTIST["id"] else item["albumCount"]}
                               for item in catalog["artists"]] + [HOME_ARTIST]
+    if state["browse_catalog"]:
+        catalog["songs"] += BROWSE_SONGS
+        catalog["albums"] += BROWSE_ALBUMS
+        catalog["artists"] += BROWSE_ARTISTS + [BROWSE_FAVORITE_ARTIST]
+        catalog["playlists"] += [BROWSE_PLAYLIST]
     if state["queue_catalog"]:
         # Four long tracks leave time to inspect an edit without an automatic track boundary.
         catalog["songs"] = [{**item, "duration": 120, "size": len(QUEUE_AUDIO)} for item in catalog["songs"]]
@@ -101,7 +135,10 @@ def playlist_detail(playlist, catalog, state):
         if stored is not None:
             song_ids = list(stored["_song_ids"])
         else:
-            templates = SEARCH_SONGS if playlist["id"] == SEARCH_PLAYLIST["id"] else SONGS + (SEARCH_SONGS if state["queue_catalog"] else [])
+            if playlist["id"] == BROWSE_PLAYLIST["id"]:
+                templates = BROWSE_SONGS
+            else:
+                templates = SEARCH_SONGS if playlist["id"] == SEARCH_PLAYLIST["id"] else SONGS + (SEARCH_SONGS if state["queue_catalog"] else [])
             song_ids = [item["id"] for item in templates]
     songs = {item["id"]: item for item in catalog["songs"]}
     return {**playlist, "entry": [songs[identifier] for identifier in song_ids if identifier in songs]}
@@ -262,7 +299,7 @@ class Handler(BaseHTTPRequestHandler):
         if urlparse(self.path).path == "/__state":
             data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
             with LOCK:
-                catalog_keys = ("removed", "search_catalog", "queue_catalog", "home_catalog")
+                catalog_keys = ("removed", "search_catalog", "queue_catalog", "home_catalog", "browse_catalog")
                 if any(key in data and bool(data[key]) != STATE[key] for key in catalog_keys):
                     LAST_SCAN = max(time.time(), LAST_SCAN + 1)
                 STATE.update({k: bool(v) for k, v in data.items() if k in STATE})
@@ -270,9 +307,13 @@ class Handler(BaseHTTPRequestHandler):
                     PLAYLIST_OVERRIDES.clear()
                     DELETED_PLAYLISTS.clear()
                     MUTATIONS.clear()
+                if data.get("reset_requests") is True:
+                    REQUESTS.clear()
                 response = dict(STATE)
                 if "reset_playlists" in data:
                     response["reset_playlists"] = data["reset_playlists"] is True
+                if "reset_requests" in data:
+                    response["reset_requests"] = data["reset_requests"] is True
             return self.send(json.dumps(response).encode())
         self.do_GET()
 
@@ -289,6 +330,16 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 snapshot = list(MUTATIONS)
             return self.send(json.dumps(snapshot).encode())
+        if endpoint == "__requests":
+            with LOCK:
+                snapshot = list(REQUESTS)
+            return self.send(json.dumps(snapshot).encode())
+        if endpoint in ("getSimilarSongs2", "getRandomSongs", "stream", "download"):
+            # Only bounded synthetic evidence; never persist request URLs or authentication.
+            identifier = query.get("id", [""])[0]
+            with LOCK:
+                REQUESTS.append({"endpoint": endpoint, "id": identifier if identifier.startswith("ux-") else None})
+                del REQUESTS[:-500]
         if endpoint == "getCoverArt":
             return self.send(PNG, "image/png")
         if endpoint in ("stream", "download"):
@@ -332,7 +383,15 @@ class Handler(BaseHTTPRequestHandler):
                     albums = sorted((item for item in albums if item["id"] in {HOME_ALBUM["id"], SEARCH_ALBUM["id"]}), key=lambda item: item["created"], reverse=True)
             response["albumList2"] = {"album": paged(albums, query)}
         elif endpoint == "getArtists":
-            response["artists"] = {"ignoredArticles": "The El La", "index": [{"name": "A", "artist": catalog["artists"]}] if catalog["artists"] else []}
+            indexes = {}
+            for artist in catalog["artists"]:
+                initial = normalized(artist["name"])[:1].upper()
+                bucket = initial if initial in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" else "#"
+                indexes.setdefault(bucket, []).append(artist)
+            response["artists"] = {"ignoredArticles": "The El La", "index": [
+                {"name": name, "artist": sorted(values, key=lambda item: normalized(item["name"]))}
+                for name, values in sorted(indexes.items())
+            ]}
         elif endpoint == "getArtist":
             artist = next((item for item in catalog["artists"] if item["id"] == query.get("id", [""])[0]), None)
             if artist is None:
@@ -351,6 +410,9 @@ class Handler(BaseHTTPRequestHandler):
                     "album": [item for item in catalog["albums"] if item["id"] == ALBUM["id"]],
                     "artist": [item for item in catalog["artists"] if item["id"] == SEARCH_ARTIST["id"]],
                 }
+            if state["browse_catalog"] and not state["removed"]:
+                # H and I exist only in album/artist favorites, never in the song section.
+                favorites = {"song": BROWSE_SONGS, "album": [ALBUM], "artist": [BROWSE_FAVORITE_ARTIST]}
             response["starred2" if endpoint.endswith("2") else "starred"] = favorites
         elif endpoint == "getScanStatus":
             response["scanStatus"] = {"scanning": False, "count": len(catalog["songs"]), "lastScan": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(LAST_SCAN))}
@@ -360,7 +422,14 @@ class Handler(BaseHTTPRequestHandler):
             response["openSubsonicExtensions"] = []
         elif endpoint in ("getRandomSongs", "getSongsByGenre", "getSimilarSongs2", "getTopSongs"):
             key = {"getRandomSongs": "randomSongs", "getSongsByGenre": "songsByGenre", "getSimilarSongs2": "similarSongs2", "getTopSongs": "topSongs"}[endpoint]
-            response[key] = {"song": paged(catalog["songs"], query, "count" if endpoint == "getSongsByGenre" else "size")}
+            songs = catalog["songs"]
+            if endpoint == "getSimilarSongs2":
+                seed = query.get("id", [""])[0]
+                songs = sorted(songs, key=lambda item: item.get("artistId") != seed)
+            if endpoint == "getTopSongs":
+                name = query.get("artist", [""])[0]
+                songs = [item for item in songs if item["artist"] == name]
+            response[key] = {"song": paged(songs, query, "size" if endpoint == "getRandomSongs" else "count")}
         elif endpoint == "getArtistInfo2":
             response["artistInfo2"] = {"biography": "Artiste local de vérification", "similarArtist": []}
         elif endpoint == "getAlbumInfo2":

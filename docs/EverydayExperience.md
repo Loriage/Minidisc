@@ -10,6 +10,10 @@ playlists, with All, Songs, Albums, Artists and Playlists filters. The top resul
 Previously displayed results stay visible during refresh; a request generation prevents an older
 response from replacing a newer result or clearing its loading indicator. Search navigation owns no
 SwiftData query; query-driven rows remain below it.
+The navigation search field stays visible on entry without activating the keyboard. Category chips
+use their full-width clipped carousel; Select belongs to the appropriate result heading, so it cannot
+cover a chip while scrolling horizontally. At accessibility text sizes, Select moves below the heading
+and keeps its complete label on one line.
 
 ## Queue and song actions
 
@@ -42,10 +46,12 @@ Create Playlist flows also retain their selections when the append fails.
 
 ## Home
 
-Home exposes the current queue and progress, favorite songs/albums, recently played albums, frequent
-albums outside those shelves, rediscovery, and recent additions matching favorite or frequently heard
-artists. These are library additions, not claims about release dates. Playlists are labeled Your Playlists
-because server modification time alone is not a personal recommendation.
+Home leads with large playlist covers ordered by server modification time, with that update shown
+under each cover. This keeps regularly regenerated Navidrome playlists prominent. The mini-player
+remains the single current-playback surface; the duplicate Now Playing/Continue Listening card was
+removed after device feedback. Favorite songs/albums, recently played albums, frequent albums outside
+those shelves, rediscovery, and recent additions matching familiar artists follow the playlists.
+These additions are library additions, not claims about release dates.
 
 Each source loads independently. Pull-to-refresh stages one layout update. Favorites and listening
 habits are stored in optional cache fields so the previous Home cache still decodes offline. Discover
@@ -59,6 +65,24 @@ text sizes.
 Album shelves widen their cards and allow complete metadata at those sizes. The fixed-height system
 mini-player uses one metadata line with bounded symbol sizing; its accessibility label retains the
 artist or playback status, and the full player remains available for the larger presentation.
+
+## Discover and library navigation
+
+Stations for You uses actual favorite and recently/frequently heard library artist IDs. A favorite song
+can start immediately while the existing artist Instant Mix fills the queue behind it. Distinct artists
+with the same name remain separate. Failed history and favorites requests do not hide each other's
+stations, and a failed refresh retains the previous collection. Smart Shuffle has an illustrated card
+with library artwork and preparation feedback. Artist captions wrap fully at accessibility text sizes;
+the play symbol stays bounded by its 44-point disk. Fresh Releases is absent when its result collection is
+empty, including for a connected ListenBrainz account.
+
+Playlists, Albums, Artists, Songs, Favorites and Downloads use inline titles. Favorites has no redundant
+Songs heading. Album and artist indexes work in lists, grids and downloaded fallbacks; selecting a
+letter switches to name order when needed. The index uses canonical sort names and folds accented
+initials, with non-Latin names and numbers reachable under #. Favorites and Downloads index their
+displayed categories in order using type-prefixed anchors, including standalone songs and playlists.
+The List data sources use those same prefixed identities, so a letter can resolve an offscreen row
+before that row's view has been created.
 
 ## Validation
 
@@ -76,3 +100,15 @@ native reordering, queue saving and personalized Home navigation. Final captures
 normal and Accessibility XXXL text sizes. The latest signed Debug build was installed and launched
 on the physical iPhone; functional fixture playback checks ran on the isolated simulator. These
 checks do not cover prolonged physical network handoffs or audio-route changes.
+
+The subsequent visual refinements retain the previous playback engine. All 31 targeted tests passed:
+station identity/starter selection, partial source failures, alphabet bucket resolution, Fresh Releases
+responses, search ranking and debounce/cancellation. Eleven UI scenarios passed across focused runs,
+covering playlist priority and update dates, directly accessible Search and selection, inline titles,
+album/artist list and grid indexes, all four Downloads letter buckets, mixed Favorites categories,
+artist-seeded playback and Smart Shuffle queue progression. Final French captures were inspected at
+normal and Accessibility XXXL sizes. The signed Debug build containing these refinements was also
+installed and launched on the physical iPhone on 5 September 2026.
+
+The empty Fresh Releases UI check uses an account without ListenBrainz configured; the connected-empty
+case is covered by model tests and the view condition, not a connected-account UI fixture.

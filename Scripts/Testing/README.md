@@ -40,6 +40,21 @@ lasts two minutes to keep playback active during edits. Home includes favorites,
 frequent albums and recent library additions from familiar and unrelated artists. Search intentionally
 returns a prefix title before its exact match, so the UI must apply its own ranking.
 
+The refinement scenarios add Home playlist priority, an immediately visible Search field, selection
+inside result headings, inline browse titles, alphabet jumps in lists and grids, and functional artist
+stations/Smart Shuffle. `browse_catalog` provides 24 tracks with distinct albums and artists under
+A, É, Z and #, plus a downloadable playlist. The Downloads probe uses those actual local fixture files.
+An album favorite under H and the additional Iris Ensemble artist under I verify jumps into the
+other Favorites categories, whose anchors must remain distinct from song IDs.
+`GET /__requests` retains a bounded journal of synthetic endpoint names and IDs to verify artist seeds;
+it records no authentication fields or full URLs. Reset it with `reset_requests: true`.
+
+Catalogue modes also update the fixture scan timestamp. The relevant probes pull to refresh Songs,
+Albums or Artists through the visible UI before asserting their mode-specific records, because a
+completed persistent index can otherwise retain a preceding scenario's catalogue. Sort and layout
+preferences are changed through their native controls; launch-argument defaults would override the
+same settings that the buttons are supposed to change.
+
 Tests reset synthetic playlist mutations through `POST /__state` with `reset_playlists: true` and verify
 the resulting ordered track IDs through `GET /__mutations`. These endpoints affect only the in-memory
 fixture. Each scenario sets its catalog mode and checks the fixture marker before interacting with

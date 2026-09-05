@@ -88,15 +88,24 @@ private struct SearchResultsHeader: View {
     let title: LocalizedStringResource
     let canSelectSongs: Bool
     let onSelectSongs: (() -> Void)?
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var layout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: MinidiscSpacing.s))
+            : AnyLayout(HStackLayout(spacing: MinidiscSpacing.s))
+    }
 
     var body: some View {
-        HStack(spacing: MinidiscSpacing.s) {
+        layout {
             Text(title)
-            Spacer(minLength: 0)
+                .fixedSize(horizontal: false, vertical: true)
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
             if let onSelectSongs {
                 Button("Select", action: onSelectSongs)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.minidiscAccent)
+                    .fixedSize(horizontal: true, vertical: false)
                     .frame(minWidth: 44, minHeight: 44)
                     .buttonStyle(.plain)
                     .disabled(!canSelectSongs)
@@ -104,6 +113,7 @@ private struct SearchResultsHeader: View {
                     .accessibilityIdentifier("search.selectSongs")
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .textCase(nil)
     }
 }

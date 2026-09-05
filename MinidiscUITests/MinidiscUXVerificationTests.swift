@@ -17,11 +17,11 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try await launchFixtureApp()
     }
 
-    private func launchFixtureApp(searchCatalog: Bool = false, queueCatalog: Bool = false, homeCatalog: Bool = false, contentSize: String? = nil) async throws {
+    private func launchFixtureApp(searchCatalog: Bool = false, queueCatalog: Bool = false, homeCatalog: Bool = false, browseCatalog: Bool = false, contentSize: String? = nil) async throws {
         try await requireLocalFixture()
         try await setFixtureState([
             "search_catalog": searchCatalog, "queue_catalog": queueCatalog, "home_catalog": homeCatalog,
-            "reset_playlists": true, "removed": false,
+            "browse_catalog": browseCatalog, "reset_playlists": true, "reset_requests": true, "removed": false,
             "fail_stream": false, "slow_stream": false
         ])
         app.launchArguments = ["-AppleLanguages", "(fr)", "-AppleLocale", "fr_FR"]
@@ -70,6 +70,15 @@ final class MinidiscUXVerificationTests: XCTestCase {
         // Only fixture-owned content is touched by subsequent steps.
         try require(app.staticTexts["Escapade temporaire"].firstMatch, timeout: 10)
         captureHierarchy("home-fixture-confirmed")
+        if searchCatalog || queueCatalog || homeCatalog {
+            // Catalog profiles change between probes. Refresh through the app so a previous
+            // complete browse index cannot make Search or Discover use another fixture profile.
+            try openBrowse("Titres")
+            try pullToRefreshCatalog(named: "fixture-songs")
+            try require(app.staticTexts["Aurore"].firstMatch, timeout: 10)
+            try tapBack(named: "fixture-songs-back")
+            try tapTab("Accueil")
+        }
     }
 
     func testFixtureDownloadAndPlayback() async throws {
@@ -387,23 +396,376 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try require(app.buttons["playlist.destination.new"])
     }
 
+    func testFixtureHomePlaylistPriority() async throws {
+        try await launchFixtureApp(homeCatalog: true)
+        XCTAssertFalse(app.buttons["home.resume.open"].exists)
+        XCTAssertFalse(app.buttons["home.resume.playPause"].exists)
+        let playlist = app.buttons["home.playlist.ux-playlist"]
+        try require(playlist)
+        XCTAssertTrue(playlist.isHittable, "A playlist must be visible immediately at the top of Home.")
+        XCTAssertTrue(playlist.label.contains("Escapade temporaire"))
+        let metadata = ([playlist.label] + playlist.staticTexts.allElementsBoundByIndex.map(\.label)).joined(separator: " ")
+        XCTAssertTrue(metadata.contains("Mise à jour"), "The card must expose its localized update date.")
+        let changed = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-09-01T12:00:00Z"))
+        let relativeDate = changed.formatted(.relative(presentation: .named).locale(Locale(identifier: "fr_FR")))
+        XCTAssertTrue(metadata.contains(relativeDate),
+                      "The date must describe the fixture playlist's actual changed timestamp.")
+        XCTAssertFalse(metadata.contains("Updated"))
+        let firstOtherShelf = searchElement("home.favoriteSongs")
+        try require(firstOtherShelf)
+        XCTAssertLessThan(playlist.frame.minY, firstOtherShelf.frame.minY)
+        captureHierarchy("home-playlists-first-with-update-date")
+        try await Task.sleep(for: .seconds(2))
+        try tap(playlist, named: "home-priority-playlist-open")
+        try require(app.staticTexts[firstTitle].firstMatch)
+        try require(app.staticTexts[secondTitle].firstMatch)
+        captureHierarchy("home-priority-playlist-destination")
+        try await Task.sleep(for: .seconds(2))
+    }
+
+    func testFixtureSearchVisibleAndSelectionHeader() async throws {
+        try await launchFixtureApp(searchCatalog: true)
+        try tapTab("Recherche")
+        try require(app.searchFields.firstMatch)
+        XCTAssertTrue(app.searchFields.firstMatch.isHittable, "Search must be available without a reveal gesture.")
+        captureHierarchy("search-open-field-visible")
+        try await Task.sleep(for: .seconds(2))
+        try submitSearch("aurore")
+        try assertTopSearchResult(id: "song:ux-search-song-exact", title: "Aurore")
+        try assertSelectionBelowSearchScopes()
+        captureHierarchy("search-top-result-selection-header")
+        try await Task.sleep(for: .seconds(2))
+        try tap(app.buttons["search.selectSongs"], named: "search-header-selection-open")
+        try require(app.buttons["songs.selection.ux-search-song-exact"])
+        try require(app.buttons["songs.selection.ux-search-song-prefix"])
+        let cancel = try XCTUnwrap(app.buttons.matching(identifier: "Annuler").allElementsBoundByIndex.last { $0.isHittable })
+        try tap(cancel, named: "search-header-selection-close")
+        try selectSearchScope("songs")
+        try require(searchElement("search.result.song:ux-search-song-exact"))
+        try assertSelectionBelowSearchScopes()
+        captureHierarchy("search-songs-selection-header")
+        try await Task.sleep(for: .seconds(2))
+        try selectSearchScope("playlists")
+        try require(searchElement("search.result.playlist:ux-search-playlist"))
+        XCTAssertFalse(app.buttons["search.selectSongs"].exists)
+        captureHierarchy("search-scopes-clipped-at-trailing-edge")
+        try await Task.sleep(for: .seconds(2))
+        try tapTab("Accueil")
+        try tapTab("Recherche")
+        try require(app.searchFields.firstMatch)
+        XCTAssertTrue(app.searchFields.firstMatch.isHittable)
+        captureHierarchy("search-return-field-still-visible")
+        try await Task.sleep(for: .seconds(2))
+    }
+
+    func testFixtureAlbumIndexListAndGrid() async throws {
+        try await launchFixtureApp(browseCatalog: true)
+        try openBrowse("Albums")
+        try assertInlineTitle("Albums")
+        try prepareBrowseList(title: "Albums", layoutID: "browse.albums.layout", sortLabel: "Recently Added")
+        try refreshBrowseCatalog(identifierPrefix: "browse.album.ux-browse-album-", named: "albums")
+        try await verifyAlphabetJumps(recordPrefix: "browse.album.", fixtureKind: "album", context: "albums-list")
+        XCTAssertEqual(try browseSortButton(title: "Albums").label, "Name")
+        let layout = app.buttons["browse.albums.layout"]
+        try require(layout)
+        XCTAssertEqual(layout.label, "Vue en grille")
+        try tap(layout, named: "albums-switch-to-grid")
+        XCTAssertEqual(layout.label, "Vue en liste")
+        try await verifyAlphabetJumps(recordPrefix: "browse.album.", fixtureKind: "album", context: "albums-grid")
+    }
+
+    func testFixtureArtistIndexListAndGrid() async throws {
+        try await launchFixtureApp(browseCatalog: true)
+        try openBrowse("Artistes")
+        try assertInlineTitle("Artistes")
+        try prepareBrowseList(title: "Artistes", layoutID: "browse.artists.layout", sortLabel: "Album Count")
+        try refreshBrowseCatalog(identifierPrefix: "browse.artist.ux-browse-artist-", named: "artists")
+        try await verifyAlphabetJumps(recordPrefix: "browse.artist.", fixtureKind: "artist", context: "artists-list")
+        XCTAssertEqual(try browseSortButton(title: "Artistes").label, "Name")
+        let layout = app.buttons["browse.artists.layout"]
+        try require(layout)
+        XCTAssertEqual(layout.label, "Vue en grille")
+        try tap(layout, named: "artists-switch-to-grid")
+        XCTAssertEqual(layout.label, "Vue en liste")
+        try await verifyAlphabetJumps(recordPrefix: "browse.artist.", fixtureKind: "artist", context: "artists-grid")
+    }
+
+    func testFixtureFavoriteIndexWithoutSongsHeader() async throws {
+        try await launchFixtureApp(browseCatalog: true)
+        try openBrowse("Favoris")
+        try assertInlineTitle("Favoris")
+        XCTAssertFalse(app.staticTexts.matching(identifier: "Titres").allElementsBoundByIndex.contains { $0.isHittable })
+        captureHierarchy("favorites-without-redundant-songs-header")
+        try await Task.sleep(for: .seconds(2))
+        try await verifyAlphabetJumps(recordPrefix: "favorites.song.", fixtureKind: "song", context: "favorites")
+    }
+
+    func testFixtureDownloadAlphabetIndex() async throws {
+        try await launchFixtureApp(browseCatalog: true)
+        try openBrowse("Listes de lecture")
+        try tap(app.staticTexts["Index alphabétique"].firstMatch, named: "downloads-open-alphabet-playlist")
+        try require(app.staticTexts["Aube 01"].firstMatch)
+        if !app.buttons["Retirer le téléchargement"].exists {
+            try tap(app.buttons["Télécharger la playlist"], named: "downloads-prepare-alphabet-fixture")
+            try require(app.buttons["Retirer le téléchargement"], timeout: 30)
+        }
+        try tapBack(named: "downloads-back-to-playlists")
+        try tapBack(named: "downloads-back-to-library")
+        try tap(app.buttons["Téléchargements"], named: "downloads-index-open")
+        try assertInlineTitle("Téléchargements")
+        try await verifyAlphabetJumps(recordPrefix: "downloads.album.", fixtureKind: "album", context: "downloads")
+    }
+
+    func testFixtureFavoriteAlbumAndArtistIndex() async throws {
+        try await launchFixtureApp(browseCatalog: true)
+        try openBrowse("Favoris")
+        // Neither initial belongs to a favorite song: the index must reach the other
+        // typed sections even when their rows have never been materialized onscreen.
+        for (letter, label) in [("H", "Horizons de test, Atelier Minidisc, 2026"), ("I", "Iris Ensemble, 0 album")] {
+            try tap(searchElement("alphabet.jump.#"), named: "favorites-mixed-return-to-songs")
+            try tap(searchElement("alphabet.jump.\(letter)"), named: "favorites-mixed-jump-\(letter)")
+            let row = app.buttons[label]
+            try require(row)
+            XCTAssertTrue(row.isHittable && row.frame.intersects(app.frame))
+            captureHierarchy("favorites-mixed-index-\(letter)-confirmed")
+            try await Task.sleep(for: .seconds(2))
+        }
+    }
+
+    func testFixtureBrowseCompactTitles() async throws {
+        try await launchFixtureApp(browseCatalog: true)
+        for title in ["Listes de lecture", "Titres"] {
+            try openBrowse(title)
+            try assertInlineTitle(title)
+            captureHierarchy(title == "Titres" ? "songs-inline-navigation-title" : "playlists-inline-navigation-title")
+            try await Task.sleep(for: .seconds(2))
+            try tapBack(named: "browse-title-back")
+        }
+    }
+
+    func testFixtureDiscoverStationPlayback() async throws {
+        try await launchFixtureApp(queueCatalog: true, homeCatalog: true)
+        try tapTab("Découvrir")
+        let station = searchElement("discover.station.ux-search-artist")
+        try require(station, timeout: 10)
+        XCTAssertTrue(station.label.contains("Aurore Ensemble"), "Favorite/history artist must determine the station.")
+        // No ListenBrainz account is configured in this disposable fixture.
+        XCTAssertFalse(searchElement("discover.freshReleases").exists)
+        captureHierarchy("discover-stations-without-empty-fresh-releases")
+        try await Task.sleep(for: .seconds(2))
+        try await setFixtureState(["reset_requests": true])
+        try tap(station, named: "discover-play-aurore-station")
+        try require(app.buttons["Pause"].firstMatch, timeout: 8)
+        try openCurrentPlayer(title: "Aurore", named: "discover-station-player")
+        try await assertPlayheadAdvances()
+        let requests = try await fixtureRequests()
+        XCTAssertTrue(requests.contains { $0.endpoint == "getSimilarSongs2" && $0.id == "ux-search-artist" },
+                      "The tapped card must seed the artist mix with the exact favorite artist ID.")
+        captureHierarchy("discover-station-seed-and-audio-confirmed")
+        try await Task.sleep(for: .seconds(2))
+        try tap(app.buttons["Pause"].firstMatch, named: "discover-station-paused")
+    }
+
+    func testFixtureDiscoverIllustratedShuffle() async throws {
+        try await launchFixtureApp(queueCatalog: true, homeCatalog: true)
+        try tapTab("Découvrir")
+        let shuffle = searchElement("discover.smartShuffle")
+        try require(shuffle, timeout: 10)
+        try scrollHomeTo(shuffle, named: "discover-shuffle-card")
+        captureHierarchy("discover-illustrated-smart-shuffle-card")
+        try await Task.sleep(for: .seconds(2))
+        try tap(shuffle, named: "discover-smart-shuffle-start")
+        try require(app.buttons["Pause"].firstMatch, timeout: 8)
+        let mini = try XCTUnwrap(app.staticTexts.allElementsBoundByIndex.first {
+            $0.frame.minY > app.frame.midY && $0.frame.maxY < app.frame.maxY && $0.isHittable
+                && ([firstTitle, secondTitle, "Aurore", "Aurore au piano", "Rivière", "Reflets"].contains($0.label)
+                    || $0.label.hasPrefix("Repère "))
+        })
+        try tap(mini, named: "discover-shuffle-player")
+        try await assertPlayheadAdvances()
+        try tap(app.buttons["File d'attente"], named: "discover-shuffle-queue")
+        XCTAssertGreaterThanOrEqual(orderedQueueIdentifiers().count, 2)
+        captureHierarchy("discover-smart-shuffle-audio-and-queue-confirmed")
+        try await Task.sleep(for: .seconds(2))
+        try tap(app.buttons["Pause"].firstMatch, named: "discover-shuffle-paused")
+    }
+
+    func testFixtureRefinementLargeText() async throws {
+        try await launchFixtureApp(homeCatalog: true, contentSize: "UICTContentSizeCategoryAccessibilityXXXL")
+        try tapTab("Découvrir")
+        let station = searchElement("discover.station.ux-search-artist")
+        try require(station, timeout: 10)
+        try scrollCardToTop(station, named: "discover-large-station")
+        let stationTitle = station.descendants(matching: .staticText)
+            .matching(identifier: "Aurore Ensemble et artistes similaires").firstMatch
+        try require(stationTitle)
+        XCTAssertTrue(stationTitle.isHittable && stationTitle.frame.maxY < app.frame.maxY - 130)
+        captureHierarchy("discover-large-text-station-card")
+        try await Task.sleep(for: .seconds(3))
+        let shuffle = searchElement("discover.smartShuffle")
+        try scrollCardToTop(shuffle, named: "discover-large-shuffle")
+        XCTAssertLessThanOrEqual(shuffle.frame.maxY, app.frame.maxY - 110)
+        captureHierarchy("discover-large-text-shuffle-card")
+        try await Task.sleep(for: .seconds(3))
+        try tapTab("Recherche")
+        try require(app.searchFields.firstMatch)
+        XCTAssertTrue(app.searchFields.firstMatch.isHittable)
+        try submitSearch("aurore")
+        try assertTopSearchResult(id: "song:ux-search-song-exact", title: "Aurore")
+        try assertSelectionBelowSearchScopes()
+        captureHierarchy("search-large-text-selection-header")
+        try await Task.sleep(for: .seconds(3))
+        try tap(app.buttons["search.selectSongs"], named: "search-large-text-selection-open")
+        try require(app.buttons["songs.selection.ux-search-song-exact"])
+        try require(app.buttons["songs.selection.ux-search-song-prefix"])
+        captureHierarchy("search-large-text-selection-sheet")
+        try await Task.sleep(for: .seconds(3))
+    }
+
+    private func openBrowse(_ title: String) throws {
+        try tapTab("Bibliothèque")
+        try require(app.navigationBars["Bibliothèque"])
+        try tap(app.buttons[title], named: "browse-open-\(title)")
+        try require(app.navigationBars[title])
+    }
+
+    private func scrollCardToTop(_ element: XCUIElement, named name: String) throws {
+        // Large cards nearly fill the viewport. Full swipes oscillate past them;
+        // use the observed frame to align their top with the visible content edge.
+        try require(element)
+        let scroll = app.scrollViews.firstMatch
+        try require(scroll)
+        for _ in 0..<4 {
+            let displacement = 124 - element.frame.minY
+            if abs(displacement) <= 12 && element.isHittable { return }
+            let delta = max(-350, min(350, displacement))
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            let startY: CGFloat = delta > 0 ? 240 : 650
+            let start = origin.withOffset(CGVector(dx: scroll.frame.midX, dy: startY))
+            let end = origin.withOffset(CGVector(dx: scroll.frame.midX, dy: startY + delta))
+            captureHierarchy("before-align-" + name)
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.5)
+            captureHierarchy("after-align-" + name)
+        }
+        XCTAssertTrue(element.isHittable && element.frame.minY >= 100 && element.frame.minY <= 160,
+                      "The card must be aligned inside the viewport before exporting visual proof.")
+    }
+
+    private func assertInlineTitle(_ title: String) throws {
+        let navigation = app.navigationBars[title]
+        try require(navigation)
+        XCTAssertLessThanOrEqual(navigation.frame.height, 60,
+                                 "At ordinary text size, the browse title must use a compact navigation bar.")
+    }
+
+    private func browseSortButton(title: String) throws -> XCUIElement {
+        // The current production sort-menu labels are raw enum strings (separate from the localized layout button).
+        try XCTUnwrap(app.navigationBars[title].buttons.allElementsBoundByIndex.first {
+            ["Recently Added", "Release Year", "Name", "Album Count"].contains($0.label)
+        })
+    }
+
+    private func prepareBrowseList(title: String, layoutID: String, sortLabel: String) throws {
+        let layout = app.buttons[layoutID]
+        try require(layout)
+        if layout.label == "Vue en liste" { try tap(layout, named: "browse-normalize-list") }
+        XCTAssertEqual(layout.label, "Vue en grille")
+        try tap(try browseSortButton(title: title), named: "browse-open-sort")
+        let option = try XCTUnwrap(app.buttons.matching(identifier: sortLabel).allElementsBoundByIndex.last { $0.isHittable })
+        try tap(option, named: "browse-choose-initial-sort")
+        XCTAssertEqual(try browseSortButton(title: title).label, sortLabel)
+    }
+
+    private func tapBack(named name: String) throws {
+        let native = app.navigationBars.buttons["BackButton"].firstMatch
+        if native.exists, native.isHittable { try tap(native, named: name) }
+        else { try tap(app.buttons["Retour"].firstMatch, named: name) }
+    }
+
+    private func refreshBrowseCatalog(identifierPrefix: String, named name: String) throws {
+        // The fixture changes catalog profiles between probes; exercise the real refresh gesture
+        // so a complete persistent index from Home/Search cannot hide the new browse records.
+        try pullToRefreshCatalog(named: name)
+        let record = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", identifierPrefix)).firstMatch
+        try require(record, timeout: 10)
+    }
+
+    private func pullToRefreshCatalog(named name: String) throws {
+        let candidates = app.collectionViews.allElementsBoundByIndex
+            + app.tables.allElementsBoundByIndex + app.scrollViews.allElementsBoundByIndex
+        let scroll = try XCTUnwrap(candidates.filter {
+            $0.frame.intersects(app.frame) && $0.isHittable
+        }.max { $0.frame.height < $1.frame.height })
+        captureHierarchy("before-\(name)-catalog-refresh")
+        let top = app.navigationBars.firstMatch.frame.maxY
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let start = origin.withOffset(CGVector(dx: scroll.frame.midX, dy: top + 120))
+        let end = origin.withOffset(CGVector(dx: scroll.frame.midX, dy: app.frame.maxY - 170))
+        start.press(forDuration: 0.05, thenDragTo: end)
+        captureHierarchy("\(name)-catalog-refreshed")
+    }
+
+    private func verifyAlphabetJumps(recordPrefix: String, fixtureKind: String, context: String) async throws {
+        // Start at the far end to prove movement, then return to A and check accent/digit buckets.
+        for (letter, bucket) in [("Z", "z"), ("A", "a"), ("E", "e"), ("#", "hash")] {
+            let jump = searchElement("alphabet.jump.\(letter)")
+            try tap(jump, named: "\(context)-jump-\(bucket)")
+            let record = searchElement("\(recordPrefix)ux-browse-\(fixtureKind)-\(bucket)-01")
+            try require(record)
+            XCTAssertTrue(record.frame.intersects(app.frame) && record.isHittable,
+                          "\(context): \(letter) must reveal the exact fixture record, including É → E and digits → #.")
+            captureHierarchy("\(context)-index-\(bucket)-confirmed")
+            try await Task.sleep(for: .seconds(2))
+        }
+    }
+
+    private func assertSelectionBelowSearchScopes() throws {
+        let selection = app.buttons["search.selectSongs"]
+        try require(selection)
+        XCTAssertTrue(selection.isHittable)
+        let scopeBar = try XCTUnwrap(app.scrollViews.containing(.button, identifier: "search.scope.all")
+            .allElementsBoundByIndex.filter { !$0.frame.isEmpty }.min { $0.frame.height < $1.frame.height })
+        XCTAssertGreaterThanOrEqual(selection.frame.minY, scopeBar.frame.maxY,
+                                    "Select Songs belongs to the result header, below the separately clipped filters.")
+    }
+
+    private func visibleMiniPlayerButton(_ title: String) throws -> XCUIElement {
+        try XCTUnwrap(app.buttons.matching(identifier: title).allElementsBoundByIndex.last {
+            $0.frame.minY > app.frame.midY && $0.frame.maxY < app.frame.maxY && $0.isHittable
+        })
+    }
+
+    private func openCurrentPlayer(title: String, named name: String) throws {
+        let mini = try XCTUnwrap(app.staticTexts.matching(identifier: title).allElementsBoundByIndex.last {
+            $0.frame.minY > app.frame.midY && $0.frame.maxY < app.frame.maxY && $0.isHittable
+        }, "The expected track title must be visible in the mini-player.")
+        try tap(mini, named: name)
+        try require(searchElement("Position de lecture"))
+    }
+
+    private func assertPlayheadAdvances() async throws {
+        let position = searchElement("Position de lecture")
+        try require(position)
+        let before = try playbackSeconds(position)
+        try await Task.sleep(for: .seconds(2))
+        XCTAssertGreaterThan(try playbackSeconds(position), before, "The fixture WAV must actually advance, not only show Pause.")
+    }
+
     func testFixturePersonalHome() async throws {
         try await launchFixtureApp(homeCatalog: true)
+        XCTAssertFalse(app.buttons["home.resume.open"].exists)
+        XCTAssertFalse(app.buttons["home.resume.playPause"].exists)
         let favoriteSongs = searchElement("home.favoriteSongs")
         try scrollHomeTo(favoriteSongs, named: "home-favorite-songs")
         let favorite = app.buttons.matching(identifier: "home.favoriteSongs").allElementsBoundByIndex.first {
             $0.label == "Aurore, Aurore Ensemble" && $0.isHittable
         }
         try tap(try XCTUnwrap(favorite), named: "home-play-favorite")
-        let resume = app.buttons["home.resume.playPause"]
-        try require(resume)
-        try scrollHomeTo(resume, named: "home-resume-card")
-        XCTAssertEqual(resume.label, "Pause")
-        try tap(resume, named: "home-resume-pause")
-        XCTAssertEqual(resume.label, "Reprendre")
-        try tap(resume, named: "home-resume-start")
-        XCTAssertEqual(resume.label, "Pause")
-        try tap(app.buttons["home.resume.open"], named: "home-open-current-player")
+        try require(app.buttons["Pause"].firstMatch)
+        try tap(app.buttons["Pause"].firstMatch, named: "home-mini-player-pause")
+        try tap(try visibleMiniPlayerButton("Lecture"), named: "home-mini-player-resume")
+        try require(app.buttons["Pause"].firstMatch)
+        try openCurrentPlayer(title: "Aurore", named: "home-open-current-player")
         let position = searchElement("Position de lecture")
         try require(position)
         let before = try playbackSeconds(position)
@@ -411,7 +773,7 @@ final class MinidiscUXVerificationTests: XCTestCase {
         XCTAssertGreaterThan(try playbackSeconds(position), before)
         try tap(app.buttons["Pause"].firstMatch, named: "home-player-paused")
         try tap(app.buttons["Fermer le lecteur"], named: "home-return-from-player")
-        captureHierarchy("home-resume-functional")
+        captureHierarchy("home-favorite-playback-functional")
         try await Task.sleep(for: .seconds(2))
 
         let sections = [
@@ -481,6 +843,29 @@ final class MinidiscUXVerificationTests: XCTestCase {
         let name: String?
     }
 
+    private struct FixtureRequest: Decodable {
+        let endpoint: String
+        let id: String?
+    }
+
+    private func fixtureRequests() async throws -> [FixtureRequest] {
+        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:18992/__requests"))
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.connectionProxyDictionary = [
+            "HTTPEnable": 0, "HTTPSEnable": 0, "SOCKSEnable": 0,
+            "ProxyAutoConfigEnable": 0, "ProxyAutoDiscoveryEnable": 0
+        ]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 2
+        let (data, response) = try await session.data(for: request)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+        XCTAssertEqual(http.statusCode, 200)
+        XCTAssertEqual(http.value(forHTTPHeaderField: "X-Minidisc-UX-Fixture"), "1")
+        return try JSONDecoder().decode([FixtureRequest].self, from: data)
+    }
+
     private func fixtureMutations() async throws -> [FixtureMutation] {
         let url = try XCTUnwrap(URL(string: "http://127.0.0.1:18992/__mutations"))
         let configuration = URLSessionConfiguration.ephemeral
@@ -520,14 +905,7 @@ final class MinidiscUXVerificationTests: XCTestCase {
     }
 
     private func submitSearch(_ query: String) throws {
-        if !app.searchFields.firstMatch.waitForExistence(timeout: 1) {
-            // Search history can restore with the navigation search drawer collapsed.
-            let list = app.collectionViews.firstMatch
-            try require(list)
-            captureHierarchy("search-before-reveal-field")
-            list.swipeDown()
-            captureHierarchy("search-after-reveal-field")
-        }
+        // Search must be directly available; revealing a hidden drawer would mask a regression.
         try require(app.searchFields.firstMatch)
         let field = try XCTUnwrap(app.searchFields.allElementsBoundByIndex.first { $0.isHittable },
                                   "The active sheet or tab must expose a hittable search field.")
@@ -664,6 +1042,8 @@ final class MinidiscUXVerificationTests: XCTestCase {
     private func require(_ element: XCUIElement, timeout: TimeInterval = 5) throws {
         guard element.exists || element.waitForExistence(timeout: timeout) else {
             captureHierarchy("missing-element")
+            // Give the external simctl watcher time to capture before XCTest tears down the app.
+            Thread.sleep(forTimeInterval: 2)
             throw NSError(domain: "MinidiscUXVerification", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "Missing UI element: \(element.description)"])
         }
@@ -680,6 +1060,16 @@ final class MinidiscUXVerificationTests: XCTestCase {
     private func tap(_ element: XCUIElement, named name: String) throws {
         try require(element)
         captureHierarchy("before-\(name)")
+        if element.frame.intersects(app.frame), !element.isHittable {
+            // A dismissed system password sheet may briefly retain its transparent window.
+            let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: element)
+            _ = XCTWaiter.wait(for: [ready], timeout: 3)
+            captureHierarchy("settled-before-\(name)")
+        }
+        guard element.frame.intersects(app.frame), element.isHittable else {
+            throw NSError(domain: "MinidiscUXVerification", code: 7,
+                          userInfo: [NSLocalizedDescriptionKey: "Refusing to tap a hidden UI element: \(name)"])
+        }
         element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         captureHierarchy(name)
     }

@@ -31,7 +31,7 @@ struct ArtistStationCard: View {
                         if isStarting {
                             ProgressView().tint(.white)
                         } else {
-                            Image(systemName: "play.fill").font(.title3).foregroundStyle(.white)
+                            Image(systemName: "play.fill").font(.system(size: 20)).foregroundStyle(.white)
                         }
                     }
                     .frame(width: 44, height: 44)

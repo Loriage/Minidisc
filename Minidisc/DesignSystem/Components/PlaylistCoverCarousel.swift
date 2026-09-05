@@ -19,6 +19,16 @@ struct PlaylistCoverCarousel: View {
         case leading
         case photo
         case gradient(PlaylistGradientShape)
+
+        var accessibilityIdentifier: String {
+            let suffix: String
+            switch self {
+            case .leading: suffix = "current"
+            case .photo: suffix = "photo"
+            case .gradient(let shape): suffix = shape.rawValue
+            }
+            return "playlist.cover.option.\(suffix)"
+        }
     }
 
     private var options: [CoverOption] {
@@ -105,6 +115,20 @@ struct PlaylistCoverCarousel: View {
         .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.large, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.large, style: .continuous))
         .onTapGesture { handleTap(option) }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel(for: option))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(option == selectedOption ? .isSelected : [])
+        .accessibilityValue(option == selectedOption ? Text("Selected") : Text(""))
+        .accessibilityIdentifier(option.accessibilityIdentifier)
+    }
+
+    private func accessibilityLabel(for option: CoverOption) -> Text {
+        switch option {
+        case .leading: Text(leadingLabel)
+        case .photo: Text("Choose from Library")
+        case .gradient(let shape): Text(shape.displayName)
+        }
     }
 
     private func handleTap(_ option: CoverOption) {

@@ -103,6 +103,24 @@ The view modifier that `CoverArtCard` applies internally. It clips the view and 
 
 ## Components
 
+### Immersive playlist details
+
+PlaylistArtworkHeader displays the original square cover, including locally rendered playlist titles,
+and fades its lower half into a dark colour sampled from the image's bottom edge. It deliberately uses
+CoverArtView without the thumbnail border or shadow so the artwork can extend to the screen edges.
+
+PlaylistDetailMetadata groups the title, owner and update date. PlaylistPlaybackControls centres
+Shuffle, Play and Download and stacks them at accessibility text sizes. The track count and total
+duration belong below the song list, in PlaylistTrackSummary. SongRow's menu mode keeps playback
+and the menu as separate touch targets and permits two text lines at accessibility sizes.
+
+PlaylistFeaturedArtistsShelf uses the same MinidiscShelf, carousel title, 104-point portraits and
+ArtistPortraitCell as Similar Artists on an artist page. Artwork lookup and navigation stay with
+their respective screens.
+
+The isolated playlist artwork scenarios in Scripts/Testing exercise these components with real
+cover loading, cover replacement and large text; see that directory's README for reproduction.
+
 ### `SongRow`
 
 Standard track cell for album and playlist detail screens.

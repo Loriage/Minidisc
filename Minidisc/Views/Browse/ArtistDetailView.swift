@@ -563,7 +563,6 @@ struct ArtistDetailView: View {
 
 private enum ArtistDetailMetrics {
     static let topSongArtwork: CGFloat = 44
-    static let similarArtistArtwork: CGFloat = 104
 }
 
 private struct ArtistAlbumShelf: View {
@@ -757,13 +756,13 @@ private struct ArtistSimilarArtistsShelf: View {
                         ForEach(0..<6, id: \.self) { _ in
                             VStack(spacing: MinidiscSpacing.xs) {
                                 SkeletonBlock(
-                                    width: ArtistDetailMetrics.similarArtistArtwork,
-                                    height: ArtistDetailMetrics.similarArtistArtwork,
-                                    cornerRadius: ArtistDetailMetrics.similarArtistArtwork / 2
+                                    width: MinidiscCarouselMetrics.artistArtwork,
+                                    height: MinidiscCarouselMetrics.artistArtwork,
+                                    cornerRadius: MinidiscCarouselMetrics.artistArtwork / 2
                                 )
                                 SkeletonBlock(width: 96, height: 11, cornerRadius: 4)
                             }
-                            .frame(width: ArtistDetailMetrics.similarArtistArtwork)
+                            .frame(width: MinidiscCarouselMetrics.artistArtwork)
                         }
                     }
                     .padding(.horizontal, MinidiscSpacing.l)
@@ -786,7 +785,7 @@ private struct ArtistSimilarArtistsShelf: View {
                     ArtistRecommendationCard(
                         recommendation: recommendation,
                         imageURL: imageURLs[recommendation.id] ?? nil,
-                        size: ArtistDetailMetrics.similarArtistArtwork,
+                        size: MinidiscCarouselMetrics.artistArtwork,
                         onOutOfLibraryTap: { onOutOfLibraryTap(recommendation) }
                     )
                 }

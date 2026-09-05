@@ -76,10 +76,8 @@ struct PlaylistDetailView: View {
     @State private var songSelection: SongSelectionRequest?
     @Environment(\.dismiss) private var dismiss
     @Environment(DominantColorExtractor.self) private var colorExtractor
-    @Environment(\.colorScheme) private var colorScheme
     @State private var viewModel: PlaylistDetailViewModel?
     @State private var dominantColor: Color = .clear
-    @State private var gradientSpec: PlaylistGradientSpec?
     @State private var localCoverId: String?
     @State private var showThemeColorSheet = false
     @State private var sortOrder: PlaylistSortOrder = .playlistOrder
@@ -108,8 +106,6 @@ struct PlaylistDetailView: View {
     @State private var showFilePicker = false
     @State private var imageToCrop: CroppableImage?
 
-    @State private var heroHeight: CGFloat = 680
-
     // SwiftData remains the fallback when the online view model has no songs.
     @Query private var downloadedPlaylistMatches: [DownloadedPlaylist]
     @Query private var allDownloadedTracks: [DownloadedTrack]
@@ -121,31 +117,16 @@ struct PlaylistDetailView: View {
     private var playlistThemeIds: [String] {
         Array(Set([displayCoverArtId, effectiveCoverArtId, playlistId]))
     }
-    /// Drops the manual override and falls back to the gradient's own colour, else the one taken from the cover.
     private func resetThemeColor() {
         colorExtractor.setColorOverride(nil, forIds: playlistThemeIds)
-        dominantColor = gradientSpec?.baseColor ?? colorExtractor.cachedColor(for: displayCoverArtId) ?? dominantColor
+        coverRefreshID = UUID()
     }
 
-    private var theme: PlaylistTheme { PlaylistTheme(dominantColor: dominantColor) }
-    private var headerTextColor: Color { theme.contentColor }
-    private var headerSecondaryColor: Color { theme.secondaryContentColor }
+    private var bodyColor: Color { PlaylistArtworkPalette.background(for: dominantColor) }
+    private var headerTextColor: Color { .white }
+    private var headerSecondaryColor: Color { .white.opacity(0.7) }
+    private var heroIconColor: Color { .minidiscAccentSecondary }
 
-    private var bodyColor: Color {
-        if theme.isThemed { return theme.dominantColor }
-        return Color(UIColor.systemBackground)
-    }
-
-    private func metadataLine(count: Int, updated: Date?) -> String {
-        var parts = [String(localized: "\(count) songs")]
-        if let updated {
-            parts.append(String(localized: "Updated \(updated.formatted(.relative(presentation: .named)))"))
-        }
-        return parts.joined(separator: " · ")
-    }
-    private var heroIconColor: Color {
-        colorScheme == .dark ? Color.minidiscAccentSecondary : MinidiscColors.accentForeground(on: dominantColor)
-    }
     private var isLoadingSkeleton: Bool {
         viewModel == nil || (viewModel?.isLoading == true && viewModel?.songs.isEmpty == true)
     }
@@ -287,12 +268,24 @@ struct PlaylistDetailView: View {
                         onRemove: removeTrack,
                         onContextRemove: removeTrack,
                         onAddToPlaylist: playlistAddition.present,
-                        rowBackground: bodyColor
+                        rowBackground: bodyColor,
+                        trailingAccessory: .menu
                     )
+
+                    PlaylistTrackSummary(count: songs.count, duration: songs.reduce(0) { $0 + $1.duration })
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(bodyColor)
 
                     let featured = FeaturedArtist.from(songs)
                     if !featured.isEmpty {
-                        featuredArtistsSection(featured)
+                        PlaylistFeaturedArtistsShelf(artists: featured) { artist in
+                            HapticFeedback.light.trigger()
+                            postNavigateToArtist(
+                                artistId: artist.id,
+                                artistName: artist.name,
+                                coverArtId: artist.coverArtId
+                            )
+                        }
                             .listRowInsets(EdgeInsets())
                             .listRowSeparator(.hidden)
                             .listRowBackground(bodyColor)
@@ -301,6 +294,7 @@ struct PlaylistDetailView: View {
             }
         }
         .listStyle(.plain)
+        .environment(\.colorScheme, .dark)
         // Supplying an inactive edit binding prevents normal List scrolling.
         .environment(\.editMode, isEditing ? Binding.constant(EditMode.active) : nil)
         .scrollContentBackground(.hidden)
@@ -392,7 +386,7 @@ struct PlaylistDetailView: View {
                     )
                     if saved {
                         await vm.load()
-                        coverRefreshID = UUID()
+                        refreshCoverAppearance()
                     }
                     return saved
                 }
@@ -402,13 +396,6 @@ struct PlaylistDetailView: View {
             }
         }
         .background(bodyColor.ignoresSafeArea())
-        .background {
-            GeometryReader { proxy in
-                Color.clear
-                    .onAppear { heroHeight = proxy.size.width }
-                    .onChange(of: proxy.size.width) { _, w in heroHeight = w }
-            }
-        }
         .minidiscContentWidth()
         .environment(\.minidiscPlayingAccent, heroIconColor)
         .navigationTitle("")
@@ -417,7 +404,7 @@ struct PlaylistDetailView: View {
         .enableSwipeBack()
         .toolbar { toolbarContent }
         .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbarColorScheme(theme.isThemed ? (theme.isLight ? .light : .dark) : nil, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .task(id: container?.serverState.isOnline) {
             guard let c = container else { return }
             if viewModel == nil {
@@ -432,31 +419,8 @@ struct PlaylistDetailView: View {
             }
             await viewModel?.load()
         }
-        .task(id: effectiveCoverArtId) {
-            guard gradientSpec == nil else { return }
-            let artId = effectiveCoverArtId
-            let cached = colorExtractor.dominantColor(for: artId, image: nil)
-            if cached != .clear {
-                dominantColor = cached
-                return
-            }
-            await loadDominantColor(coverArtId: artId)
-        }
-        .task(id: coverRefreshID) {
-            if let downloadService = container?.downloadService {
-                localCoverId = await PlaylistCoverManager.localCoverId(
-                    playlistId: playlistId,
-                    downloadService: downloadService
-                )
-            }
-            guard let container, let serverId = container.serverState.activeServer?.id else { gradientSpec = nil; return }
-            let choice = PlaylistCoverStore(modelContainer: container.modelContainer).choice(playlistId: playlistId, serverId: serverId)
-            let spec = choice?.isUserPicked == true ? choice?.spec : nil
-            gradientSpec = spec
-            if let spec {
-                let color = colorExtractor.colorOverride(for: displayCoverArtId) ?? spec.baseColor
-                withAnimation(.easeIn(duration: 0.2)) { dominantColor = color }
-            }
+        .task(id: [effectiveCoverArtId, coverRefreshID.uuidString]) {
+            await loadCoverAppearance()
         }
         .minidiscZoomTransition(sourceID: zoomSourceId, in: zoomNamespace)
     }
@@ -566,12 +530,37 @@ struct PlaylistDetailView: View {
 
     // MARK: - Color loading
 
-    private func loadDominantColor(coverArtId: String) async {
-        guard let image = await container?.artworkImageCache.load(coverArtId: coverArtId) else { return }
-        let color = colorExtractor.dominantColor(for: coverArtId, image: image)
-        withAnimation(.easeIn(duration: 0.2)) {
+    private func loadCoverAppearance() async {
+        guard let container else { return }
+        let coverId = effectiveCoverArtId
+        let localId = await PlaylistCoverManager.localCoverId(
+            playlistId: playlistId,
+            downloadService: container.downloadService
+        )
+        guard !Task.isCancelled else { return }
+        localCoverId = localId
+        let artId = localId ?? coverId
+
+        let cached = colorExtractor.bottomStripColor(for: artId, image: nil)
+        if cached != .clear {
+            dominantColor = cached
+            return
+        }
+
+        guard let image = await container.artworkImageCache.load(coverArtId: artId),
+              !Task.isCancelled, displayCoverArtId == artId else { return }
+        let color = colorExtractor.bottomStripColor(for: artId, image: image)
+        guard color != .clear else { return }
+        withAnimation(.easeInOut(duration: 0.3)) {
             dominantColor = color
         }
+    }
+
+    private func refreshCoverAppearance() {
+        for id in playlistThemeIds {
+            colorExtractor.invalidate(for: id)
+        }
+        coverRefreshID = UUID()
     }
 
     // MARK: - Download state helpers
@@ -705,7 +694,7 @@ struct PlaylistDetailView: View {
             colorExtractor: colorExtractor
         )
         await viewModel?.load()
-        coverRefreshID = UUID()
+        refreshCoverAppearance()
         withAnimation(.smooth) { isEditing = false }
     }
 
@@ -752,15 +741,10 @@ struct PlaylistDetailView: View {
             editTrackRow(song)
                 .tag(song.id)
                 .listRowBackground(bodyColor)
-                .environment(\.colorScheme, dragHandleScheme)
         }
         .onMove { from, to in
             editSongs.move(fromOffsets: from, toOffset: to)
         }
-    }
-
-    private var dragHandleScheme: ColorScheme {
-        theme.isThemed ? (theme.isLight ? .light : .dark) : colorScheme
     }
 
     private func editTrackRow(_ song: DisplayableSong) -> some View {
@@ -818,133 +802,41 @@ struct PlaylistDetailView: View {
 
     private func playlistHeader(vm: PlaylistDetailViewModel?) -> some View {
         VStack(spacing: 0) {
-            GeometryReader { geo in
-                let stretch = max(0, geo.frame(in: .global).minY)
-                PlaylistThemedBackground(
-                    coverArtId: displayCoverArtId,
-                    coverImage: initialCoverImage,
-                    theme: theme,
-                    heroHeight: heroHeight,
-                    lightMelt: true
-                )
-                .frame(width: geo.size.width, height: heroHeight + stretch)
-                .offset(y: -stretch)
-                .id(coverRefreshID)
-            }
-            .frame(height: heroHeight)
+            PlaylistArtworkHeader(
+                coverArtId: displayCoverArtId,
+                initialImage: initialCoverImage,
+                backgroundColor: bodyColor
+            )
 
             VStack(spacing: MinidiscSpacing.l) {
-                VStack(spacing: 0) {
-                    Text(vm?.name ?? initialName)
-                    .font(.minidiscDetailTitle)
-                    .foregroundStyle(headerTextColor)
-                    .multilineTextAlignment(.center)
-                    .padding(.bottom, MinidiscSpacing.xs)
-                if vm == nil {
-                    SkeletonBlock(width: 140, height: 18, cornerRadius: 4)
-                        .padding(.bottom, MinidiscSpacing.s)
-                } else if let owner = vm?.owner {
-                    Text("by \(owner)")
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(headerSecondaryColor)
-                        .padding(.bottom, MinidiscSpacing.s)
-                }
-                if vm == nil {
-                    SkeletonBlock(width: 100, height: 14, cornerRadius: 4)
-                } else if vm != nil {
-                    let count = resolvedSongs(vm).count
-                    Text(metadataLine(count: count, updated: vm?.playlistDetail?.changed))
-                        .font(.minidiscCaption)
-                        .foregroundStyle(headerSecondaryColor.opacity(0.8))
-                }
-            }
-            .padding(.horizontal, MinidiscSpacing.l)
+                PlaylistDetailMetadata(
+                    title: vm?.name ?? initialName,
+                    owner: vm?.owner,
+                    updated: vm?.playlistDetail?.changed,
+                    isLoading: vm == nil
+                )
 
-            Group {
-                HStack(spacing: MinidiscSpacing.m) {
-                    Button {
+                PlaylistPlaybackControls(
+                    isEnabled: !resolvedSongs(vm).isEmpty,
+                    playColor: bodyColor,
+                    downloadControl: downloadControl(for: vm),
+                    onPlay: {
+                        Task {
+                            let songs = sortedSongs(resolvedSongs(vm))
+                            guard !songs.isEmpty else { return }
+                            await playSongs(songs, startIndex: 0)
+                        }
+                    },
+                    onShuffle: {
                         HapticFeedback.medium.trigger()
                         Task {
                             let shuffled = resolvedSongs(vm).shuffled()
                             guard !shuffled.isEmpty else { return }
                             await playSongs(shuffled, startIndex: 0)
                         }
-                    } label: {
-                        Image(systemName: "shuffle")
-                            .font(.minidiscCellTitle)
-                            .foregroundStyle(.white)
-                            .minidiscSolidCircleButton(size: 44)
-                    }
-                    .disabled(resolvedSongs(vm).isEmpty)
-                    .accessibilityLabel("Shuffle")
-                    .opacity(vm == nil ? 0.4 : 1)
-
-                    PlayButton(action: {
-                        Task {
-                            let songs = sortedSongs(resolvedSongs(vm))
-                            guard !songs.isEmpty else { return }
-                            await playSongs(songs, startIndex: 0)
-                        }
-                    }, isDisabled: resolvedSongs(vm).isEmpty, accentColor: .white, labelColor: MinidiscColors.accentForeground(on: .white), height: 44)
-                    .frame(maxWidth: 220)
-
-                    if vm?.isOffline != true {
-                        if let vm {
-                            if vm.isDownloadingPlaylist {
-                                Button { Task { await vm.cancelPlaylistDownload() } } label: {
-                                    Image(systemName: "xmark")
-                                        .font(.minidiscCellTitle)
-                                        .foregroundStyle(.white)
-                                        .minidiscSolidCircleButton(size: 44)
-                                }
-                                .accessibilityLabel("Cancel Download")
-                            } else {
-                                switch downloadState(for: vm) {
-                                case .notDownloaded:
-                                    Button { Task { await vm.downloadPlaylist() } } label: {
-                                        Image(systemName: "arrow.down")
-                                            .font(.minidiscCellTitle)
-                                            .foregroundStyle(.white)
-                                            .minidiscSolidCircleButton(size: 44)
-                                    }
-                                    .disabled(vm.songs.isEmpty)
-                                    .accessibilityLabel("Download Playlist")
-                                case .partiallyDownloaded:
-                                    Button { Task { await vm.downloadMissingTracks() } } label: {
-                                        Image(systemName: "arrow.down")
-                                            .font(.minidiscCellTitle)
-                                            .foregroundStyle(.white)
-                                            .minidiscSolidCircleButton(size: 44)
-                                    }
-                                    .accessibilityLabel("Download Missing Tracks")
-                                case .fullyDownloaded:
-                                    Button {
-                                        HapticFeedback.heavy.trigger()
-                                        showDeleteAlert = true
-                                    } label: {
-                                        Image(systemName: "trash")
-                                            .font(.minidiscCellTitle)
-                                            .foregroundStyle(.white)
-                                            .minidiscSolidCircleButton(size: 44)
-                                    }
-                                    .accessibilityLabel("Remove Download")
-                                }
-                            }
-                        } else {
-                            Button { } label: {
-                                Image(systemName: "arrow.down")
-                                    .font(.minidiscCellTitle)
-                                    .foregroundStyle(.white)
-                                    .minidiscSolidCircleButton(size: 44)
-                            }
-                            .disabled(true)
-                            .accessibilityLabel("Download Playlist")
-                            .opacity(0.4)
-                        }
-                    }
-                }
-                .buttonStyle(.borderless)
-                .padding(.horizontal, MinidiscSpacing.l)
+                    },
+                    onDownload: { performDownloadAction() }
+                )
 
                 if let vm, vm.isDownloadingPlaylist {
                     let serverId = container?.serverState.activeServer?.id ?? UUID()
@@ -956,49 +848,40 @@ struct PlaylistDetailView: View {
                     )
                 }
             }
-            }
             .padding(.top, MinidiscSpacing.m)
-            .padding(.bottom, MinidiscSpacing.xl)
+            .padding(.bottom, MinidiscSpacing.xxl)
         }
         .frame(maxWidth: .infinity)
     }
 
-    /// Apple-Music "Featured Artists" rail: the most-present artists in the playlist as tappable circles
-    /// → artist detail (reuses the existing `.minidiscNavigateToArtist` notification path). Only artists
-    /// with an `artistId` appear (see FeaturedArtist); the circle uses a representative track cover.
-    private func featuredArtistsSection(_ artists: [FeaturedArtist]) -> some View {
-        VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
-            Text("Featured Artists")
-                .font(.minidiscSectionTitle)
-                .foregroundStyle(headerTextColor)
-                .padding(.horizontal, MinidiscSpacing.l)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: MinidiscSpacing.m) {
-                    ForEach(artists) { artist in
-                        Button {
-                            HapticFeedback.light.trigger()
-                            postNavigateToArtist(artistId: artist.id, artistName: artist.name, coverArtId: artist.coverArtId)
-                        } label: {
-                            VStack(spacing: MinidiscSpacing.xs) {
-                                FeaturedArtistAvatar(artist: artist, size: 76)
-                                Text(artist.name)
-                                    .font(.minidiscCaption)
-                                    .foregroundStyle(headerSecondaryColor)
-                                    .lineLimit(1)
-                                    .frame(width: 84)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, MinidiscSpacing.l)
-                .padding(.bottom, MinidiscSpacing.s)
-            }
+    private func downloadControl(for vm: PlaylistDetailViewModel?) -> PlaylistDownloadControl? {
+        guard vm?.isOffline != true else { return nil }
+        guard let vm else { return .download }
+        if vm.isDownloadingPlaylist { return .cancel }
+        switch downloadState(for: vm) {
+        case .notDownloaded: return .download
+        case .partiallyDownloaded: return .downloadMissing
+        case .fullyDownloaded: return .remove
         }
-        .padding(.top, MinidiscSpacing.m)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    private func performDownloadAction() {
+        guard let vm = viewModel else { return }
+        switch downloadControl(for: vm) {
+        case .download:
+            Task { await vm.downloadPlaylist() }
+        case .downloadMissing:
+            Task { await vm.downloadMissingTracks() }
+        case .cancel:
+            Task { await vm.cancelPlaylistDownload() }
+        case .remove:
+            HapticFeedback.heavy.trigger()
+            showDeleteAlert = true
+        case nil:
+            break
+        }
+    }
+
 }
 
 // MARK: - Download state
@@ -1073,6 +956,7 @@ struct PlaylistSongRows: View {
     /// Solid backing applied to EACH row so the rows occlude a fixed full-bleed cover behind the List on
     /// scroll. `nil` = default List row background.
     let rowBackground: Color?
+    let trailingAccessory: SongRowTrailingAccessory
 
     @Query private var downloadedTracks: [DownloadedTrack]
     @Query private var allFavorites: [FavoriteRecord]
@@ -1081,7 +965,7 @@ struct PlaylistSongRows: View {
         Set(allFavorites.map(\.id))
     }
 
-    init(songs: [DisplayableSong], serverId: UUID, downloadingIds: Set<String> = [], titleColor: Color = .primary, secondaryColor: Color = .secondary, onTap: @escaping (Int) -> Void, onDownload: ((String) -> Void)? = nil, onRemoveDownload: ((String) -> Void)? = nil, onRemove: ((Int) -> Void)? = nil, onReorder: ((IndexSet, Int) -> Void)? = nil, onContextRemove: ((Int) -> Void)? = nil, onAddToPlaylist: ((DisplayableSong) -> Void)? = nil, rowBackground: Color? = nil) {
+    init(songs: [DisplayableSong], serverId: UUID, downloadingIds: Set<String> = [], titleColor: Color = .primary, secondaryColor: Color = .secondary, onTap: @escaping (Int) -> Void, onDownload: ((String) -> Void)? = nil, onRemoveDownload: ((String) -> Void)? = nil, onRemove: ((Int) -> Void)? = nil, onReorder: ((IndexSet, Int) -> Void)? = nil, onContextRemove: ((Int) -> Void)? = nil, onAddToPlaylist: ((DisplayableSong) -> Void)? = nil, rowBackground: Color? = nil, trailingAccessory: SongRowTrailingAccessory = .duration) {
         self.songs = songs
         self.downloadingIds = downloadingIds
         self.titleColor = titleColor
@@ -1094,6 +978,7 @@ struct PlaylistSongRows: View {
         self.onContextRemove = onContextRemove
         self.onAddToPlaylist = onAddToPlaylist
         self.rowBackground = rowBackground
+        self.trailingAccessory = trailingAccessory
         let sid = serverId
         _downloadedTracks = Query(
             filter: #Predicate<DownloadedTrack> { track in
@@ -1133,9 +1018,32 @@ struct PlaylistSongRows: View {
         let isDownloading = downloadingIds.contains(song.id)
         let downloadAction: (() -> Void)? = (liveDownloaded || isDownloading) ? nil : onDownload.map { action in { action(song.id) } }
         let removeAction: (() -> Void)? = liveDownloaded ? onRemoveDownload.map { action in { action(song.id) } } : nil
-        SongRow(song: liveSong, index: index + 1, showCoverArt: true, isFavorite: favoriteSongIds.contains("song:\(song.id)"), titleColor: titleColor, secondaryColor: secondaryColor, onDownload: downloadAction, onRemoveDownload: removeAction, isDownloading: isDownloading, onRemoveFromPlaylist: onContextRemove.map { remove in { remove(index) } }, onAddToPlaylist: onAddToPlaylist)
-            .contentShape(Rectangle())
-            .onTapGesture { onTap(index) }
-            .listRowBackground(Color.clear)
+        SongRow(
+            song: liveSong,
+            index: index + 1,
+            showCoverArt: true,
+            coverArtSize: trailingAccessory == .menu ? 48 : 44,
+            coverArtCornerRadius: trailingAccessory == .menu ? MinidiscCornerRadius.xs : MinidiscCornerRadius.standard,
+            primaryContentSpacing: trailingAccessory == .menu ? MinidiscSpacing.m : MinidiscSpacing.s,
+            isFavorite: favoriteSongIds.contains("song:\(song.id)"),
+            titleColor: titleColor,
+            secondaryColor: secondaryColor,
+            trailingAccessory: trailingAccessory,
+            menuAccessibilityIdentifier: "playlist.song.menu.\(song.id)",
+            onDownload: downloadAction,
+            onRemoveDownload: removeAction,
+            isDownloading: isDownloading,
+            onRemoveFromPlaylist: onContextRemove.map { remove in { remove(index) } },
+            onAddToPlaylist: onAddToPlaylist,
+            onTap: { onTap(index) }
+        )
+        .listRowInsets(trailingAccessory == .menu
+            ? EdgeInsets(top: 5, leading: MinidiscSpacing.xl, bottom: 5, trailing: MinidiscSpacing.s)
+            : nil)
+        .alignmentGuide(.listRowSeparatorLeading) { dimensions in
+            trailingAccessory == .menu ? 0 : dimensions[.listRowSeparatorLeading]
+        }
+        .listRowSeparatorTint(trailingAccessory == .menu ? secondaryColor.opacity(0.22) : nil)
+        .listRowBackground(Color.clear)
     }
 }

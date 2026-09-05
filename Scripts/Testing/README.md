@@ -62,3 +62,14 @@ playlist controls. A skipped scenario means the isolated fixture was unavailable
 verification.
 
 These tests exercise visible controls and local fixture audio. They do not validate physical network handoffs, audio-route changes or iOS background scheduling over a long period. Stop the Python process when finished.
+
+The playlist artwork scenarios use `playlist_artwork_catalog`: a bright four-colour cover, 14 tracks
+including a long title, and a second playlist reserved for choosing a locally generated cover.
+`testFixturePlaylistArtworkAndSongMenu` checks the full-size cover, separate playback/menu targets,
+track information and scrolling. `testFixturePlaylistArtworkLargeText` repeats the layout checks with
+XXXL text. `testFixturePlaylistGeneratedArtwork` chooses a cover through the editor;
+`testFixturePlaylistMenuAndRowPlayback` verifies that menus preserve playback and a row starts
+the selected track. `testFixturePlaylistFeaturedArtistNavigation` checks the shared artist carousel
+and opens the exact featured artist from its portrait. Cover-selection probes use
+`playlist.cover.option.<shape>` accessibility identifiers and
+the selected trait; they only edit the dedicated synthetic playlist.

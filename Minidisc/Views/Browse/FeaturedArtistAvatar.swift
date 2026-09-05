@@ -12,7 +12,7 @@ import SwiftSonic
 /// collision) or has no photo, the album cover stays — never a placeholder. Cross-platform.
 struct FeaturedArtistAvatar: View {
     let artist: FeaturedArtist
-    var size: CGFloat = 76
+    var size: CGFloat = MinidiscCarouselMetrics.artistArtwork
 
     @Environment(\.appContainer) private var container
     @State private var resolvedArtistCoverArt: String?
@@ -22,7 +22,7 @@ struct FeaturedArtistAvatar: View {
     var body: some View {
         CoverArtView(
             id: resolvedArtistCoverArt ?? albumCoverId,
-            size: 160,
+            size: Int(size * 2),
             placeholderSystemImage: "music.mic"
         )
         .frame(width: size, height: size)

@@ -25,8 +25,8 @@ final class DominantColorExtractor {
     // never invalidates a view that called dominantColor() during its body. Colors that drive UI flow
     // through observed @State / view-model properties (e.g. FullPlayerViewModel.dominantColor), never this.
     @ObservationIgnored private var cache: [String: Color] = [:]
-    /// Bottom-strip (lower 20%) colours — the ARTIST hero only. Keyed by coverArtId but DISTINCT from `cache`, so
-    /// one cover can hold both a whole-image dominant (album/player) and a bottom-strip colour (artist) with no
+    /// Bottom-strip (lower 20%) colours for immersive headers. Keyed by coverArtId but DISTINCT from `cache`, so
+    /// one cover can hold both a whole-image dominant (album/player) and a bottom-strip colour with no
     /// clobber. In-memory only — re-extracted per launch, never mirrored to widgets.
     @ObservationIgnored private var bottomStripCache: [String: Color] = [:]
     /// User-picked colour overrides (per coverArtId), persisted, taking precedence over the extracted dominant.
@@ -68,7 +68,7 @@ final class DominantColorExtractor {
         return result.color
     }
 
-    /// Bottom-strip (lower 20%) average — the ARTIST hero only. An artist photo's whole-image average washes out
+    /// Bottom-strip (lower 20%) average. An image's whole-image average washes out
     /// to a grey mid-tone; its bottom edge (what melts into the body) is the darker tone the hero needs for a
     /// seamless meet. Override-first like `dominantColor`, cached separately so it can't clobber the whole-image
     /// dominant of the same cover. Pass `image: nil` for a cache-only read (returns .clear if not yet extracted).
@@ -163,11 +163,13 @@ final class DominantColorExtractor {
     func invalidate(for coverArtId: String?) {
         guard let coverArtId else { return }
         cache.removeValue(forKey: coverArtId)
+        bottomStripCache.removeValue(forKey: coverArtId)
         removePersistedColor(forKey: coverArtId)
     }
 
     func clearCache() {
         cache.removeAll()
+        bottomStripCache.removeAll()
         UserDefaults.standard.removeObject(forKey: Self.userDefaultsKey)
     }
 

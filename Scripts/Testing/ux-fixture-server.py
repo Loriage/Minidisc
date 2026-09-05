@@ -4,14 +4,16 @@ import base64
 import io
 import json
 import re
+import struct
 import threading
 import time
 import unicodedata
 import wave
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-STATE = {"removed": False, "fail_stream": False, "slow_stream": False, "search_catalog": False, "queue_catalog": False, "home_catalog": False, "browse_catalog": False}
+STATE = {"removed": False, "fail_stream": False, "slow_stream": False, "search_catalog": False, "queue_catalog": False, "home_catalog": False, "browse_catalog": False, "playlist_artwork_catalog": False}
 # Mode changes represent completed server scans, so persistent app indexes can refresh.
 LAST_SCAN = time.time()
 LOCK = threading.RLock()
@@ -26,6 +28,17 @@ SONGS = [
 ALBUM = {"id": "ux-album", "name": "Horizons de test", "artist": "Atelier Minidisc", "artistId": "ux-artist", "songCount": 2, "duration": 60, "created": "2026-09-01T12:00:00Z", "coverArt": "ux-cover", "genre": "Ambient", "year": 2026}
 PLAYLIST = {"id": "ux-playlist", "name": "Escapade temporaire", "comment": "Données locales de vérification", "owner": "test", "public": False, "songCount": 2, "duration": 60, "created": "2026-09-01T12:00:00Z", "changed": "2026-09-01T12:00:00Z", "coverArt": "ux-cover"}
 ARTIST = {"id": "ux-artist", "name": "Atelier Minidisc", "albumCount": 1, "coverArt": "ux-cover"}
+
+# A dedicated profile leaves every existing probe's catalog unchanged. Its bright
+# artwork has distinct corners so screenshots expose cropping, tinting and blur.
+PLAYLIST_ARTWORK_ID = "ux-playlist-light-cover-v1"
+GENERATED_ARTWORK_PLAYLIST = {**PLAYLIST, "id": "ux-playlist-generated-cover", "name": "Palette générée",
+                            "coverArt": "ux-playlist-generated-seed-v1"}
+PLAYLIST_ARTWORK_SONGS = [
+    {**SONGS[0], "id": f"ux-playlist-detail-song-{index:02d}",
+     "title": f"Couleur du jour {index:02d}", "track": index + 2}
+    for index in range(1, 13)
+]
 
 # Deliberately return the prefix song before the exact match. The app must rank
 # "Aurore" above "Aurore au piano", independently of the server response order.
@@ -107,6 +120,16 @@ def fixture_catalog(state):
         catalog["albums"] += BROWSE_ALBUMS
         catalog["artists"] += BROWSE_ARTISTS + [BROWSE_FAVORITE_ARTIST]
         catalog["playlists"] += [BROWSE_PLAYLIST]
+    if state["playlist_artwork_catalog"]:
+        catalog["songs"] += PLAYLIST_ARTWORK_SONGS
+        catalog["playlists"] = [
+            {**item, "coverArt": PLAYLIST_ARTWORK_ID, "songCount": 14, "duration": 420}
+            if item["id"] == PLAYLIST["id"] else item
+            for item in catalog["playlists"]
+        ]
+        # Keep picker edits away from the bright reference playlist. Repeated
+        # generator checks cannot replace the artwork used by normal/XXXL probes.
+        catalog["playlists"] += [GENERATED_ARTWORK_PLAYLIST]
     if state["queue_catalog"]:
         # Four long tracks leave time to inspect an edit without an automatic track boundary.
         catalog["songs"] = [{**item, "duration": 120, "size": len(QUEUE_AUDIO)} for item in catalog["songs"]]
@@ -137,6 +160,8 @@ def playlist_detail(playlist, catalog, state):
         else:
             if playlist["id"] == BROWSE_PLAYLIST["id"]:
                 templates = BROWSE_SONGS
+            elif playlist["id"] == PLAYLIST["id"] and state["playlist_artwork_catalog"]:
+                templates = SONGS + PLAYLIST_ARTWORK_SONGS
             else:
                 templates = SEARCH_SONGS if playlist["id"] == SEARCH_PLAYLIST["id"] else SONGS + (SEARCH_SONGS if state["queue_catalog"] else [])
             song_ids = [item["id"] for item in templates]
@@ -229,6 +254,33 @@ def make_audio(seconds):
 
 AUDIO = make_audio(30)
 QUEUE_AUDIO = make_audio(120)
+
+
+def make_playlist_artwork(side=512):
+    """Encode a sharp RGB PNG with stdlib only, including valid chunk CRCs."""
+    colors = [(255, 235, 153), (153, 223, 250), (250, 164, 210), (163, 235, 198)]
+    rows = bytearray()
+    for y in range(side):
+        rows.append(0)  # PNG filter: None.
+        for x in range(side):
+            color = colors[(2 if y >= side // 2 else 0) + (1 if x >= side // 2 else 0)]
+            radius_squared = (x - side / 2) ** 2 + (y - side / 2) ** 2
+            if radius_squared < (side * 0.23) ** 2:
+                color = (255, 251, 240)
+            if radius_squared < (side * 0.065) ** 2:
+                color = (33, 48, 81)
+            if side * 0.05 <= x < side * 0.065 and side * 0.05 <= y < side * 0.18:
+                color = (33, 48, 81)
+            rows.extend(color)
+
+    def chunk(kind, body):
+        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
+
+    header = struct.pack(">IIBBBBB", side, side, 8, 2, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+
+
+PLAYLIST_ARTWORK_PNG = make_playlist_artwork()
 PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAABQUlEQVR4nO3Wyw3CMBBFUTqiBUqhBAqhMYphyYIdSJGiKAT7jefzMrGl2Xp8TxZJTq/bJfWc6AWaOV/viQHf+sSAqT4rYK5PCVjW5wOs6pMBfuszATbrXQDv56MwtvWWgHK3RlKotwFI00WMcr0WoElHGNX6doBVeoGB1DcCPOpXBrC+BeBXPxvwejHAu34aL0BMvdSAAiLrRYY+APH1uKEDAKseNBwdwK1HDAOAXcwBmF/pYbAHlB/YADgDkE/PAAzAkQFVg/nOAZDcZ76wAkj/K9H7z9wuAHRD9aXcAYBoqNZ3A6AYkPqeAMEGsF4GCDPg9WJAgEFULwZMZ/ZTLwMsj+2kXgDYPMxNFwDKK1jpKABcFJ8OARo2xnRDAPPLPOYvgF6mAtCzVAB6kwpAD1IB6DUqAD1FBaB3qAD0CM18ABLz2xTXyjQXAAAAAElFTkSuQmCC")
 
 class Handler(BaseHTTPRequestHandler):
@@ -299,7 +351,7 @@ class Handler(BaseHTTPRequestHandler):
         if urlparse(self.path).path == "/__state":
             data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
             with LOCK:
-                catalog_keys = ("removed", "search_catalog", "queue_catalog", "home_catalog", "browse_catalog")
+                catalog_keys = ("removed", "search_catalog", "queue_catalog", "home_catalog", "browse_catalog", "playlist_artwork_catalog")
                 if any(key in data and bool(data[key]) != STATE[key] for key in catalog_keys):
                     LAST_SCAN = max(time.time(), LAST_SCAN + 1)
                 STATE.update({k: bool(v) for k, v in data.items() if k in STATE})
@@ -334,14 +386,15 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 snapshot = list(REQUESTS)
             return self.send(json.dumps(snapshot).encode())
-        if endpoint in ("getSimilarSongs2", "getRandomSongs", "stream", "download"):
+        if endpoint in ("getSimilarSongs2", "getRandomSongs", "stream", "download", "getArtist", "getArtistInfo2"):
             # Only bounded synthetic evidence; never persist request URLs or authentication.
             identifier = query.get("id", [""])[0]
             with LOCK:
                 REQUESTS.append({"endpoint": endpoint, "id": identifier if identifier.startswith("ux-") else None})
                 del REQUESTS[:-500]
         if endpoint == "getCoverArt":
-            return self.send(PNG, "image/png")
+            artwork = PLAYLIST_ARTWORK_PNG if query.get("id", [""])[0] == PLAYLIST_ARTWORK_ID else PNG
+            return self.send(artwork, "image/png")
         if endpoint in ("stream", "download"):
             if state["removed"] or state["fail_stream"]:
                 return self.send(b"missing fixture stream", "text/plain", 404)

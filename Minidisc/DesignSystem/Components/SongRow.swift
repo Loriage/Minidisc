@@ -25,6 +25,7 @@ struct SongRow: View {
     var titleColor: Color = .primary
     var secondaryColor: Color = .secondary
     var trailingAccessory: SongRowTrailingAccessory = .duration
+    var menuAccessibilityIdentifier: String = ""
     let onDownload: (() -> Void)?
     let onRemoveDownload: (() -> Void)?
     var isDownloading: Bool = false
@@ -36,12 +37,14 @@ struct SongRow: View {
     @Environment(\.appContainer) private var container
     @Environment(ArtworkImageCache.self) private var artworkImageCache
     @Environment(\.minidiscPlayingAccent) private var playingAccent
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .body) private var menuSymbolSize: CGFloat = 17
     @State private var coverImage: PlatformImage?
     @State private var shareRequest: DisplayableSong?
     @State private var preparedShare: PreparedTrackShare?
     @State private var trackInformation: DisplayableSong?
 
-    init(song: DisplayableSong, index: Int, showCoverArt: Bool = false, showArtist: Bool = true, secondaryText: String? = nil, coverArtSize: CGFloat = 44, coverArtCornerRadius: CGFloat = MinidiscCornerRadius.standard, primaryContentSpacing: CGFloat = MinidiscSpacing.s, isFavorite: Bool = false, titleColor: Color = .primary, secondaryColor: Color = .secondary, trailingAccessory: SongRowTrailingAccessory = .duration, onDownload: (() -> Void)? = nil, onRemoveDownload: (() -> Void)? = nil, isDownloading: Bool = false, onRemoveFromPlaylist: (() -> Void)? = nil, onAddToPlaylist: ((DisplayableSong) -> Void)? = nil, onGoToAlbum: (() -> Void)? = nil, onTap: (() -> Void)? = nil) {
+    init(song: DisplayableSong, index: Int, showCoverArt: Bool = false, showArtist: Bool = true, secondaryText: String? = nil, coverArtSize: CGFloat = 44, coverArtCornerRadius: CGFloat = MinidiscCornerRadius.standard, primaryContentSpacing: CGFloat = MinidiscSpacing.s, isFavorite: Bool = false, titleColor: Color = .primary, secondaryColor: Color = .secondary, trailingAccessory: SongRowTrailingAccessory = .duration, menuAccessibilityIdentifier: String = "", onDownload: (() -> Void)? = nil, onRemoveDownload: (() -> Void)? = nil, isDownloading: Bool = false, onRemoveFromPlaylist: (() -> Void)? = nil, onAddToPlaylist: ((DisplayableSong) -> Void)? = nil, onGoToAlbum: (() -> Void)? = nil, onTap: (() -> Void)? = nil) {
         self.song = song
         self.index = index
         self.showCoverArt = showCoverArt
@@ -54,6 +57,7 @@ struct SongRow: View {
         self.titleColor = titleColor
         self.secondaryColor = secondaryColor
         self.trailingAccessory = trailingAccessory
+        self.menuAccessibilityIdentifier = menuAccessibilityIdentifier
         self.onDownload = onDownload
         self.onRemoveDownload = onRemoveDownload
         self.isDownloading = isDownloading
@@ -61,6 +65,10 @@ struct SongRow: View {
         self.onAddToPlaylist = onAddToPlaylist
         self.onGoToAlbum = onGoToAlbum
         self.onTap = onTap
+    }
+
+    private var textLineLimit: Int {
+        trailingAccessory == .menu && dynamicTypeSize.isAccessibilitySize ? 2 : 1
     }
 
     private var isCurrentTrack: Bool { container?.playerState.currentTrack?.id == song.id }
@@ -167,12 +175,14 @@ struct SongRow: View {
                 Text(song.title)
                     .font(.minidiscBody)
                     .foregroundStyle(isCurrentTrack ? playingAccent : titleColor)
-                    .lineLimit(1)
+                    .lineLimit(textLineLimit)
+                    .fixedSize(horizontal: false, vertical: true)
                 if let secondaryText = secondaryText ?? (showArtist ? song.artist : nil) {
                     Text(secondaryText)
                         .font(.minidiscCellSubtitle)
                         .foregroundStyle(secondaryColor)
-                        .lineLimit(1)
+                        .lineLimit(textLineLimit)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
@@ -206,7 +216,7 @@ struct SongRow: View {
                     actions
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.body.weight(.semibold))
+                        .font(.system(size: min(menuSymbolSize, 22), weight: .semibold))
                         .foregroundStyle(secondaryColor)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
@@ -215,6 +225,7 @@ struct SongRow: View {
                 .tint(secondaryColor)
                 .menuOrder(.fixed)
                 .accessibilityLabel("More options")
+                .accessibilityIdentifier(menuAccessibilityIdentifier)
             }
         }
     }

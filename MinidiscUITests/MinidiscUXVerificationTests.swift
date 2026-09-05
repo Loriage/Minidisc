@@ -17,11 +17,12 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try await launchFixtureApp()
     }
 
-    private func launchFixtureApp(searchCatalog: Bool = false, queueCatalog: Bool = false, homeCatalog: Bool = false, browseCatalog: Bool = false, contentSize: String? = nil) async throws {
+    private func launchFixtureApp(searchCatalog: Bool = false, queueCatalog: Bool = false, homeCatalog: Bool = false, browseCatalog: Bool = false, playlistArtworkCatalog: Bool = false, contentSize: String? = nil) async throws {
         try await requireLocalFixture()
         try await setFixtureState([
             "search_catalog": searchCatalog, "queue_catalog": queueCatalog, "home_catalog": homeCatalog,
-            "browse_catalog": browseCatalog, "reset_playlists": true, "reset_requests": true, "removed": false,
+            "browse_catalog": browseCatalog, "playlist_artwork_catalog": playlistArtworkCatalog,
+            "reset_playlists": true, "reset_requests": true, "removed": false,
             "fail_stream": false, "slow_stream": false
         ])
         app.launchArguments = ["-AppleLanguages", "(fr)", "-AppleLocale", "fr_FR"]
@@ -423,6 +424,219 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try await Task.sleep(for: .seconds(2))
     }
 
+    func testFixturePlaylistArtworkAndSongMenu() async throws {
+        try await openFixtureArtworkPlaylist()
+        let controls = ["shuffle", "play", "download"].map { app.buttons["playlist.detail.\($0)"] }
+        var controlFrames: [CGRect] = []
+        let screen = app.frame
+        for control in controls {
+            try require(control)
+            XCTAssertTrue(control.isHittable)
+            let frame = control.frame
+            controlFrames.append(frame)
+            XCTAssertGreaterThanOrEqual(frame.width, 44)
+            XCTAssertGreaterThanOrEqual(frame.height, 44)
+            XCTAssertGreaterThanOrEqual(frame.minX, screen.minX)
+            XCTAssertLessThanOrEqual(frame.maxX, screen.maxX)
+        }
+        for (left, right) in zip(controlFrames, controlFrames.dropFirst()) {
+            XCTAssertLessThanOrEqual(left.maxX, right.minX, "Playlist controls must not overlap.")
+        }
+        captureHierarchy("playlist-detail-bright-artwork-header")
+        try await Task.sleep(for: .seconds(3))
+
+        let songMenu = searchElement("playlist.song.menu.ux-song-1")
+        try scrollPlaylistTo(songMenu, named: "first-song-menu")
+        try tap(songMenu, named: "playlist-detail-song-menu-open")
+        try require(app.buttons["Informations"])
+        captureHierarchy("playlist-detail-song-menu-confirmed")
+        try await Task.sleep(for: .seconds(2))
+        try tap(app.buttons["Informations"], named: "playlist-detail-song-information")
+        try require(app.navigationBars["Informations"])
+        // LabeledContent exposes its label and value as one accessibility element.
+        for label in ["Titre, \(firstTitle)", "Artiste, Atelier Minidisc"] {
+            let value = app.staticTexts[label]
+            try require(value)
+            XCTAssertTrue(value.isHittable, "The sheet must show the exact selected fixture track.")
+        }
+        captureHierarchy("playlist-detail-exact-song-information")
+        try await Task.sleep(for: .seconds(2))
+        try tap(app.buttons["Terminé"], named: "playlist-detail-close-information")
+
+        let lastTitle = app.staticTexts["Couleur du jour 12"].firstMatch
+        try scrollPlaylistTo(lastTitle, named: "last-song")
+        captureHierarchy("playlist-detail-scrolled-last-song")
+        try await Task.sleep(for: .seconds(3))
+    }
+
+    func testFixturePlaylistArtworkLargeText() async throws {
+        try await openFixtureArtworkPlaylist(contentSize: "UICTContentSizeCategoryAccessibilityXXXL")
+        captureHierarchy("playlist-detail-xxxl-artwork-top")
+        try await Task.sleep(for: .seconds(3))
+        let title = searchElement("playlist.detail.title")
+        try scrollPlaylistTo(title, named: "large-title")
+        XCTAssertEqual(title.label, "Escapade temporaire")
+        XCTAssertLessThanOrEqual(title.frame.width, app.frame.width)
+        captureHierarchy("playlist-detail-xxxl-title-and-metadata")
+        try await Task.sleep(for: .seconds(3))
+        let songMenu = searchElement("playlist.song.menu.ux-song-2")
+        try scrollPlaylistTo(songMenu, named: "large-long-song")
+        XCTAssertGreaterThanOrEqual(songMenu.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(songMenu.frame.height, 44)
+        captureHierarchy("playlist-detail-xxxl-long-song-row")
+        try await Task.sleep(for: .seconds(3))
+    }
+
+    func testFixturePlaylistGeneratedArtwork() async throws {
+        try await launchFixtureApp(playlistArtworkCatalog: true)
+        try openBrowse("Listes de lecture")
+        try tap(app.staticTexts["Palette générée"].firstMatch, named: "playlist-detail-open-generator-fixture")
+        try require(searchElement("playlist.detail.title"))
+        XCTAssertEqual(searchElement("playlist.detail.title").label, "Palette générée")
+        try tap(app.buttons["Plus d'options"].firstMatch, named: "playlist-detail-options")
+        try tap(app.buttons["Modifier"], named: "playlist-detail-edit-cover")
+        try require(app.textFields["Titre de la liste de lecture"])
+        let carousel = app.scrollViews.firstMatch
+        try require(carousel)
+        let prism = searchElement("playlist.cover.option.prism")
+        for attempt in 0..<4 {
+            // XCTest reports an error when querying hittability of a fully offscreen
+            // carousel option. Read its geometry before asking for a hit point.
+            if prism.exists, carousel.frame.contains(CGPoint(x: prism.frame.midX, y: prism.frame.midY)),
+               prism.isHittable { break }
+            captureHierarchy("before-playlist-cover-page-\(attempt)")
+            carousel.swipeLeft(velocity: .slow)
+            captureHierarchy("after-playlist-cover-page-\(attempt)")
+        }
+        try tap(prism, named: "playlist-detail-select-prism")
+        let selected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "selected == true"), object: prism)
+        XCTAssertEqual(XCTWaiter.wait(for: [selected], timeout: 3), .completed)
+        captureHierarchy("playlist-detail-generated-cover-picker")
+        try await Task.sleep(for: .seconds(3))
+        try tap(app.buttons["Enregistrer"].firstMatch, named: "playlist-detail-save-generated-cover")
+        try require(searchElement("playlist.detail.title"), timeout: 10)
+        XCTAssertEqual(searchElement("playlist.detail.title").label, "Palette générée")
+        XCTAssertFalse(app.textFields["Titre de la liste de lecture"].exists)
+        captureHierarchy("playlist-detail-generated-cover-saved")
+        try await Task.sleep(for: .seconds(3))
+    }
+
+    func testFixturePlaylistMenuAndRowPlayback() async throws {
+        try await openFixtureArtworkPlaylist()
+        try tap(app.buttons["playlist.detail.play"], named: "playlist-detail-start-first-song")
+        try require(app.buttons["Pause"].firstMatch, timeout: 8)
+        try tap(try visibleMiniPlayerButton("Pause"), named: "playlist-detail-pause-first-song")
+        let miniControl = try visibleMiniPlayerButton("Lecture")
+        let controlFrame = miniControl.frame
+        let miniRegion = CGRect(x: 0, y: controlFrame.minY - 8, width: app.frame.width,
+                                height: controlFrame.height + 16)
+        func miniContains(_ title: String) -> Bool {
+            app.staticTexts.matching(identifier: title).allElementsBoundByIndex.contains {
+                $0.frame.intersects(miniRegion)
+            }
+        }
+        XCTAssertTrue(miniContains(firstTitle))
+
+        // Open another song's menu: an accidental row tap would change the current track.
+        let menu = searchElement("playlist.song.menu.ux-song-2")
+        try scrollPlaylistTo(menu, named: "second-song-menu")
+        try tap(menu, named: "playlist-detail-second-song-menu")
+        let info = app.buttons["Informations"]
+        try require(info)
+        XCTAssertTrue(miniContains(firstTitle), "Opening a future song's menu must preserve the paused current song.")
+        captureHierarchy("playlist-detail-menu-preserves-current-track")
+        try await Task.sleep(for: .seconds(2))
+
+        // Dismiss outside the observed menu, in the artwork's left margin.
+        // Avoid the unrelated Informations sheet's simulator animation wait.
+        let artwork = searchElement("playlist.detail.artwork").frame
+        let point = CGVector(dx: max(8, info.frame.minX / 3), dy: max(125, artwork.midY))
+        captureHierarchy("before-dismiss-playlist-song-menu")
+        app.coordinate(withNormalizedOffset: .zero).withOffset(point).tap()
+        captureHierarchy("after-dismiss-playlist-song-menu")
+        XCTAssertFalse(info.exists)
+
+        let rowTitle = try XCTUnwrap(app.staticTexts.matching(identifier: secondTitle).allElementsBoundByIndex.first {
+            $0.isHittable && $0.frame.maxY < miniRegion.minY
+        })
+        try tap(rowTitle, named: "playlist-detail-play-second-song-row")
+        try require(app.buttons["Pause"].firstMatch, timeout: 8)
+        XCTAssertTrue(miniContains(secondTitle))
+        try openCurrentPlayer(title: secondTitle, named: "playlist-detail-row-player")
+        try await assertPlayheadAdvances()
+        captureHierarchy("playlist-detail-row-starts-exact-song-and-audio")
+        try await Task.sleep(for: .seconds(2))
+        try tap(app.buttons["Pause"].firstMatch, named: "playlist-detail-row-playback-paused")
+    }
+
+    func testFixturePlaylistFeaturedArtistNavigation() async throws {
+        try await launchFixtureApp(playlistArtworkCatalog: true)
+        try openBrowse("Listes de lecture")
+        try tap(app.staticTexts["Palette générée"].firstMatch, named: "playlist-detail-open-featured-fixture")
+        try require(searchElement("playlist.detail.title"))
+        XCTAssertEqual(searchElement("playlist.detail.title").label, "Palette générée")
+
+        let artist = app.buttons["playlist.featured.artist.ux-artist"]
+        try scrollPlaylistTo(artist, named: "featured-artist")
+        XCTAssertTrue(artist.label.contains("Atelier Minidisc"))
+        let heading = app.staticTexts["Artistes en vedette"]
+        try require(heading)
+        XCTAssertTrue(heading.isHittable)
+        XCTAssertLessThan(heading.frame.maxY, artist.frame.minY)
+        captureHierarchy("playlist-detail-featured-artists-shelf")
+        try await Task.sleep(for: .seconds(3))
+
+        try await setFixtureState(["reset_requests": true])
+        try tap(artist, named: "playlist-detail-featured-artist-open")
+        try require(app.buttons["Informations"].firstMatch, timeout: 10)
+        XCTAssertTrue(app.staticTexts.matching(identifier: "Atelier Minidisc").allElementsBoundByIndex.contains {
+            $0.frame.intersects(app.frame) && $0.isHittable
+        })
+        let requests = try await fixtureRequests()
+        // The album index can satisfy getArtist locally; the artist page still
+        // requests its extra information with the destination's exact ID.
+        XCTAssertTrue(requests.contains {
+            ["getArtist", "getArtistInfo2"].contains($0.endpoint) && $0.id == "ux-artist"
+        }, "The card must open the exact synthetic artist, not another artist with a similar label.")
+        captureHierarchy("playlist-detail-featured-artist-destination")
+        try await Task.sleep(for: .seconds(3))
+    }
+
+    private func openFixtureArtworkPlaylist(contentSize: String? = nil) async throws {
+        try await launchFixtureApp(playlistArtworkCatalog: true, contentSize: contentSize)
+        try tap(app.buttons["home.playlist.ux-playlist"], named: "playlist-detail-open-bright-fixture")
+        try require(searchElement("playlist.detail.artwork"), timeout: 10)
+        let title = searchElement("playlist.detail.title")
+        try require(title)
+        XCTAssertEqual(title.label, "Escapade temporaire")
+        // Owner and update metadata must belong to this synthetic playlist.
+        // The normal probe also reaches the 14th song to reject a stale two-track detail.
+        let metadata = searchElement("playlist.detail.metadata")
+        try require(metadata)
+        try require(metadata.staticTexts["test"])
+        XCTAssertTrue(metadata.staticTexts.allElementsBoundByIndex.contains { $0.label.contains("Mise à jour") })
+    }
+
+    private func scrollPlaylistTo(_ element: XCUIElement, named name: String) throws {
+        let collection = app.collectionViews.firstMatch
+        try require(collection)
+        for attempt in 0..<8 {
+            if element.exists {
+                let frame = element.frame
+                if frame.minY >= 115, frame.maxY <= app.frame.maxY - 150, element.isHittable { return }
+            }
+            captureHierarchy("before-playlist-scroll-\(name)-\(attempt)")
+            let origin = app.coordinate(withNormalizedOffset: .zero)
+            let start = origin.withOffset(CGVector(dx: collection.frame.midX, dy: app.frame.maxY - 210))
+            let end = origin.withOffset(CGVector(dx: collection.frame.midX, dy: app.frame.maxY - 430))
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.3)
+            captureHierarchy("after-playlist-scroll-\(name)-\(attempt)")
+        }
+        try require(element)
+        XCTAssertTrue(element.isHittable && element.frame.minY >= 115 && element.frame.maxY <= app.frame.maxY - 150,
+                      "The requested playlist content must be visible above the mini-player after ordinary scrolling.")
+    }
+
     func testFixtureSearchVisibleAndSelectionHeader() async throws {
         try await launchFixtureApp(searchCatalog: true)
         try tapTab("Recherche")
@@ -747,15 +961,21 @@ final class MinidiscUXVerificationTests: XCTestCase {
     }
 
     private func visibleMiniPlayerButton(_ title: String) throws -> XCUIElement {
-        try XCTUnwrap(app.buttons.matching(identifier: title).allElementsBoundByIndex.last {
+        let candidates = app.buttons.matching(identifier: title).allElementsBoundByIndex.filter {
             $0.frame.minY > app.frame.midY && $0.frame.maxY < app.frame.maxY && $0.isHittable
-        })
+        }
+        // Accessibility traversal order can place the playlist header last.
+        // The mini-player is the lowest visible control with this label.
+        return try XCTUnwrap(candidates.max { $0.frame.midY < $1.frame.midY })
     }
 
     private func openCurrentPlayer(title: String, named name: String) throws {
-        let mini = try XCTUnwrap(app.staticTexts.matching(identifier: title).allElementsBoundByIndex.last {
+        let candidates = app.staticTexts.matching(identifier: title).allElementsBoundByIndex.filter {
             $0.frame.minY > app.frame.midY && $0.frame.maxY < app.frame.maxY && $0.isHittable
-        }, "The expected track title must be visible in the mini-player.")
+        }
+        // A playlist row can expose the same title later in accessibility order.
+        let mini = try XCTUnwrap(candidates.max { $0.frame.midY < $1.frame.midY },
+                                 "The expected track title must be visible in the mini-player.")
         try tap(mini, named: name)
         try require(searchElement("Position de lecture"))
     }

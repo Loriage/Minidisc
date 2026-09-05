@@ -27,3 +27,14 @@
 1. Add the color set to `Assets.xcassets` with both Any and Dark Appearance variants.
 2. Add a usage rule to this table.
 3. Do not add a manual `Color` extension — Xcode generates `Color.<assetName>` automatically.
+
+## Playlist artwork backgrounds
+
+Immersive playlist pages use an image-derived background instead of a fixed asset colour.
+PlaylistArtworkPalette preserves the sampled bottom-edge hue and limits its largest sRGB component
+to 0.22. Missing artwork starts with a neutral 0.06 background. This keeps white titles and 65–70%
+white secondary text readable even when the original cover is bright. At the brightest permitted
+neutral background, contrast is about 11.7:1 for white and 6:1 for the 65% secondary text.
+
+The original cover remains unmodified in the cache; a view gradient handles the transition into the
+page. Manual theme overrides provide the source hue and receive the same dark treatment.

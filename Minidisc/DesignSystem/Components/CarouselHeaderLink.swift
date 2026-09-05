@@ -2,6 +2,7 @@ import SwiftUI
 
 enum MinidiscCarouselMetrics {
     static let previewLimit = 10
+    static let artistArtwork: CGFloat = 104
 }
 
 /// The shared edge-to-edge horizontal shelf used by the Home feed and detail-page recommendations.

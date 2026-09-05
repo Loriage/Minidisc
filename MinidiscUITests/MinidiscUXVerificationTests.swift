@@ -617,9 +617,9 @@ final class MinidiscUXVerificationTests: XCTestCase {
     }
 
     private func assertStationCardLabels(_ station: XCUIElement) throws {
-        XCTAssertEqual(station.label, "Aurore Ensemble", "The station title contains only its fixture artist name.")
-        XCTAssertEqual(station.value as? String, "Artistes similaires")
-        for label in ["Aurore Ensemble", "Artistes similaires"] {
+        XCTAssertEqual(station.label, "Aurore Ensemble et artistes similaires")
+        XCTAssertEqual(station.value as? String, "Station de radio")
+        for label in ["Aurore Ensemble et artistes similaires", "Station de radio"] {
             try require(station.descendants(matching: .staticText).matching(identifier: label).firstMatch)
         }
     }
@@ -631,7 +631,7 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try require(station, timeout: 10)
         try scrollCardToTop(station, named: "discover-large-station")
         try assertStationCardLabels(station)
-        for label in ["Aurore Ensemble", "Artistes similaires"] {
+        for label in ["Aurore Ensemble et artistes similaires", "Station de radio"] {
             let text = station.descendants(matching: .staticText).matching(identifier: label).firstMatch
             XCTAssertTrue(text.isHittable && text.frame.maxY < app.frame.maxY - 130)
         }

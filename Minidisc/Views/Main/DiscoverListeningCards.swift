@@ -7,6 +7,7 @@ struct ArtistStationCard: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var side: CGFloat { dynamicTypeSize.isAccessibilitySize ? 260 : 160 }
+    private var title: String { String(localized: "\(station.artist.name) & Similar artists") }
     private var palette: [Color] {
         switch station.id.utf8.reduce(0, { ($0 + Int($1)) % 3 }) {
         case 0: [Color(red: 0.26, green: 0.12, blue: 0.34), Color(red: 0.72, green: 0.30, blue: 0.38)]
@@ -26,17 +27,17 @@ struct ArtistStationCard: View {
                 .frame(width: side, height: side)
                 .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard))
                 .accessibilityHidden(true)
-                CoverCardMetadata(title: station.artist.name,
-                                  subtitle: isStarting ? String(localized: "Preparing…") : String(localized: "Similar Artists"))
+                CoverCardMetadata(title: title,
+                                  subtitle: isStarting ? String(localized: "Preparing…") : String(localized: "Radio Station"))
             }
             .frame(width: side, alignment: .leading)
         }
         .buttonStyle(.plain)
         .disabled(isStarting)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(station.artist.name))
+        .accessibilityLabel(Text(title))
         .accessibilityHint("Play an artist station")
-        .accessibilityValue(isStarting ? Text("Preparing…") : Text("Similar Artists"))
+        .accessibilityValue(isStarting ? Text("Preparing…") : Text("Radio Station"))
         .accessibilityIdentifier("discover.station.\(station.id)")
     }
 }

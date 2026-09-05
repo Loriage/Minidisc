@@ -72,8 +72,8 @@ Stations for You uses actual favorite and recently/frequently heard library arti
 can start immediately while the existing artist Instant Mix fills the queue behind it. Distinct artists
 with the same name remain separate. Failed history and favorites requests do not hide each other's
 stations, and a failed refresh retains the previous collection. Smart Shuffle has an illustrated card
-with library artwork and preparation feedback. Stations show the artist's name as the title and
-Similar Artists as the subtitle, with no overlaid play control. The whole card starts playback and its
+with library artwork and preparation feedback. Stations show the artist's name followed by
+& Similar artists as the title, and Radio Station as the subtitle. The whole card starts playback and its
 subtitle shows preparation feedback. Captions wrap fully at accessibility text sizes. Fresh Releases is
 absent when its result collection is empty, including for a connected ListenBrainz account.
 

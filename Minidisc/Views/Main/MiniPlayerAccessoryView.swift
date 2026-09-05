@@ -4,6 +4,7 @@ import SwiftSonic
 struct MiniPlayerAccessoryView: View {
     @Binding var showingFullPlayer: Bool
     @Environment(\.appContainer) private var container
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var dragOffset: CGFloat = 0
     @State private var isAnimatingSwipe = false
 
@@ -25,6 +26,9 @@ struct MiniPlayerAccessoryView: View {
             MiniPlayerPlacementReader { isInline in
                 playerContent(playerState, isInline: isInline)
             }
+            // The system accessory has a fixed height. Larger text uses one metadata line;
+            // keep its symbols within their 44-point controls while the full player scales freely.
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         }
     }
 
@@ -64,12 +68,13 @@ struct MiniPlayerAccessoryView: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(typoColor)
                     .lineLimit(1)
-                if let status {
+                    .accessibilityLabel(metadataLabel(title: title, artist: artist, status: status))
+                if let status, !dynamicTypeSize.isAccessibilitySize {
                     Text(status)
                         .font(.minidiscCaption)
                         .foregroundStyle(typoSecondaryColor)
                         .lineLimit(1)
-                } else {
+                } else if !dynamicTypeSize.isAccessibilitySize {
                     HStack(spacing: MinidiscSpacing.xs) {
                         if let artist {
                             Text(artist)
@@ -106,12 +111,13 @@ struct MiniPlayerAccessoryView: View {
                         .font(.minidiscCellTitle)
                         .foregroundStyle(typoColor)
                         .lineLimit(1)
-                    if let status {
+                        .accessibilityLabel(metadataLabel(title: title, artist: artist, status: status))
+                    if let status, !dynamicTypeSize.isAccessibilitySize {
                         Text(status)
                             .font(.minidiscCaption)
                             .foregroundStyle(typoSecondaryColor)
                             .lineLimit(1)
-                    } else {
+                    } else if !dynamicTypeSize.isAccessibilitySize {
                         HStack(spacing: MinidiscSpacing.xs) {
                             if let artist {
                                 Text(artist)
@@ -172,6 +178,13 @@ struct MiniPlayerAccessoryView: View {
                 .accessibilityHidden(true)
             }
         }
+    }
+
+    private func metadataLabel(title: String, artist: String?, status: String?) -> Text {
+        let label = dynamicTypeSize.isAccessibilitySize
+            ? [title, status ?? artist].compactMap { $0 }.joined(separator: ", ")
+            : title
+        return Text(verbatim: label)
     }
 
     private func playPauseButton(isPlaying: Bool, isAvailable: Bool) -> some View {

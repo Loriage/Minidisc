@@ -2,13 +2,14 @@ import SwiftUI
 import SwiftSonic
 
 /// Compact album card for horizontal-scroll discover surfaces.
-/// Displays cover art, album name, and artist at a fixed 140pt width.
+/// Keeps cover art, album name and artist together, with wider cards for accessibility text.
 struct AlbumCard: View {
     let album: AlbumID3
 
     @Environment(\.appContainer) private var container
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private let cardSize: CGFloat = 140
+    private var cardSize: CGFloat { dynamicTypeSize.isAccessibilitySize ? 260 : 140 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
@@ -34,10 +35,11 @@ struct AlbumCard: View {
 
 /// The 160pt album card used by Home-style shelves.
 struct AlbumShelfCard: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let album: AlbumID3
     var metadataSubtitle: String? = nil
 
-    private let side: CGFloat = 160
+    private var side: CGFloat { dynamicTypeSize.isAccessibilitySize ? 260 : 160 }
 
     var body: some View {
         NavigationLink(value: HomeDestination.album(album)) {

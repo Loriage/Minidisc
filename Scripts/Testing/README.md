@@ -1,6 +1,6 @@
 # Local UX verification
 
-`ux-fixture-server.py` serves a small, disposable Subsonic library on loopback port 18992. It generates two WAV files, supports byte ranges and can slow or fail streams. No real Navidrome account is needed. Request logs omit query strings, including the fixture's fake authentication parameters.
+`ux-fixture-server.py` serves a small, disposable Subsonic library on loopback port 18992. It generates silent WAV audio, supports byte ranges and can slow or fail streams. No real Navidrome account is needed. Request logs omit query strings, including the fixture's fake authentication parameters.
 
 Create a fresh iOS Simulator named **Minidisc UX Verification** in Xcode's Devices and Simulators window. Keep it dedicated to this fixture; the UI tests deliberately skip other simulators and physical devices. Do not configure a real server in it.
 
@@ -19,6 +19,7 @@ rtk proxy xcodebuild test \
   -destination 'platform=iOS Simulator,name=Minidisc UX Verification' \
   -derivedDataPath /tmp/minidisc-ux-tests \
   -parallel-testing-enabled NO \
+  -collect-test-diagnostics never \
   -only-testing:MinidiscUITests/MinidiscUXVerificationTests \
   CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-
 ```
@@ -28,5 +29,21 @@ Keep ad hoc code signing enabled: the simulated app writes its fixture credentia
 Run `testOnboardingAccessibilityXXXL` separately on a fresh installation, before connecting the fixture account; it skips when onboarding has already been completed. Use the same command with `-only-testing:MinidiscUITests/MinidiscUXVerificationTests/testOnboardingAccessibilityXXXL`. The playback scenario can initialize the fixture account itself and does not depend on another test running first.
 
 The scenarios connect to the fixture when needed and attach accessibility hierarchies to the test result. `UX_STEP` markers identify capture points. For a screenshot of a confirmed step, use `xcrun simctl io <simulator-UDID> screenshot <output.png>` through `rtk proxy`. Direct `simctl` capture avoids the screenshot timeout encountered with XCTest on the tested iOS 27 simulator.
+
+The everyday listening scenarios cover ranked search and category filters, playlist navigation with a
+preserved query, queue removal/Undo/reordering, saving the queue, grouped additions to existing and new
+playlists, and personalized Home with large text. Add `-only-testing` for one named method in
+`MinidiscUXVerificationTests` to rerun a specific flow.
+
+The fixture provides separate `search_catalog`, `queue_catalog` and `home_catalog` modes. Queue audio
+lasts two minutes to keep playback active during edits. Home includes favorites, recently played,
+frequent albums and recent library additions from familiar and unrelated artists. Search intentionally
+returns a prefix title before its exact match, so the UI must apply its own ranking.
+
+Tests reset synthetic playlist mutations through `POST /__state` with `reset_playlists: true` and verify
+the resulting ordered track IDs through `GET /__mutations`. These endpoints affect only the in-memory
+fixture. Each scenario sets its catalog mode and checks the fixture marker before interacting with
+playlist controls. A skipped scenario means the isolated fixture was unavailable; it is not a passing
+verification.
 
 These tests exercise visible controls and local fixture audio. They do not validate physical network handoffs, audio-route changes or iOS background scheduling over a long period. Stop the Python process when finished.

@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Shared type hierarchy for metadata displayed directly below cover artwork.
 struct CoverCardMetadata: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let title: String
     var subtitle: String? = nil
     var detail: String? = nil
@@ -13,7 +14,7 @@ struct CoverCardMetadata: View {
             Text(verbatim: title)
                 .font(.minidiscCellTitle)
                 .foregroundStyle(titleColor)
-                .lineLimit(1)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -21,7 +22,7 @@ struct CoverCardMetadata: View {
                 Text(verbatim: subtitle)
                     .font(.minidiscCaption)
                     .foregroundStyle(secondaryColor)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     .truncationMode(.tail)
             }
 
@@ -29,9 +30,10 @@ struct CoverCardMetadata: View {
                 Text(verbatim: detail)
                     .font(.minidiscCaption2)
                     .foregroundStyle(secondaryColor)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     .truncationMode(.tail)
             }
         }
+        .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
     }
 }

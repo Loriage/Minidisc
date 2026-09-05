@@ -18,14 +18,12 @@ struct ArtistStationCard: View {
     var body: some View {
         Button(action: onPlay) {
             VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
-                ZStack(alignment: .bottomTrailing) {
+                ZStack {
                     LinearGradient(colors: palette, startPoint: .topLeading, endPoint: .bottomTrailing)
                     Circle().stroke(.white.opacity(0.12), lineWidth: 1)
                         .padding(side * 0.10).offset(x: side * 0.30, y: side * 0.24)
                     FeaturedArtistAvatar(artist: station.artist, size: side * 0.72)
                         .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        .padding(side * 0.09)
                 }
                 .frame(width: side, height: side)
                 .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard))

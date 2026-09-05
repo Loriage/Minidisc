@@ -164,14 +164,24 @@ struct InlineQueueList: View {
             EmptyStateView(systemImage: "list.bullet", title: "Nothing up next",
                            subtitle: "Tracks you add to the queue appear here.")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if #available(iOS 27, *) {
-            ReorderableQueueList(entries: entries, queueCount: playerState.queue.count,
-                                 contentColor: contentColor, secondaryContentColor: secondaryContentColor,
-                                 loadArtwork: loadArtwork)
         } else {
+            // Xcode 27 ships Swift 6.4. Runtime availability alone cannot hide these
+            // SDK 27 declarations from the older Xcode used by an archive workflow.
+            #if compiler(>=6.4)
+            if #available(iOS 27, *) {
+                ReorderableQueueList(entries: entries, queueCount: playerState.queue.count,
+                                     contentColor: contentColor, secondaryContentColor: secondaryContentColor,
+                                     loadArtwork: loadArtwork)
+            } else {
+                LegacyQueueList(entries: entries, queueCount: playerState.queue.count,
+                                contentColor: contentColor, secondaryContentColor: secondaryContentColor,
+                                loadArtwork: loadArtwork)
+            }
+            #else
             LegacyQueueList(entries: entries, queueCount: playerState.queue.count,
                             contentColor: contentColor, secondaryContentColor: secondaryContentColor,
                             loadArtwork: loadArtwork)
+            #endif
         }
     }
 }
@@ -238,6 +248,7 @@ private struct QueueEntryRow: View {
     }
 }
 
+#if compiler(>=6.4)
 @available(iOS 27, *)
 private struct ReorderableQueueList: View {
     let entries: [QueueRowSnapshot]
@@ -278,6 +289,8 @@ private struct ReorderableQueueList: View {
         .scrollContentBackground(.hidden)
     }
 }
+
+#endif
 
 private struct LegacyQueueList: View {
     let entries: [QueueRowSnapshot]

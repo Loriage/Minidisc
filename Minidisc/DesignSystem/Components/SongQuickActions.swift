@@ -51,11 +51,16 @@ struct SongQuickActions: ViewModifier {
 private struct SongSwipeContainer: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
+        // The SDK 27 coordinator also needs a compile-time guard for older Xcode archives.
+        #if compiler(>=6.4)
         if #available(iOS 27, macOS 27, *) {
             content.swipeActionsContainer()
         } else {
             content
         }
+        #else
+        content
+        #endif
     }
 }
 

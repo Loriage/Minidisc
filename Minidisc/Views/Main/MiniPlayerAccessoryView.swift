@@ -84,7 +84,8 @@ struct MiniPlayerAccessoryView: View {
             playPauseButton(isPlaying: isPlaying, isAvailable: isAvailable)
         }
         .padding(.leading, MinidiscSpacing.m)
-        .padding(.trailing, MinidiscSpacing.xl)
+        // The button's 44-point touch target already provides space around the symbol.
+        .padding(.trailing, MinidiscSpacing.s)
         .padding(.vertical, MinidiscSpacing.s)
     }
 
@@ -124,7 +125,8 @@ struct MiniPlayerAccessoryView: View {
 
                 Spacer(minLength: 0)
 
-                HStack(spacing: MinidiscSpacing.xxl) {
+                // Equal touch targets provide the spacing between the transport symbols.
+                HStack(spacing: 0) {
                     playPauseButton(isPlaying: isPlaying, isAvailable: isAvailable)
                     if !playerState.queue.isEmpty && !isLiveStream {
                         Button {
@@ -134,15 +136,17 @@ struct MiniPlayerAccessoryView: View {
                             Image(systemName: "forward.fill")
                                 .font(.title2)
                                 .foregroundStyle(typoColor)
+                                .frame(minWidth: 44, minHeight: 44)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.borderless)
                         .accessibilityLabel("Skip to next")
                     }
                 }
-                .padding(.trailing, MinidiscSpacing.xs)
                 .frame(height: 36)
             }
-            .padding(.horizontal, MinidiscSpacing.l)
+            .padding(.leading, MinidiscSpacing.l)
+            .padding(.trailing, MinidiscSpacing.s)
             .padding(.vertical, MinidiscSpacing.m)
 
             if isLiveStream {

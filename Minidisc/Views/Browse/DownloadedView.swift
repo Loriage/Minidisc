@@ -71,15 +71,15 @@ private struct DownloadedContent: View {
         let songs = standaloneSongs
         let albums = displayAlbums
         let orderedPlaylists = playlists.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-        let index = songs.map { AlphabetScrollEntry(id: "song:\($0.id)", name: $0.title) }
-            + albums.map { AlphabetScrollEntry(id: "album:\($0.id)", name: $0.name) }
-            + orderedPlaylists.map { AlphabetScrollEntry(id: "playlist:\($0.playlistId)", name: $0.name) }
+        let index = songs.map { AlphabetScrollEntry(id: $0.downloadScrollID, name: $0.title) }
+            + albums.map { AlphabetScrollEntry(id: $0.downloadScrollID, name: $0.name) }
+            + orderedPlaylists.map { AlphabetScrollEntry(id: $0.downloadScrollID, name: $0.name) }
         return AlphabetIndexedContent(entries: index) {
             List {
                 DownloadActivitySection(serverID: serverId)
                 if !songs.isEmpty {
                     Section("Songs") {
-                        ForEach(songs) { song in
+                        ForEach(songs, id: \.downloadScrollID) { song in
                             Button {
                                 guard let index = songs.firstIndex(where: { $0.id == song.id }) else { return }
                                 Task { await container?.toastService.perform {
@@ -94,7 +94,7 @@ private struct DownloadedContent: View {
                                 }
                                 .frame(minHeight: 44, alignment: .leading)
                             }
-                            .id("song:\(song.id)")
+                            .id(song.downloadScrollID)
                             .accessibilityIdentifier("downloads.song.\(song.id)")
                             .contextMenu {
                                 Button("Remove Download", systemImage: "trash", role: .destructive) {
@@ -108,7 +108,7 @@ private struct DownloadedContent: View {
                 }
                 if !albums.isEmpty {
                     Section("Albums") {
-                        ForEach(albums) { display in
+                        ForEach(albums, id: \.downloadScrollID) { display in
                             NavigationLink(value: HomeDestination.downloadedAlbum(display)) {
                                 HStack(spacing: MinidiscSpacing.m) {
                                     CoverArtCard(id: display.coverArtId ?? display.albumId, size: 56)
@@ -130,7 +130,7 @@ private struct DownloadedContent: View {
                                 }
                                 .padding(.vertical, MinidiscSpacing.xs)
                             }
-                            .id("album:\(display.id)")
+                            .id(display.downloadScrollID)
                             .accessibilityIdentifier("downloads.album.\(display.albumId)")
                         }
                     }
@@ -138,7 +138,7 @@ private struct DownloadedContent: View {
 
                 if !orderedPlaylists.isEmpty {
                     Section("Playlists") {
-                        ForEach(orderedPlaylists) { playlist in
+                        ForEach(orderedPlaylists, id: \.downloadScrollID) { playlist in
                             NavigationLink(value: HomeDestination.playlistById(id: playlist.playlistId, name: playlist.name, coverArtId: playlist.coverArtId)) {
                                 HStack(spacing: MinidiscSpacing.m) {
                                     CoverArtCard(id: playlist.coverArtId ?? playlist.playlistId, size: 56)
@@ -154,7 +154,7 @@ private struct DownloadedContent: View {
                                 }
                                 .padding(.vertical, MinidiscSpacing.xs)
                             }
-                            .id("playlist:\(playlist.playlistId)")
+                            .id(playlist.downloadScrollID)
                             .accessibilityIdentifier("downloads.playlist.\(playlist.playlistId)")
                         }
                     }
@@ -163,4 +163,18 @@ private struct DownloadedContent: View {
             .listStyle(.plain)
         }
     }
+}
+
+// List must know the same IDs before offscreen rows are created. Giving only
+// their child views prefixed anchors leaves those targets unresolved during a jump.
+private extension DisplayableSong {
+    var downloadScrollID: String { "song:\(id)" }
+}
+
+private extension DownloadedAlbumDisplay {
+    var downloadScrollID: String { "album:\(id)" }
+}
+
+private extension DownloadedPlaylist {
+    var downloadScrollID: String { "playlist:\(playlistId)" }
 }

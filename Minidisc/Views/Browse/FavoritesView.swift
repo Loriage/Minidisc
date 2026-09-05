@@ -48,9 +48,9 @@ struct FavoritesView: View {
                 .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
             let albums = AlbumSort.name.sorted(vm.albums)
             let artists = ArtistSort.name.sorted(vm.artists)
-            let index = displayableSongs.map { AlphabetScrollEntry(id: "song:\($0.id)", name: $0.title) }
-                + albums.map { AlphabetScrollEntry(id: "album:\($0.id)", name: $0.sortName ?? $0.name) }
-                + artists.map { AlphabetScrollEntry(id: "artist:\($0.id)", name: $0.sortName ?? $0.name) }
+            let index = displayableSongs.map { AlphabetScrollEntry(id: $0.favoriteScrollID, name: $0.title) }
+                + albums.map { AlphabetScrollEntry(id: $0.favoriteScrollID, name: $0.sortName ?? $0.name) }
+                + artists.map { AlphabetScrollEntry(id: $0.favoriteScrollID, name: $0.sortName ?? $0.name) }
             AlphabetIndexedContent(entries: index) {
                 List {
                     songsSection(displayableSongs)
@@ -102,9 +102,9 @@ struct FavoritesView: View {
                 .listRowBackground(Color.clear)
                 .padding(.vertical, 4)
 
-                ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
+                ForEach(Array(songs.enumerated()), id: \.element.favoriteScrollID) { index, song in
                     SongRow(song: song, index: index + 1, showCoverArt: true, isFavorite: true, onAddToPlaylist: playlistAddition.present)
-                        .id("song:\(song.id)")
+                        .id(song.favoriteScrollID)
                         .accessibilityIdentifier("favorites.song.\(song.id)")
                         .contentShape(Rectangle())
                         .onTapGesture {
@@ -128,7 +128,7 @@ struct FavoritesView: View {
     private func albumsSection(_ albums: [AlbumID3]) -> some View {
         if !albums.isEmpty {
             Section("Albums") {
-                ForEach(albums) { album in
+                ForEach(albums, id: \.favoriteScrollID) { album in
                     NavigationLink(value: HomeDestination.album(album)) {
                         AlbumRow(
                             albumId: album.id,
@@ -138,7 +138,7 @@ struct FavoritesView: View {
                             coverArtId: album.coverArt
                         )
                     }
-                    .id("album:\(album.id)")
+                    .id(album.favoriteScrollID)
                 }
             }
         }
@@ -148,13 +148,25 @@ struct FavoritesView: View {
     private func artistsSection(_ artists: [ArtistID3]) -> some View {
         if !artists.isEmpty {
             Section("Artists") {
-                ForEach(artists) { artist in
+                ForEach(artists, id: \.favoriteScrollID) { artist in
                     NavigationLink(value: HomeDestination.artist(artist)) {
                         ArtistRow(artist: artist)
                     }
-                    .id("artist:\(artist.id)")
+                    .id(artist.favoriteScrollID)
                 }
             }
         }
     }
+}
+
+private extension DisplayableSong {
+    var favoriteScrollID: String { "song:\(id)" }
+}
+
+private extension AlbumID3 {
+    var favoriteScrollID: String { "album:\(id)" }
+}
+
+private extension ArtistID3 {
+    var favoriteScrollID: String { "artist:\(id)" }
 }

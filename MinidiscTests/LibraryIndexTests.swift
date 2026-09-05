@@ -18,6 +18,7 @@ private nonisolated struct StaticLibrarySource: LibraryRemoteSource {
     var playlistSummaries: [Playlist] = []
     var playlistDetails: [String: PlaylistWithSongs] = [:]
     var playlistFailure: SwiftSonicError?
+    var recentAlbumsFailure: SwiftSonicError?
     var failingAlbumOffset: Int?
     var failingSongOffset: Int?
 
@@ -40,7 +41,8 @@ private nonisolated struct StaticLibrarySource: LibraryRemoteSource {
         return album
     }
     func recentlyAddedAlbums(size: Int, serverID: UUID) async throws -> [AlbumID3] {
-        Array(albumPages.values.flatMap { $0 }.prefix(size))
+        if let recentAlbumsFailure { throw recentAlbumsFailure }
+        return Array(albumPages.values.flatMap { $0 }.prefix(size))
     }
     func albumsPage(offset: Int, count: Int, serverID: UUID) async throws -> [AlbumID3] {
         if failingAlbumOffset == offset { throw LibrarySourceStubError.scheduledFailure }
@@ -195,6 +197,35 @@ private actor FreshnessLibrarySource: LibraryRemoteSource {
 @Suite("Persistent library index")
 @MainActor
 struct LibraryIndexTests {
+    @Test("recent additions use the current server page while the completed index still reflects an older scan")
+    func recentAdditionsRefreshCompletedIndex() async throws {
+        let store = try makeStore()
+        let serverID = UUID()
+        try await store.upsertAlbums([album(id: "old", name: "Old")], serverID: serverID, generation: "previous")
+        try await store.complete(.albums, serverID: serverID, generation: "previous")
+        let source = StaticLibrarySource(serverID: serverID, albumPages: [0: [album(id: "new", name: "New")]])
+        let catalog = LibraryCatalog(source: source, store: store,
+                                     synchronizer: LibraryIndexSynchronizer(source: source, store: store))
+
+        #expect(try await catalog.recentlyAddedAlbums(size: 12).map(\.id) == ["new"])
+        #expect(try await store.albums(serverID: serverID).map(\.id) == ["old"],
+                "A recent page must not replace the full library index.")
+    }
+
+    @Test("recent additions retain the completed index offline and during transient failures", arguments: [false, true])
+    func recentAdditionsKeepOfflineFallback(online: Bool) async throws {
+        let store = try makeStore()
+        let serverID = UUID()
+        try await store.upsertAlbums([album(id: "saved", name: "Saved")], serverID: serverID, generation: "previous")
+        try await store.complete(.albums, serverID: serverID, generation: "previous")
+        let source = StaticLibrarySource(serverID: serverID, online: online,
+                                         recentAlbumsFailure: .network(URLError(.timedOut)))
+        let catalog = LibraryCatalog(source: source, store: store,
+                                     synchronizer: LibraryIndexSynchronizer(source: source, store: store))
+
+        #expect(try await catalog.recentlyAddedAlbums(size: 12).map(\.id) == ["saved"])
+    }
+
     @Test("the V1 library store migrates to V3 without losing indexed media")
     func v1StoreMigratesToV3() throws {
         let directory = FileManager.default.temporaryDirectory

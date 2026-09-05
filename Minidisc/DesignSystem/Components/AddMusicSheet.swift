@@ -718,15 +718,12 @@ private struct AddMusicPhaseView: View {
     }
 }
 
-// MARK: - Commit (atomic replace + R1 comment guard + first-track derivation)
+// MARK: - Commit (reconciled append and first-track cover derivation)
 
-/// Commits an add-music selection through the SINGLE shared path used by every entry point (iOS edit "+",
-/// detail view): ONE atomic full-list replace (current tracks + new selection), the R1 comment guard
-/// (re-assert a non-empty comment AFTER the replace), and — the critical bit — the empty→first-track color
-/// derivation. When the playlist went from empty to its first track on a gradient cover whose color was still
-/// the neutral default, the color is derived from the first added track via the SAME `PlaylistGradientResolver`
-/// hook the cover re-pick uses (never a parallel path that would skip derivation/caching). Shape + user-pick
-/// flag are preserved; later adds never re-derive (the resolver result is frozen in the cover store).
+/// Reads the current playlist before appending missing occurrences. This preserves other edits and
+/// makes a retry safe after a lost append response. Appending preserves playlist metadata directly.
+/// The empty-to-first-track transition still derives the selected gradient cover's color through
+/// PlaylistGradientResolver; later additions keep that cover choice.
 @MainActor
 enum AddMusicCommitter {
     @discardableResult

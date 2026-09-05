@@ -1,6 +1,17 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Updated %@" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mise à jour %@"
+          }
+        }
+      }
+    },
     "%lld songs in your queue" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -153,6 +164,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Progression de la lecture"
+          }
+        }
+      }
+    },
+    "Resume" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reprendre"
           }
         }
       }

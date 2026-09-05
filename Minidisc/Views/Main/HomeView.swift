@@ -44,7 +44,7 @@ struct HomeView: View {
             }
             await viewModel?.load(isOnline: isOnline)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .minidiscPlaylistDeleted)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .minidiscPlaylistsChanged)) { _ in
             Task { await viewModel?.load(isOnline: isOnline, preserveLayout: true) }
         }
     }

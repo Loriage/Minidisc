@@ -43,7 +43,20 @@ struct SearchView: View {
                 )
             } else {
                 VStack(spacing: 0) {
-                    SearchScopeBar(selection: $scope)
+                    HStack(spacing: 0) {
+                        SearchScopeBar(selection: $scope)
+                        Button("Select Songs", systemImage: "checkmark.circle") {
+                            songSelection = SongSelectionRequest(songs: selectableSongs)
+                        }
+                        .labelStyle(.iconOnly)
+                        .font(.title3)
+                        .frame(width: 44, height: 44)
+                        .background(Color.primary.opacity(0.06), in: Circle())
+                        .buttonStyle(.plain)
+                        .disabled(container?.serverState.isOnline != true || selectableSongs.isEmpty || (scope != .all && scope != .songs))
+                        .accessibilityIdentifier("search.selectSongs")
+                        .padding(.trailing, MinidiscSpacing.l)
+                    }
                     List {
                         if let vm = viewModel {
                             activeSearchContent(vm)
@@ -132,29 +145,21 @@ struct SearchView: View {
         .task(id: loadedServerId) {
             await viewModel?.loadPlaylists()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .minidiscPlaylistDeleted)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .minidiscPlaylistsChanged)) { _ in
             Task { await viewModel?.loadPlaylists() }
         }
         .task(id: SearchRequest(serverId: loadedServerId, query: searchQuery)) {
             await viewModel?.search(query: searchQuery)
         }
-        .toolbar {
-            if !trimmed.isEmpty, scope == .all || scope == .songs {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Select Songs", systemImage: "checkmark.circle") {
-                        let songs = viewModel?.matches.compactMap { match -> DisplayableSong? in
-                            if case .song(let song) = match { return song }
-                            return nil
-                        } ?? []
-                        songSelection = SongSelectionRequest(songs: songs)
-                    }
-                    .disabled(container?.serverState.isOnline != true || viewModel?.matches.contains { $0.scope == .songs } != true)
-                    .accessibilityIdentifier("search.selectSongs")
-                }
-            }
-        }
         .sheet(item: $songSelection) { SongSelectionSheet(request: $0) }
         .minidiscContentWidth()
+    }
+
+    private var selectableSongs: [DisplayableSong] {
+        viewModel?.matches.compactMap { match in
+            if case .song(let song) = match { return song }
+            return nil
+        } ?? []
     }
 
     private struct SearchRequest: Equatable {

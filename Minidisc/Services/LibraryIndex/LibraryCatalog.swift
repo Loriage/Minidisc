@@ -263,21 +263,20 @@ actor LibraryCatalog {
     func recentlyAddedAlbums(size: Int) async throws -> [AlbumID3] {
         let serverID = try await source.activeServerID()
         let completion = try await store.status(for: serverID)
-        if completion.albums {
-            return try await store.recentlyAddedAlbums(serverID: serverID, limit: size)
-        }
+        let local = try await store.recentlyAddedAlbums(serverID: serverID, limit: size)
+        let hasLocalSnapshot = completion.albums || !local.isEmpty
         if !(await source.isOnline()) {
-            let local = try await store.recentlyAddedAlbums(serverID: serverID, limit: size)
-            if !local.isEmpty { return local }
+            if hasLocalSnapshot { return local }
             throw URLError(.notConnectedToInternet)
         }
         do {
+            // A complete index can still describe the previous scan. Home needs this small,
+            // current page even while the rest of the catalogue is refreshing in the background.
             return try await source.recentlyAddedAlbums(size: size, serverID: serverID)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            let local = try await store.recentlyAddedAlbums(serverID: serverID, limit: size)
-            if Self.canServeStaleData(after: error), !local.isEmpty { return local }
+            if Self.canServeStaleData(after: error), hasLocalSnapshot { return local }
             throw error
         }
     }
@@ -405,6 +404,9 @@ actor LibraryCatalog {
             Logger.library.debug(
                 "Library index: could not record playlist mutation: \(error, privacy: .public)"
             )
+        }
+        await MainActor.run {
+            NotificationCenter.default.post(name: .minidiscPlaylistsChanged, object: nil)
         }
     }
 

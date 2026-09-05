@@ -30,10 +30,13 @@ struct SongSelectionSheet: View {
         NavigationStack {
             List {
                 Section {
-                    Button(selectedIDs.isSuperset(of: visibleSongs.map(\.id)) ? "Deselect All" : "Select All") {
+                    Button {
                         let visible = Set(visibleSongs.map(\.id))
                         if selectedIDs.isSuperset(of: visible) { selectedIDs.subtract(visible) }
                         else { selectedIDs.formUnion(visible) }
+                    } label: {
+                        Text(selectedIDs.isSuperset(of: visibleSongs.map(\.id))
+                             ? LocalizedStringResource("Deselect All") : LocalizedStringResource("Select All"))
                     }
                     .disabled(visibleSongs.isEmpty)
                     .accessibilityIdentifier("songs.selection.all")

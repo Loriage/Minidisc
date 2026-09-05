@@ -25,6 +25,7 @@ struct MinidiscShelf<Header: View, Content: View>: View {
 }
 
 struct MinidiscCarouselHeader: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let title: Text
     private let showsChevron: Bool
     private let horizontalPadding: CGFloat
@@ -55,7 +56,7 @@ struct MinidiscCarouselHeader: View {
                 .font(.minidiscShelfTitle)
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(.leading)
-                .lineLimit(1)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
 
             Spacer(minLength: MinidiscSpacing.s)
 

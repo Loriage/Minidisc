@@ -38,6 +38,28 @@ private struct QueueRow: View {
     private var isFavorite: Bool { !favoriteMatches.isEmpty }
 
     var body: some View {
+        HStack(spacing: 0) {
+            titleAndArtwork
+                .contentShape(Rectangle())
+                .contextMenu { queueMenu }
+
+            if isCurrent {
+                NowPlayingBarsIndicator(isPlaying: isPlaying)
+            } else if showsReorderHint {
+                // Keep the handle outside the context menu's long-press region.
+                Image(systemName: "line.3.horizontal")
+                    .foregroundStyle(secondaryContentColor.opacity(0.5))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                    .accessibilityLabel("Reorder")
+                    .accessibilityIdentifier("queue.reorder.\(song.id)")
+            }
+        }
+        .padding(.vertical, MinidiscSpacing.xs)
+        .modifier(SongQuickActions(song: song, onAddToPlaylist: playlistAddition.present, onRemove: onRemove))
+    }
+
+    private var titleAndArtwork: some View {
         HStack(spacing: MinidiscSpacing.m) {
             CoverArtView(id: song.coverArtId ?? song.id, size: 88, loadingEnabled: loadArtwork)
                 .frame(width: 44, height: 44)
@@ -57,27 +79,20 @@ private struct QueueRow: View {
             }
 
             Spacer(minLength: 0)
-
-            if isCurrent {
-                NowPlayingBarsIndicator(isPlaying: isPlaying)
-            } else if showsReorderHint {
-                Image(systemName: "line.3.horizontal")
-                    .foregroundStyle(secondaryContentColor.opacity(0.5))
-                    .accessibilityHidden(true)
-            }
         }
-        .padding(.vertical, MinidiscSpacing.xs)
-        .contextMenu {
-            Group {
+    }
+
+    private var queueMenu: some View {
+        Group {
             Button {
                 Task {
                     do {
                         try await container?.playerService.play(tracks: [song], startIndex: 0)
                     } catch {
                         Logger.player.error("[PLAYBACK] play failed: \(error, privacy: .public)")
-                if !UserFacingError.isCancellation(error) {
-                    container?.toastService.showError(UserFacingError.from(error).displayMessage)
-                }
+                        if !UserFacingError.isCancellation(error) {
+                            container?.toastService.showError(UserFacingError.from(error).displayMessage)
+                        }
                     }
                 }
             } label: {
@@ -130,10 +145,8 @@ private struct QueueRow: View {
                     Label("Remove from Queue", systemImage: "minus.circle")
                 }
             }
-            }
-            .tint(.primary)
         }
-        .modifier(SongQuickActions(song: song, onAddToPlaylist: playlistAddition.present, onRemove: onRemove))
+        .tint(.primary)
     }
 }
 
@@ -241,6 +254,9 @@ private struct ReorderableQueueList: View {
                               loadArtwork: loadArtwork, showsReorderHint: true)
             }
             .reorderable()
+            // Apply row traits outside the reorderable wrapper so List receives them.
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
         }
         .reorderContainer(for: QueueRowSnapshot.self) { difference in
             guard difference.sources.count == 1,
@@ -254,6 +270,7 @@ private struct ReorderableQueueList: View {
             case .end:
                 destination = queueCount
             }
+            Logger.player.debug("Queue drag requested: \(entry.selection.destinationIndex) → \(destination)")
             HapticFeedback.light.trigger()
             Task { await container?.playerService.moveQueueTrack(entry.selection, toIndex: destination) }
         }

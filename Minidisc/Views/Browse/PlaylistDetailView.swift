@@ -139,7 +139,7 @@ struct PlaylistDetailView: View {
     private func metadataLine(count: Int, updated: Date?) -> String {
         var parts = [String(localized: "\(count) songs")]
         if let updated {
-            parts.append("Updated \(updated.formatted(.relative(presentation: .named)))")
+            parts.append(String(localized: "Updated \(updated.formatted(.relative(presentation: .named)))"))
         }
         return parts.joined(separator: " · ")
     }

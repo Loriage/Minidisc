@@ -40,7 +40,7 @@ struct HomeResumeCard: View {
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(state.wantsPlayback ? "Pause" : "Resume")
+                    .accessibilityLabel(Text(state.wantsPlayback ? LocalizedStringResource("Pause") : LocalizedStringResource("Resume")))
                     .accessibilityIdentifier("home.resume.playPause")
                 }
                 if state.duration > 0 {

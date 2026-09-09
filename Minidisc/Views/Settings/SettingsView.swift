@@ -125,7 +125,7 @@ struct SettingsView: View {
 
     private func aboutSection() -> some View {
         Section {
-            ShareLink(item: MinidiscURLs.repo) {
+            ShareLink(item: MinidiscURLs.appStore) {
                 Label("Share the App", systemImage: "square.and.arrow.up")
             }
             .foregroundStyle(.primary)

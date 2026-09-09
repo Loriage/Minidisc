@@ -1,7 +1,9 @@
 import Foundation
 
 enum MinidiscURLs {
-    /// This fork's own repository — Settings' share / GitHub / issues entries.
+    /// Let the recipient's App Store choose the storefront and available localization.
+    static let appStore = URL(string: "https://apps.apple.com/app/id6794636813")!
+    /// This fork's own repository — Settings' GitHub / issues entries.
     static let repo = URL(string: "https://github.com/Loriage/Minidisc")!
     static let repoIssues = URL(string: "https://github.com/Loriage/Minidisc/issues")!
     /// The upstream project Minidisc forked from — Acknowledgements only.

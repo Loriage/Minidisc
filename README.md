@@ -1,6 +1,12 @@
-# Minidisc
+<p align="center">
+  <img src="docs/app-icon.png" alt="Minidisc app icon" width="128" height="128">
+</p>
 
-> Minidisc is an opinionated music player for iOS that plays the music from your own server, and it gives you an experience that is close to Apple Music.
+<h1 align="center">Minidisc</h1>
+
+<p align="center">
+  Minidisc is an opinionated music player for iOS that plays the music from your own server, and it gives you an experience that is close to Apple Music.
+</p>
 
 [![License: MPL 2.0](https://img.shields.io/badge/license-MPL--2.0-brightgreen.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-iOS%2026%2B-blue.svg)](#requirements)

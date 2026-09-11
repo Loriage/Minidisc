@@ -85,7 +85,7 @@ nonisolated enum UserFacingError: LocalizedError, Identifiable, Sendable, Codabl
                 return .downloadFailed
             case .mediaNotFound:
                 return .contentRemoved
-            case .audioSystemUnavailable:
+            case .audioSystemUnavailable, .playbackPositionUnavailable:
                 return .playbackFailed
             case .timeout:
                 return .serverUnreachable

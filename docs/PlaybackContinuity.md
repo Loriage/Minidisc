@@ -3,6 +3,7 @@
 ## Observable behavior
 
 - Preparing a queue, buffering and reconnecting have explicit waiting states. Brief waits remain hidden for 700 ms; the reconnection message requires an actual recovery attempt, not a preventive watchdog marker. Pause and Next remain meaningful during recovery. A late queue preparation cannot override a newer transport command.
+- Replacement items keep the saved listening position while loading and seeking. A failed restore seek stops playback before unmuting, so it cannot replay the beginning; explicit Play retries the saved position for both remote streams and local files.
 - A failed stream is checked against Navidrome before treating the song as removed. Only a structured `getSong`/`getPlaylist` not-found response confirms deletion; connectivity failures and proxy HTTP 404 responses do not.
 - Opening or starting an old playlist revalidates its content. A deleted playlist displays one explanation and retains its downloaded music. An unavailable queue advances through a bounded number of songs and stops safely when none are playable.
 - Home displays its last saved feed by server while offline. During a cold load, one slow section does not hold back the others. Pull-to-refresh applies its result together to preserve scroll layout.

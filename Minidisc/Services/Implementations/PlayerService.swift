@@ -3127,7 +3127,9 @@ actor PlayerService: PlayerServiceProtocol {
     }
 
     private func performProgressTick() async {
-        guard audioSystemRecovery == nil else { return }
+        // A replacement item starts at zero. Until its restore seek completes, that clock is
+        // not the listening position and must not overwrite the checkpoint used by the next retry.
+        guard audioSystemRecovery == nil, pendingRestoreInfo == nil, !isMutedForRestore else { return }
         let progress = engine.progress
         let audioDuration = engine.duration
         if activeEngineState == .playing {
@@ -3690,8 +3692,19 @@ actor PlayerService: PlayerServiceProtocol {
                     let requestedSeekGeneration = seekGeneration
                     let succeeded = await engine.seek(to: info.seekTime)
                     guard isCurrentEngineEvent(playbackToken), requestedSeekGeneration == seekGeneration else { return }
-                    if recoveringAudio, !succeeded {
-                        invalidateAudioRecoveryPlayback()
+                    if !succeeded {
+                        if recoveringAudio {
+                            invalidateAudioRecoveryPlayback()
+                        } else {
+                            // Never make the new item audible at zero after a failed restore.
+                            // Keep state.position intact so an explicit Play can retry that point.
+                            Logger.player.warning("[RESTORE] position restore failed — stopping before unmuting")
+                            _ = await finishFailedPlayback(
+                                error: .playbackPositionUnavailable,
+                                expectedPlaybackGeneration: playbackGeneration,
+                                expectedTransportGeneration: transportIntentGeneration
+                            )
+                        }
                         return
                     }
                     Logger.player.info(
@@ -3725,6 +3738,9 @@ actor PlayerService: PlayerServiceProtocol {
                 }
                 isRestoringSession = false
             } else {
+                // A second playing callback can arrive while the first is awaiting its seek.
+                // It cannot validate recovery or count progress from the temporary zero position.
+                guard !isMutedForRestore else { return }
                 playbackProgressTracker.establishBaselineIfNeeded(engine.progress)
             }
 

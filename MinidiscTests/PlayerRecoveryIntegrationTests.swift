@@ -17,6 +17,7 @@ private nonisolated final class RecoveryTestEngine: AudioEngine, Sendable {
         var volume: Float = 1
         var playingSince: Date?
         var position: Double = 0
+        var failNextSeek = false
     }
     private let storage = Mutex(Storage())
     var delegate: AudioEngineDelegate? {
@@ -53,7 +54,14 @@ private nonisolated final class RecoveryTestEngine: AudioEngine, Sendable {
             $0.position = 0
         }
     }
-    func seek(to seconds: Double) async -> Bool { storage.withLock { $0.position = seconds }; return true }
+    func failNextSeek() { storage.withLock { $0.failNextSeek = true } }
+    func seek(to seconds: Double) async -> Bool {
+        storage.withLock {
+            if $0.failNextSeek { $0.failNextSeek = false; return false }
+            $0.position = seconds
+            return true
+        }
+    }
     var volume: Float {
         get { storage.withLock { $0.volume } }
         set { storage.withLock { $0.volume = newValue } }
@@ -101,6 +109,8 @@ private nonisolated final class RecoveryTestAudioSession: AudioSessionControllin
 }
 
 private actor RecoveryTestResolver: MediaResolverProtocol {
+    var usesDownloadedSource = false
+    func useDownloadedSource() { usesDownloadedSource = true }
     var missingIDs: Set<String> = []
     var blockAvailability = false
     var availabilityCalls = 0
@@ -122,6 +132,7 @@ private actor RecoveryTestResolver: MediaResolverProtocol {
         if songId == blockedResolutionID {
             await withCheckedContinuation { pendingResolution = $0 }
         }
+        if usesDownloadedSource { return .downloaded(URL(fileURLWithPath: "/tmp/recovery-test-audio.m4a")) }
         return .stream(URL(string: "https://playback.invalid/stream")!, customHeaders: [:])
     }
     func resolveRadio(_ station: InternetRadioStation) async throws -> MediaSource { throw MinidiscError.notImplemented }
@@ -251,6 +262,52 @@ private struct RecoveryHarness {
 @Suite("Player recovery integration", .serialized)
 @MainActor
 struct PlayerRecoveryIntegrationTests {
+    @Test(arguments: [false, true])
+    func loadingReplacementKeepsTheResumePosition(downloaded: Bool) async throws {
+        let h = try RecoveryHarness(startupGrace: .seconds(3))
+        if downloaded { await h.resolver.useDownloadedSource() }
+        try await h.play()
+        _ = await h.engine.seek(to: 37)
+        h.state.position = 37
+        h.engine.stop()
+        await h.player.resume()
+        #expect(h.engine.playCount == 2)
+        // At least one real progress-timer tick while the replacement is still loading at zero.
+        try await Task.sleep(for: .milliseconds(750))
+        #expect(h.state.position == 37)
+        await h.player.pause()
+        #expect(h.state.position == 37)
+        await h.player.stop()
+    }
+
+    @Test(arguments: [false, true])
+    func failedRestoreNeverPlaysFromTheBeginning(downloaded: Bool) async throws {
+        let h = try RecoveryHarness(startupGrace: .seconds(3))
+        if downloaded { await h.resolver.useDownloadedSource() }
+        try await h.play()
+        _ = await h.engine.seek(to: 37)
+        h.state.position = 37
+        h.engine.stop()
+        await h.player.resume()
+        try await h.waitUntil {
+            h.report.components(separatedBy: "engine state=buffering").count >= 3
+        }
+        h.engine.failNextSeek()
+        h.engine.startAdvancing()
+        await h.player.handleEngineState(.playing, playbackToken: h.engine.token)
+        #expect(h.engine.isReady)
+        #expect(h.state.position == 37)
+        if case .error = h.state.playbackState {} else {
+            Issue.record("Failed restore must stop safely instead of unmuting the song at zero")
+        }
+        // A manual retry must still use the original checkpoint.
+        await h.player.resume()
+        await h.player.handleEngineState(.playing, playbackToken: h.engine.token)
+        #expect(h.engine.progress >= 37)
+        #expect(h.engine.volume > 0)
+        await h.player.stop()
+    }
+
     private var mediaReset: AudioEngineFailure {
         .init(error: NSError(domain: AVFoundationErrorDomain, code: AVError.Code.mediaServicesWereReset.rawValue))
     }

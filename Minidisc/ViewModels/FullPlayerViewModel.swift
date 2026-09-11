@@ -3,51 +3,37 @@ import SwiftUI
 @Observable
 @MainActor
 final class FullPlayerViewModel {
-    var dominantColor: Color = .black
-
-    private let session: URLSession = {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForResource = 30
-        return URLSession(configuration: config)
-    }()
+    private(set) var backgroundColors: [Color] = Array(repeating: .black, count: 4)
+    private(set) var coverArtID: String?
 
     var contentColor: Color { .white }
     var secondaryContentColor: Color { Color.white.opacity(0.7) }
 
-    func updateColors(for coverArtId: String?, colorExtractor: DominantColorExtractor, container: AppContainer?) async {
+    func updateColors(for coverArtId: String?, colorExtractor: DominantColorExtractor,
+                      container: AppContainer?, reduceMotion: Bool = false) async {
+        coverArtID = coverArtId
+        let animation: Animation? = reduceMotion ? nil : .easeOut(duration: 0.25)
         guard let coverArtId else {
-            withAnimation(.easeOut(duration: 0.25)) {
-                dominantColor = .black
-            }
+            withAnimation(animation) { backgroundColors = Array(repeating: .black, count: 4) }
             return
         }
-        // Theme the page INSTANTLY from the already-memoized dominant colour (it's cached app-wide by the cards /
-        // mini player), so the background is coloured the moment the player opens — no black flash while the
-        // cover downloads.
-        let cachedColor = colorExtractor.cachedColor(for: coverArtId)
-        if let cachedColor {
-            withAnimation(.easeOut(duration: 0.25)) {
-                dominantColor = cachedColor
-            }
+        if let colors = colorExtractor.cachedBackgroundColors(for: coverArtId) {
+            withAnimation(animation) { backgroundColors = colors }
             return
         }
-        // Resolve the cover only when its color is not cached; the artwork view loads independently.
-        let url: URL?
-        if let localURL = await container?.downloadService.localCoverArtURL(forId: coverArtId) {
-            url = localURL
-        } else {
-            url = await container?.libraryService.coverArtURL(id: coverArtId, size: 300)
+        // Use this cover's existing average until its bands are ready, never the previous song's colors.
+        withAnimation(animation) {
+            backgroundColors = Array(repeating: colorExtractor.cachedColor(for: coverArtId) ?? .black, count: 4)
         }
-        guard let url, let (data, _) = try? await session.data(from: url) else { return }
-        // Decode (+ average if not cached) OFF the main actor so a track change does not hitch the UI.
-        let packed: Int? = await Task.detached(priority: .userInitiated) { () -> Int? in
-            guard let image = PlatformImage(data: data) else { return nil }
-            return DominantColorExtractor.packedAverageColor(from: image)
-        }.value
-        guard !Task.isCancelled, let packed else { return }
-        let color = colorExtractor.storeColor(packed: packed, for: coverArtId)
-        withAnimation(.easeOut(duration: 0.25)) {
-            dominantColor = color
-        }
+        guard let artworkCache = container?.artworkImageCache else { return }
+        let image = artworkCache.cachedImage(for: coverArtId, tier: .hero)
+            ?? artworkCache.cachedImage(for: coverArtId, tier: .thumb)
+        let resolvedImage: PlatformImage?
+        if let image { resolvedImage = image }
+        else { resolvedImage = await artworkCache.load(coverArtId: coverArtId, tier: .thumb) }
+        guard !Task.isCancelled, let resolvedImage,
+              let colors = await colorExtractor.backgroundColors(for: coverArtId, image: resolvedImage),
+              !Task.isCancelled, coverArtID == coverArtId else { return }
+        withAnimation(animation) { backgroundColors = colors }
     }
 }

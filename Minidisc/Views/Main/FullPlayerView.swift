@@ -19,72 +19,12 @@ private struct LyricsLoadKey: Equatable {
 }
 
 private struct FullPlayerBackground: View {
-    let dominantColor: Color
+    let colors: [Color]
 
     var body: some View {
-        LinearGradient(
-            stops: gradientStops,
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .ignoresSafeArea()
-    }
-
-    private var gradientStops: [Gradient.Stop] {
-        var hue: CGFloat = 0
-        var saturation: CGFloat = 0
-        var brightness: CGFloat = 0
-        var alpha: CGFloat = 0
-        let resolvedColor = UIColor(dominantColor)
-        guard resolvedColor.getHue(
-            &hue,
-            saturation: &saturation,
-            brightness: &brightness,
-            alpha: &alpha
-        ) else {
-            return [
-                .init(color: .black, location: 0),
-                .init(color: .black, location: 1),
-            ]
-        }
-
-        var red: CGFloat = 0
-        var green: CGFloat = 0
-        var blue: CGFloat = 0
-        let perceivedLuminance: Double
-        if resolvedColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
-            perceivedLuminance = 0.299 * Double(red) + 0.587 * Double(green) + 0.114 * Double(blue)
-        } else {
-            perceivedLuminance = 0.5
-        }
-
-        let contrastDimming = min(max((perceivedLuminance - 0.48) * 0.56, 0), 0.28)
-        // Whole-image averages lose chroma. Scaling the existing saturation keeps neutral artwork neutral.
-        let isChromatic = saturation >= 0.08
-        let baseBrightness = isChromatic ? max(Double(brightness), 0.30) : Double(brightness)
-
-        func color(saturationMultiplier: Double, dimming: Double) -> Color {
-            Color(
-                hue: Double(hue),
-                saturation: isChromatic ? min(Double(saturation) * saturationMultiplier, 1) : Double(saturation),
-                brightness: baseBrightness * (1 - min(max(dimming, 0), 0.82))
-            )
-        }
-
-        return [
-            .init(
-                color: color(saturationMultiplier: 1.6, dimming: 0.18 + contrastDimming),
-                location: 0
-            ),
-            .init(
-                color: color(saturationMultiplier: 1.85, dimming: 0.28 + contrastDimming),
-                location: 0.48
-            ),
-            .init(
-                color: color(saturationMultiplier: 1.85, dimming: 0.46 + contrastDimming * 0.75),
-                location: 1
-            ),
-        ]
+        LinearGradient(colors: PlayerBackgroundPalette.colors(from: colors),
+                       startPoint: .top, endPoint: .bottom)
+            .ignoresSafeArea()
     }
 }
 
@@ -127,7 +67,7 @@ struct FullPlayerView: View {
             content(playerState)
                 .interactiveDismissDisabled(trackSwipe.isHorizontalDragActive)
                 .task(id: PlayerThemeKey(coverId: themeCoverId, override: colorExtractor.colorOverride(for: themeCoverId ?? ""))) {
-                    await vm.updateColors(for: themeCoverId, colorExtractor: colorExtractor, container: container)
+                    await vm.updateColors(for: themeCoverId, colorExtractor: colorExtractor, container: container, reduceMotion: reduceMotion)
                 }
                 .task(id: lyricsLoadKey) {
                     guard showLyrics,
@@ -162,7 +102,9 @@ struct FullPlayerView: View {
             ? (playerState.currentRadio?.coverArt ?? "")
             : (playerState.currentTrack?.coverArtId ?? playerState.currentTrack?.id ?? "")
         // Use the memoized color on the first frame while the view model catches up.
-        let dominant = colorExtractor.cachedColor(for: coverArtId) ?? vm.dominantColor
+        let colors = colorExtractor.cachedBackgroundColors(for: coverArtId)
+            ?? (vm.coverArtID == coverArtId ? vm.backgroundColors
+                : Array(repeating: colorExtractor.cachedColor(for: coverArtId) ?? .black, count: 4))
         let showingQueue = isQueueVisible(playerState)
 
         surfaceStack(playerState, coverArtId: coverArtId, showingQueue: showingQueue)
@@ -171,7 +113,7 @@ struct FullPlayerView: View {
             .environment(\.colorScheme, .dark)
             .environment(\.minidiscPlayingAccent, MinidiscColors.accent)
         .background {
-            FullPlayerBackground(dominantColor: dominant)
+            FullPlayerBackground(colors: colors)
         }
     }
 

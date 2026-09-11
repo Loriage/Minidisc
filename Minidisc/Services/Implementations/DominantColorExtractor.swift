@@ -29,6 +29,9 @@ final class DominantColorExtractor {
     /// one cover can hold both a whole-image dominant (album/player) and a bottom-strip colour with no
     /// clobber. In-memory only — re-extracted per launch, never mirrored to widgets.
     @ObservationIgnored private var bottomStripCache: [String: Color] = [:]
+    @ObservationIgnored private var backgroundPaletteCache: [String: [Color]] = [:]
+    @ObservationIgnored private var paletteRevision: UInt64 = 0
+    private let bandSampler = ArtworkBandSampler()
     /// User-picked colour overrides (per coverArtId), persisted, taking precedence over the extracted dominant.
     /// OBSERVED (unlike `cache`) so themed surfaces re-render the instant the user changes a colour.
     private var colorOverrides: [String: Color] = [:]
@@ -85,6 +88,22 @@ final class DominantColorExtractor {
     /// Synchronously returns the memoized color for an id, or nil if not yet extracted. No work.
     func cachedColor(for coverArtId: String) -> Color? {
         colorOverrides[coverArtId] ?? cache[coverArtId]
+    }
+
+    func cachedBackgroundColors(for coverArtId: String) -> [Color]? {
+        if let override = colorOverrides[coverArtId] { return Array(repeating: override, count: 4) }
+        return backgroundPaletteCache[coverArtId]
+    }
+
+    func backgroundColors(for coverArtId: String, image: PlatformImage) async -> [Color]? {
+        if let cached = cachedBackgroundColors(for: coverArtId) { return cached }
+        let revision = paletteRevision
+        guard let packed = await bandSampler.sample(image), !Task.isCancelled,
+              revision == paletteRevision else { return nil }
+        let colors = packed.map(Self.unpack)
+        backgroundPaletteCache[coverArtId] = colors
+        // A manual choice made during extraction still takes precedence.
+        return cachedBackgroundColors(for: coverArtId)
     }
 
     /// The user-picked colour override for a cover, if any (nil → the extracted dominant is used).
@@ -162,12 +181,16 @@ final class DominantColorExtractor {
 
     func invalidate(for coverArtId: String?) {
         guard let coverArtId else { return }
+        paletteRevision &+= 1
+        backgroundPaletteCache.removeValue(forKey: coverArtId)
         cache.removeValue(forKey: coverArtId)
         bottomStripCache.removeValue(forKey: coverArtId)
         removePersistedColor(forKey: coverArtId)
     }
 
     func clearCache() {
+        paletteRevision &+= 1
+        backgroundPaletteCache.removeAll()
         cache.removeAll()
         bottomStripCache.removeAll()
         UserDefaults.standard.removeObject(forKey: Self.userDefaultsKey)

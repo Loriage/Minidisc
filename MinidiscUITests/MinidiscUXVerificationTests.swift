@@ -158,6 +158,11 @@ final class MinidiscUXVerificationTests: XCTestCase {
         let miniTitle = try miniPlayerTitle()
         captureHierarchy("before-full-player")
         miniTitle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        try require(app.buttons["File d'attente"])
+        let playerScreenshot = XCTAttachment(screenshot: app.screenshot())
+        playerScreenshot.name = "Player-four-artwork-colors"
+        playerScreenshot.lifetime = .keepAlways
+        add(playerScreenshot)
         try tap(app.buttons["File d'attente"], named: "queue")
         try require(app.staticTexts[secondTitle].firstMatch)
         XCTAssertFalse(app.staticTexts["Horizons de test"].exists)

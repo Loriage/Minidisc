@@ -736,9 +736,9 @@ private struct TrackInfoSection: View {
 
     private func smartShuffleErrorMessage(from error: Error) -> String {
         if case MinidiscError.smartShuffleEmpty = error {
-            return "Smart Shuffle unavailable — try playing some tracks first or download more music for offline use."
+            return String(localized: "Smart Shuffle unavailable — try playing some tracks first or download more music for offline use.")
         }
-        return "Smart Shuffle failed. Please try again."
+        return String(localized: "Smart Shuffle failed. Please try again.")
     }
 }
 

@@ -54,7 +54,7 @@ struct EmptyStateView: View {
     EmptyStateView(
         systemImage: "magnifyingglass",
         title: "No Results",
-        subtitle: "Try a different search term.",
+        subtitle: "Try another category or search term.",
         action: .init(label: "Clear") {}
     )
 }

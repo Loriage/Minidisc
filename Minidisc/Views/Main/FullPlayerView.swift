@@ -33,7 +33,10 @@ struct FullPlayerView: View {
     @Environment(DominantColorExtractor.self) private var colorExtractor
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.dismiss) private var dismiss
+    var artworkNamespace: Namespace.ID? = nil
+    var contentInsets: EdgeInsets = .init()
+    var initialArtwork: PlayerArtworkSnapshot? = nil
+    var dismissAction: () -> Void = {}
 
     @State private var vm = FullPlayerViewModel()
     @State private var playlistAddition = PlaylistAddition()
@@ -65,7 +68,6 @@ struct FullPlayerView: View {
                 ? playerState.currentRadio?.coverArt
                 : (playerState.currentTrack?.coverArtId ?? playerState.currentTrack?.id)
             content(playerState)
-                .interactiveDismissDisabled(trackSwipe.isHorizontalDragActive)
                 .task(id: PlayerThemeKey(coverId: themeCoverId, override: colorExtractor.colorOverride(for: themeCoverId ?? ""))) {
                     await vm.updateColors(for: themeCoverId, colorExtractor: colorExtractor, container: container, reduceMotion: reduceMotion)
                 }
@@ -110,6 +112,7 @@ struct FullPlayerView: View {
         surfaceStack(playerState, coverArtId: coverArtId, showingQueue: showingQueue)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .minidiscContentWidth()
+            .padding(contentInsets)
             .environment(\.colorScheme, .dark)
             .environment(\.minidiscPlayingAccent, MinidiscColors.accent)
         .background {
@@ -230,24 +233,21 @@ struct FullPlayerView: View {
     private func flowingCover(_ playerState: PlayerState, coverArtId: String, isSource: Bool) -> some View {
         GeometryReader { geo in
             let artworkSide = min(geo.size.width, geo.size.height)
-            CoverArtView(id: coverArtId, size: 1000)
-                .frame(
-                    width: isSource ? artworkSide : nil,
-                    height: isSource ? artworkSide : nil
-                )
+            CoverArtView(id: coverArtId, size: 1000,
+                         initialImage: initialArtwork?.id == coverArtId ? initialArtwork?.image : nil)
                 .clipShape(
                     RoundedRectangle(
                         cornerRadius: isSource ? MinidiscCornerRadius.large : MinidiscCornerRadius.standard,
                         style: .continuous
                     )
                 )
-                .drawingGroup()
+                .matchedGeometryEffect(id: "playerArtwork", in: artworkNamespace ?? morphNS, isSource: isSource)
+                .frame(width: isSource ? artworkSide : nil, height: isSource ? artworkSide : nil)
                 .shadow(
                     color: isSource ? Color.black.opacity(0.28) : .clear,
                     radius: 18,
                     y: 10
                 )
-                .matchedGeometryEffect(id: "queueCover", in: morphNS, isSource: isSource)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .trackSwipeGesture(
                     interaction: trackSwipe,
@@ -256,6 +256,7 @@ struct FullPlayerView: View {
                     reduceMotion: reduceMotion,
                     isEnabled: isSource && playerState.isPlaybackAvailable && !playerState.isLiveStream
                 )
+                .accessibilityIdentifier("player.artwork")
         }
     }
 
@@ -265,7 +266,7 @@ struct FullPlayerView: View {
                 // Invisible endpoint for the cover's matched-geometry transition.
                 Color.clear
                     .frame(width: 56, height: 56)
-                    .matchedGeometryEffect(id: "queueCover", in: morphNS, isSource: true)
+                    .matchedGeometryEffect(id: "playerArtwork", in: artworkNamespace ?? morphNS, isSource: true)
 
                 TrackInfoSection(
                     playerState: playerState,
@@ -340,7 +341,7 @@ struct FullPlayerView: View {
 
     private var topBar: some View {
         Button {
-            dismiss()
+            dismissAction()
         } label: {
             Capsule()
                 .fill(vm.contentColor.opacity(0.4))

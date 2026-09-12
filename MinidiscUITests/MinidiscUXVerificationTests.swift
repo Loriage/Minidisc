@@ -172,6 +172,188 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try await Task.sleep(for: .seconds(3))
     }
 
+    func testFixturePlayerDismissalHandoff() async throws {
+        try await launchFixtureApp()
+        try tap(app.staticTexts["Escapade temporaire"].firstMatch, named: "handoff-playlist")
+        try require(app.staticTexts[firstTitle].firstMatch)
+        try playPlaylistFromBeginning()
+        try tap(app.buttons["Pause"].firstMatch, named: "handoff-pause")
+
+        let miniTitle = app.staticTexts["player.mini.title"].firstMatch
+        let close = app.buttons["Fermer le lecteur"].firstMatch
+        try requireHittable(miniTitle)
+        let before = try nativeMiniPlayerBounds()
+        print("PLAYER_HANDOFF_NATIVE_BEFORE epoch=\(Date().timeIntervalSince1970) frame=\(before)")
+        capturePlayerScreenshot("Handoff-native-accessory-before")
+        try tap(miniTitle, named: "handoff-open-player")
+        try requireHittable(close)
+        try requireHittable(app.buttons["File d'attente"])
+        capturePlayerScreenshot("Handoff-expanded-before-dismissal")
+
+        captureHierarchy("handoff-before-close-timing")
+        print("PLAYER_HANDOFF_CLOSE_REQUEST epoch=\(Date().timeIntervalSince1970)")
+        close.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        print("PLAYER_HANDOFF_CLOSE_TAP_RETURNED epoch=\(Date().timeIntervalSince1970)")
+        XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+        try requireHittable(miniTitle)
+        let after = try nativeMiniPlayerBounds()
+        print("PLAYER_HANDOFF_NATIVE_AFTER epoch=\(Date().timeIntervalSince1970) frame=\(after)")
+        XCTAssertEqual(after.minX, before.minX, accuracy: 1)
+        XCTAssertEqual(after.minY, before.minY, accuracy: 1)
+        XCTAssertEqual(after.width, before.width, accuracy: 1)
+        XCTAssertEqual(after.height, before.height, accuracy: 1)
+        XCTAssertEqual(miniTitle.label, firstTitle)
+        capturePlayerScreenshot("Handoff-native-accessory-after")
+    }
+
+    private func nativeMiniPlayerBounds() throws -> CGRect {
+        let accessory = searchElement("player.accessory")
+        try requireHittable(accessory)
+        return accessory.frame
+    }
+
+    func testFixturePlayerContainerLifecycle() async throws {
+        try await launchFixtureApp(queueCatalog: true)
+        try tap(app.staticTexts["Escapade temporaire"].firstMatch, named: "container-playlist")
+        try require(app.staticTexts[firstTitle].firstMatch)
+        try playPlaylistFromBeginning()
+        try tap(app.buttons["Pause"].firstMatch, named: "container-pause-before-opening")
+
+        let miniTitle = app.staticTexts["player.mini.title"].firstMatch
+        let close = app.buttons["Fermer le lecteur"].firstMatch
+        try requireHittable(miniTitle)
+        XCTAssertEqual(miniTitle.label, firstTitle)
+        try tap(miniTitle, named: "container-open-first-time")
+        try requireHittable(close)
+        try requireHittable(app.buttons["File d'attente"])
+        capturePlayerScreenshot("Container-expanded-original-Minidisc-layout")
+
+        let position = searchElement("Position de lecture")
+        try requireHittable(position)
+        captureHierarchy("container-before-horizontal-seek")
+        position.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.5))
+            .press(forDuration: 0.1,
+                   thenDragTo: position.coordinate(withNormalizedOffset: CGVector(dx: 0.55, dy: 0.5)))
+        let sought = XCTNSPredicateExpectation(predicate: NSPredicate { [self] _, _ in
+            ((try? playbackSeconds(position)) ?? 0) >= 30
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [sought], timeout: 5), .completed,
+                       "Dragging the scrubber must seek without dismissing the player.")
+        try requireHittable(close)
+        captureHierarchy("container-seek-preserves-presentation")
+
+        try tap(close, named: "container-close-button")
+        XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+        try requireHittable(miniTitle)
+        XCTAssertEqual(miniTitle.label, firstTitle)
+        try requireHittable(app.tabBars.buttons["Accueil"])
+        capturePlayerScreenshot("Container-accessory-restored-after-button")
+
+        try tap(miniTitle, named: "container-reopen")
+        try requireHittable(close)
+        let artwork = searchElement("player.artwork")
+        try requireHittable(artwork)
+        captureHierarchy("container-before-short-vertical-drag")
+        let smallStart = artwork.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
+        smallStart.press(forDuration: 0.1,
+                         thenDragTo: smallStart.withOffset(CGVector(dx: 0, dy: 120)),
+                         withVelocity: .slow, thenHoldForDuration: 3.0)
+        try requireHittable(close)
+        captureHierarchy("container-short-drag-restores-player")
+
+        captureHierarchy("container-before-horizontal-artwork-swipe")
+        artwork.swipeLeft()
+        let nextTrack = XCTNSPredicateExpectation(predicate: NSPredicate { [self] _, _ in
+            app.staticTexts.matching(identifier: secondTitle).allElementsBoundByIndex.contains { $0.isHittable }
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [nextTrack], timeout: 5), .completed,
+                       "A horizontal artwork swipe must change track without dismissing the player.")
+        try requireHittable(close)
+        if app.buttons["Pause"].firstMatch.exists {
+            try tap(app.buttons["Pause"].firstMatch, named: "container-pause-after-swipe")
+        }
+
+        try tap(app.buttons["File d'attente"], named: "container-show-queue")
+        let queueTrack = searchElement("queue.track.ux-search-song-prefix.0")
+        try requireHittable(queueTrack)
+        capturePlayerScreenshot("Container-queue-preserves-Minidisc-controls")
+        captureHierarchy("container-before-queue-scroll")
+        queueTrack.swipeUp()
+        try requireHittable(close)
+        try tap(close, named: "container-close-directly-from-queue")
+        XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+        try requireHittable(miniTitle)
+        XCTAssertEqual(miniTitle.label, secondTitle)
+        capturePlayerScreenshot("Container-accessory-restored-directly-from-queue")
+        try tap(miniTitle, named: "container-reopen-after-queue")
+        try requireHittable(close)
+        try requireHittable(artwork)
+        capturePlayerScreenshot("Container-artwork-restored-after-queue-dismissal")
+
+        captureHierarchy("container-before-dismissal-drag")
+        let dragStart = artwork.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
+        let dragEnd = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9))
+        dragStart.press(forDuration: 0.1, thenDragTo: dragEnd,
+                        withVelocity: .slow, thenHoldForDuration: 0.2)
+        XCTAssertTrue(close.waitForNonExistence(timeout: 5),
+                      "A large downward artwork drag must detach the expanded player.")
+        try requireHittable(miniTitle)
+        XCTAssertEqual(miniTitle.label, secondTitle)
+        try requireHittable(app.tabBars.buttons["Accueil"])
+        capturePlayerScreenshot("Container-accessory-restored-after-drag")
+
+        try tap(miniTitle, named: "container-reopen-after-drag")
+        try requireHittable(close)
+        try requireHittable(position)
+        try tap(close, named: "container-final-close")
+        XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+        try requireHittable(miniTitle)
+    }
+
+    func testFixturePlayerAfterFocusedSearch() async throws {
+        try await launchFixtureApp()
+        try tap(app.staticTexts["Escapade temporaire"].firstMatch, named: "search-player-playlist")
+        try require(app.staticTexts[firstTitle].firstMatch)
+        try playPlaylistFromBeginning()
+        try tap(app.buttons["Pause"].firstMatch, named: "search-player-pause")
+        try tapTab("Recherche")
+        try tap(app.searchFields.firstMatch, named: "search-player-focus-search")
+        try require(app.keyboards.firstMatch)
+        capturePlayerScreenshot("Container-search-keyboard-before-opening")
+        // The native search keyboard covers the bottom accessory until search is dismissed.
+        XCTAssertFalse(app.staticTexts["player.mini.title"].firstMatch.isHittable)
+        try tap(app.buttons["Fermer"].firstMatch, named: "search-player-dismiss-search")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        try tap(app.staticTexts["player.mini.title"].firstMatch, named: "search-player-open")
+        let close = app.buttons["Fermer le lecteur"].firstMatch
+        try requireHittable(close)
+        capturePlayerScreenshot("Container-opened-after-focused-search")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+                      "The search keyboard must remain dismissed while the player is open.")
+        try requireHittable(app.buttons["File d'attente"])
+        try tap(close, named: "search-player-close")
+        XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+        try requireHittable(app.staticTexts["player.mini.title"].firstMatch)
+    }
+
+    private func requireHittable(_ element: XCUIElement, timeout: TimeInterval = 5) throws {
+        try require(element, timeout: timeout)
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: element)
+        guard XCTWaiter.wait(for: [ready], timeout: timeout) == .completed else {
+            captureHierarchy("element-not-hittable")
+            throw NSError(domain: "MinidiscUXVerification", code: 8,
+                          userInfo: [NSLocalizedDescriptionKey: "UI element did not become hittable: \(element.description)"])
+        }
+    }
+
+    private func capturePlayerScreenshot(_ name: String) {
+        captureHierarchy(name)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = name
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     func testFixtureQueueRemovalUndo() async throws {
         let expected = try await openEditableFixtureQueue()
         for id in expected { try require(searchElement(id)) }

@@ -8,13 +8,11 @@ struct MainTabView: View {
     @State private var libraryPath = NavigationPath()
     @State private var discoverPath = NavigationPath()
     @SceneStorage("minidisc.selectedTab") private var selectedTab: AppTab = .home
-    @State private var showingFullPlayer = false
+    @State private var playerPresentation = PlayerContainerConfiguration()
     @State private var playlistAddition = PlaylistAddition()
-    @Namespace private var playerZoom
     @AppStorage("minidisc.appTheme") private var theme: AppTheme = .system
 
     private enum AppTab: String, Hashable { case home, discover, library, lidarr, search }
-    private let fullPlayerZoomID = "full-player"
 
     private var lidarrConnected: Bool { container?.lidarrSettings.isConnected == true }
 
@@ -26,30 +24,25 @@ struct MainTabView: View {
         @Bindable var playlistAddition = playlistAddition
 
         tabs
-            .tabBarMinimizeBehavior(.onScrollDown)
-            // isEnabled at the modifier level — a conditional INSIDE the accessory builder
-            // still renders an empty glass capsule when nothing plays.
-            .tabViewBottomAccessory(isEnabled: hasTrack) {
-                miniPlayer
+            .accessibilityHidden(playerPresentation.attachExpandedPlayer)
+            .overlay(alignment: .topLeading) {
+                if playerPresentation.attachExpandedPlayer {
+                    PlayerContainer(configuration: playerPresentation)
+                        .transition(.identity)
+                }
             }
-            .fullScreenCover(isPresented: $showingFullPlayer) {
-                FullPlayerView()
-                    .minidiscZoomTransition(sourceID: fullPlayerZoomID, in: playerZoom)
-                    .toastOverlay(reservesMiniPlayerSpace: false)
+            // Disable the actual accessory while its container is attached to the overlay.
+            .tabViewBottomAccessory(isEnabled: hasTrack && !playerPresentation.attachExpandedPlayer) {
+                PlayerContainer(configuration: playerPresentation)
+            }
+            .tabBarMinimizeBehavior(.onScrollDown)
+            .onChange(of: hasTrack) { _, hasTrack in
+                if !hasTrack { playerPresentation.reset() }
             }
             .sheet(item: $playlistAddition.request) { request in
                 AddToPlaylistSheet(request: request)
             }
             .environment(playlistAddition)
-    }
-
-    // The accessory deliberately inherits the colour scheme the system gives its glass container instead of
-    // being pinned to the app's: the system flips that glass light or dark against whatever is behind it (a
-    // very dark page gets LIGHT glass), and the tab bar's own labels follow it. Pinning the app appearance
-    // here is what left the mini player's labels black on a dark playlist while the tab items went white.
-    private var miniPlayer: some View {
-        MiniPlayerAccessoryView(showingFullPlayer: $showingFullPlayer)
-            .minidiscMatchedTransitionSource(id: fullPlayerZoomID, in: playerZoom)
     }
 
     private var tabs: some View {
@@ -105,12 +98,12 @@ struct MainTabView: View {
             if !lidarrConnected, selectedTab == .lidarr { selectedTab = .home }
         }
         .onReceive(NotificationCenter.default.publisher(for: .minidiscNavigateToLibrary)) { _ in
-            showingFullPlayer = false
+            playerPresentation.reset()
             libraryPath = NavigationPath()
             selectedTab = .library
         }
         .onReceive(NotificationCenter.default.publisher(for: .minidiscNavigateToDownloads)) { _ in
-            showingFullPlayer = false
+            playerPresentation.reset()
             libraryPath = NavigationPath([HomeDestination.libraryDownloads])
             selectedTab = .library
         }
@@ -123,7 +116,7 @@ struct MainTabView: View {
             guard let id   = note.userInfo?["artistId"]   as? String,
                   let name = note.userInfo?["artistName"] as? String else { return }
             let coverArtId = note.userInfo?["coverArtId"] as? String
-            showingFullPlayer = false
+            playerPresentation.reset()
             selectedTab = .home
             homePath.append(HomeDestination.artistById(id: id, name: name, coverArtId: coverArtId))
         }
@@ -131,7 +124,7 @@ struct MainTabView: View {
             guard let id   = note.userInfo?["playlistId"] as? String,
                   let name = note.userInfo?["name"]       as? String else { return }
             let coverArtId = note.userInfo?["coverArtId"] as? String
-            showingFullPlayer = false
+            playerPresentation.reset()
             selectedTab = .home
             homePath.append(HomeDestination.playlistById(id: id, name: name, coverArtId: coverArtId))
         }

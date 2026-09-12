@@ -2,7 +2,11 @@ import SwiftUI
 import SwiftSonic
 
 struct MiniPlayerAccessoryView: View {
-    @Binding var showingFullPlayer: Bool
+    var showingFullPlayer = false
+    var artworkNamespace: Namespace.ID? = nil
+    var initialArtwork: PlayerArtworkSnapshot? = nil
+    var placementOverride: Bool? = nil
+    var expandPlayer: () -> Void
     @Environment(\.appContainer) private var container
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var dragOffset: CGFloat = 0
@@ -24,7 +28,7 @@ struct MiniPlayerAccessoryView: View {
     var body: some View {
         if let playerState = container?.playerState {
             MiniPlayerPlacementReader { isInline in
-                playerContent(playerState, isInline: isInline)
+                playerContent(playerState, isInline: placementOverride ?? isInline)
             }
             // The system accessory has a fixed height. Larger text uses one metadata line;
             // keep its symbols within their 44-point controls while the full player scales freely.
@@ -44,26 +48,24 @@ struct MiniPlayerAccessoryView: View {
         Group {
             if isInline {
                 inlineBar(coverArtId: coverArtId, title: title, artist: artist, isPlaying: isPlaying, isAvailable: isAvailable, isLiveStream: isLiveStream, status: playerState.playbackStatusMessage)
-                    .transition(.opacity)
             } else {
                 expandedBar(playerState: playerState, coverArtId: coverArtId, title: title, artist: artist, isPlaying: isPlaying, isAvailable: isAvailable, isLiveStream: isLiveStream, status: playerState.playbackStatusMessage)
-                    .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: isInline)
         .offset(x: dragOffset)
         .opacity(1.0 - min(abs(dragOffset) / 200, 0.4))
         .contentShape(Rectangle())
-        .onTapGesture { showingFullPlayer = true }
+        .onTapGesture(perform: expandPlayer)
         .gesture(!playerState.queue.isEmpty && !isLiveStream ? swipeSkipGesture : nil)
     }
 
     private func inlineBar(coverArtId: String, title: String, artist: String?, isPlaying: Bool, isAvailable: Bool, isLiveStream: Bool, status: String?) -> some View {
         HStack(spacing: MinidiscSpacing.m) {
-            CoverArtCard(id: coverArtId, size: 30)
+            miniArtwork(coverArtId)
                 .opacity(isAvailable ? 1.0 : 0.5)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
+                    .accessibilityIdentifier("player.mini.title")
                     .font(.minidiscCaption)
                     .fontWeight(.semibold)
                     .foregroundStyle(typoColor)
@@ -103,11 +105,12 @@ struct MiniPlayerAccessoryView: View {
             : playerState.position / playerState.duration
         return VStack(spacing: 0) {
             HStack(alignment: .center, spacing: MinidiscSpacing.m) {
-                CoverArtCard(id: coverArtId, size: 30)
+                miniArtwork(coverArtId)
                     .opacity(isAvailable ? 1.0 : 0.5)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
+                        .accessibilityIdentifier("player.mini.title")
                         .font(.minidiscCellTitle)
                         .foregroundStyle(typoColor)
                         .lineLimit(1)
@@ -178,6 +181,14 @@ struct MiniPlayerAccessoryView: View {
                 .accessibilityHidden(true)
             }
         }
+    }
+
+    private func miniArtwork(_ coverArtId: String) -> some View {
+        CoverArtView(id: coverArtId, size: 60,
+                     initialImage: initialArtwork?.id == coverArtId ? initialArtwork?.image : nil)
+            .minidiscCoverStyle()
+            .modifier(PlayerArtworkTransition(namespace: artworkNamespace))
+            .frame(width: 30, height: 30)
     }
 
     private func metadataLabel(title: String, artist: String?, status: String?) -> Text {

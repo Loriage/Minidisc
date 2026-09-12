@@ -34,10 +34,7 @@ actor MediaResolver: MediaResolverProtocol {
     }
 
     func availability(songId: String, serverId: UUID) async -> MediaAvailability {
-        if await downloadService.downloadedURL(forSongId: songId, serverId: serverId) != nil {
-            return .available
-        }
-        if await audioStreamCache.cachedURL(forSongId: songId, serverId: serverId) != nil {
+        if await localSource(songId: songId, serverId: serverId) != nil {
             return .available
         }
         guard !Task.isCancelled,
@@ -69,7 +66,7 @@ actor MediaResolver: MediaResolverProtocol {
         return .unknown
     }
 
-    func resolve(songId: String, serverId: UUID) async throws -> MediaSource {
+    func localSource(songId: String, serverId: UUID) async -> MediaSource? {
         // 1. Permanent download — always preferred, works offline.
         if let url = await downloadService.downloadedURL(forSongId: songId, serverId: serverId) {
             Logger.resolver.debug("Resolved '\(songId, privacy: .public)' from permanent download.")
@@ -81,6 +78,13 @@ actor MediaResolver: MediaResolverProtocol {
             Logger.resolver.debug("Resolved '\(songId, privacy: .public)' from cache.")
             return .cached(url)
         }
+        return nil
+    }
+
+    func resolve(songId: String, serverId: UUID) async throws -> MediaSource {
+        if let source = await localSource(songId: songId, serverId: serverId) {
+            return source
+        }
 
         // 3. Offline guard — no local copy available, device has no connectivity.
         let isOnline = await MainActor.run { serverState.isOnline }
@@ -91,7 +95,6 @@ actor MediaResolver: MediaResolverProtocol {
 
         // 4. Stream. Custom headers injected so AVPlayer reaches Cloudflare-protected hosts.
         // AVURLAssetHTTPHeaderFieldsKey is used at the PlayerService call site.
-        // TODO(v1.x): trigger background cache write alongside the stream.
         let connection = try await serverService.activeConnection()
         let client = connection.makeSwiftSonicClient()
         // Live-stream quality: `.original` (default) streams the untouched file; a transcoded

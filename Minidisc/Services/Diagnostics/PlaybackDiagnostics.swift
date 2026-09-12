@@ -30,6 +30,16 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         case liveStream
     }
 
+    enum CacheEvent: Sendable, Equatable {
+        case scheduled(format: CacheFormat, allowsCellular: Bool)
+        case started
+        case stored
+        case alreadyLocal
+        case skippedCellular
+        case cancelled
+        case failed(code: Int)
+    }
+
     enum PlaybackStatus: String, Sendable, Equatable {
         case idle
         case loading
@@ -177,6 +187,7 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         case networkPathChanged(NetworkPath)
         case command(PlaybackCommand)
         case sourcePrepared(SourceKind)
+        case cache(CacheEvent)
         case playbackStateChanged(PlaybackStatus)
         case engineStateChanged(EngineStatus)
         case engineFailure(AudioEngineFailure, playbackToken: AudioEnginePlaybackToken)
@@ -297,6 +308,8 @@ nonisolated final class PlaybackDiagnostics: Sendable {
             "playback command=\(describe(command))"
         case .sourcePrepared(let source):
             "playback source=\(source.rawValue)"
+        case .cache(let event):
+            "audio-cache \(describe(event))"
         case .playbackStateChanged(let status):
             "playback state=\(status.rawValue)"
         case .engineStateChanged(let status):
@@ -321,6 +334,19 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         if path.interfaces.contains(.wiredEthernet) { interfaces.append("ethernet") }
         if path.interfaces.contains(.other) { interfaces.append("other") }
         return "generation=\(path.generation) online=\(path.isOnline) expensive=\(path.isExpensive) constrained=\(path.isConstrained) dns=\(path.supportsDNS) ipv4=\(path.supportsIPv4) ipv6=\(path.supportsIPv6) interfaces=\(interfaces.isEmpty ? "none" : interfaces.joined(separator: "+"))"
+    }
+
+    private static func describe(_ event: CacheEvent) -> String {
+        switch event {
+        case .scheduled(let format, let allowsCellular):
+            "scheduled format=\(format.rawValue) cellular=\(allowsCellular)"
+        case .started: "download-started"
+        case .stored: "stored"
+        case .alreadyLocal: "already-local"
+        case .skippedCellular: "skipped-cellular"
+        case .cancelled: "cancelled"
+        case .failed(let code): "failed error-code=\(code)"
+        }
     }
 
     private static func describe(_ command: PlaybackCommand) -> String {

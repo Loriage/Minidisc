@@ -757,6 +757,7 @@ actor PlayerService: PlayerServiceProtocol {
             }
 
             if let cacheStreamURL {
+                playbackDiagnostics.record(.cache(.scheduled(format: cacheFormat, allowsCellular: allowCellular)))
                 cacheDownloadTask = Task { [weak self] in
                     await self?.cacheStreamAfterDelay(
                         songId: songId,
@@ -2659,7 +2660,7 @@ actor PlayerService: PlayerServiceProtocol {
         guard !Task.isCancelled,
               validationGeneration == networkRecoveryValidationGeneration,
               pathGeneration == latestNetworkPathEvent.generation,
-              latestNetworkPathEvent.isOnline,
+              (latestNetworkPathEvent.isOnline || !currentSourceIsRemoteStream),
               expectedPlaybackGeneration == playbackGeneration,
               expectedTransportGeneration == transportIntentGeneration,
               networkRecoveryValidationToken == playbackToken,
@@ -2777,7 +2778,6 @@ actor PlayerService: PlayerServiceProtocol {
         guard !Task.isCancelled,
               requestGeneration == networkRecoveryTaskGeneration,
               pathGeneration == latestNetworkPathEvent.generation,
-              latestNetworkPathEvent.isOnline,
               expectedPlaybackGeneration == playbackGeneration,
               expectedTransportGeneration == transportIntentGeneration,
               networkReloadRequiredTrackID == trackID else { return }
@@ -2827,7 +2827,16 @@ actor PlayerService: PlayerServiceProtocol {
 
         // A stream URL is constructed locally; resolving it again cannot detect a deleted song.
         // Query getSong after a real failure/stall, while keeping the current item alive.
-        let availability = await mediaResolver.availability(songId: trackID, serverId: serverID)
+        let localSource = await mediaResolver.localSource(songId: trackID, serverId: serverID)
+        guard !Task.isCancelled,
+              requestGeneration == networkRecoveryTaskGeneration,
+              expectedPlaybackGeneration == playbackGeneration,
+              expectedTransportGeneration == transportIntentGeneration else { return }
+        // A copy may have completed after this stream started. It can take over without
+        // waiting for a server probe, including when the cellular path has gone offline.
+        guard localSource != nil || latestNetworkPathEvent.isOnline else { return }
+        let availability = if localSource != nil { MediaAvailability.available }
+            else { await mediaResolver.availability(songId: trackID, serverId: serverID) }
         guard !Task.isCancelled,
               requestGeneration == networkRecoveryTaskGeneration,
               pathGeneration == latestNetworkPathEvent.generation,
@@ -2886,7 +2895,11 @@ actor PlayerService: PlayerServiceProtocol {
 
         let freshSource: MediaSource
         do {
-            freshSource = try await mediaResolver.resolve(songId: trackID, serverId: serverID)
+            if let localSource {
+                freshSource = localSource
+            } else {
+                freshSource = try await mediaResolver.resolve(songId: trackID, serverId: serverID)
+            }
         } catch {
             guard !Task.isCancelled,
                   requestGeneration == networkRecoveryTaskGeneration,
@@ -2944,6 +2957,7 @@ actor PlayerService: PlayerServiceProtocol {
             isMutedForRestore = true
         }
         currentSource = freshSource
+        playbackDiagnostics.record(.sourcePrepared(diagnosticSourceKind(freshSource)))
         engine.applyReplayGain(dB: ReplayGainService.gainDB(track: track, config: snapshot.replayGainConfig))
         configureAudioSessionIfNeeded()
         let token = engine.play(
@@ -3812,15 +3826,16 @@ actor PlayerService: PlayerServiceProtocol {
     ) async {
         guard audioSystemRecovery == nil else { return }
         let snapshot = await MainActor.run {
-            (trackID: state.currentTrack?.id, playbackState: state.playbackState)
+            (trackID: state.currentTrack?.id, playbackState: state.playbackState,
+             serverID: serverService.state.activeServer?.id)
         }
         guard audioSystemRecovery == nil, isCurrentEngineEvent(playbackToken),
               let trackID = snapshot.trackID,
-              Self.shouldRecoverUnexpectedEngineStall(
-                  sourceIsRemoteStream: currentSourceIsRemoteStream,
-                  isOnline: latestNetworkPathEvent.isOnline,
-                  playbackState: snapshot.playbackState
-              ) else { return }
+              let serverID = snapshot.serverID,
+              currentSourceIsRemoteStream, snapshot.playbackState == .playing else { return }
+        let localSource = await mediaResolver.localSource(songId: trackID, serverId: serverID)
+        guard isCurrentEngineEvent(playbackToken), audioSystemRecovery == nil,
+              localSource != nil || latestNetworkPathEvent.isOnline else { return }
 
         let isNewStall = networkReloadRequiredTrackID != trackID
         if isNewStall {
@@ -3844,7 +3859,7 @@ actor PlayerService: PlayerServiceProtocol {
         networkRecoveryValidationToken = playbackToken
         await armNetworkRecoveryProbe(
             trackID: trackID,
-            delay: networkRecoveryTiming.stallGrace,
+            delay: localSource == nil ? networkRecoveryTiming.stallGrace : .zero,
             requireStall: true
         )
     }
@@ -3941,30 +3956,39 @@ actor PlayerService: PlayerServiceProtocol {
         do {
             try await Task.sleep(for: .seconds(30))
         } catch {
+            playbackDiagnostics.record(.cache(.cancelled))
             return
         }
         guard !Task.isCancelled, generation == playbackGeneration else { return }
-        if await audioStreamCache.cachedURL(forSongId: songId, serverId: serverId) != nil { return }
-        if await downloadService.isDownloaded(songId: songId, serverId: serverId) { return }
+        if await mediaResolver.localSource(songId: songId, serverId: serverId) != nil {
+            playbackDiagnostics.record(.cache(.alreadyLocal))
+            return
+        }
 
         let isExpensive = await MainActor.run { serverService.state.isExpensive }
         if isExpensive && !allowCellular {
+            playbackDiagnostics.record(.cache(.skippedCellular))
             Logger.player.debug("Cache skipped — cellular for '\(songId, privacy: .public)'")
             return
         }
 
         do {
+            try Task.checkCancellation()
+            playbackDiagnostics.record(.cache(.started))
             try await downloadAndCache(
                 songId: songId,
                 serverId: serverId,
                 streamURL: streamURL,
                 customHeaders: customHeaders,
+                allowCellular: allowCellular,
                 using: cacheSession
             )
         } catch {
             if Task.isCancelled {
+                playbackDiagnostics.record(.cache(.cancelled))
                 Logger.player.debug("Cache download cancelled for '\(songId, privacy: .public)'")
             } else {
+                playbackDiagnostics.record(.cache(.failed(code: (error as NSError).code)))
                 Logger.player.debug("Cache download failed for '\(songId, privacy: .public)': \(error, privacy: .public)")
             }
         }
@@ -3977,12 +4001,12 @@ actor PlayerService: PlayerServiceProtocol {
         serverId: UUID,
         streamURL: URL,
         customHeaders: [String: String],
+        allowCellular: Bool,
         using session: URLSession
     ) async throws {
-        var request = URLRequest(url: streamURL)
-        for (key, value) in customHeaders {
-            request.setValue(value, forHTTPHeaderField: key)
-        }
+        let request = Self.cacheDownloadRequest(
+            url: streamURL, headers: customHeaders, allowCellular: allowCellular
+        )
 
         let (tempURL, response) = try await session.download(for: request)
         defer { try? FileManager.default.removeItem(at: tempURL) }
@@ -4008,7 +4032,29 @@ actor PlayerService: PlayerServiceProtocol {
             mimeType: mimeType
         )
 
+        playbackDiagnostics.record(.cache(.stored))
         Logger.player.info("Cached '\(songId, privacy: .public)' from stream (\(fileSize) bytes, \(mimeType, privacy: .public))")
+    }
+
+    /// A cache download needs the actual response length. A stream URL may request an
+    /// estimated Content-Length for AVPlayer; inheriting that can truncate a transcode
+    /// or make URLSession/validation reject a complete file as incomplete.
+    nonisolated static func cacheDownloadRequest(
+        url: URL, headers: [String: String], allowCellular: Bool
+    ) -> URLRequest {
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        // Preserve encoded IDs and authentication parameters byte-for-byte (notably %2B).
+        var query = components?.percentEncodedQuery?.components(separatedBy: "&") ?? []
+        query.removeAll {
+            $0.split(separator: "=", maxSplits: 1).first?.removingPercentEncoding == "estimateContentLength"
+        }
+        query.append("estimateContentLength=false")
+        components?.percentEncodedQuery = query.joined(separator: "&")
+        var request = URLRequest(url: components?.url ?? url)
+        request.allowsCellularAccess = allowCellular
+        request.networkServiceType = .background
+        for (key, value) in headers { request.setValue(value, forHTTPHeaderField: key) }
+        return request
     }
 
     // MARK: - NowPlaying position push

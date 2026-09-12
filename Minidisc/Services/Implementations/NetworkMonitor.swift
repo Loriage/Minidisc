@@ -52,8 +52,13 @@ final class NetworkMonitor {
         )
         updateContinuation = channel.continuation
         updateTask = Task { @MainActor in
+            var lastEvent: NetworkPathEvent?
             for await event in channel.stream {
                 guard !Task.isCancelled else { break }
+                // Cellular monitors can repeat the identical path every few seconds.
+                // Preserve the bounded diagnostic timeline for actual playback events.
+                guard event != lastEvent else { continue }
+                lastEvent = event
                 playbackDiagnostics.record(
                     .networkPathChanged(PlaybackDiagnostics.NetworkPath(event))
                 )

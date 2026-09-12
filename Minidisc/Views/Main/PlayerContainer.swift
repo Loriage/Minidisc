@@ -97,9 +97,6 @@ struct PlayerContainer: View {
     private var expandedContainer: some View {
         let expanded = configuration.expandPlayer
         let rect = configuration.minimisedPlayerRect
-        let shape = ConcentricRectangle(
-            corners: .concentric(minimum: .fixed(rect.height / 2)), isUniform: true
-        )
         return GeometryReader { geometry in
             let safeArea = geometry.safeAreaInsets
             let size = CGSize(width: geometry.size.width + safeArea.leading + safeArea.trailing,
@@ -125,11 +122,6 @@ struct PlayerContainer: View {
                         .transition(.opacity)
                 }
             }
-            .contentShape(shape)
-            .clipShape(shape)
-            // The expanded player already has an opaque artwork background. Glass is
-            // only needed for the mini capsule; its rim would outline the entire screen.
-            .glassEffect(expanded ? .identity : .regular, in: shape)
             .modifier(PlayerContainerPosition(configuration: configuration, expanded: expanded,
                                               minimisedRect: rect))
             .gesture(PlayerDismissGesture { translation in
@@ -202,7 +194,16 @@ private struct PlayerContainerPosition: ViewModifier {
 
     func body(content: Content) -> some View {
         let dragOffset = configuration.dragOffset
-        content.visualEffect { content, proxy in
+        // Cover the entire window at rest. Concentric corners inherit the tab bar's
+        // rounding and expose the underlying page even when the player fills its bounds.
+        let radius = expanded ? min(max(dragOffset, 0), minimisedRect.height / 2)
+            : minimisedRect.height / 2
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        content
+            .contentShape(shape)
+            .clipShape(shape)
+            .glassEffect(expanded ? .identity : .regular, in: shape)
+            .visualEffect { content, proxy in
             let globalRect = proxy.frame(in: .global)
             return content
                 .offset(y: dragOffset)

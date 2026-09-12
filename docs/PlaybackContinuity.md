@@ -4,6 +4,7 @@
 
 - Preparing a queue, buffering and reconnecting have explicit waiting states. Brief waits remain hidden for 700 ms; the reconnection message requires an actual recovery attempt, not a preventive watchdog marker. Pause and Next remain meaningful during recovery. A late queue preparation cannot override a newer transport command.
 - Replacement items keep the saved listening position while loading and seeking. A failed restore seek stops playback before unmuting, so it cannot replay the beginning; explicit Play retries the saved position for both remote streams and local files.
+- A stalled remote item checks for audio downloaded or cached since playback began. A completed local copy can replace it without a server availability request, including offline, while restoring the listening position.
 - A failed stream is checked against Navidrome before treating the song as removed. Only a structured `getSong`/`getPlaylist` not-found response confirms deletion; connectivity failures and proxy HTTP 404 responses do not.
 - Opening or starting an old playlist revalidates its content. A deleted playlist displays one explanation and retains its downloaded music. An unavailable queue advances through a bounded number of songs and stops safely when none are playable.
 - Home displays its last saved feed by server while offline. During a cold load, one slow section does not hold back the others. Pull-to-refresh applies its result together to preserve scroll layout.
@@ -24,6 +25,10 @@ The Downloads screen shows queued, waiting, downloading, processing and failed j
 iOS controls background scheduling. Force-quitting an app prevents its background relaunch; journaled work can resume when the app is opened again. Validation and remuxing that cannot finish within a background execution window remain replayable from the inbox.
 
 ## Local diagnostics
+
+The automatic audio cache is populated by a separate transfer after 30 seconds of listening. It is a bounded LRU cache, not a download of the whole queue; a full cache does not guarantee the current song is present. Cache transfers request actual response framing (`estimateContentLength=false`) even when playback uses an estimated length for a transcode. The mobile-data preference is also applied to the URLSession request, so it remains effective across network handovers.
+
+The playback timeline records cache scheduling and format, transfer start, completion, cancellation, cellular exclusion and numeric failure codes. Identical network-path notifications are coalesced so they do not push useful playback events out of the bounded report.
 
 The support report includes bounded playback startup and interruption metrics, Home data-ready latency, cache-load counts and download completion/failure counts for the current process. It excludes song metadata, credentials, raw URLs, headers and audio-route names.
 

@@ -18,6 +18,7 @@ private nonisolated final class RecoveryTestEngine: AudioEngine, Sendable {
         var playingSince: Date?
         var position: Double = 0
         var failNextSeek = false
+        var sourceURL: URL?
     }
     private let storage = Mutex(Storage())
     var delegate: AudioEngineDelegate? {
@@ -25,6 +26,7 @@ private nonisolated final class RecoveryTestEngine: AudioEngine, Sendable {
         set { storage.withLock { $0.delegate = newValue } }
     }
     var playCount: Int { storage.withLock { $0.plays } }
+    var sourceURL: URL? { storage.withLock { $0.sourceURL } }
     var stopCount: Int { storage.withLock { $0.stops } }
     var resetCount: Int { storage.withLock { $0.resets } }
     func poisonMediaServices() { storage.withLock { $0.poisoned = true; $0.playingSince = nil } }
@@ -32,6 +34,7 @@ private nonisolated final class RecoveryTestEngine: AudioEngine, Sendable {
     func play(trackID: String, url: URL, headers: [String: String]) -> AudioEnginePlaybackToken {
         storage.withLock {
             $0.plays += 1
+            $0.sourceURL = url
             $0.active = true
             $0.playingSince = nil
             $0.position = 0
@@ -110,6 +113,13 @@ private nonisolated final class RecoveryTestAudioSession: AudioSessionControllin
 
 private actor RecoveryTestResolver: MediaResolverProtocol {
     var usesDownloadedSource = false
+    var usesCachedSource = false
+    func useCachedSource() { usesCachedSource = true }
+    func localSource(songId: String, serverId: UUID) async -> MediaSource? {
+        if usesDownloadedSource { return .downloaded(URL(fileURLWithPath: "/tmp/recovery-test-audio.m4a")) }
+        if usesCachedSource { return .cached(URL(fileURLWithPath: "/tmp/recovery-test-cache.m4a")) }
+        return nil
+    }
     func useDownloadedSource() { usesDownloadedSource = true }
     var missingIDs: Set<String> = []
     var blockAvailability = false
@@ -132,7 +142,7 @@ private actor RecoveryTestResolver: MediaResolverProtocol {
         if songId == blockedResolutionID {
             await withCheckedContinuation { pendingResolution = $0 }
         }
-        if usesDownloadedSource { return .downloaded(URL(fileURLWithPath: "/tmp/recovery-test-audio.m4a")) }
+        if let local = await localSource(songId: songId, serverId: serverId) { return local }
         return .stream(URL(string: "https://playback.invalid/stream")!, customHeaders: [:])
     }
     func resolveRadio(_ station: InternetRadioStation) async throws -> MediaSource { throw MinidiscError.notImplemented }
@@ -262,6 +272,44 @@ private struct RecoveryHarness {
 @Suite("Player recovery integration", .serialized)
 @MainActor
 struct PlayerRecoveryIntegrationTests {
+    @Test(arguments: [false, true])
+    func stalledStreamUsesNewlyCompletedCacheWithoutServerProbe(offline: Bool) async throws {
+        let h = try RecoveryHarness(startupGrace: .milliseconds(100))
+        try await h.play()
+        try await h.waitUntil { h.report.contains("engine state=buffering") }
+        _ = await h.engine.seek(to: 37)
+        h.state.position = 37
+        await h.player.handleEngineState(.playing, playbackToken: h.engine.token)
+        // The track was remote at startup; its cache copy becomes available later.
+        await h.resolver.useCachedSource()
+        if offline {
+            await h.player.handleNetworkPathChanged(NetworkPathEvent(
+                generation: 1,
+                descriptor: NetworkPathDescriptor(
+                    isOnline: false, isExpensive: true, isConstrained: false,
+                    supportsDNS: false, supportsIPv4: false, supportsIPv6: false,
+                    interfaces: [.cellular], gateways: []
+                )
+            ))
+        }
+        await h.player.handleEngineState(.buffering, playbackToken: h.engine.token)
+        try await h.waitUntil { h.engine.playCount == 2 }
+        try await h.waitUntil {
+            h.report.components(separatedBy: "item-rebuilt").count > 1
+        }
+        #expect(h.engine.sourceURL?.lastPathComponent == "recovery-test-cache.m4a")
+        #expect(await h.resolver.availabilityCalls == 0)
+        #expect(h.state.position == 37)
+        #expect(h.state.currentTrack?.id == "a")
+        #expect(h.report.contains("playback source=cache"))
+        h.engine.startAdvancing()
+        await h.player.handleEngineState(.playing, playbackToken: h.engine.token)
+        try await h.waitUntil { h.report.contains("progress-validated") }
+        #expect(h.engine.progress >= 37)
+        #expect(h.engine.volume > 0)
+        await h.player.stop()
+    }
+
     @Test(arguments: [false, true])
     func loadingReplacementKeepsTheResumePosition(downloaded: Bool) async throws {
         let h = try RecoveryHarness(startupGrace: .seconds(3))

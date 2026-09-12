@@ -53,6 +53,578 @@
         }
       }
     },
+    "Automatic generation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatisch erstellen"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Αυτόματη δημιουργία"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generación automática"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Génération automatique"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generazione automatica"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動生成"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动生成"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動產生"
+          }
+        }
+      }
+    },
+    "Automatically create and refresh mood playlists each week. Disabling this keeps existing playlists. You can regenerate them manually at any time." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimmungsplaylists jede Woche automatisch erstellen und aktualisieren. Vorhandene Playlists bleiben beim Deaktivieren erhalten. Du kannst sie jederzeit manuell neu erstellen."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Αυτόματη δημιουργία και ανανέωση λιστών διάθεσης κάθε εβδομάδα. Η απενεργοποίηση διατηρεί τις υπάρχουσες λίστες. Μπορείς να τις δημιουργήσεις ξανά χειροκίνητα οποιαδήποτε στιγμή."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crea y actualiza automáticamente las playlists por estado de ánimo cada semana. Al desactivar esta opción, se conservan las playlists existentes. Puedes regenerarlas manualmente en cualquier momento."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crée et actualise automatiquement les playlists d’ambiance chaque semaine. Les playlists existantes sont conservées si vous désactivez cette option. Vous pouvez les régénérer manuellement à tout moment."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crea e aggiorna automaticamente le playlist per umore ogni settimana. Disattivando questa opzione, le playlist esistenti vengono mantenute. Puoi rigenerarle manualmente in qualsiasi momento."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ムードプレイリストを毎週自動的に作成・更新します。オフにしても既存のプレイリストは保持されます。いつでも手動で再生成できます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每周自动创建和更新心情歌单。关闭后会保留现有歌单。你可以随时手动重新生成。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每週自動建立和更新心情播放清單。關閉後會保留現有播放清單。你可以隨時手動重新產生。"
+          }
+        }
+      }
+    },
+    "Could not regenerate mood playlists. Check your connection and music sources, then try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Stimmungsplaylists konnten nicht neu erstellt werden. Prüfe deine Verbindung und Musikquellen und versuche es erneut."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Δεν ήταν δυνατή η επαναδημιουργία των λιστών διάθεσης. Έλεγξε τη σύνδεση και τις πηγές μουσικής σου και δοκίμασε ξανά."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron regenerar las playlists por estado de ánimo. Comprueba la conexión y las fuentes de música e inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de régénérer les playlists d’ambiance. Vérifiez votre connexion et vos sources musicales, puis réessayez."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile rigenerare le playlist per umore. Controlla la connessione e le sorgenti musicali, poi riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ムードプレイリストを再生成できませんでした。接続と音楽ソースを確認して、もう一度お試しください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法重新生成心情歌单。请检查连接和音乐来源，然后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法重新產生心情播放清單。請檢查連線和音樂來源，然後再試。"
+          }
+        }
+      }
+    },
+    "Future mood playlists will use your library tags. Automatic updates follow your Application settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Künftige Stimmungsplaylists verwenden die Tags deiner Mediathek. Automatische Aktualisierungen richten sich nach deinen App-Einstellungen."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Οι μελλοντικές λίστες διάθεσης θα χρησιμοποιούν τις ετικέτες της βιβλιοθήκης σου. Οι αυτόματες ενημερώσεις ακολουθούν τις ρυθμίσεις εφαρμογής σου."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las futuras playlists por estado de ánimo usarán las etiquetas de tu biblioteca. Las actualizaciones automáticas seguirán los ajustes de Aplicación."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les prochaines playlists d’ambiance utiliseront les tags de votre bibliothèque. Les mises à jour automatiques suivront vos réglages Application."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le future playlist per umore useranno i tag della libreria. Gli aggiornamenti automatici seguiranno le impostazioni Applicazione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今後のムードプレイリストにはライブラリのタグが使用されます。自動更新はアプリケーション設定に従います。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "今后的心情歌单将使用音乐库标签。自动更新遵循你的应用设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "之後的心情播放清單將使用音樂資料庫標籤。自動更新會依照你的應用程式設定。"
+          }
+        }
+      }
+    },
+    "Manage automatic updates and regenerate mood playlists in Application settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwalte automatische Aktualisierungen und erstelle Stimmungsplaylists in den App-Einstellungen neu."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Διαχειρίσου τις αυτόματες ενημερώσεις και δημιούργησε ξανά λίστες διάθεσης στις ρυθμίσεις εφαρμογής."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gestiona las actualizaciones automáticas y regenera las playlists por estado de ánimo en los ajustes de Aplicación."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gérez les mises à jour automatiques et régénérez les playlists d’ambiance dans les réglages Application."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gestisci gli aggiornamenti automatici e rigenera le playlist per umore nelle impostazioni Applicazione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アプリケーション設定で自動更新の管理やムードプレイリストの再生成ができます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在应用设置中管理自动更新和重新生成心情歌单。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在應用程式設定中管理自動更新和重新產生心情播放清單。"
+          }
+        }
+      }
+    },
+    "Mood playlists" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimmungsplaylists"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Λίστες διάθεσης"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlists por estado de ánimo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlists d’ambiance"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlist per umore"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ムードプレイリスト"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "心情歌单"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "心情播放清單"
+          }
+        }
+      }
+    },
+    "Mood playlists are already being updated. Try again when the update is complete." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Stimmungsplaylists werden bereits aktualisiert. Versuche es nach Abschluss der Aktualisierung erneut."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Οι λίστες διάθεσης ενημερώνονται ήδη. Δοκίμασε ξανά όταν ολοκληρωθεί η ενημέρωση."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las playlists por estado de ánimo ya se están actualizando. Inténtalo de nuevo cuando finalice la actualización."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les playlists d’ambiance sont déjà en cours de mise à jour. Réessayez une fois la mise à jour terminée."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le playlist per umore sono già in aggiornamento. Riprova al termine dell’aggiornamento."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ムードプレイリストは更新中です。更新が完了してからもう一度お試しください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "心情歌单正在更新。请在更新完成后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "心情播放清單正在更新。請在更新完成後再試。"
+          }
+        }
+      }
+    },
+    "Mood playlists regenerated." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimmungsplaylists neu erstellt."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Οι λίστες διάθεσης δημιουργήθηκαν ξανά."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlists por estado de ánimo regeneradas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les playlists d’ambiance ont été régénérées."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlist per umore rigenerate."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ムードプレイリストを再生成しました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "心情歌单已重新生成。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "心情播放清單已重新產生。"
+          }
+        }
+      }
+    },
+    "Regenerate playlists" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlists neu erstellen"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Επαναδημιουργία λιστών"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Regenerar playlists"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Régénérer les playlists"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rigenera playlist"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレイリストを再生成"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新生成歌单"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新產生播放清單"
+          }
+        }
+      }
+    },
+    "Regeneration cancelled." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neuerstellung abgebrochen."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Η επαναδημιουργία ακυρώθηκε."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Regeneración cancelada."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Régénération annulée."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rigenerazione annullata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再生成をキャンセルしました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已取消重新生成。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已取消重新產生。"
+          }
+        }
+      }
+    },
+    "Some mood playlists could not be regenerated. Try again later." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einige Stimmungsplaylists konnten nicht neu erstellt werden. Versuche es später erneut."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Δεν ήταν δυνατή η επαναδημιουργία ορισμένων λιστών διάθεσης. Δοκίμασε ξανά αργότερα."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron regenerar algunas playlists por estado de ánimo. Inténtalo de nuevo más tarde."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Certaines playlists d’ambiance n’ont pas pu être régénérées. Réessayez plus tard."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile rigenerare alcune playlist per umore. Riprova più tardi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一部のムードプレイリストを再生成できませんでした。後でもう一度お試しください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部分心情歌单无法重新生成。请稍后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部分心情播放清單無法重新產生。請稍後再試。"
+          }
+        }
+      }
+    },
     "—" : {
       "localizations" : {
         "de" : {
@@ -21355,58 +21927,6 @@
         }
       }
     },
-    "Mood playlists refresh once a week, from Wednesday onwards, the next time you open Minidisc." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stimmungs-Playlists werden einmal pro Woche aktualisiert, ab Mittwoch, beim nächsten Öffnen von Minidisc."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Οι λίστες διάθεσης ανανεώνονται μία φορά την εβδομάδα, από την Τετάρτη και μετά, την επόμενη φορά που θα ανοίξεις το Minidisc."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Las listas por estado de ánimo se actualizan una vez por semana, a partir del miércoles, la próxima vez que abras Minidisc."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les playlists d'ambiance se mettent à jour une fois par semaine, à partir du mercredi, à ta prochaine ouverture de Minidisc."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le playlist per atmosfera si aggiornano una volta a settimana, da mercoledì in poi, alla prossima apertura di Minidisc."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ムードのプレイリストは週に一度、水曜日以降にMinidiscを次に開いたときに更新されます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "心情播放列表每周更新一次，自周三起，在你下次打开 Minidisc 时生效。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "心情播放列表每週更新一次，自週三起，在你下次開啟 Minidisc 時生效。"
-          }
-        }
-      }
-    },
     "Moods" : {
       "localizations" : {
         "de" : {
@@ -35138,58 +35658,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lidarr 位址無效。"
-          }
-        }
-      }
-    },
-    "The mood playlists already on your server are left untouched. They will keep updating from your library tags instead." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Stimmungs-Playlists auf deinem Server bleiben unverändert. Sie werden künftig aus deinen Bibliothek-Tags aktualisiert."
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Οι λίστες διάθεσης που υπάρχουν ήδη στον διακομιστή σου παραμένουν ως έχουν. Θα ενημερώνονται πλέον από τις ετικέτες της βιβλιοθήκης σου."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Las listas de estado de ánimo que ya están en tu servidor se mantienen intactas. Seguirán actualizándose a partir de las etiquetas de tu biblioteca."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les playlists d'ambiance déjà présentes sur ton serveur restent intactes. Elles continueront de se mettre à jour à partir des tags de ta bibliothèque."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le playlist per atmosfera già presenti sul tuo server restano intatte. Continueranno ad aggiornarsi dai tag della tua libreria."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "サーバー上にあるムードのプレイリストはそのまま残ります。今後はライブラリのタグから更新されます。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "服务器上已有的心情播放列表保持不变，之后将改用音乐库标签继续更新。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "伺服器上既有的心情播放列表維持不變，之後將改用音樂庫標籤繼續更新。"
           }
         }
       }

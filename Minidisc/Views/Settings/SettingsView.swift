@@ -849,6 +849,7 @@ private struct ApplicationSettingsView: View {
             } footer: {
                 Text("System follows your device's light or dark setting.")
             }
+            MoodPlaylistSettingsSection()
             ApplicationDebugSection()
         }
         .formStyle(.grouped)

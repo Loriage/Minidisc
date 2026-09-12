@@ -13,6 +13,39 @@ final class MinidiscUXVerificationTests: XCTestCase {
         continueAfterFailure = false
     }
 
+    func testFixtureMoodPlaylistSettings() async throws {
+        try await launchFixtureApp()
+        try tap(app.buttons["Réglages"], named: "mood-settings")
+        try tap(app.buttons["Application"], named: "application-settings")
+        // SwiftUI exposes the row and its nested UISwitch separately. Tap the control.
+        let toggle = app.switches["mood-automatic-generation"].firstMatch.switches.firstMatch
+        let regenerate = app.buttons["mood-regenerate-playlists"]
+        try require(toggle)
+        if toggle.value as? String == "1" {
+            try tap(toggle, named: "disable-mood-generation")
+        }
+        XCTAssertEqual(toggle.value as? String, "0")
+        XCTAssertTrue(regenerate.isEnabled, "Manual regeneration remains available when automatic generation is off")
+        capturePlayerScreenshot("Mood-settings-disabled")
+        app.terminate()
+        app.launch()
+        try require(app.tabBars.buttons["Accueil"], timeout: 10)
+        try tap(app.buttons["Réglages"], named: "mood-settings-after-relaunch")
+        try tap(app.buttons["Application"], named: "application-settings-after-relaunch")
+        try require(toggle)
+        XCTAssertEqual(toggle.value as? String, "0", "Preference survives an app restart")
+        try tap(regenerate, named: "regenerate-mood-playlists-manually")
+        // The fixture tracks have no mood, genre or BPM tags: report the lack of matches,
+        // rather than claiming that empty playlists were successfully generated.
+        let result = app.staticTexts["Impossible de régénérer les playlists d’ambiance. Vérifiez votre connexion et vos sources musicales, puis réessayez."]
+        try require(result, timeout: 30)
+        XCTAssertEqual(toggle.value as? String, "0", "Manual regeneration must not re-enable automatic generation")
+        XCTAssertTrue(regenerate.isEnabled)
+        capturePlayerScreenshot("Mood-settings-no-matching-tracks")
+        try tap(toggle, named: "reenable-mood-generation")
+        XCTAssertEqual(toggle.value as? String, "1")
+    }
+
     func testLocalFixtureOnboarding() async throws {
         try await launchFixtureApp()
     }

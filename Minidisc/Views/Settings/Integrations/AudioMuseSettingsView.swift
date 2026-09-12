@@ -136,15 +136,13 @@ struct AudioMuseSettingsView: View {
                 Button("Disconnect", role: .destructive) { showDisconnectAlert = true }
             }
         } footer: {
-            // Not "every Wednesday": iOS decides when background work runs, so the honest promise is
-            // the weekday it targets plus the fact that opening the app catches up.
-            Text("Mood playlists refresh once a week, from Wednesday onwards, the next time you open Minidisc.")
+            Text("Manage automatic updates and regenerate mood playlists in Application settings.")
         }
         .alert("Disconnect AudioMuse?", isPresented: $showDisconnectAlert) {
             Button("Disconnect", role: .destructive) { Task { await disconnect() } }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("The mood playlists already on your server are left untouched. They will keep updating from your library tags instead.")
+            Text("Future mood playlists will use your library tags. Automatic updates follow your Application settings.")
         }
     }
 
@@ -212,7 +210,7 @@ struct AudioMuseSettingsView: View {
         guard let container, let server = activeServer else { return }
         isRebuilding = true
         defer { isRebuilding = false }
-        _ = await container.moodPlaylistService.rebuildNow(serverId: server.id.uuidString)
+        _ = await container.moodPlaylistService.rebuildAfterSourceChange(serverId: server.id.uuidString)
         await loadLastRefresh()
     }
 

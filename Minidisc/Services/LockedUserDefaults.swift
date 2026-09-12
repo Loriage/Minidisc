@@ -15,8 +15,10 @@ nonisolated final class LockedUserDefaults: @unchecked Sendable {
         storage = userDefaults
     }
 
-    func bool(forKey key: String) -> Bool {
-        lock.withLock { _ in storage.bool(forKey: key) }
+    func bool(forKey key: String, default defaultValue: Bool = false) -> Bool {
+        lock.withLock { _ in
+            storage.object(forKey: key) == nil ? defaultValue : storage.bool(forKey: key)
+        }
     }
 
     func double(forKey key: String) -> Double {

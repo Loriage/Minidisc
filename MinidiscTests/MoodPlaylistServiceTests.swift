@@ -31,6 +31,39 @@ private final class ProviderStub: MoodTrackProvider, @unchecked Sendable {
     }
 }
 
+private actor GatedMoodProvider: MoodTrackProvider {
+    nonisolated let kind: MoodSourceKind = .sonic
+    private var started = false
+    private var released = false
+    private var startedWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiter: CheckedContinuation<Void, Never>?
+
+    func prepare() async {}
+
+    func trackIds(for mood: Mood, limit: Int) async throws -> [String] {
+        if !released {
+            await withCheckedContinuation { continuation in
+                releaseWaiter = continuation
+                started = true
+                startedWaiters.forEach { $0.resume() }
+                startedWaiters.removeAll()
+            }
+        }
+        return ["track-1"]
+    }
+
+    func waitUntilSearchStarted() async {
+        if started { return }
+        await withCheckedContinuation { startedWaiters.append($0) }
+    }
+
+    func release() {
+        released = true
+        releaseWaiter?.resume()
+        releaseWaiter = nil
+    }
+}
+
 private final class PlaylistStub: PlaylistSyncClient, @unchecked Sendable {
     private let lock = NSLock()
     private var _replacements: [(playlistId: String, songIds: [String])] = []
@@ -144,6 +177,80 @@ struct MoodPlaylistServiceTests {
 
     private let wednesday = date("2026-07-15T12:00:00Z")
     private let nextWednesday = date("2026-07-22T12:00:00Z")
+
+    @Test("automatic generation defaults to on and persists when disabled")
+    func automaticGenerationPreferencePersists() {
+        let h = Harness()
+        #expect(h.preferences.automaticGenerationEnabled)
+        h.preferences.automaticGenerationEnabled = false
+        #expect(!MoodPreferences(userDefaults: h.defaults).automaticGenerationEnabled)
+        h.preferences.reset(serverId: h.serverId)
+        #expect(!h.preferences.automaticGenerationEnabled)
+    }
+
+    @Test("disabled automatic generation skips foreground, background and source-change work")
+    func disabledAutomaticGenerationDoesNoWork() async throws {
+        let h = Harness()
+        h.preferences.automaticGenerationEnabled = false
+        #expect(await h.service.runWeeklySyncIfNeeded(serverId: h.serverId) == .disabled)
+        #expect(try await h.service.runWeeklySyncIfNeededCancellable(serverId: h.serverId) == .disabled)
+        #expect(await h.service.rebuildAfterSourceChange(serverId: h.serverId) == .disabled)
+        #expect(h.provider.prepares == 0)
+        #expect(h.provider.requested.isEmpty)
+        #expect(h.playlists.created.isEmpty)
+        #expect(h.playlists.replacements.isEmpty)
+        #expect(h.preferences.lastAttempt(serverId: h.serverId) == nil)
+    }
+
+    @Test("manual regeneration works while automatic generation stays disabled")
+    func manualRegenerationWorksWhenDisabled() async {
+        let h = Harness()
+        _ = await h.service.runWeeklySyncIfNeeded(serverId: h.serverId, calendar: utc, currentDate: wednesday)
+        h.preferences.automaticGenerationEnabled = false
+        let outcome = await h.service.rebuildNow(serverId: h.serverId, calendar: utc, currentDate: wednesday.addingTimeInterval(60))
+        #expect(outcome == .finished(source: .sonic, refreshed: Mood.allCases, kept: []))
+        #expect(!h.preferences.automaticGenerationEnabled)
+        #expect(h.playlists.created.count == 5)
+        #expect(h.playlists.replacements.count == 10)
+    }
+
+    @Test("re-enabling automatic generation resumes the weekly cadence")
+    func reenableAutomaticGeneration() async {
+        let h = Harness()
+        h.preferences.automaticGenerationEnabled = false
+        _ = await h.service.runWeeklySyncIfNeeded(serverId: h.serverId, calendar: utc, currentDate: wednesday)
+        h.preferences.automaticGenerationEnabled = true
+        #expect(await h.service.runWeeklySyncIfNeeded(serverId: h.serverId, calendar: utc, currentDate: wednesday)
+                == .finished(source: .sonic, refreshed: Mood.allCases, kept: []))
+    }
+
+    @Test("overlapping regeneration cannot reset markers, and disabling an active automatic run stops writes")
+    func concurrentRegenerationAndDisable() async {
+        let h = Harness()
+        let provider = GatedMoodProvider()
+        let playlists = h.playlists
+        let service = MoodPlaylistService(
+            playlistClientFactory: { playlists },
+            providerFactory: { provider },
+            preferences: h.preferences
+        )
+        // An old marker must survive a rejected forced rebuild.
+        let previous = wednesday.addingTimeInterval(-7 * 86400)
+        h.preferences.setSyncedCycle(previous, mood: .chill, serverId: h.serverId)
+        let serverId = h.serverId
+        let now = wednesday
+        let run = Task { await service.runWeeklySyncIfNeeded(serverId: serverId, calendar: utc, currentDate: now) }
+        await provider.waitUntilSearchStarted()
+        #expect(await service.rebuildNow(serverId: serverId) == .inProgress)
+        #expect(h.preferences.syncedCycle(mood: .chill, serverId: serverId) == previous)
+        h.preferences.automaticGenerationEnabled = false
+        await provider.release()
+        #expect(await run.value == .cancelled)
+        #expect(playlists.created.isEmpty)
+        #expect(playlists.replacements.isEmpty)
+        #expect(h.preferences.lastAttempt(serverId: serverId) == nil)
+        #expect(await service.rebuildNow(serverId: serverId) == .finished(source: .sonic, refreshed: Mood.allCases, kept: []))
+    }
 
     @Test("a first run refreshes all five moods")
     func firstRunRefreshesEverything() async {

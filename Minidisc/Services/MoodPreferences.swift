@@ -12,7 +12,14 @@ nonisolated enum MoodCycle {
 }
 
 nonisolated final class MoodPreferences: Sendable {
+    static let automaticGenerationKey = "minidisc.mood.automaticGeneration"
+
     private let userDefaults: LockedUserDefaults
+
+    var automaticGenerationEnabled: Bool {
+        get { userDefaults.bool(forKey: Self.automaticGenerationKey, default: true) }
+        set { userDefaults.set(newValue, forKey: Self.automaticGenerationKey) }
+    }
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = LockedUserDefaults(userDefaults)

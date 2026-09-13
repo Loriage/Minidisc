@@ -1,7 +1,6 @@
 import Foundation
 
 protocol ServerServiceProtocol: AnyObject, Sendable {
-    /// Observable UI state (MainActor-isolated). Access directly from SwiftUI views.
     var state: ServerState { get }
 
     func addServer(
@@ -35,7 +34,6 @@ protocol ServerServiceProtocol: AnyObject, Sendable {
     /// integration and drops the token from Keychain.
     func setAudioMuseConfig(serverId: UUID, urlString: String?, token: String?) async throws
 
-    /// Pings the active server via SwiftSonic. Throws if no active server or ping fails.
     func testConnection() async throws
 
     /// Tests connectivity to the given parameters without persisting anything.

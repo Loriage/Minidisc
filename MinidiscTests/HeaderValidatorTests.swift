@@ -86,7 +86,6 @@ struct HeaderValidatorTests {
     }
 
     @Test func invalidValue_headerSplittingAttempt() {
-        // Classic header injection — must be rejected
         #expect(!HeaderValidator.isValidValue("legit\r\nInjected: evil"))
         #expect(!HeaderValidator.isValidValue("ok\nSet-Cookie: session=hijacked"))
     }

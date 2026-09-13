@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// A Lidarr artist: header, overview, and the albums Lidarr tracks. Albums can be monitored, and the
-/// "…" menu refreshes, searches, opens MusicBrainz, or removes the artist.
 struct LidarrArtistDetailView: View {
     let artist: LidarrArtist
     let client: LidarrClient
@@ -135,7 +133,6 @@ struct LidarrArtistDetailView: View {
         .tint(.minidiscAccent)
     }
 
-    /// Albums grouped by type in Lidarr's order (Album, EP, Single, then anything else).
     private var albumGroups: [(title: String, albums: [LidarrAlbum])] {
         let order = ["Album", "EP", "Single", "Broadcast", "Other"]
         let titles = ["Album": "Albums", "EP": "EPs", "Single": "Singles", "Broadcast": "Broadcasts", "Other": "Other"]
@@ -202,7 +199,6 @@ struct LidarrArtistDetailView: View {
         isLoading = false
     }
 
-    /// Optimistically flips the album's local monitored flag, then persists it, reverting on failure.
     private func setMonitored(albumId: Int, to newValue: Bool) {
         guard let index = albums.firstIndex(where: { $0.id == albumId }) else { return }
         let previous = albums[index].monitored

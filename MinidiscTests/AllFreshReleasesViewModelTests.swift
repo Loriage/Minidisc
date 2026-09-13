@@ -135,7 +135,6 @@ struct AllFreshReleasesViewModelTests {
 
         #expect(vm.groupedReleases.count == 1)
         let ids = vm.groupedReleases[0].items.compactMap { $0.id }
-        // Swift's sort is stable — equal elements keep their relative order from the fetch
         #expect(ids == ["first", "second"])
     }
 }

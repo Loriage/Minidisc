@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Displays a short code string that the user can tap to copy to the clipboard.
-/// Shows a 1.5 s checkmark-and-accent feedback after a successful copy.
-/// Uses SensoryFeedback for haptics — no platform conditionals needed in this file.
 struct CopyableCodeLabel: View {
     let code: String
 

@@ -10,7 +10,6 @@ nonisolated struct ParsedLRC: Equatable, Sendable {
     let offsetMilliseconds: Int
 }
 
-/// Parses the line timestamps and optional global offset used by the LRC format.
 nonisolated enum LRCParser {
     static func parse(_ source: String) -> ParsedLRC? {
         guard let timestampExpression = try? NSRegularExpression(

@@ -1,14 +1,11 @@
 import Foundation
 import Observation
 
-/// Which gain tag to prefer when computing ReplayGain.
 nonisolated enum ReplayGainMode: String, CaseIterable, Sendable, Codable {
     case track
     case album
 }
 
-/// Snapshot of ReplayGain settings that can be passed across actor boundaries.
-/// Captured from ReplayGainSettings on the MainActor before crossing into another actor.
 nonisolated struct ReplayGainConfig: Sendable {
     let enabled: Bool
     let mode: ReplayGainMode
@@ -16,9 +13,6 @@ nonisolated struct ReplayGainConfig: Sendable {
     let preventClipping: Bool
 }
 
-/// User-configurable ReplayGain preferences persisted in UserDefaults.
-/// @Observable so SettingsView updates live when the user changes settings.
-/// Injected into AppContainer; services capture a ReplayGainConfig snapshot via MainActor.run.
 @Observable
 @MainActor
 final class ReplayGainSettings {
@@ -101,7 +95,6 @@ final class ReplayGainSettings {
 
     // MARK: - Derived
 
-    /// Captures a sendable snapshot for crossing into actor-isolated code.
     var config: ReplayGainConfig {
         ReplayGainConfig(enabled: _enabled, mode: _mode, preAmp: _preAmp, preventClipping: _preventClipping)
     }

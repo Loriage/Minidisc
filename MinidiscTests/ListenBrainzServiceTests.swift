@@ -4,7 +4,6 @@ import Foundation
 
 // MARK: - Flexible mock transport
 
-/// Queue-based transport: enqueue responses in order. Throws URLError if queue is empty.
 @MainActor
 private final class FlexibleTransport: ListenBrainzTransport {
     private var queue: [(Data, HTTPURLResponse)] = []
@@ -133,7 +132,6 @@ struct ListenBrainzServiceDisableTests {
         let snap = await service.currentSnapshot()
         #expect(!snap.isEnabled)
 
-        // Username must survive disable — re-enable should require no re-entry
         let stored = try await keychain.retrieve(String.self, forKey: keychainKey)
         #expect(stored == "keepme")
     }

@@ -15,13 +15,7 @@ struct MiniPlayerAccessoryView: View {
     private let swipeThreshold: CGFloat = 100
     private let velocityThreshold: CGFloat = 200
 
-    // System-adaptive content colours so they read on the accessory's translucent glass over ANY backdrop
-    // (dark on the light Home, light in dark mode) — an explicit black/white can't track what's behind it.
-    //
-    // They resolve against the scheme the system hands the glass container, which is why nothing pins
-    // \.colorScheme here or in MainTabView: the system already flips that glass against the backdrop (a very
-    // dark page gets LIGHT glass, and the tab bar's own labels turn black with it). Pinning the app's
-    // appearance overrode that flip and left these labels black on a dark playlist.
+    // Inherit the accessory’s system color scheme so text follows glass contrast changes.
     private var typoColor: Color { .primary }
     private var typoSecondaryColor: Color { .secondary }
 
@@ -91,15 +85,12 @@ struct MiniPlayerAccessoryView: View {
             playPauseButton(isPlaying: isPlaying, isAvailable: isAvailable)
         }
         .padding(.leading, MinidiscSpacing.m)
-        // The button's 44-point touch target already provides space around the symbol.
         .padding(.trailing, MinidiscSpacing.s)
         .padding(.vertical, MinidiscSpacing.s)
     }
 
     private func expandedBar(playerState: PlayerState, coverArtId: String, title: String, artist: String?, isPlaying: Bool, isAvailable: Bool, isLiveStream: Bool, status: String?) -> some View {
-        // While the full player covers the mini bar, skip reading position — that read is what drives the
-        // capsule's per-tick (500ms) re-render, and the capsule is off-screen so its value can't be seen.
-        // The `||` short-circuits before touching playerState.position when showingFullPlayer is true.
+        // Avoid observing progress while the full player covers the accessory.
         let progress = showingFullPlayer || playerState.duration <= 0
             ? 0.0
             : playerState.position / playerState.duration
@@ -134,7 +125,6 @@ struct MiniPlayerAccessoryView: View {
 
                 Spacer(minLength: 0)
 
-                // Keep a small gap between the two 44-point touch targets in the expanded bar.
                 HStack(spacing: MinidiscSpacing.s) {
                     playPauseButton(isPlaying: isPlaying, isAvailable: isAvailable)
                     if !playerState.queue.isEmpty && !isLiveStream {
@@ -281,8 +271,6 @@ struct MiniPlayerAccessoryView: View {
     }
 }
 
-// Reads tabViewBottomAccessoryPlacement from the environment and passes isInline
-// down as a Bool.
 private struct MiniPlayerPlacementReader<Content: View>: View {
     @Environment(\.tabViewBottomAccessoryPlacement) private var placement: TabViewBottomAccessoryPlacement?
     @ViewBuilder let content: (Bool) -> Content

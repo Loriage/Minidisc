@@ -1,14 +1,11 @@
 import SwiftUI
 
-/// Primary action button — accent capsule with play icon. Used in album and playlist headers.
 struct PlayButton: View {
     let action: () -> Void
     var label: LocalizedStringKey = "Play"
     var systemImage: String = "play.fill"
     var isDisabled: Bool = false
     var accentColor: Color = MinidiscColors.accent
-    /// Label/glyph color. Default white (`minidiscAccentText`) preserves existing callers; the hero passes the
-    /// contrast variant's foreground (the cover's dominant color on a dark cover).
     var labelColor: Color = Color.minidiscAccentText
     /// Fixed capsule height. When set, the capsule fills exactly this height (so it can match a
     /// sibling like a 44 pt circle); when nil, the capsule sizes to its label + vertical padding.

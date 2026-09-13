@@ -19,7 +19,6 @@ struct ArtistDetailView: View {
     @State private var isShowingArtistInformation = false
     @State private var preparedArtistShare: PreparedArtistShare?
     @Query private var artistFavoriteMatches: [FavoriteRecord]
-    /// Keeps fetched liked songs reactive to local favorite changes.
     @Query(filter: #Predicate<FavoriteRecord> { $0.itemType == "song" })
     private var songFavorites: [FavoriteRecord]
     @Environment(DominantColorExtractor.self) private var colorExtractor
@@ -200,8 +199,6 @@ struct ArtistDetailView: View {
                 .tint(headerTextColor)
             }
         }
-        // Keyed on connectivity so going offline (or coming back) re-resolves the artist against the
-        // right source, as the album and playlist screens already do.
         .task(id: container?.serverState.isOnline) {
             guard let c = container else { return }
             if viewModel == nil {
@@ -358,7 +355,6 @@ struct ArtistDetailView: View {
 
     // MARK: - Body sections
 
-    /// The most recent release (max year) — featured + the hero fallback cover.
     private func latestRelease(_ vm: ArtistDetailViewModel) -> AlbumID3? {
         (vm.artist?.album ?? []).max(by: { ($0.year ?? 0) < ($1.year ?? 0) })
     }
@@ -370,7 +366,6 @@ struct ArtistDetailView: View {
             .padding(.horizontal, MinidiscSpacing.l)
     }
 
-    /// Featured (latest) release — a prominent card, Apple-Music style.
     private func featuredReleaseSection(_ album: AlbumID3) -> some View {
         VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
             MinidiscCarouselHeader("Latest Release", showsChevron: false)
@@ -397,8 +392,7 @@ struct ArtistDetailView: View {
                 }
                 .padding(MinidiscSpacing.m)
                 .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: MinidiscCornerRadius.large, style: .continuous))
-                // Make the WHOLE card (incl. the Spacer / background) tappable — a styled label in a plain
-                // NavigationLink otherwise only registers taps on the opaque content (cover/text), not the gaps.
+                // Include transparent gaps in the card’s hit area.
                 .contentShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.large, style: .continuous))
                 .padding(.horizontal, MinidiscSpacing.l)
             }
@@ -417,14 +411,11 @@ struct ArtistDetailView: View {
 
     // MARK: - Liked songs
 
-    /// The artist's starred tracks, gathered from every album. `vm.likedSongs` is the server snapshot taken
-    /// when the screen loaded; `filteredByLocalStars` keeps it honest as stars change under it.
+    /// Applies live local star changes to the fetched artist snapshot.
     private func likedSongs(_ vm: ArtistDetailViewModel) -> [DisplayableSong] {
         ArtistBestOf.filteredByLocalStars(vm.likedSongs, starredSongIds: Set(songFavorites.map(\.itemId)))
     }
 
-    /// The "The best of <artist>" card, shown under the discography once the artist has enough liked tracks
-    /// to make a playlist worth opening. Below that threshold `likedSongsSection` lists them inline instead.
     private func bestOfSection(_ songs: [DisplayableSong]) -> some View {
         VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
             sectionHeader("Made For You")
@@ -456,7 +447,6 @@ struct ArtistDetailView: View {
                 }
                 .padding(MinidiscSpacing.m)
                 .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: MinidiscCornerRadius.large, style: .continuous))
-                // Make the WHOLE card tappable, gaps included (see featuredReleaseSection).
                 .contentShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.large, style: .continuous))
                 .padding(.horizontal, MinidiscSpacing.l)
             }
@@ -464,7 +454,6 @@ struct ArtistDetailView: View {
         }
     }
 
-    /// The handful of liked tracks an artist has before they earn a best-of playlist.
     private func likedSongsSection(_ songs: [DisplayableSong]) -> some View {
         VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
             HStack(spacing: MinidiscSpacing.m) {
@@ -523,7 +512,6 @@ struct ArtistDetailView: View {
         .allowsHitTesting(false)
     }
 
-    /// Loads an album's tracks only when a context-menu action needs a playable queue.
     private func albumTracks(_ album: AlbumID3) async -> [DisplayableSong] {
         guard let detail = try? await container?.libraryService.album(id: album.id) else { return [] }
         return detail.song?.map { DisplayableSong(from: $0) } ?? []
@@ -533,7 +521,6 @@ struct ArtistDetailView: View {
         guard let c = container else { return }
         viewModel?.isPlayLoading = true
         defer { viewModel?.isPlayLoading = false }
-        // Offline the catalogue fetch can't run — shuffle what's on disk instead.
         if let offline = viewModel?.offlineTracks, viewModel?.isOffline == true, !offline.isEmpty {
             await c.toastService.perform { try await c.playerService.play(tracks: offline.shuffled(), startIndex: 0) }
             return

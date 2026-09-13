@@ -106,7 +106,6 @@ struct PlaylistDetailView: View {
     @State private var showFilePicker = false
     @State private var imageToCrop: CroppableImage?
 
-    // SwiftData remains the fallback when the online view model has no songs.
     @Query private var downloadedPlaylistMatches: [DownloadedPlaylist]
     @Query private var allDownloadedTracks: [DownloadedTrack]
 
@@ -182,7 +181,6 @@ struct PlaylistDetailView: View {
     }
 
     var body: some View {
-        // List is required for swipe-to-remove.
         List(selection: $selectedSongIds) {
             Group {
                 if isEditing {
@@ -939,8 +937,6 @@ private struct PlaylistDownloadProgressView: View {
 
 // MARK: - Live download indicator rows
 
-/// Sub-view that observes DownloadedTrack changes live via @Query,
-/// overriding the isDownloaded flag per row without requiring a VM reload.
 struct PlaylistSongRows: View {
     let songs: [DisplayableSong]
     let downloadingIds: Set<String>

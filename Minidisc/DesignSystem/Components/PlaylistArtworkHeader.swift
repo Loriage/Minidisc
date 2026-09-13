@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Keeps the cover itself intact, then carries its lower edge into a readable page background.
 struct PlaylistArtworkHeader: View {
     let coverArtId: String
     let initialImage: PlatformImage?
@@ -33,7 +32,6 @@ struct PlaylistArtworkHeader: View {
     }
 }
 
-/// Darkens the sampled colour without changing its hue or washing it out to grey.
 enum PlaylistArtworkPalette {
     static func background(for coverColor: Color) -> Color {
         guard coverColor != .clear, let rgb = coverColor.rgbComponents else {

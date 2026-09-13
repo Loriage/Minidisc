@@ -1,10 +1,7 @@
 import Foundation
 
-/// Manages MPNowPlayingInfoCenter and MPRemoteCommandCenter.
-/// Active from v1: lockscreen, Control Center, AirPods, Apple Watch.
-/// Designed as the direct extension point for CarPlay in v1.2 — no refactor needed.
+/// Owns system Now Playing metadata and remote commands.
 protocol NowPlayingServiceProtocol: AnyObject, Sendable {
-    /// Registers remote command handlers and begins observing PlayerState.
     func start() async
 
     /// Clears the current metadata when playback stops. Remote command handlers
@@ -16,7 +13,6 @@ protocol NowPlayingServiceProtocol: AnyObject, Sendable {
     /// service in AppContainer.
     func setFavoritesService(_ service: any FavoritesServiceProtocol) async
 
-    /// Pushes a full metadata + artwork update (called from PlayerService on track change or seek).
     func update(with snapshot: NowPlayingSnapshot) async
 
     /// Merges elapsed time, rate, and duration into the existing nowPlayingInfo dict without

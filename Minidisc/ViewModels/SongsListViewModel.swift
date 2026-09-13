@@ -5,11 +5,8 @@ import SwiftSonic
 @Observable
 @MainActor
 final class SongsListViewModel {
-    /// The sorted, display-ready list — populated once loading finishes (or when the sort changes).
     private(set) var displaySongs: [DisplayableSong] = []
-    /// Live count while paging, for the progress indicator.
     private(set) var loadedCount = 0
-    /// True while pages are still being fetched.
     private(set) var isLoading = false
     /// True if the safety cap was hit (server has more songs than we loaded) — surfaced to the user.
     private(set) var didTruncate = false
@@ -28,7 +25,6 @@ final class SongsListViewModel {
         self.libraryService = libraryService
     }
 
-    /// Pages the whole library (server order), updating `loadedCount` as it goes, then sorts off-main.
     func load(sort: SongSort) async {
         currentSort = sort
         rawSongs = []
@@ -51,7 +47,7 @@ final class SongsListViewModel {
                 if fresh.isEmpty { break }
                 rawSongs.append(contentsOf: fresh)
                 loadedCount = rawSongs.count
-                if page.count < Self.pageSize { break } // last (short) page
+                if page.count < Self.pageSize { break }
                 offset += Self.pageSize
             }
             if rawSongs.count >= Self.safetyCap { didTruncate = true }
@@ -63,14 +59,12 @@ final class SongsListViewModel {
         await recomputeDisplay()
     }
 
-    /// Re-sorts the already-loaded songs (no network) when the user changes the sort.
     func changeSort(_ sort: SongSort) async {
         guard sort != currentSort else { return }
         currentSort = sort
         await recomputeDisplay()
     }
 
-    /// Sorts + maps off the main actor so large libraries never hitch the UI.
     private func recomputeDisplay() async {
         let raw = rawSongs
         let sort = currentSort

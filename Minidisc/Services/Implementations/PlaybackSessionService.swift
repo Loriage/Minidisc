@@ -2,10 +2,6 @@ import Foundation
 import SwiftData
 import OSLog
 
-/// Persists and restores playback sessions via SwiftData.
-///
-/// Called by PlayerService on track changes and every 15 s during active playback,
-/// and flushed in full when the app enters background.
 actor PlaybackSessionService {
     private let modelContainer: ModelContainer
     // Lazy so the context is created on the actor's executor, not the MainActor caller of init.
@@ -15,7 +11,6 @@ actor PlaybackSessionService {
         self.modelContainer = modelContainer
     }
 
-    /// Full save — queue + position + current track metadata + repeat mode.
     func save(playerState: SessionPayload) {
         let session = fetchOrCreateSession()
         session.update(
@@ -33,7 +28,6 @@ actor PlaybackSessionService {
         Logger.session.debug("Session saved: track='\(playerState.currentTrack?.title ?? "nil", privacy: .private)', pos=\(playerState.currentPosition, format: .fixed(precision: 1), privacy: .public)s, queue=\(playerState.queue.count, privacy: .public) tracks")
     }
 
-    /// Lightweight position-only save — called every 15 s during active playback.
     func savePosition(_ position: TimeInterval) {
         guard let session = fetchSession() else { return }
         session.currentPosition = position
@@ -122,7 +116,6 @@ nonisolated struct SessionPayload: Sendable {
 
 // MARK: - RestoredSession
 
-/// Value-type snapshot passed to actor-isolated callers — avoids exposing @Model across actor boundary.
 nonisolated struct RestoredSession: Sendable {
     let queue: [DisplayableSong]
     let currentIndex: Int

@@ -1,10 +1,7 @@
 import Foundation
 
-/// Determines when an annual Wrapped becomes available.
-/// Annual Wrapped for year N unlocks on December 28 of year N.
 nonisolated enum WrappedAvailability {
 
-    /// Returns `true` if the annual Wrapped for `year` should be shown given `currentDate`.
     static func isAnnualAvailable(
         year: Int,
         currentDate: Date = Date(),

@@ -2,10 +2,6 @@ import Testing
 import Foundation
 @testable import Minidisc
 
-// Tests verify the button-determination logic used by FreshReleaseDetailSheet
-// without requiring SwiftUI view rendering. The sheet itself is validated manually
-// per the spec's simulator checklist.
-
 @Suite("FreshReleaseDetailSheet — button logic")
 struct FreshReleaseDetailSheetTests {
 
@@ -36,7 +32,6 @@ struct FreshReleaseDetailSheetTests {
     @Test("empty providers + no mbid → no fallback URL can be constructed")
     func emptyProvidersNoMBIDNoFallback() {
         #expect(releaseWithoutMBID.id == nil)
-        // Verify the sheet logic: id is nil → no LB URL → no button rendered
         let lbURL: URL? = releaseWithoutMBID.id.flatMap {
             URL(string: "https://listenbrainz.org/release-group/\($0)")
         }

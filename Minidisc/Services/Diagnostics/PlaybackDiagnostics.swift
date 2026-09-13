@@ -240,7 +240,6 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         }
     }
 
-    /// Measures view-model content readiness, separately from rendered pixels or audio output.
     func recordHomeContentReady(after duration: TimeInterval, fromCache: Bool) {
         guard duration.isFinite, duration >= 0 else { return }
         state.withLock {

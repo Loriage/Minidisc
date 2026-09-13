@@ -1,18 +1,8 @@
 import Foundation
 import UIKit
 
-/// Centralized haptic feedback catalog.
-///
-/// Usage: `HapticFeedback.medium.trigger()`
-///
-/// Catalog:
-/// - `.light`     — navigation, skip prev/next, toggle shuffle/repeat, secondary toggles
-/// - `.medium`    — play/pause, swipe MiniPlayer, play album/playlist, queue skip
-/// - `.heavy`     — destructive confirmations (trash download, remove all)
-/// - `.selection` — continuous selection change (alphabet jump bar drag, pickers)
-/// - `.success`   — download complete, pin to home
-/// - `.warning`   — limit reached (max pinned, offline action)
-/// - `.error`     — download failed, sync failed, playback failed
+/// Use light for navigation, medium for playback, heavy for destructive actions,
+/// selection for pickers, and the notification variants for operation outcomes.
 @MainActor
 enum HapticFeedback {
     case light

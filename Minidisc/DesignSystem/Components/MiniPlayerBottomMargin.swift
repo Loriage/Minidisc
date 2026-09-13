@@ -17,7 +17,6 @@ private struct MiniPlayerBottomMargin: ViewModifier {
 }
 
 extension View {
-    /// Adds bottom scroll margin matching the mini player accessory.
     @ViewBuilder
     func miniPlayerBottomMargin() -> some View {
         modifier(MiniPlayerBottomMargin())

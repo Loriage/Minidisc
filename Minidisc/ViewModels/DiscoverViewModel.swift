@@ -36,12 +36,10 @@ final class DiscoverViewModel {
 
     // MARK: - Derived state
 
-    /// True when the initial fetch is in progress and we have nothing to show yet.
     var isInitialLoading: Bool {
         isLoading && recentlyPlayed.isEmpty && mostPlayed.isEmpty
     }
 
-    /// True when load failed and we have nothing to show.
     var isErrorState: Bool {
         loadError != nil && recentlyPlayed.isEmpty && mostPlayed.isEmpty
     }

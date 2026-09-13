@@ -289,7 +289,6 @@ struct FullPlayerView: View {
                 secondaryContentColor: vm.secondaryContentColor,
                 loadArtwork: true
             )
-            // The system reorder grip follows the cover luminance.
             .environment(\.colorScheme, .dark)
             .frame(maxWidth: .infinity, minHeight: 120, maxHeight: .infinity)
 
@@ -652,7 +651,6 @@ private struct TrackInfoSection: View {
         }
     }
 
-    /// Uses a name search only when the track has no artist id.
     private func goToArtist() {
         guard let track = playerState.currentTrack else { return }
         if track.artistId != nil {
@@ -697,7 +695,6 @@ private struct ScrubberView: View {
     @State private var isSeeking = false
     @State private var displayPosition: TimeInterval = 0
 
-    // Fall back to metadata until AVPlayer reports a duration.
     private var effectiveDuration: TimeInterval {
         playerState.duration > 0 ? playerState.duration : (playerState.currentTrack?.duration ?? 0)
     }

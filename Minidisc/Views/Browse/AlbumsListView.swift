@@ -6,12 +6,9 @@ import OSLog
 struct AlbumsListView: View {
     @Environment(\.appContainer) private var container
     @State private var viewModel: AlbumListViewModel?
-    /// Shared album ordering, persisted and reused by the artist discography too.
     @AppStorage("minidisc.albumSort") private var albumSort: AlbumSort = .recentlyAdded
-    /// List vs grid layout. Defaults to list.
     @AppStorage("minidisc.albumListGrid") private var gridLayout = false
 
-    /// Albums in the user's chosen order (client-side, so switching sort never re-fetches).
     private func sortedAlbums(_ vm: AlbumListViewModel) -> [AlbumID3] { albumSort.sorted(vm.albums) }
 
     var body: some View {
@@ -109,7 +106,6 @@ struct AlbumsListView: View {
         }
     }
 
-    /// Grid of AlbumGridCell — adaptive column count.
     @ViewBuilder
     private func albumsGrid(_ vm: AlbumListViewModel) -> some View {
         AlphabetIndexedContent(entries: albumIndex(vm), prepareJump: { albumSort = .name }) {

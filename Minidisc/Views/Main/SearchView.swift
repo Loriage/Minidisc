@@ -201,9 +201,7 @@ struct SearchView: View {
     }
 
     // MARK: - Local (downloads) results
-    //
-    // Isolated in a child view for the same reason as SearchSongResultsSection: it owns a @Query,
-    // which must never be read from SearchView's body (see the warning at the top of this file).
+    // Keep this Query below the navigation owner so updates cannot recreate destinations.
 
     private struct LocalSearchResultsSection: View {
         let query: String
@@ -219,7 +217,6 @@ struct SearchView: View {
             return allTracks.filter { $0.serverId == serverId }
         }
 
-        /// Diacritic- and case-insensitive, so "aime" finds "Aimé" and "orelsan" finds "OrelSan".
         private func matches(_ haystack: String?) -> Bool {
             guard let haystack else { return false }
             return haystack.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) != nil
@@ -428,10 +425,6 @@ struct SearchView: View {
                     }
                 }
                 .listStyle(.plain)
-                // Clearing search history is destructive with no undo, so gate it behind a confirmation.
-                // A centered .alert (popin) is used here — intentionally diverging from the playlist
-                // delete's bottom action-sheet. The clear runs ONLY on confirm; Cancel leaves the history
-                // intact. .alert is a centered modal.
                 .alert("Clear search history?", isPresented: $showClearConfirm) {
                     Button("Clear", role: .destructive) {
                         Task { await container?.searchHistoryService.clear(serverId: serverId) }

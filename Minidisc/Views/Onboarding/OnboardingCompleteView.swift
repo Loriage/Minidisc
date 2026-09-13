@@ -69,7 +69,6 @@ struct OnboardingCompleteView: View {
                 .animation(.spring(duration: 0.5, bounce: 0.3).delay(0.5), value: appeared)
             }
 
-            // Fade-to-black overlay — fully opaque before handoff to main app
             Color.black
                 .ignoresSafeArea()
                 .opacity(transitioning ? 1 : 0)

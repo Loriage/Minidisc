@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// User-selectable appearance. Persists via `@AppStorage("minidisc.appTheme")`, read both by the
-/// settings picker and by `MainTabView`, which applies it to the whole tab hierarchy.
 nonisolated enum AppTheme: String, CaseIterable, Sendable {
     case system
     case light

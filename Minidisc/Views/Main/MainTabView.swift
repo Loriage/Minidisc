@@ -31,7 +31,6 @@ struct MainTabView: View {
                         .transition(.identity)
                 }
             }
-            // Disable the actual accessory while its container is attached to the overlay.
             .tabViewBottomAccessory(isEnabled: hasTrack && !playerPresentation.attachExpandedPlayer) {
                 PlayerContainer(configuration: playerPresentation)
             }

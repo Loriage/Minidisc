@@ -5,7 +5,6 @@ enum MinidiscCarouselMetrics {
     static let artistArtwork: CGFloat = 104
 }
 
-/// The shared edge-to-edge horizontal shelf used by the Home feed and detail-page recommendations.
 struct MinidiscShelf<Header: View, Content: View>: View {
     @ViewBuilder let header: () -> Header
     @ViewBuilder let content: () -> Content

@@ -204,7 +204,6 @@ struct ListenBrainzClientFreshReleasesTests {
     @Test("network failure throws network error")
     func networkFailureThrows() async throws {
         let transport = FRTransport()
-        // Empty queue → URLError(.timedOut) from transport
         let client = makeClient(transport: transport)
 
         var caught: Error?

@@ -125,7 +125,6 @@ final class ListenBrainzSettingsViewModel {
                 await service.enableScrobbling()
                 scrobblingSnapshot = await service.scrobblingSnapshot()
             }
-            // else: form will appear — no UserDefaults write until validated
         } else {
             await service.disableScrobbling()
             scrobblingSnapshot = await service.scrobblingSnapshot()

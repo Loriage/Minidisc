@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Shared type hierarchy for metadata displayed directly below cover artwork.
 struct CoverCardMetadata: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let title: String

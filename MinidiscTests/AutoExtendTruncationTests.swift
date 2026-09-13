@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Minidisc
 
-/// Turning endless play off drops the tracks it appended. The only invariant that matters
-/// to the listener is that the music does not stop — whatever is playing is never removed.
 @Suite("Auto-extend — queue truncation on disable")
 struct AutoExtendTruncationTests {
 
@@ -18,7 +16,6 @@ struct AutoExtendTruncationTests {
 
     @Test("still inside the original queue drops the whole appended tail")
     func insideOriginalZoneDropsEverythingAppended() {
-        // 10 user tracks + 50 appended, listening to track 3.
         #expect(target(boundary: 10, currentIndex: 3, queueCount: 60) == 10)
     }
 
@@ -29,8 +26,6 @@ struct AutoExtendTruncationTests {
 
     @Test("already inside the appended tail keeps the playing track and drops the rest")
     func insideExtendedZoneKeepsCurrentTrack() {
-        // This is the case the old implementation bailed out of, leaving all 50 appended
-        // tracks in the queue — the user turned endless play off and nothing happened.
         #expect(target(boundary: 10, currentIndex: 23, queueCount: 60) == 24)
     }
 

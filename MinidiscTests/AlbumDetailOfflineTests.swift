@@ -20,7 +20,6 @@ private final class ADLibraryStub: AlbumBrowsing {
     func allAlbums() async throws -> [AlbumID3] { throw URLError(.unknown) }
 }
 
-/// Serves a configurable LocalAlbumData; everything else is inert.
 @MainActor
 private final class ADDownloadStub: DownloadServiceProtocol {
     var albumData: LocalAlbumData?
@@ -88,8 +87,6 @@ struct AlbumDetailOfflineTests {
         )
     }
 
-    /// Builds a genuine, empty `AlbumID3` (200 OK, no songs) through SwiftSonic's real
-    /// decoder driven by the canned-response transport — the WARP/Cloudflare edge case.
     private func emptySuccessAlbum() async throws -> AlbumID3 {
         let json = Data(#"""
         {"subsonic-response":{"status":"ok","version":"1.16.1","album":{"id":"album-1","name":"Album","artist":"Artist","artistId":"ar-1","songCount":0,"duration":0,"created":"2024-01-01T00:00:00.000Z","coverArt":"al-1","song":[]}}}

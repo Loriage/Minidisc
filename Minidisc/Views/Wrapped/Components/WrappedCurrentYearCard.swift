@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// Discover carousel card for the current Wrapped year when no playlist exists yet.
-///
-/// - **Locked** (before Dec 28): card visible, lock icon signals story isn't available yet.
-/// - **Unlocked** (≥ Dec 28): play button opens `WrappedStoryPlayerView`.
 struct WrappedCurrentYearCard: View {
     let year: Int
 

@@ -22,8 +22,6 @@ private struct WrappedCoverImage: View {
 
     private var palette: [Color] { WrappedYearPalette.colors(for: year) }
 
-    // Diagonal sweep matching MeshGradientBackground.distributedColors:
-    // c0 top-left → c1 center → c2 bottom-right
     private var distributedColors: [Color] {
         let c0 = palette[0], c1 = palette[1], c2 = palette[2]
         return [c0, c0, c1,

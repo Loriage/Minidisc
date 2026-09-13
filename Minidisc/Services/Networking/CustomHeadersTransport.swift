@@ -2,26 +2,13 @@ import Foundation
 import OSLog
 import SwiftSonic
 
-/// Wraps a base HTTPTransport to inject custom HTTP headers on every outbound request.
-///
-/// Primary use case: Cloudflare Access tokens (`CF-Access-Client-Id`,
-/// `CF-Access-Client-Secret`) and other reverse-proxy authentication headers.
-///
-/// Security contract:
-/// - Header values are never logged — treat them as credentials.
-/// - Headers are validated (no \\r / \\n) before storage; this transport trusts the caller.
-/// - This transport only covers SwiftSonic requests. AVPlayer and URLSessionDownloadTask
-///   require separate header injection at their respective call sites.
-///
-/// Timeout policy: the default initializer creates a dedicated URLSession with
-/// `timeoutIntervalForRequest = 30` and `timeoutIntervalForResource = 30`.
-/// The resource timeout (default 7 days in URLSession) is the critical guard
-/// against hung Subsonic responses when the server triggers slow external lookups.
+/// Injects validated secret headers into SwiftSonic requests; never log their values.
+/// AVPlayer and background downloads inject headers separately.
+/// Both request and resource timeouts are bounded to avoid hung metadata lookups.
 struct CustomHeadersTransport: HTTPTransport, Sendable {
     private let base: any HTTPTransport
     private let headers: [String: String]
 
-    /// Normal use case. Creates a dedicated URLSession with 30-second timeouts.
     init(headers: [String: String], timeout: TimeInterval = 30) {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = timeout
@@ -34,7 +21,6 @@ struct CustomHeadersTransport: HTTPTransport, Sendable {
         self.headers = headers
     }
 
-    /// Testability / advanced use. Inject a pre-configured transport as the base.
     init(base: any HTTPTransport, headers: [String: String]) {
         self.base = base
         self.headers = headers

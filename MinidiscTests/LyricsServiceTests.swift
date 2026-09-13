@@ -182,7 +182,6 @@ struct LyricsCacheTests {
         let track = sampleTrack()
         let list = sampleList()
 
-        // Pre-populate cache directly via ModelContext
         let data = try JSONEncoder().encode(list)
         await MainActor.run {
             let ctx = ModelContext(container)
@@ -190,7 +189,6 @@ struct LyricsCacheTests {
             try? ctx.save()
         }
 
-        // fetchLyrics should return from cache; MockLyricsServerService throws on makeSwiftSonicClient
         let result = try await service.fetchLyrics(
             for: track,
             serverId: serverId,

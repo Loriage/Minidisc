@@ -3,10 +3,7 @@ import SwiftData
 import SwiftSonic
 import OSLog
 
-/// Fetches and caches structured lyrics for the active server.
-///
-/// All persistence uses a private ModelContext created per operation.
-/// No UIKit or SwiftUI imports — this actor is platform-agnostic.
+/// Creates a private ModelContext for each lyrics persistence operation.
 actor LyricsService {
     private let serverService: any ServerServiceProtocol
     private let modelContainer: ModelContainer

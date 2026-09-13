@@ -1,7 +1,6 @@
 import CoreImage.CIFilterBuiltins
 import UIKit
 
-/// Serial worker with one reusable Core Image context. No image processing on the main actor.
 actor ArtworkBandSampler {
     private let context = CIContext()
     private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!

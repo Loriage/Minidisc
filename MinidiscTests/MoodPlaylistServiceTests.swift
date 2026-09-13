@@ -5,7 +5,6 @@ import SwiftSonic
 
 // MARK: - Stubs
 
-/// Records every call and replays a per-mood outcome keyed on the mood.
 private final class ProviderStub: MoodTrackProvider, @unchecked Sendable {
     enum Outcome { case tracks(Int), empty, failure }
 
@@ -110,7 +109,6 @@ private final class PlaylistStub: MoodPlaylistClient, @unchecked Sendable {
 
 // MARK: - Harness
 
-/// Records every cover the service asks to be applied.
 private nonisolated final class CoverStub: @unchecked Sendable {
     private let lock = NSLock()
     private var _applied: [(spec: PlaylistGradientSpec, playlistId: String)] = []
@@ -145,7 +143,6 @@ private struct Harness {
     }
 }
 
-/// Fixed clock: Wednesday 2026-07-15 12:00 UTC, and the Friday after it.
 private func date(_ iso: String) -> Date {
     let f = ISO8601DateFormatter()
     f.timeZone = TimeZone(identifier: "UTC")
@@ -164,7 +161,6 @@ struct MoodCycleTests {
 
     @Test("the cycle starts on the Wednesday of the current week")
     func wednesdayIsTheAnchor() {
-        // Wed 15th → itself; Thu 16th and Tue 21st → still the 15th; Wed 22nd → a new cycle.
         let wednesday = MoodCycle.start(for: date("2026-07-15T12:00:00Z"), calendar: utc)
         #expect(MoodCycle.start(for: date("2026-07-16T09:00:00Z"), calendar: utc) == wednesday)
         #expect(MoodCycle.start(for: date("2026-07-21T23:59:00Z"), calendar: utc) == wednesday)
@@ -402,7 +398,6 @@ struct MoodPlaylistServiceTests {
         let outcome = await h.service.runWeeklySyncIfNeeded(serverId: h.serverId, calendar: utc, currentDate: wednesday)
 
         #expect(outcome == .finished(source: .sonic, refreshed: Mood.allCases.filter { $0 != .workout }, kept: [.workout]))
-        // Four playlists rewritten — Workout's was never touched, so last week's is still there.
         #expect(h.playlists.replacements.count == 4)
         #expect(h.preferences.syncedCycle(mood: .workout, serverId: h.serverId) == nil)
         #expect(h.preferences.syncedCycle(mood: .chill, serverId: h.serverId) != nil)
@@ -463,8 +458,6 @@ struct MoodPlaylistServiceTests {
 
     @Test("a server that stores none of the ids counts as a failure, not a success")
     func serverStoringNothingIsAFailure() async {
-        // Navidrome answers 200 and silently drops ids it does not recognise, so a whole batch of
-        // foreign ids produced an empty playlist that we reported as "refreshed with 75 tracks".
         let h = Harness()
         h.playlists.storesNothing = true
 
@@ -535,7 +528,6 @@ struct MoodPlaylistServiceTests {
         _ = await h.service.runWeeklySyncIfNeeded(serverId: h.serverId, calendar: utc, currentDate: wednesday)
 
         #expect(h.covers.applied.count == 5)
-        // Distinct specs: same colour on two moods would make them indistinguishable as thumbnails.
         let specs = h.covers.applied.map(\.spec)
         for (i, spec) in specs.enumerated() {
             #expect(!specs[(i + 1)...].contains(spec), "two moods share a cover design")
@@ -568,8 +560,6 @@ struct MoodPlaylistServiceTests {
         _ = await h.service.runWeeklySyncIfNeeded(serverId: h.serverId, calendar: utc, currentDate: wednesday)
         #expect(h.playlists.replacements.count == 5)
 
-        // Connecting AudioMuse two days later must not leave the tag-built playlists in place
-        // until the following Wednesday.
         let outcome = await h.service.rebuildNow(
             serverId: h.serverId, calendar: utc, currentDate: date("2026-07-17T10:00:00Z"))
 
@@ -605,8 +595,6 @@ struct MoodPlaylistServiceTests {
     func promptsAreDistinct() {
         let queries = Mood.allCases.map(\.query)
         #expect(Set(queries).count == queries.count)
-        // ASCII-only is the check that matters: these are fed to CLAP, which embeds against
-        // English, so a localised prompt would quietly degrade every match.
         #expect(queries.allSatisfy { $0.allSatisfy(\.isASCII) })
     }
 }

@@ -30,8 +30,6 @@ struct SimilarArtistCell: View {
     }
 }
 
-/// Shared presentation for Similar Artists and the artists featured in a playlist.
-/// Each caller retains its own artwork resolution and navigation.
 struct ArtistPortraitCell<Portrait: View>: View {
     let name: String
     let size: CGFloat

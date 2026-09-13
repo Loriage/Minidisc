@@ -1,11 +1,8 @@
 import Foundation
 import SwiftData
 
-/// Persisted playback session — singleton (id = "current").
-///
-/// Stores the full queue as JSON so the MiniPlayer can restore instantly
-/// without a network round-trip. Track metadata is duplicated as top-level
-/// fields for fast MiniPlayer rendering before the full queue is decoded.
+/// Singleton session (id = "current"). Duplicated track metadata renders the mini-player
+/// before the saved queue is decoded.
 @Model
 final class PlaybackSession {
     @Attribute(.unique) var id: String
@@ -13,7 +10,6 @@ final class PlaybackSession {
     var currentPosition: TimeInterval
     var queueData: Data
 
-    // Current track metadata — duplicated for fast MiniPlayer display
     var currentTrackId: String?
     var currentTrackTitle: String?
     var currentTrackArtist: String?

@@ -144,7 +144,6 @@ actor ServerService: ServerServiceProtocol {
         )
         await publishConnectionChange(server: activeServer, credentials: credentials)
 
-        // Best-effort: clear the audio cache for every server that is no longer active.
         let othersToClean = allServerIds.filter { $0 != id }
         guard !othersToClean.isEmpty else {
             Logger.server.debug("No other servers to clean cache for at switch.")
@@ -265,9 +264,7 @@ actor ServerService: ServerServiceProtocol {
         }
     }
 
-    /// Re-writes existing Keychain items with AfterFirstUnlock accessibility so
-    /// that lock screen playback transitions can read credentials during KI-2 fix.
-    /// Idempotent: safe to call on every cold start. Never blocks app boot.
+    /// Updates Keychain accessibility for lock-screen playback; safe to repeat at startup.
     private func migrateCredentialsAccessibility(for serverIDs: [UUID]) async {
         for id in serverIDs {
             let key = ServerCredentials.keychainKey(for: id)
@@ -331,12 +328,7 @@ actor ServerService: ServerServiceProtocol {
 
     // MARK: - AudioMuse
 
-    /// Stores (or clears) the AudioMuse-AI endpoint for a server. Kept separate from `updateServer`
-    /// because the two are edited on different screens and at different times — folding it in would
-    /// mean the AudioMuse form had to round-trip the password it never sees.
-    ///
-    /// Passing `nil` for `urlString` disconnects: the URL is cleared and the token is dropped from
-    /// Keychain, so no stale secret outlives the integration.
+    /// Updates AudioMuse separately from server credentials. A nil endpoint also deletes its token.
     func setAudioMuseConfig(serverId: UUID, urlString: String?, token: String?) async throws {
         let trimmedURL = urlString?.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedURL = (trimmedURL?.isEmpty == false) ? trimmedURL : nil
@@ -459,7 +451,6 @@ actor ServerService: ServerServiceProtocol {
             return .unknown(domain: e.domain, code: e.code)
         }
 
-        // Log the raw underlying error details before any mapping.
         switch sonic {
         case .network(let urlError):
             Logger.server.error("Connection test failed — URLError code=\(urlError.code.rawValue, privacy: .public)")

@@ -1,13 +1,7 @@
 import SwiftUI
 
 extension View {
-    /// Shared destructive-confirmation for deleting a playlist — identical across the playlist list and the
-    /// detail views (data-safety: same affordance everywhere).
-    ///
-    /// When the playlist has downloaded files (`hasDownloads`), it offers a CHOICE — keep the local files or
-    /// purge them too — mirroring the per-song "Remove from Playlist" / "Remove Download" split. Otherwise it's
-    /// a plain confirm. `onConfirm` receives `purgeDownloads`: `false` = server delete only, keep the local
-    /// files (an intentional offline orphan); `true` = server delete + purge the downloads.
+    /// onConfirm receives whether downloaded files should also be removed.
     func deletePlaylistConfirmation(
         playlistName: String,
         isPresented: Binding<Bool>,

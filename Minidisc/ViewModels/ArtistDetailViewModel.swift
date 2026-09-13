@@ -6,7 +6,6 @@ import OSLog
 @MainActor
 final class ArtistDetailViewModel {
     var artist: ArtistID3?
-    /// Releases are prepared when the artist loads so the view never repeatedly filters the discography.
     private(set) var albumReleases: [AlbumID3] = []
     private(set) var singlesAndEPs: [AlbumID3] = []
     var isLoading = false
@@ -17,20 +16,13 @@ final class ArtistDetailViewModel {
     var outOfLibraryArtistImages: [String: URL?] = [:]
     /// Most-played songs (getTopSongs). Empty on bare self-hosted servers → the view hides the section.
     var topSongs: [DisplayableSong] = []
-    /// Starts true so the section shows a skeleton until the first load resolves (then empty → hidden).
     var isLoadingTopSongs = true
 
-    /// Songs by this artist the user has starred, most recently liked first. Empty → the view hides the section.
     var likedSongs: [DisplayableSong] = []
-    /// Starts true so the section shows a skeleton until the first load resolves (then empty → hidden).
     var isLoadingLikedSongs = true
 
-    /// Server-provided biography (getArtistInfo). nil/empty on bare servers → section hidden.
     var biography: String?
-    /// Last.fm link from getArtistInfo, when the server returns one.
     var lastFmURL: URL?
-    /// Starts true so the bio area shows a 3-line skeleton until getArtistInfo resolves (then the bio
-    /// fades in, or the area collapses if the server has none).
     var isLoadingArtistInfo = true
 
     /// True when the screen is showing the downloaded copy rather than the server's catalogue.
@@ -66,8 +58,6 @@ final class ArtistDetailViewModel {
         self.serverState = serverState
     }
 
-    /// Three-tier load, mirroring AlbumDetailViewModel: online → API, with the downloaded copy standing in
-    /// both when the server answers empty and when it fails outright.
     func load() async {
         isLoading = true
         error = nil
@@ -89,8 +79,6 @@ final class ArtistDetailViewModel {
             setArtist(fetched)
             isOffline = false
         } catch {
-            // Server unreachable (stale isOnline, VPN-satisfied path, server down): the downloaded
-            // copy beats an error screen.
             if await loadFromLocal() { return }
             self.error = UserFacingError.from(error)
         }
@@ -164,9 +152,7 @@ final class ArtistDetailViewModel {
         }
     }
 
-    /// The user's starred songs for this artist, across every album — Subsonic has no per-artist
-    /// starred endpoint, so this filters the full getStarred2 payload. Call after `load()` so
-    /// `artist?.name` is available as a fallback match for servers that omit `artistId` on starred songs.
+    /// Filters getStarred2 after load resolves the artist name needed for ID-less responses.
     func loadLikedSongs() async {
         guard !isOffline else { isLoadingLikedSongs = false; return }
         isLoadingLikedSongs = true
@@ -180,9 +166,7 @@ final class ArtistDetailViewModel {
         }
     }
 
-    /// Biography and Last.fm link from getArtistInfo. Independent of similar artists,
-    /// which come from `recommendationService`. Slow external lookups are already
-    /// guarded by the service's 15s timeout, so this loads in the background.
+    /// Loads artist information independently of recommendations under the service timeout.
     func loadArtistInfo() async {
         guard !isOffline else { isLoadingArtistInfo = false; return }
         defer { isLoadingArtistInfo = false }
@@ -225,13 +209,11 @@ private extension String {
     var strippingArtistBioMarkup: String {
         var text = self
 
-        // Cut the Last.fm read-more tail (everything from the last <a ...>Read more…</a>)
         if let range = text.range(of: "<a", options: .backwards),
            text[range.lowerBound...].localizedCaseInsensitiveContains("last.fm") {
             text = String(text[..<range.lowerBound])
         }
 
-        // Strip remaining tags and decode the few entities Last.fm emits
         text = text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
         for (entity, char) in ["&amp;": "&", "&quot;": "\"", "&#39;": "'", "&lt;": "<", "&gt;": ">", "&apos;": "'"] {
             text = text.replacingOccurrences(of: entity, with: char)

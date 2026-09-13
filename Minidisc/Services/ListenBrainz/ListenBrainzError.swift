@@ -59,7 +59,6 @@ extension ListenBrainzError {
         return false
     }
 
-    /// Suggested seconds to wait before retrying. `nil` means no retry is appropriate.
     nonisolated var suggestedRetryDelay: TimeInterval? {
         switch self {
         case .rateLimited(let after): return after ?? 60

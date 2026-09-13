@@ -1,8 +1,6 @@
 import SwiftUI
 import OSLog
 
-/// Connects Minidisc to a Lidarr instance. Lidarr manages a music collection and downloads new
-/// releases. This first version tests and stores the connection, and shows the instance status.
 struct LidarrSettingsView: View {
     @Environment(\.appContainer) private var container
 
@@ -159,8 +157,6 @@ struct LidarrSettingsView: View {
 
     // MARK: - Actions
 
-    /// Tests the connection, and saves it only after a good round-trip, so a typo cannot store a
-    /// connection that does not work.
     private func testAndSave() async {
         guard let settings else { return }
         isTesting = true
@@ -206,7 +202,6 @@ struct LidarrSettingsView: View {
         testResult = nil
     }
 
-    /// Non-empty, valid header rows as a dictionary.
     private func headersDict() -> [String: String] {
         var result: [String: String] = [:]
         for row in headerRows {

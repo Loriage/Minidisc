@@ -1,13 +1,8 @@
 import SwiftUI
 import SwiftData
 
-/// Value-type snapshot of a SearchHistoryEntry. Capturing only the fields the row
-/// reads breaks the @Model observation dependency: the row body reads no @Observable
-/// properties, so SwiftData merge events that re-fire coverArtId/serverId setters
-/// on existing entries no longer reach row bodies.
-///
-/// Identifiable via PersistentIdentifier so ForEach can maintain stable row identity
-/// across @Query re-fetches without holding a @Model reference in the view tree.
+/// A value snapshot avoids SwiftData observation in each row. PersistentIdentifier
+/// preserves row identity across query refreshes.
 struct SearchHistoryRowData: Identifiable, Equatable {
     let id: PersistentIdentifier
     let coverArtId: String?
@@ -24,13 +19,7 @@ struct SearchHistoryRowData: Identifiable, Equatable {
     }
 }
 
-/// Row view for a single search history entry.
-///
-/// Equatable conformance is synthesized from SearchHistoryRowData. When
-/// SearchHistoryListView.body re-runs due to @Query re-evaluation and produces
-/// the same DTO values (no actual data change), SwiftUI's diffing skips calling
-/// this body — eliminating the O(N × notifications) render storm from SwiftData
-/// merge events that touched unchanged property values.
+/// Equatable skips row updates when a refreshed query yields unchanged values.
 struct SearchHistoryEntryRow: View, Equatable {
     let data: SearchHistoryRowData
 

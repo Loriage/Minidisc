@@ -2,9 +2,7 @@ import Foundation
 import SwiftData
 import OSLog
 
-/// Reads/writes the per-device `PlaylistCoverChoice` records, keyed by `(playlistId, serverId)`. Backed by
-/// the container's `mainContext` (so saves are observed by `@Query`, matching the app's PinService pattern)
-/// — hence `@MainActor`. Cross-platform.
+/// Per-device cover choices keyed by playlist and server, accessed on MainActor.
 @MainActor
 struct PlaylistCoverStore {
     private let modelContainer: ModelContainer
@@ -17,7 +15,6 @@ struct PlaylistCoverStore {
         #Predicate<PlaylistCoverChoice> { $0.playlistId == playlistId && $0.serverId == serverId }
     }
 
-    /// The stored gradient choice for this playlist, or `nil` if none / the stored form no longer exists.
     func choice(playlistId: String, serverId: UUID) -> PlaylistCoverChoice? {
         var descriptor = FetchDescriptor(predicate: Self.match(playlistId, serverId))
         descriptor.fetchLimit = 1
@@ -52,7 +49,6 @@ struct PlaylistCoverStore {
         }
     }
 
-    /// Removes the choice for a playlist (orphan cleanup on playlist delete).
     func remove(playlistId: String, serverId: UUID) {
         let context = modelContainer.mainContext
         guard let matches = try? context.fetch(FetchDescriptor(predicate: Self.match(playlistId, serverId))),

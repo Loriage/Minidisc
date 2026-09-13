@@ -5,14 +5,9 @@ import UIKit
 
 // MARK: - ArtworkTier
 
-/// Named decode resolution tier for cover art.
-///
-/// Tier determines both the pixel dimension passed to CGImageSourceCreateThumbnailAtIndex
-/// and the disk/RAM cache key suffix (`id@thumb`, `id@hero`).
+/// Decode resolution and cache-key suffix for each artwork tier.
 nonisolated enum ArtworkTier: String, Sendable {
-    /// 240 px — list rows, grid cells, queue rows, mini player, Wrapped cards.
     case thumb
-    /// 1200 px — detail view heroes, full-player cover, lock screen artwork.
     case hero
 
     var decodePixels: Int {
@@ -91,12 +86,10 @@ actor CoverFetchGate {
         waiter.continuation.resume(returning: false)
     }
 
-    /// Test seam for verifying that cancellation returns capacity to the gate.
     func availablePermitCount() -> Int {
         available
     }
 
-    /// Test seam for observing registration before cancelling a queued waiter.
     func waitingCount() -> Int {
         waiters.count
     }
@@ -175,9 +168,7 @@ final class ArtworkImageCache {
     // MARK: - Revalidation
     /// Per-cover `Last-Modified` + last-checked, so a cached cover is re-verified on a slow cadence.
     private let revalidationStore: CoverRevalidationStore
-    /// Cover ids whose revalidation is in flight, so the two tiers of one id don't both HEAD it.
-    /// Loads currently running, keyed like `cache`, so concurrent callers for the same cover share
-    /// one fetch + decode instead of racing each other.
+    /// Shares one fetch and decode per tiered cache key.
     private var inFlight: [String: InFlightLoad] = [:]
     private var revalidating: [String: RevalidationEntry] = [:]
     /// Invalidates every older operation on a whole-cache clear.
@@ -235,7 +226,6 @@ final class ArtworkImageCache {
         )
     }
 
-    /// Dependency-injected initializer used by deterministic concurrency tests.
     init(
         revalidationStore: CoverRevalidationStore = CoverRevalidationStore(),
         coverArtURLProvider: @escaping CoverArtURLProvider,
@@ -271,12 +261,10 @@ final class ArtworkImageCache {
         cache[cacheKey(id: id, tier: tier)]
     }
 
-    /// Deterministic concurrency-test seam.
     func inFlightWaiterCount(for id: String, tier: ArtworkTier = .thumb) -> Int {
         inFlight[cacheKey(id: id, tier: tier)]?.waiters.count ?? 0
     }
 
-    /// Deterministic revalidation-test seam.
     func isRevalidating(_ id: String) -> Bool {
         revalidating[id] != nil
     }
@@ -289,8 +277,6 @@ final class ArtworkImageCache {
         completedRevalidationCount
     }
 
-    /// Returns the image from cache if available; otherwise fetches from disk or server.
-    /// The `tier` determines both decode resolution and which disk/RAM bucket is checked.
     @discardableResult
     func load(coverArtId: String?, tier: ArtworkTier = .thumb) async -> PlatformImage? {
         guard !Task.isCancelled, let coverArtId else { return nil }
@@ -303,7 +289,6 @@ final class ArtworkImageCache {
             return hit
         }
 
-        // Deduplicate concurrent loads for the same tier key.
         let waiterID = UUID()
         if let existing = inFlight[key] {
             return await waitForInFlightLoad(
@@ -402,7 +387,6 @@ final class ArtworkImageCache {
         entry.waiters.values.forEach { $0.resume(returning: resolvedResult) }
     }
 
-    /// Disk then network, for a key that missed RAM and has no load already in flight.
     private func fetch(
         coverArtId: String,
         tier: ArtworkTier,
@@ -546,9 +530,7 @@ final class ArtworkImageCache {
 
     // MARK: - Revalidation
 
-    /// Fires a background re-check of `coverArtId` when its TTL has lapsed. Non-blocking: the caller
-    /// has already returned the cached image, so this is pure stale-while-revalidate — the view
-    /// keeps the old cover until (and unless) a change is found.
+    /// Revalidates expired entries in the background while callers retain the cached image.
     private func revalidateIfDue(coverArtId: String, tier: ArtworkTier) {
         guard revalidating[coverArtId] == nil,
               !revalidationDeferred.contains(coverArtId),
@@ -951,13 +933,7 @@ final class ArtworkImageCache {
         accessOrder.append(key)
     }
 
-    /// Decodes `data` using `CGImageSourceCreateThumbnailAtIndex`, which only reads the DCT
-    /// data needed for the target resolution — dramatically faster than full decode for
-    /// high-res covers. Falls back to `PlatformImage(data:)` if ImageIO cannot produce
-    /// a thumbnail (e.g. unsupported format).
-    ///
-    /// `nonisolated` so it is callable from `Task.detached` without hopping to MainActor.
-    /// Internal (not private) so `CoverArtView`'s local-base fallback decodes identically.
+    /// Downsamples with ImageIO off MainActor; falls back to PlatformImage if decoding fails.
     nonisolated static func thumbnailImage(from data: Data, maxDimension: Int) -> PlatformImage? {
         let options: [CFString: Any] = [
             kCGImageSourceThumbnailMaxPixelSize: maxDimension,

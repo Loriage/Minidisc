@@ -17,7 +17,6 @@ final class DownloadedAlbum {
     /// Relative path (from Documents/app.minidisc/) to the cached cover art file. Nil if not downloaded.
     var localCoverArtPath: String?
 
-    /// True when every track was successfully downloaded.
     var isComplete: Bool { tracksCount == totalTracksCount }
 
     init(

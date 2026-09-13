@@ -21,13 +21,11 @@ nonisolated struct MinidiscCartridgeIcon: Shape {
         var path = Path()
         let corner = Self.cornerRadius(in: rect)
 
-        // Shell
         path.addRoundedRect(
             in: rect,
             cornerSize: CGSize(width: corner, height: corner)
         )
 
-        // Disc window — centred, leaving only a thin frame of shell around it.
         let centre = Self.windowCenter(in: rect)
         let radius = Self.windowRadius(in: rect)
         path.addEllipse(in: CGRect(

@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The sort control for the All Songs list: a menu listing the `SongSort` options with a checkmark on the
-/// active one. Bound to the caller's persisted `@AppStorage("minidisc.songSort")`.
 struct SongSortMenu: View {
     @Binding var sort: SongSort
 

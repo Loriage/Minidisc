@@ -3,8 +3,6 @@ import Foundation
 import SwiftSonic
 @testable import Minidisc
 
-/// Library stub for the mood providers. Internal so the sonic provider's tests can reuse it for
-/// the by-name resolution path.
 actor TagLibraryStub: LibrarySearching, MoodTrackSourcing {
     private var _genreQueries: [String] = []
     private var _randomCalls = 0
@@ -12,7 +10,6 @@ actor TagLibraryStub: LibrarySearching, MoodTrackSourcing {
     /// Songs returned per genre. Absent genres return empty, like a real server.
     var songsPerGenre: [String: [Song]] = [:]
     var randomPool: [Song] = []
-    /// Songs returned by `search`, used by SubsonicTrackResolver.
     var searchResults: [Song] = []
     private var _searches: [String] = []
     var searches: [String] { _searches }
@@ -34,7 +31,6 @@ actor TagLibraryStub: LibrarySearching, MoodTrackSourcing {
         return randomPool
     }
 
-    /// Used by SubsonicTrackResolver when the sonic provider falls back to matching by name.
     func search(_ query: String) async throws -> SearchResult3 {
         _searches.append(query)
         let songs = searchResults.map {
@@ -73,9 +69,6 @@ struct LibraryTagTrackProviderTests {
 
     @Test("a library with none of a mood's genres falls back to a broad sample")
     func emptyGenresFallBackToRandomPool() async throws {
-        // The case a real library hit: French rap, so Night's ambient/jazz/classical genres are all
-        // absent and every genre query comes back empty. Before the fallback this produced nothing
-        // at all, every week, forever.
         let library = TagLibraryStub()
         await library.setRandomPool([
             try song(id: "slow", bpm: 70),
@@ -108,8 +101,6 @@ struct LibraryTagTrackProviderTests {
         await library.setRandomPool([try song(id: "a"), try song(id: "b")])
         let provider = LibraryTagTrackProvider(libraryService: library)
 
-        // Empty is the correct answer: the sync treats it as a skip and leaves the previous
-        // playlist untouched, rather than filling it with music chosen at random.
         #expect(try await provider.trackIds(for: .chill, limit: 10).isEmpty)
     }
 

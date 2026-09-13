@@ -4,7 +4,6 @@ import OSLog
 /// Pure HTTP actor for ListenBrainz API calls. Stateless — no caching, no persisted config.
 /// Username and tokens are never logged; only HTTP status codes and rate-limit headers are logged.
 actor ListenBrainzClient {
-    // force-unwrap safe: compile-time string constant
     private static let baseURL = URL(string: "https://api.listenbrainz.org/1/")!
 
     private let transport: any ListenBrainzTransport
@@ -15,11 +14,7 @@ actor ListenBrainzClient {
 
     // MARK: - Token validation
 
-    /// Validates `token` against `rootURL` using the /1/validate-token endpoint.
-    ///
-    /// Both 200-with-valid:false and 401 return `isValid: false` without throwing —
-    /// they are user-correctable conditions ("wrong token"), not errors.
-    /// Token is never logged or included in any error message.
+    /// Invalid tokens (401 or valid:false) return isValid = false without throwing. Never log tokens.
     func validateToken(_ token: String, rootURL: URL) async throws -> ListenBrainzValidation {
         guard var components = URLComponents(url: rootURL, resolvingAgainstBaseURL: false) else {
             throw ListenBrainzError.network(URLError(.badURL))
@@ -55,7 +50,6 @@ actor ListenBrainzClient {
                 throw ListenBrainzError.decoding(error)
             }
         case 401:
-            // "Wrong token" — not a thrown error per spec.
             return ListenBrainzValidation(isValid: false, username: nil)
         case 429:
             let delay = response.value(forHTTPHeaderField: "Retry-After").flatMap { TimeInterval($0) }
@@ -69,13 +63,8 @@ actor ListenBrainzClient {
 
     // MARK: - Username validation
 
-    /// Returns `true` if the username exists on ListenBrainz.
-    ///
-    /// Uses `/1/user/{username}/listen-count` — a real JSON API endpoint that returns 200+JSON when
-    /// the user exists and 404 when not. The former `/1/user/{name}` route is an HTML web route
-    /// (308 redirect + HTML body) and is not suitable for API use.
-    ///
-    /// Local format check (`[a-zA-Z0-9_-]{1,40}`) runs before any network call.
+    /// Validates username format locally, then checks the JSON listen-count endpoint.
+    /// The bare user route returns HTML and cannot validate API access.
     func validateUsername(_ username: String) async throws -> Bool {
         guard Self.isValidUsernameFormat(username) else {
             throw ListenBrainzError.invalidUsername
@@ -199,11 +188,8 @@ actor ListenBrainzClient {
 
     // MARK: - Similar artists
 
-    /// Fetches artists similar to the given MBID from the ListenBrainz artist page endpoint.
-    ///
-    /// Uses `POST https://listenbrainz.org/artist/{mbid}/` — an internal LB endpoint (not a
-    /// versioned public REST API). Returns up to 18 artists ordered by similarity score.
-    /// Returns `[]` on 404 (artist unknown to LB) rather than throwing.
+    /// Uses ListenBrainz’s internal artist-page endpoint, not the versioned REST API.
+    /// Returns up to 18 artists by similarity; 404 yields an empty list.
     func similarArtists(mbid: String) async throws -> [LBSimilarArtistDTO] {
         guard let url = URL(string: "https://listenbrainz.org/artist/\(mbid)/") else {
             return []
@@ -268,7 +254,6 @@ actor ListenBrainzClient {
         try await sendSubmitListens(body: body, rootURL: rootURL, token: token)
     }
 
-    /// Submits a single completed listen with a Unix timestamp.
     func submitListen(track: LBTrackMetadata, listenedAt: Int, rootURL: URL, token: String) async throws {
         let body = LBSubmitListensBody(
             listenType: "single",

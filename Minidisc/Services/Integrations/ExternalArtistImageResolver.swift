@@ -118,7 +118,6 @@ actor MusicBrainzRateLimiter {
         startCooldown()
     }
 
-    /// Deterministic test seam.
     func waitingCount() -> Int {
         waiters.count
     }
@@ -165,7 +164,6 @@ actor ExternalArtistImageResolver {
 
     // MARK: - Public API
 
-    /// Unified entry point: uses the MBID when available, otherwise searches MB by name.
     func resolveImageURL(for recommendation: SimilarArtistRecommendation) async -> URL? {
         if let mbid = recommendation.mbid?.trimmingCharacters(in: .whitespacesAndNewlines),
            !mbid.isEmpty {
@@ -174,7 +172,6 @@ actor ExternalArtistImageResolver {
         return await resolveImageURL(forArtistName: recommendation.name)
     }
 
-    /// Resolves via a known MusicBrainz ID → Wikidata → Wikimedia Commons.
     func resolveImageURL(forArtistMBID mbid: String) async -> URL? {
         let trimmed = mbid.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -184,7 +181,6 @@ actor ExternalArtistImageResolver {
         return await resolve(key: "mbid:\(trimmed)") { await self.pipeline(mbid: trimmed) }
     }
 
-    /// Searches MusicBrainz for the artist by name, then runs the MB→Wikidata→Commons pipeline.
     func resolveImageURL(forArtistName name: String) async -> URL? {
         let normalized = name.lowercased().trimmingCharacters(in: .whitespaces)
         return await resolve(key: "name:\(normalized)") {
@@ -193,7 +189,6 @@ actor ExternalArtistImageResolver {
         }
     }
 
-    /// Deterministic concurrency-test seam.
     func inFlightWaiterCount(forArtistMBID mbid: String) -> Int {
         inflight["mbid:\(mbid.trimmingCharacters(in: .whitespacesAndNewlines))"]?
             .waiters.count ?? 0

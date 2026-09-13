@@ -8,7 +8,6 @@ final class DownloadedPlaylist {
     var serverId: UUID
     var name: String
     var comment: String?
-    /// Number of tracks successfully written to disk.
     var tracksCount: Int
     /// Total tracks in the playlist at the time of download request.
     var totalTracksCount: Int

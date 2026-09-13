@@ -3,7 +3,6 @@ import Darwin
 import SwiftSonic
 @testable import Minidisc
 
-// Convenience wrapper so individual tests don't repeat all parameters.
 private func gain(
     enabled: Bool = true,
     mode: ReplayGainMode = .track,
@@ -166,7 +165,6 @@ struct ReplayGainServiceComputeGainTests {
         let withClip = gain(preventClipping: true, trackGain: 6, trackPeak: 0.7)
         let withoutClip = gain(preventClipping: false, trackGain: 6, trackPeak: 0.7)
         #expect(withClip < withoutClip)
-        // Max safe = 20*log10(1/0.7) ≈ 3.1 dB
         let maxSafe = 20.0 * log10(1.0 / 0.7)
         #expect(abs(Double(withClip) - maxSafe) < 0.02)
     }

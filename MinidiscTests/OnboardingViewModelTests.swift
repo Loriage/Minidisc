@@ -9,7 +9,6 @@ import SwiftSonic
 final class MockServerService: ServerServiceProtocol {
     let state: ServerState = ServerState()
 
-    // Configurable outcomes
     var testConnectionError: (any Error)? = nil
     var addServerError: (any Error)? = nil
     var addServerCalled = false
@@ -30,7 +29,6 @@ final class MockServerService: ServerServiceProtocol {
         if let error = addServerError { throw error }
     }
 
-    // Unused stubs
     func removeServer(id: UUID) async throws {}
     func setActiveServer(id: UUID) async throws {}
     func updateCustomHeaders(_ headers: [String: String], forServer id: UUID) async throws {}

@@ -78,7 +78,6 @@ struct ArtistListView: View {
         }
     }
 
-    /// The same rows and name index in both available sort orders.
     private func flatList(_ vm: ArtistListViewModel) -> some View {
         AlphabetIndexedContent(entries: artistIndex(vm), prepareJump: { artistSort = .name }) {
             List(artistSort.sorted(vm.indexes.flatMap(\.artist))) { artist in
@@ -93,7 +92,6 @@ struct ArtistListView: View {
         }
     }
 
-    /// Grid of artist avatars in the chosen order.
     private func artistsGrid(_ vm: ArtistListViewModel) -> some View {
         AlphabetIndexedContent(entries: artistIndex(vm), prepareJump: { artistSort = .name }) {
             ScrollView {
@@ -164,7 +162,6 @@ private struct OfflineBrowseContent: View {
         )
     }
 
-    /// One entry per album, tagged with the artist id when the tracks carried one.
     private struct AlbumEntry {
         let summary: OfflineAlbumSummary
         let artistId: String?
@@ -186,8 +183,7 @@ private struct OfflineBrowseContent: View {
                 artistId: albumTracks.compactMap(\.artistId).first
             )
         }
-        // Group on the artist id when it's there, falling back to a case-folded name. Grouping on the raw
-        // name (as this did) split one artist into several rows on any casing/spelling inconsistency.
+        // Group by artist ID, falling back to case-folded names when IDs are missing.
         let byArtist = Dictionary(grouping: entries) { entry in
             entry.artistId ?? "name:\(entry.summary.artistName?.lowercased() ?? "")"
         }
@@ -217,8 +213,6 @@ private struct OfflineBrowseContent: View {
                 List {
                     Section("Downloaded Artists") {
                         ForEach(artistSummaries) { artist in
-                            // With an artist id the real artist screen can rebuild itself from downloads —
-                            // covers, album grid, working Play. Without one, the flat album list is all we can offer.
                             NavigationLink(value: destination(for: artist)) {
                                 OfflineArtistRow(artist: artist)
                             }

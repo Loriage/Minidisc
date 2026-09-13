@@ -3,11 +3,7 @@ import Foundation
 import OSLog
 import Synchronization
 
-/// Owns the dependencies used by the BackgroundTasks callback.
-///
-/// The scheduler callback can run outside `MainActor`; storing the dependencies
-/// in an actor establishes a real synchronization boundary instead of relying on
-/// write-once `nonisolated(unsafe)` globals.
+/// Stores dependencies behind actor isolation because BackgroundTasks callbacks may run off MainActor.
 actor BackgroundSyncCoordinator {
     private typealias SyncOperation = @Sendable (Calendar) async throws -> Bool
 
@@ -29,8 +25,6 @@ actor BackgroundSyncCoordinator {
 
     init() {}
 
-    /// Test-only seam that keeps deduplication and cancellation independently
-    /// verifiable without constructing the full application service graph.
     init(operation: @escaping @Sendable (Calendar) async throws -> Bool) {
         syncOperation = operation
     }
@@ -131,7 +125,6 @@ actor BackgroundSyncCoordinator {
         })
     }
 
-    /// Deterministic synchronization seams for cancellation tests.
     func waiterCount() -> Int {
         activeRun?.waiters.count ?? 0
     }

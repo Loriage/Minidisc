@@ -5,7 +5,6 @@ import SwiftSonic
 
 // MARK: - Shared mock infrastructure
 
-// Transport that counts calls and serves a queue of (Data, HTTPURLResponse) pairs.
 @MainActor
 private final class PRCountingTransport: ListenBrainzTransport {
     private(set) var callCount = 0
@@ -68,7 +67,6 @@ private final class PRKeychain: KeychainServiceProtocol {
     }
 }
 
-// Transport that throws if ever called — used to verify no network call is made.
 private struct PRNeverCalledTransport: ListenBrainzTransport {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         Issue.record("Transport should not have been called")
@@ -76,7 +74,6 @@ private struct PRNeverCalledTransport: ListenBrainzTransport {
     }
 }
 
-// Null library stub — safe defaults, never actually called in fresh releases tests.
 @MainActor
 private final class PRLibraryNullStub: ArtistRecommendationBrowsing {
     func getArtistInfo(forArtistID artistID: String, count: Int) async throws -> ArtistInfo { throw URLError(.unknown) }
@@ -85,7 +82,6 @@ private final class PRLibraryNullStub: ArtistRecommendationBrowsing {
     func topSongs(artist: String, count: Int) async throws -> [DisplayableSong] { [] }
 }
 
-// Configurable library stub for similar artists tests.
 @MainActor
 private final class PRLibraryConfigurableStub: ArtistRecommendationBrowsing {
     private var mbidResult: Result<String?, Error> = .success(nil)
@@ -142,7 +138,6 @@ private let twoReleasesWithBadDateJSON = Data("""
 }
 """.utf8)
 
-// 5 releases delivered oldest-first (as LB does), with dates spanning Jan–May.
 private let fiveReleasesOldestFirstJSON = Data("""
 {
   "payload": {
@@ -157,7 +152,6 @@ private let fiveReleasesOldestFirstJSON = Data("""
 }
 """.utf8)
 
-// 3 releases: 2 with dates, 1 with no date field (maps to nil releaseDate).
 private let twoDatedOneNilJSON = Data("""
 {
   "payload": {
@@ -223,9 +217,6 @@ struct LBProviderEarlyExitTests {
 
     @Test("enabled service but no username returns empty without network call")
     func enabledButNoUsernameReturnsEmpty() async throws {
-        // Service stays in default state: isEnabled = false, username = nil.
-        // Even if we manually flip isEnabled without a username, the guard covers this.
-        // The default state has isEnabled = false, so this is the simpler variant of the test.
         let service = makeService(serviceTransport: PRNeverCalledTransport())
         let provider = makeProvider(providerTransport: PRNeverCalledTransport(), service: service)
 
@@ -268,7 +259,6 @@ struct LBProviderHappyPathTests {
 
     @Test("limit keeps most recent releases, not arrival order")
     func limitKeepsMostRecent() async throws {
-        // LB returns 5 releases oldest-first. With limit=3 we must get the 3 newest.
         let serviceTransport = PRServiceTransport()
         serviceTransport.enqueue(status: 200)
         let service = makeService(serviceTransport: serviceTransport)
@@ -281,13 +271,11 @@ struct LBProviderHappyPathTests {
         let results = try await provider.freshReleases(limit: 3, daysWindow: 90)
 
         #expect(results.count == 3)
-        // Expecting: New1 (May 10), New2 (May 5), Old3 (Mar 1) — the 3 most recent
         #expect(results.map { $0.id } == ["new1", "new2", "old3"])
     }
 
     @Test("releases with nil releaseDate are sorted last and cut first by limit")
     func nilDateSortedLastCutByLimit() async throws {
-        // 3 releases: May (dated), nil (no date), Apr (dated). limit=2 must drop the nil one.
         let serviceTransport = PRServiceTransport()
         serviceTransport.enqueue(status: 200)
         let service = makeService(serviceTransport: serviceTransport)
@@ -362,7 +350,6 @@ struct LBProviderCacheTests {
         let providerTransport = PRCountingTransport()
         providerTransport.enqueue(data: singleReleaseJSON, status: 200)
         providerTransport.enqueue(data: singleReleaseJSON, status: 200)
-        // TTL of 0.01s (10ms)
         let provider = makeProvider(providerTransport: providerTransport, service: service, cacheTTL: 0.01)
 
         _ = try await provider.freshReleases(limit: 10, daysWindow: 90)
@@ -421,7 +408,6 @@ struct LBProviderErrorTests {
         let service = makeService(serviceTransport: serviceTransport)
         try await service.enable(username: "testuser")
 
-        // Empty queue → URLError(.timedOut) → wrapped as .network
         let providerTransport = PRCountingTransport()
         let provider = makeProvider(providerTransport: providerTransport, service: service)
 
@@ -520,7 +506,6 @@ struct LBProviderMappingTests {
         let results = try await provider.freshReleases(limit: 10, daysWindow: 90)
         #expect(results.count == 2)
 
-        // Fixture JSON: Good Date Artist is index 0, Bad Date Artist is index 1
         #expect(results[0].releaseDate != nil, "Good Date Artist should have a parsed date")
         #expect(results[1].releaseDate == nil, "Bad Date Artist has an unparseable release_date")
     }

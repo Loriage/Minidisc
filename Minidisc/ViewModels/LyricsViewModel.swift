@@ -136,7 +136,6 @@ final class LyricsViewModel {
 
     // MARK: - Timer lifecycle
 
-    /// True while playback is playing. Exposed so the lyrics view can reconcile tracking on play/pause.
     var isPlaying: Bool { playerState.playbackState == .playing }
 
     private var hasSyncedLyrics: Bool {
@@ -154,10 +153,7 @@ final class LyricsViewModel {
         reconcileTracking()
     }
 
-    /// Single source of truth for the 4 Hz line-tracking timer: it runs ONLY while the lyrics are
-    /// visible AND playback is playing AND the current lyrics are time-synced. The timer is never started
-    /// at init; it is torn down the instant any condition goes false (hide, pause, unsynced) so a paused or
-    /// hidden player does no per-tick work. Idempotent — safe to call on any condition change.
+    /// Runs line tracking only for visible, playing, time-synced lyrics.
     func reconcileTracking() {
         if isShown && isPlaying && hasSyncedLyrics {
             startTimer()
@@ -197,7 +193,6 @@ final class LyricsViewModel {
         let best = lyricsService.selectBestLanguage(from: list, preferred: selectedLanguage)
         currentLineIndex = nil
         state = best.map { .loaded($0) } ?? .empty
-        // Lyrics (and their synced-ness) just changed — start the timer if it should now run.
         reconcileTracking()
     }
 

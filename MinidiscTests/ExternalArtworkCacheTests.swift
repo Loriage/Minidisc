@@ -4,7 +4,6 @@ import Foundation
 
 // MARK: - Fixtures
 
-// Minimal valid 1×1 PNG — parseable by both UIImage and NSImage.
 private let validImageData: Data = {
     let b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVQI12NgAAAAAgAB4iG8MwAAAABJRU5ErkJggg=="
     return Data(base64Encoded: b64)!
@@ -132,8 +131,8 @@ struct ExternalArtworkCacheTests {
         let fetcher = CountingFetcher(data: validImageData)
         let cache = makeCache(dir: dir, fetcher: fetcher)
 
-        _ = await cache.image(for: testURL)   // network fetch + memory store
-        _ = await cache.image(for: testURL)   // memory hit
+        _ = await cache.image(for: testURL)
+        _ = await cache.image(for: testURL)
 
         #expect(fetcher.callCount == 1)
     }
@@ -229,13 +228,11 @@ struct ExternalArtworkCacheTests {
     func diskHitSkipsNetwork() async throws {
         let dir = try makeTempDir()
 
-        // Warm disk via first cache instance
         let fetcher1 = CountingFetcher(data: validImageData)
         let cache1 = makeCache(dir: dir, fetcher: fetcher1)
         _ = await cache1.image(for: testURL)
         #expect(fetcher1.callCount == 1)
 
-        // New instance = fresh memory cache, same dir, failing fetcher
         let fetcher2 = CountingFetcher(throwing: URLError(.timedOut))
         let cache2 = makeCache(dir: dir, fetcher: fetcher2)
         let result = await cache2.image(for: testURL)
@@ -248,12 +245,10 @@ struct ExternalArtworkCacheTests {
     func expiredDiskEntryRefetches() async throws {
         let dir = try makeTempDir()
 
-        // Warm disk
         let fetcher1 = CountingFetcher(data: validImageData)
         let cache1 = makeCache(dir: dir, fetcher: fetcher1)
         _ = await cache1.image(for: testURL)
 
-        // New instance with TTL=0 (all disk entries immediately expired)
         let fetcher2 = CountingFetcher(data: validImageData)
         let cache2 = makeCache(dir: dir, fetcher: fetcher2, ttl: 0)
         _ = await cache2.image(for: testURL)
@@ -273,7 +268,6 @@ struct ExternalArtworkCacheTests {
 
         #expect(result == nil)
 
-        // No file written in cache dir
         let contents = try FileManager.default.contentsOfDirectory(atPath: dir.path)
         #expect(contents.isEmpty)
     }
@@ -293,7 +287,6 @@ struct ExternalArtworkCacheTests {
         try Data("img".utf8).write(to: valid2)
         try Data("img".utf8).write(to: expired)
 
-        // Backdate the expired file to 100 days ago
         let oldDate = Date(timeIntervalSinceNow: -100 * 24 * 3600)
         try fm.setAttributes([.modificationDate: oldDate], ofItemAtPath: expired.path)
 
@@ -312,13 +305,10 @@ struct ExternalArtworkCacheTests {
         let dir = try makeTempDir()
         let fm = FileManager.default
 
-        // 5 files × 30 bytes = 150 bytes total; size cap = 100 bytes
-        // After TTL phase (no files are expired), size cap must remove oldest 2:
-        //   150 → remove file1 (30B) → 120 → remove file2 (30B) → 90 ≤ 100 → stop
+        // With 150 bytes total and a 100-byte cap, evict the oldest two 30-byte files.
         for i in 1...5 {
             let fileURL = dir.appendingPathComponent("file\(i).jpg")
             try Data(repeating: UInt8(i), count: 30).write(to: fileURL)
-            // Space files 1 hour apart; file1 is oldest, file5 is newest
             let date = Date(timeIntervalSinceNow: TimeInterval(i - 6) * 3600)
             try fm.setAttributes([.modificationDate: date], ofItemAtPath: fileURL.path)
         }

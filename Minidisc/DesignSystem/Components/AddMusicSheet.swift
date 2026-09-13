@@ -5,9 +5,7 @@ import OSLog
 
 // MARK: - Selection model
 
-/// Running multi-select state for the add-music flow. Shared down the navigation stack via `.environment`
-/// so every drilled-in list toggles the same selection without prop-drilling. `existingIds` are the tracks
-/// already in the playlist — they show as disabled "already added" and are never offered/added again.
+/// Shared selection across the navigation stack. Existing playlist tracks are excluded.
 @MainActor
 @Observable
 final class AddMusicSelection {
@@ -29,14 +27,12 @@ final class AddMusicSelection {
         }
     }
 
-    /// Bulk-add a whole album / artist / playlist; skips already-in-playlist and already-selected songs.
     func add(_ songs: [DisplayableSong]) {
         for song in songs where !isExisting(song) && !isSelected(song) {
             selected.append(song)
         }
     }
 
-    /// Count of songs in `songs` that are still addable (not existing, not already selected).
     func addableCount(in songs: [DisplayableSong]) -> Int {
         songs.filter { !isExisting($0) && !isSelected($0) }.count
     }
@@ -44,7 +40,6 @@ final class AddMusicSelection {
 
 // MARK: - Navigation routes
 
-/// Value-based routes for the single navigationDestination at the sheet root — heterogeneous drill targets.
 enum AddMusicRoute: Hashable {
     case allAlbums
     case allArtists
@@ -56,7 +51,6 @@ enum AddMusicRoute: Hashable {
     case playlistSongs(id: String, name: String)
 }
 
-/// Where a song-list leaf loads its songs from. One picker view, one online call per case.
 enum AddMusicSongSource: Hashable {
     case album(id: String)
     case artist(id: String)
@@ -66,10 +60,7 @@ enum AddMusicSongSource: Hashable {
 
 // MARK: - Sheet root
 
-/// Apple-Music-style "Add to <playlist>" browse + multi-select sheet. Reuses
-/// the Home "Library" navigation layout (Playlists / Albums / Artists / Favorites / Downloads / Recently
-/// added) + Recently played, in a SELECTION mode: drill to songs, tap `+` to add, commit adds them all at
-/// once. The caller confirms a successful append before this view discards the selection.
+/// The caller must confirm the append succeeded before the selection is discarded.
 struct AddMusicSheet: View {
     let playlistName: String
     /// Returns true only after the selected songs have been saved.
@@ -657,7 +648,6 @@ private struct AddMusicSearchResults: View {
 
     private func search() async {
         guard let svc = container?.libraryService else { phase = .failed; return }
-        // Light debounce so each keystroke doesn't fire a search3 call.
         try? await Task.sleep(for: .milliseconds(300))
         guard !Task.isCancelled else { return }
         phase = .loading
@@ -720,10 +710,7 @@ private struct AddMusicPhaseView: View {
 
 // MARK: - Commit (reconciled append and first-track cover derivation)
 
-/// Reads the current playlist before appending missing occurrences. This preserves other edits and
-/// makes a retry safe after a lost append response. Appending preserves playlist metadata directly.
-/// The empty-to-first-track transition still derives the selected gradient cover's color through
-/// PlaylistGradientResolver; later additions keep that cover choice.
+/// Reads the playlist before appending so retries preserve duplicates and intervening edits.
 @MainActor
 enum AddMusicCommitter {
     @discardableResult
@@ -765,11 +752,8 @@ enum AddMusicCommitter {
         }
     }
 
-    /// Piège #1 — the empty→first-track color derivation, shared by `commit` (detail entry points) AND the
-    /// EditPlaylistSheet commit (its "+" appends locally, then its Done persists). Only on empty→first-track,
-    /// only when the cover is a gradient spec (an empty playlist's gradient color is necessarily the neutral
-    /// default — there was no track to derive from). Photo covers have no spec → skipped. Routes through the
-    /// SAME PlaylistGradientResolver hook the re-pick uses, so caching + the neutral fallback stay consistent.
+    /// Derives a gradient color only when an empty playlist gains its first tracks.
+    /// Shared by immediate appends and the edit sheet; photo covers are excluded.
     static func deriveFirstTrackCoverIfNeeded(
         wasEmpty: Bool,
         firstSong: DisplayableSong?,

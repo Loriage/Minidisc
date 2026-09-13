@@ -106,7 +106,6 @@ struct QueueFileTests {
         let fileURL = tempQueueURL()
         defer { try? FileManager.default.removeItem(at: fileURL) }
 
-        // instance 1: configure + trigger an enqueue
         let t1 = ProgrammableTransport([(200, validTokenBody)], fallback: 503)
         let s1 = try await configuredService(validateTransport: t1, queueFileURL: fileURL)
         await s1.notifyScrobbleThreshold(song: makeSong(), startDate: Date())
@@ -118,7 +117,6 @@ struct QueueFileTests {
         let t2 = ProgrammableTransport(fallback: 503)
         let keychain = SubmitMockKeychain()
         let defaults = UserDefaults(suiteName: "test.queue.\(UUID().uuidString)")!
-        // manually store the scrobbling config so loadPersistedState sets hasScrobblingToken
         try await keychain.store("tok", forKey: "app.minidisc.listenbrainz.token")
         try await keychain.store("alice", forKey: "app.minidisc.listenbrainz.username")
         defaults.set(true, forKey: "app.minidisc.listenbrainz.scrobbling.isEnabled")
@@ -305,7 +303,6 @@ struct QueueFlushTests {
         let service = try await configuredService(validateTransport: transport, queueFileURL: fileURL)
         await service.flushOfflineQueue()
         let reqs = transport.requests
-        // Only the validateToken call should exist; no submitImport request.
         #expect(reqs.count == 1)
     }
 
@@ -318,7 +315,6 @@ struct QueueFlushTests {
         await service.notifyScrobbleThreshold(song: makeSong(), startDate: Date())
         await service.disableScrobbling()
         await service.flushOfflineQueue()
-        // Queue unchanged — flush was gated; no submitImport request made.
         let count = await service.pendingListenCount
         #expect(count == 1)
         let reqCount = transport.requests.count

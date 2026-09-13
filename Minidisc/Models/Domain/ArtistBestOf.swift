@@ -1,14 +1,8 @@
 import Foundation
 import SwiftSonic
 
-/// A virtual "best of" playlist: every song the user has starred for one artist, gathered across albums.
-///
-/// Derived from `getStarred2` on demand instead of materialised as a server playlist. That keeps it in sync
-/// with the stars it's built from by construction, and spares the user's library one playlist per artist they
-/// ever liked a track from. The trade-off is that it exists only inside Minidisc — other clients don't see it.
+/// Virtual playlist derived from starred tracks; never creates a server playlist.
 nonisolated struct ArtistBestOf: Identifiable, Hashable, Sendable {
-    /// Minimum liked tracks before an artist earns a best-of. Under it the artist screen lists the tracks
-    /// inline instead — "The best of X" over two songs reads like a bug, not a playlist.
     static let minimumSongs = 5
 
     let artistId: String
@@ -20,12 +14,7 @@ nonisolated struct ArtistBestOf: Identifiable, Hashable, Sendable {
 }
 
 extension ArtistBestOf {
-    /// Every artist the user has starred enough songs from, richest best-of first.
-    ///
-    /// Songs the server returns without an `artistId` are skipped: grouping those by name alone would merge
-    /// distinct artists that happen to share one. A single artist's screen doesn't have that problem — it
-    /// already knows which artist it's asking about — so it uses `songs(of:named:in:)`, which can afford a
-    /// name fallback.
+    /// Groups by artist ID. Name-only grouping would merge distinct artists with the same name.
     static func all(in starred: [Song]) -> [ArtistBestOf] {
         Dictionary(grouping: starred.filter { $0.artistId != nil }, by: { $0.artistId! })
             .compactMap { artistId, songs -> ArtistBestOf? in
@@ -45,7 +34,6 @@ extension ArtistBestOf {
             }
     }
 
-    /// The starred songs of one known artist, most recently liked first.
     static func songs(of artistId: String, named artistName: String?, in starred: [Song]) -> [DisplayableSong] {
         starred
             .filter { matches($0, artistId: artistId, artistName: artistName) }
@@ -64,10 +52,7 @@ extension ArtistBestOf {
         return songArtist.localizedCaseInsensitiveCompare(artistName) == .orderedSame
     }
 
-    /// Filters a fetched list through the local star cache so unstarring a track drops it from the view
-    /// immediately, with no refetch. That cache mirrors the server (synced at launch, written optimistically
-    /// on star/unstar); before the first sync lands it is empty, so trust the fetched list rather than
-    /// hiding everything.
+    /// Trust fetched stars until the local cache has completed its first sync.
     static func filteredByLocalStars(_ songs: [DisplayableSong], starredSongIds: Set<String>) -> [DisplayableSong] {
         guard !starredSongIds.isEmpty else { return songs }
         return songs.filter { starredSongIds.contains($0.id) }
@@ -75,7 +60,6 @@ extension ArtistBestOf {
 }
 
 private extension Array where Element == Song {
-    /// Most recently starred first; tracks whose server omitted the date sink to the bottom.
     var mostRecentlyStarredFirst: [Song] {
         sorted { ($0.starred ?? .distantPast) > ($1.starred ?? .distantPast) }
     }

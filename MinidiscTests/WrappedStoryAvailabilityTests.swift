@@ -56,7 +56,6 @@ struct WrappedStoryAvailabilityTests {
     }
 
     @Test func currentYear_atMidnightDec28_available() {
-        // Boundary: exactly midnight Dec 28 → unlocked
         let date = makeDate(year: 2026, month: 12, day: 28, hour: 0, minute: 0, second: 0)
         #expect(WrappedStoryAvailability.isStoryAvailable(forYear: 2026, currentDate: date, calendar: utcCalendar()))
     }
@@ -74,7 +73,6 @@ struct WrappedStoryAvailabilityTests {
     // MARK: Future years — never available
 
     @Test func futureYear_neverAvailable() {
-        // Even on Dec 31 of the previous year, the next year is not available
         let date = makeDate(year: 2026, month: 12, day: 31)
         #expect(!WrappedStoryAvailability.isStoryAvailable(forYear: 2027, currentDate: date, calendar: utcCalendar()))
     }

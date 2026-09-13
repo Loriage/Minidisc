@@ -10,7 +10,6 @@ private func makeService() throws -> StatsService {
     return StatsService(modelContainer: container)
 }
 
-/// Builds a Date at the given components in the given timezone.
 private func dateIn(
     _ timezone: TimeZone,
     year: Int, month: Int, day: Int, hour: Int = 12, minute: Int = 0
@@ -68,11 +67,9 @@ private func makeDTO(
 @Suite("WrappedStreak")
 struct WrappedStreakTests {
 
-    // h) 5 consecutive days including the last day of the period → streak = 5
     @Test func streak_fiveConsecutiveDays_returnsfive() async throws {
         let service = try makeService()
         let cal = utcCalendar()
-        // Period: January 2025 (past). Last day = Jan 31.
         for day in 27...31 {
             await service.recordPlayback(makeDTO(
                 trackId: "t\(day)",
@@ -85,11 +82,9 @@ struct WrappedStreakTests {
         #expect(data.streakDays == 5)
     }
 
-    // i) Gap yesterday (from last day of period) → streak = 1
     @Test func streak_gapOneDayBeforeEnd_returnsOne() async throws {
         let service = try makeService()
         let cal = utcCalendar()
-        // Jan 31 has an event, Jan 30 doesn't, Jan 29 has one
         await service.recordPlayback(makeDTO(
             trackId: "t31",
             timestamp: dateIn(utcTZ, year: 2025, month: 1, day: 31)
@@ -102,15 +97,12 @@ struct WrappedStreakTests {
         let data = await service.wrappedData(
             for: .month(year: 2025, month: 1), serverId: "srv", calendar: cal
         )
-        // Streak from Jan 31 backwards: Jan 31 ✓, Jan 30 ✗ → streak = 1
         #expect(data.streakDays == 1)
     }
 
-    // j) No event on last day of period → streak = 0
     @Test func streak_noEventOnReferenceDay_returnsZero() async throws {
         let service = try makeService()
         let cal = utcCalendar()
-        // Events only on Jan 28 and 29, not on Jan 31 (last day)
         await service.recordPlayback(makeDTO(
             trackId: "t28",
             timestamp: dateIn(utcTZ, year: 2025, month: 1, day: 28)
@@ -126,31 +118,24 @@ struct WrappedStreakTests {
         #expect(data.streakDays == 0)
     }
 
-    // k) Timezone sensitivity: an event at 23:30 UTC on Jan 31 is
-    //    still Jan 31 in UTC but Feb 1 in UTC+2. Verify that using
-    //    Europe/Paris calendar changes which day the event belongs to.
     @Test func streak_timezoneAffectsDay() async throws {
         let service = try makeService()
         // Event at 2025-01-31 23:30 UTC = 2025-02-01 00:30 Europe/Paris
         let eventTime = dateIn(utcTZ, year: 2025, month: 1, day: 31, hour: 23, minute: 30)
 
-        // Record only this one event
         await service.recordPlayback(makeDTO(trackId: "late", timestamp: eventTime))
 
-        // With UTC calendar: event is on Jan 31 → last day of January → streak = 1
         let dataUTC = await service.wrappedData(
             for: .month(year: 2025, month: 1), serverId: "srv", calendar: utcCalendar()
         )
         #expect(dataUTC.streakDays == 1)
 
-        // With Europe/Paris calendar: same event is on Feb 1, outside Jan → streak = 0
         let dataParis = await service.wrappedData(
             for: .month(year: 2025, month: 1), serverId: "srv", calendar: parisCalendar()
         )
         #expect(dataParis.streakDays == 0)
     }
 
-    // Streak for a year period: 3 consecutive days at year-end → streak = 3
     @Test func streak_yearPeriod_threeConsecutiveDaysAtYearEnd() async throws {
         let service = try makeService()
         let cal = utcCalendar()
@@ -166,11 +151,9 @@ struct WrappedStreakTests {
         #expect(data.streakDays == 3)
     }
 
-    // Streak: multiple events same day count as one streak day
     @Test func streak_multipleEventsPerDay_countAsOneStreakDay() async throws {
         let service = try makeService()
         let cal = utcCalendar()
-        // Three events on Jan 31, two on Jan 30
         for hour in [9, 14, 20] {
             await service.recordPlayback(makeDTO(
                 trackId: "jan31h\(hour)",
@@ -189,7 +172,6 @@ struct WrappedStreakTests {
         #expect(data.streakDays == 2)
     }
 
-    // WrappedPeriod helpers
     @Test func wrappedPeriod_dateRange_month() {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = utcTZ

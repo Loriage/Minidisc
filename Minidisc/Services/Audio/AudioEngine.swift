@@ -1,8 +1,6 @@
 import AVFoundation
 import Foundation
 
-/// The low-level playback state an `AudioEngine` reports, independent of any concrete backend so
-/// another engine could drive the same `PlayerService` orchestration.
 nonisolated enum AudioEngineState: Equatable, Sendable {
     case buffering
     case playing
@@ -11,12 +9,7 @@ nonisolated enum AudioEngineState: Equatable, Sendable {
     case error
 }
 
-/// Stable identity of one physical item loaded by an `AudioEngine`.
-///
-/// A track id is not sufficient here: the same song can legitimately appear twice in a queue, and
-/// AVFoundation may deliver an already-queued callback after a newer item has replaced it. The token
-/// lets the orchestration layer reject those stale state/error/end events without guessing from song
-/// metadata.
+/// Per-load identity rejects late callbacks, including when the same song is loaded again.
 nonisolated struct AudioEnginePlaybackToken: Hashable, Sendable {
     let rawValue: UInt64
 
@@ -113,11 +106,8 @@ nonisolated protocol AudioEngineDelegate: AnyObject, Sendable {
     func audioEngineDidError(_ failure: AudioEngineFailure, playbackToken: AudioEnginePlaybackToken)
 }
 
-/// The low-level audio player `PlayerService` drives. All the queue, now-playing, crossfade, and
-/// session-restore orchestration stays in `PlayerService`; the engine only decodes and renders.
-///
-/// The engine has its own internal locking and is safe to call from any isolation, so requirements
-/// are synchronous. `volume` is the user-facing volume (ReplayGain runs on a separate path).
+/// Synchronous, internally locked audio engine. PlayerService owns queue and session orchestration.
+/// volume controls user gain; ReplayGain uses a separate path.
 nonisolated protocol AudioEngine: AnyObject, Sendable {
     var delegate: AudioEngineDelegate? { get set }
 

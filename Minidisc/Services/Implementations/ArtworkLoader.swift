@@ -19,8 +19,6 @@ actor ArtworkLoader {
         session = URLSession(configuration: config)
     }
 
-    /// Returns cached artwork bytes if available, otherwise fetches from `url` injecting
-    /// `headers` into the request (required for Cloudflare-protected hosts).
     func data(for url: URL, headers: [String: String]) async -> Data? {
         if let cached = cache[url] { return cached }
 

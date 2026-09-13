@@ -2,7 +2,6 @@ import SafariServices
 import UIKit
 
 enum ExternalLinkOpener {
-    /// Opens a URL in SFSafariViewController.
     @MainActor
     static func open(_ url: URL) {
         guard let presenter = topmostViewController() else { return }

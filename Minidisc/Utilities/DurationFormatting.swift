@@ -1,7 +1,6 @@
 import Foundation
 
 extension TimeInterval {
-    /// Returns (number, unit) for Wrapped stat hero display.
     func wrappedHeroFormat() -> (number: String, unit: String) {
         let totalMinutes = Int(self / 60)
         if totalMinutes < 60 {
@@ -28,7 +27,6 @@ extension TimeInterval {
         return (number, unit)
     }
 
-    /// Short compact label for secondary display ("42m", "2h 15m", "3h").
     func wrappedCompactLabel() -> String {
         let totalMinutes = Int(self / 60)
         if totalMinutes < 60 { return "\(totalMinutes)m" }

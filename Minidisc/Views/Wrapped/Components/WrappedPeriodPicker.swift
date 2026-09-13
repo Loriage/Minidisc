@@ -26,9 +26,7 @@ struct WrappedPeriodPicker: View {
             }
             .padding(.vertical, MinidiscSpacing.xs)
         }
-        // contentMargins sets scroll insets properly (safe-area aware, trailing pad included)
         .contentMargins(.horizontal, MinidiscSpacing.l, for: .scrollContent)
-        // Bleed horizontally past the parent's horizontal padding
         .padding(.horizontal, -MinidiscSpacing.l)
     }
 

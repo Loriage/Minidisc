@@ -16,17 +16,14 @@ struct ShouldSchedulePrefetchTests {
     }
 
     @Test func firesWhenRemainingWithinThreshold() {
-        // threshold = duration + 15; remaining=20 with duration=8 → 20 <= 23 → true
         #expect(PlayerService.shouldSchedulePrefetch(crossfadeDuration: 8, remaining: 20) == true)
     }
 
     @Test func exactlyAtThreshold() {
-        // remaining == crossfadeDuration + 15 → should fire (≤)
         #expect(PlayerService.shouldSchedulePrefetch(crossfadeDuration: 5, remaining: 20) == true)
     }
 
     @Test func doesNotFireBeyondThreshold() {
-        // remaining=21 with duration=5 → 21 > 20 → false
         #expect(PlayerService.shouldSchedulePrefetch(crossfadeDuration: 5, remaining: 21) == false)
     }
 

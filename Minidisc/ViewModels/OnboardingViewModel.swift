@@ -11,7 +11,6 @@ final class OnboardingViewModel {
     var isLoading: Bool = false
     var connectionError: ConnectionTestError?
 
-    /// Display name derived from the URL host, falling back to the raw URL string.
     var derivedDisplayName: String {
         URL(string: serverURL.trimmingCharacters(in: .whitespaces))?.host ?? serverURL
     }
@@ -53,8 +52,6 @@ final class OnboardingViewModel {
         }
     }
 
-    /// Validates, tests, and persists the server in a single flow.
-    /// On success state.activeServer becomes non-nil and RootView transitions automatically.
     func addServer() async {
         guard !isLoading else { return }
         connectionError = nil

@@ -11,7 +11,6 @@ final class DownloadedTrack {
     var fileSize: Int64
     var mimeType: String
     var downloadedAt: Date
-    // Denormalized metadata for offline display (no network required in offline mode)
     var title: String
     var artist: String?
     var artistId: String?

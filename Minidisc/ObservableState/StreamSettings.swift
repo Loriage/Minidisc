@@ -1,17 +1,13 @@
 import Foundation
 import Observation
 
-/// User-configurable live-stream quality, split by the current network so cellular data can stay
-/// light while Wi-Fi keeps the original file. The server does the transcode (Subsonic `maxBitRate` /
-/// `format`), so the app only picks a tier. Persisted in UserDefaults; `@Observable` so Settings
-/// updates live. MediaResolver reads `currentQuality` at stream time via `MainActor.run`.
+/// Selects server transcoding quality separately for Wi-Fi and cellular connections.
 @Observable
 @MainActor
 final class StreamSettings {
     @ObservationIgnored private var _wifiQuality: StreamQuality
     @ObservationIgnored private var _cellularQuality: StreamQuality
     @ObservationIgnored private let defaults: UserDefaults
-    /// Latest connection type from the path monitor. Read on demand, so it needn't be observable.
     @ObservationIgnored private var isCellular = false
 
     var wifiQuality: StreamQuality {
@@ -36,7 +32,6 @@ final class StreamSettings {
         }
     }
 
-    /// The tier to stream at right now, based on the active connection.
     var currentQuality: StreamQuality { isCellular ? cellularQuality : wifiQuality }
 
     static let defaultWifiQuality: StreamQuality = .original

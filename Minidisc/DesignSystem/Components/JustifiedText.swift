@@ -1,10 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// Multiline text with **justified** alignment (both edges flush) — which SwiftUI's `Text` cannot do
-/// natively (it only offers leading/center/trailing). Wraps a platform label and reports its height via
-/// `sizeThatFits`, so it lays out and clamps like a normal view inside SwiftUI stacks. Uses the dynamic
-/// `.body` text style to match `.minidiscBody`. `lineLimit` of 0 means unlimited.
+/// UIKit bridge for justified text. A lineLimit of 0 means unlimited.
 struct JustifiedText: View {
     let text: String
     var lineLimit: Int = 0

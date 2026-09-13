@@ -3,23 +3,15 @@ import OSLog
 
 // MARK: - Errors
 
-/// Failures worth telling the user apart. Everything else collapses into `.transport`.
 nonisolated enum AudioMuseError: Error, Equatable, Sendable {
     /// HTTP 400 — usually `CLAP_ENABLED=false` on the instance. Carries the server's own message,
     /// which distinguishes "search disabled" from the rarer bad-parameter cases.
     case searchDisabled(String?)
     /// The sonic analysis has never been run, so there is no index to query (HTTP 503).
     case notAnalysed
-    /// Token missing, wrong, or expired (HTTP 401/403).
     case unauthorized
     case badURL
-    /// The instance answered with its INTERNAL canonical ids (`fp_...`) instead of the media
-    /// server's own. They mean nothing to Subsonic, which silently drops them and stores an empty
-    /// playlist, so this is caught here rather than allowed downstream.
-    ///
-    /// Cause, from AudioMuse's own registry: the `track_server_map` table has no row linking those
-    /// canonical ids to the server's track ids, which it logs as "unswept default?". Only a sweep
-    /// on the AudioMuse side fixes it — nothing here can translate the ids.
+    /// AudioMuse fp_ IDs need metadata resolution before use with Subsonic.
     case internalIdsOnly
     case transport(String)
     case decoding(String)
@@ -27,17 +19,7 @@ nonisolated enum AudioMuseError: Error, Equatable, Sendable {
 
 // MARK: - Wire types
 
-/// One track from `POST /api/clap/search`.
-///
-/// `item_id` is MEANT to be the media server's track id — AudioMuse's own source says an internal
-/// canonical (`fp_`) id must never be exposed. In practice it can be, when its catalogue holds no
-/// mapping for the id: an instance answered a real query with `fp_2057…` for every result. Those go
-/// into a Subsonic playlist, get silently dropped, and leave it empty. `search` therefore refuses
-/// them rather than trusting the contract.
-///
-/// Only the four fields the app actually uses are decoded. AudioMuse also returns `similarity`,
-/// `mood_vector`, `other_features` and `top_genre`; ignoring them keeps this resilient to the
-/// response growing.
+/// CLAP search result. item_id may be an internal fp_ ID requiring metadata resolution.
 nonisolated struct AudioMuseTrack: Decodable, Sendable, Equatable {
     let itemId: String
     let title: String?
@@ -52,10 +34,8 @@ nonisolated struct AudioMuseTrack: Decodable, Sendable, Equatable {
         case title, author, album, similarity
     }
 
-    /// True when the id is AudioMuse's internal one, which the music server cannot match.
     var hasInternalId: Bool { itemId.hasPrefix(AudioMuseClient.internalIdPrefix) }
 
-    /// Metadata view used to find this track in the library when its id is unusable.
     var descriptor: TrackDescriptor? {
         guard let title, !title.isEmpty else { return nil }
         return TrackDescriptor(title: title, artist: author, album: album)
@@ -79,29 +59,17 @@ private nonisolated struct ServersResponse: Decodable {
 
 // MARK: - Client
 
-/// Talks to an AudioMuse-AI instance over its own HTTP API — a different service from the Subsonic
-/// server, on its own host and port (8000 by default), with no shared authentication.
-///
-/// Only the two calls the mood playlists need are implemented: warmup and text search. Deliberately
-/// not `/api/alchemy` (samples with a temperature, so results wander between runs) nor `/chat`
-/// (routes through an LLM, needs provider keys, and takes minutes).
+/// AudioMuse warmup and CLAP search client, with authentication separate from Subsonic.
 actor AudioMuseClient {
     private let baseURL: URL
     private let token: String?
     private let session: URLSession
-    /// Media server to scope results to, resolved once from `/api/servers`.
-    ///
-    /// Without it AudioMuse falls back to its default server, and on a catalogue where the id
-    /// mapping is incomplete that path hands back canonical `fp_` ids — useless to Subsonic.
-    /// Naming the server explicitly is what makes it translate to that server's own ids.
+    /// Scopes searches to the media server resolved from /api/servers to obtain usable track IDs.
     private var selectedServer: String??
 
-    /// Ids AudioMuse marks as internal. Documented in its own source: "An API response must NEVER
-    /// expose the internal canonical (fp_) id".
     static let internalIdPrefix = "fp_" 
 
-    /// Generous by iOS standards, because a cold CLAP model has to load before it can answer and
-    /// the weekly job has nobody waiting on it.
+    /// Allows time for a cold CLAP model to load.
     static let requestTimeout: TimeInterval = 120
 
     init?(urlString: String, token: String?, session: URLSession = .shared) {
@@ -112,14 +80,7 @@ actor AudioMuseClient {
         self.session = session
     }
 
-    /// Loads the CLAP model and resets its idle timer.
-    ///
-    /// Worth calling before a batch of searches: AudioMuse evicts the model after 10 minutes idle,
-    /// so a job that runs once a week ALWAYS finds it cold. Without this the first search pays the
-    /// model load on top of its own work.
-    ///
-    /// Failure is not fatal — search still works, just slower — so this returns a Bool instead of
-    /// throwing, and callers are expected to carry on either way.
+    /// Warms the CLAP model before searching. Failure is nonfatal; callers may still search.
     @discardableResult
     func warmup() async -> Bool {
         await resolveServerIfNeeded()
@@ -148,12 +109,7 @@ actor AudioMuseClient {
         }
     }
 
-    /// Free-text sonic search: returns tracks whose *sound* matches the prompt.
-    ///
-    /// - Parameters:
-    ///   - query: English free text ("energetic upbeat high energy"). CLAP embeds audio against
-    ///     English, so this is not a string to localise.
-    ///   - limit: clamped server-side to 1...500.
+    /// CLAP search accepts English queries and a server-clamped limit of 1...500.
     func search(query: String, limit: Int) async throws -> [AudioMuseTrack] {
         await resolveServerIfNeeded()
         var body: [String: Any] = ["query": query, "limit": limit]
@@ -168,9 +124,7 @@ actor AudioMuseClient {
             throw AudioMuseError.decoding(String(describing: error))
         }
 
-        // Internal ids are NOT filtered here. They come with title and artist, which is enough to
-        // find the track in the library — throwing them away would discard a recoverable result.
-        // The provider decides what to do with them.
+        // Keep internal IDs and metadata for the provider’s library-resolution fallback.
         return results
     }
 
@@ -199,9 +153,7 @@ actor AudioMuseClient {
         guard let http = response as? HTTPURLResponse else { throw AudioMuseError.transport("non-HTTP response") }
         switch http.statusCode {
         case 200...299:  return data
-        // 400 covers several server-side conditions — CLAP switched off, an invalid server
-        // selection, a malformed query. We always send a valid query, so it is nearly always the
-        // first; the server's own message is carried through rather than guessed at.
+        // HTTP 400 has multiple causes; preserve the server’s message rather than guessing.
         case 400:        throw AudioMuseError.searchDisabled(Self.errorMessage(in: data))
         case 401, 403:   throw AudioMuseError.unauthorized
         case 503:        throw AudioMuseError.notAnalysed

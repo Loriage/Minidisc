@@ -29,7 +29,6 @@ struct OnboardingView: View {
         .preferredColorScheme(.dark)
         .animation(.easeInOut(duration: 0.3), value: step)
         .task {
-            // Existing users upgrading: server already set, skip all onboarding steps.
             if container?.serverState.activeServer != nil {
                 onboardingComplete = true
             }

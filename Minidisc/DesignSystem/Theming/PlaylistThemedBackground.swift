@@ -1,20 +1,10 @@
 import SwiftUI
 
-/// Apple-Music-style immersive background for the playlist detail view: the cover fills the top
-/// **full-bleed** (edge-to-edge, under the nav bar via `.ignoresSafeArea`), a **blurred melt** fades it into
-/// the themed body color around the start of the track list, and below that it's solid body color. The
-/// detail content (title / by / transport) floats over the lower part of the cover.
-///
-/// Cover-agnostic — the same path renders a gradient JPEG, an uploaded photo, or a server album cover. The
-/// blurred melt is flattened into one Metal-backed bitmap via `.drawingGroup()` (the FullPlayer pattern), so
-/// the blur is rasterized once per cover change, never recomputed per frame. The only `#if os` is the
-/// system-background bridge. The blurred melt is rasterized once via `.drawingGroup()` (static); the
-/// over-scroll stretch is applied by the hero wrapper (`ImmersiveCoverHero`).
+/// Blends cover artwork into the body color. ImmersiveCoverHero handles overscroll stretching.
 struct PlaylistThemedBackground: View {
     let coverArtId: String?
     let coverImage: PlatformImage?
     let theme: PlaylistTheme
-    /// Height of the full-bleed cover region (from the screen top), beyond which it's solid body color.
     var heroHeight: CGFloat = 460
     /// Fade ONLY the bottom edge (square covers shown in full with content sitting below) instead of the lower
     /// ~half (full-bleed covers with content floating over them).
@@ -28,15 +18,11 @@ struct PlaylistThemedBackground: View {
 
             if theme.isThemed, let coverArtId {
                 ZStack(alignment: .top) {
-                    // Sharp full-bleed cover, edge-to-edge. Always the stored artwork: gradient covers are
-                    // rasterized once with their title, so this path is identical for every cover kind.
                     CoverArtView(id: coverArtId, size: 1000, initialImage: coverImage)
                     .frame(maxWidth: .infinity)
                     .frame(height: heroHeight)
                     .clipped()
 
-                    // Light blurred melt: the cover softly fades into the whole-image dominant body color toward
-                    // the bottom — a slight transition that reads as a gentle, themed junction.
                     blurredMelt(coverArtId: coverArtId)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -44,8 +30,6 @@ struct PlaylistThemedBackground: View {
         }
     }
 
-    /// The lower part of the hero: a blurred copy of the cover dissolving into the solid body color, masked
-    /// so the top of the hero keeps the sharp cover. Rasterized once via `.drawingGroup()`.
     @ViewBuilder
     private func blurredMelt(coverArtId: String) -> some View {
         ZStack {
@@ -55,8 +39,7 @@ struct PlaylistThemedBackground: View {
             .clipped()
             .blur(radius: 16)
 
-            // Resolve to the dominant body color EARLY so the transition reads as a colour continuity (the
-            // cover melting into the dominant tint) rather than a washed-out blurred-cover band.
+            // Reach the body color before the track list to avoid a pale band behind the controls.
             LinearGradient(
                 stops: [
                     .init(color: .clear, location: lightMelt ? 0.82 : 0.30),
@@ -68,7 +51,6 @@ struct PlaylistThemedBackground: View {
             .frame(height: heroHeight)
         }
         .frame(height: heroHeight)
-        // Only the lower portion melts; the top keeps the sharp cover visible.
         .mask(
             LinearGradient(
                 stops: [

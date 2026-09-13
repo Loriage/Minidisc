@@ -51,15 +51,12 @@ nonisolated struct NetworkPathEvent: Sendable, Equatable {
     var isOnline: Bool { descriptor.isOnline }
 }
 
-/// Sendable value-type snapshot of a ServerConfig for crossing actor boundaries safely.
 nonisolated struct ServerSnapshot: Sendable, Equatable {
     let id: UUID
     let displayName: String
     let baseURL: String
     let username: String
     let serverVersion: String?
-    /// Base URL of this server's AudioMuse-AI instance, or nil when none is configured.
-    /// Mirrored here so views can show or hide the mood features without a SwiftData fetch.
     let audioMuseURL: String?
 
     init(from config: ServerConfig) {
@@ -87,16 +84,13 @@ nonisolated struct LibraryIndexPreparationSnapshot: Sendable, Hashable {
     let automaticRefreshAllowed: Bool
 }
 
-/// Observable UI state for server connectivity. Updated by ServerService via MainActor.run.
 @Observable
 @MainActor
 final class ServerState {
     var servers: [ServerSnapshot] = []
     var activeServer: ServerSnapshot?
-    /// Mirrors ServerService's process-local cache key for diagnostics and UI consumers.
     var activeConnectionVersion: ServerConnection.Version?
     var isConnected: Bool = false
-    /// Updated by NetworkMonitor. False when NWPathMonitor reports no connectivity.
     var isOnline: Bool = true
     /// Updated by NetworkMonitor. True when the connection is metered (cellular, hotspot).
     /// Default false — optimistic until the first NWPath update corrects it on launch (~100ms).

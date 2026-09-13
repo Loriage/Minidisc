@@ -73,7 +73,6 @@ struct MinidiscApp: App {
                             automaticRefreshAllowed: snapshot.automaticRefreshAllowed
                         )
                     } catch is CancellationError {
-                        // The active server or connectivity changed.
                     } catch {
                         // The persistent cache remains usable; a later reconnect or manual
                         // refresh retries only the entity scans that never completed.

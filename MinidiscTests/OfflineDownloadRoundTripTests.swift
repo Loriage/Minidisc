@@ -4,9 +4,6 @@ import SwiftData
 import SwiftSonic
 @testable import Minidisc
 
-/// Exercises the REAL `DownloadService.localPlaylistData` reconstruction against a real
-/// in-memory SwiftData store — not a hand-built `LocalPlaylistData` stub. This is the layer
-/// the throw-only ViewModel tests never touched, where the offline-playlist bug actually lived.
 @Suite("Offline downloads — real localPlaylistData round-trip")
 @MainActor
 struct OfflineDownloadRoundTripTests {
@@ -101,7 +98,6 @@ struct OfflineDownloadRoundTripTests {
         )
         try container.mainContext.save()
 
-        // Empty songIds → nothing reconstructs yet.
         let before = await service.localPlaylistData(playlistId: "pl-1", serverId: sid)
         #expect(before?.songs.isEmpty == true)
 
@@ -132,7 +128,7 @@ struct OfflineDownloadRoundTripTests {
         )
 
         let data = await service.localPlaylistData(playlistId: "pl-1", serverId: sid)
-        #expect(data?.songs.map(\.id) == ["s1", "s2"]) // unchanged
+        #expect(data?.songs.map(\.id) == ["s1", "s2"])
     }
 
     @Test("downloadedSongIds excludes records whose file is missing")

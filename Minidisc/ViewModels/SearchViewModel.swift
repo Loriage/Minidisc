@@ -67,7 +67,6 @@ final class SearchViewModel {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         requestedQuery = trimmed
         guard !trimmed.isEmpty else {
-            // Cleared query: drop stale state immediately — no request, no debounce wait.
             searchResults = nil
             searchError = nil
             isSearching = false
@@ -89,7 +88,6 @@ final class SearchViewModel {
             searchResults = results
             resultsQuery = trimmed
         } catch where Self.isCancellation(error) {
-            // Superseded by a newer query — not a user-facing error.
         } catch {
             guard generation == requestGeneration else { return }
             if serverState.isOnline {

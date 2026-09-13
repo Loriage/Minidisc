@@ -21,8 +21,6 @@ struct TrackMatcherTests {
 
     @Test("a title matching under the wrong artist is refused")
     func wrongArtistIsRefused() {
-        // The failure that matters: every library has a dozen tracks sharing a title, and picking
-        // one at random fills the playlist with covers and namesakes.
         let wanted = TrackDescriptor(title: "Intro", artist: "Orelsan")
         let match = TrackMatcher.bestMatch(for: wanted, among: [
             candidate("a", "Intro", "Nekfeu"),

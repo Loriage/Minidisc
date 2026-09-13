@@ -9,14 +9,11 @@ import SwiftSonic
 enum WrappedTestError: Error { case generic }
 
 final actor MockPlaylistSyncClient: PlaylistSyncClient {
-    // Configurable responses
     var playlists: [Playlist] = []
 
-    // Per-method error injection
     var getPlaylistsError: Error?
     var createPlaylistError: Error?
 
-    // Call tracking
     private(set) var getPlaylistsCalls: Int = 0
     private(set) var createPlaylistCalls: [(name: String?, playlistId: String?, songIds: [String])] = []
 
@@ -99,7 +96,6 @@ private func makeEvent(
     )
 }
 
-// testNow: May 4, 2026 → year=2026, currentYearMonth=2026-05
 private let testNow = wDate(year: 2026, month: 5, day: 4)
 
 // MARK: - Suite
@@ -107,7 +103,6 @@ private let testNow = wDate(year: 2026, month: 5, day: 4)
 @Suite("WrappedPlaylistService Yearly Sync")
 struct WrappedPlaylistServiceTests {
 
-    // a: first sync with events — creates playlist then replaces with SET TOTAL
     @Test func firstSync_createsPlaylist_thenReplacesSetTotal() async throws {
         let mock = MockPlaylistSyncClient()
         let stats = try makeStats()
@@ -142,7 +137,6 @@ struct WrappedPlaylistServiceTests {
         #expect(prefs.lastWrappedYear(serverId: "srv") == 2026)
     }
 
-    // b: idempotence — second call in the same calendar month returns upToDate with no server calls
     @Test func idempotence_sameMonth_returnsUpToDate_noServerCalls() async throws {
         let mock = MockPlaylistSyncClient()
         let stats = try makeStats()
@@ -165,14 +159,12 @@ struct WrappedPlaylistServiceTests {
         #expect(callsAfterSecond == callsAfterFirst)
     }
 
-    // c: SET TOTAL — second sync in a new month replaces via createPlaylist with existing playlistId
     @Test func setTotal_secondSync_newMonth_replacesExistingPlaylist() async throws {
         let mock = MockPlaylistSyncClient()
         let stats = try makeStats()
         let prefs = makePrefs()
         let service = makeService(mock: mock, stats: stats, prefs: prefs)
 
-        // First sync in February: Jan event exists
         await stats.recordPlayback(makeEvent(trackId: "jan-t", timestamp: wDate(year: 2026, month: 1, day: 15)))
         _ = await service.runYearlyPlaylistSyncIfNeeded(
             serverId: "srv", calendar: wrappedCal, currentDate: wDate(year: 2026, month: 2, day: 1)
@@ -181,7 +173,6 @@ struct WrappedPlaylistServiceTests {
         let cachedId = prefs.playlistId(year: 2026, serverId: "srv")
         #expect(cachedId != nil)
 
-        // Second sync in May: Apr event added
         await stats.recordPlayback(makeEvent(trackId: "apr-t", timestamp: wDate(year: 2026, month: 4, day: 15)))
         _ = await service.runYearlyPlaylistSyncIfNeeded(
             serverId: "srv", calendar: wrappedCal, currentDate: testNow
@@ -189,18 +180,13 @@ struct WrappedPlaylistServiceTests {
 
         let creates = await mock.createPlaylistCalls
         let replaceCalls = creates.filter { $0.playlistId == cachedId }
-        // Both the Feb and May syncs issued a replace call with the same playlistId
         #expect(replaceCalls.count == 2)
-        // The May replace contains ALL year tracks (SET TOTAL — not just the new Apr track)
         #expect(replaceCalls.last!.songIds.count == 2)
-        // Each sync fetches the playlist list once to confirm the cached id still exists on the
-        // server before writing to it — so two syncs, two fetches. The cached id is reused because
-        // it is present, not because the fetch was skipped.
+        // Each sync validates the cached ID against the server’s playlist list.
         let getCount = await mock.getPlaylistsCalls
         #expect(getCount == 2)
     }
 
-    // d: skippedNoData — no events → flag set, no server calls
     @Test func noEvents_returnsSkippedNoData_flagSet_noServerCalls() async throws {
         let mock = MockPlaylistSyncClient()
         let stats = try makeStats()
@@ -218,7 +204,6 @@ struct WrappedPlaylistServiceTests {
         #expect(prefs.lastUpdatedMonth(serverId: "srv") == YearMonth(year: 2026, month: 5))
     }
 
-    // e1: createPlaylist throws → serverError, month NOT marked (sync is retentable)
     @Test func createPlaylistThrows_serverError_monthNotMarked() async throws {
         let mock = MockPlaylistSyncClient()
         let stats = try makeStats()
@@ -241,7 +226,6 @@ struct WrappedPlaylistServiceTests {
         #expect(prefs.lastUpdatedMonth(serverId: "srv") == nil)
     }
 
-    // e2: getPlaylists throws → serverError, month NOT marked
     @Test func getPlaylistsThrows_serverError_monthNotMarked() async throws {
         let mock = MockPlaylistSyncClient()
         let stats = try makeStats()
@@ -262,7 +246,6 @@ struct WrappedPlaylistServiceTests {
         #expect(prefs.lastUpdatedMonth(serverId: "srv") == nil)
     }
 
-    // f: multi-server isolation — srvA sync does not affect srvB state
     @Test func multiServerIsolation() async throws {
         let mock = MockPlaylistSyncClient()
         let stats = try makeStats()
@@ -288,7 +271,6 @@ struct WrappedPlaylistServiceTests {
         #expect(prefs.lastUpdatedMonth(serverId: "srvB") == YearMonth(year: 2026, month: 5))
     }
 
-    // h: top-100 limit — 110 tracks seeded, only 100 sent to the replace call
     @Test func top100Limit_moreThan100Tracks_only100InReplaceCall() async throws {
         let mock = MockPlaylistSyncClient()
         let stats = try makeStats()
@@ -316,16 +298,12 @@ struct WrappedPlaylistServiceTests {
 
     // MARK: - Recovery when the server playlist was deleted (e.g. server rebuild)
 
-    // The sync must not write into a cached id whose playlist no longer exists. Instead of trusting
-    // the cache, it re-creates. This is the core of the server-rebuild recovery.
     @Test func staleCachedId_playlistDeletedOnServer_recreatesInsteadOfWritingToDeadId() async throws {
         let mock = MockPlaylistSyncClient()
         let stats = try makeStats()
         let prefs = makePrefs()
         let service = makeService(mock: mock, stats: stats, prefs: prefs)
 
-        // A cached id from before the rebuild, pointing at a playlist the server no longer has
-        // (mock.playlists is empty).
         prefs.setPlaylistId("pl-from-old-server", year: 2026, serverId: "srv")
         await stats.recordPlayback(makeEvent(trackId: "t1", timestamp: wDate(year: 2026, month: 3, day: 1)))
 
@@ -335,15 +313,11 @@ struct WrappedPlaylistServiceTests {
 
         #expect(result == .updated(tracksCount: 1))
         let creates = await mock.createPlaylistCalls
-        // A fresh playlist is created (playlistId nil), NOT a replace into the dead id.
         #expect(creates.contains { $0.playlistId == nil })
         #expect(!creates.contains { $0.playlistId == "pl-from-old-server" })
-        // The cache now holds the new id, not the dead one.
         #expect(prefs.playlistId(year: 2026, serverId: "srv") != "pl-from-old-server")
     }
 
-    // A cached id that IS still on the server is trusted and reused — the verification does not
-    // needlessly recreate a healthy playlist.
     @Test func cachedId_stillOnServer_isReused() async throws {
         let mock = MockPlaylistSyncClient()
         await mock.seedPlaylists([Playlist(id: "pl-live", name: "Minidisc Wrapped 2026", songCount: 0, duration: 0)])
@@ -359,32 +333,24 @@ struct WrappedPlaylistServiceTests {
         )
 
         let creates = await mock.createPlaylistCalls
-        // Only a replace into the live id — no create.
         #expect(creates.allSatisfy { $0.playlistId == "pl-live" })
     }
 
-    // fetchYearlyPlaylists reconciles for free: when the cached current-year playlist is gone from
-    // the server, it clears the month marker so the next launch's sync recreates it. Without this
-    // the marker keeps the sync from ever running again.
     @Test func fetchYearlyPlaylists_currentYearPlaylistGone_clearsMarkersSoItRebuilds() async throws {
-        let mock = MockPlaylistSyncClient()   // empty — the current-year playlist is not there
+        let mock = MockPlaylistSyncClient()
         let stats = try makeStats()
         let prefs = makePrefs()
         let service = makeService(mock: mock, stats: stats, prefs: prefs)
 
-        // State left behind by a completed sync before the server was rebuilt.
         prefs.setLastUpdatedMonth(YearMonth(year: 2026, month: 5), serverId: "srv")
         prefs.setPlaylistId("pl-deleted", year: 2026, serverId: "srv")
 
         _ = await service.fetchYearlyPlaylists(serverId: "srv", calendar: wrappedCal, currentDate: testNow)
 
-        // Both markers cleared, so runYearlyPlaylistSyncIfNeeded will no longer bail as up-to-date.
         #expect(prefs.lastUpdatedMonth(serverId: "srv") == nil)
         #expect(prefs.playlistId(year: 2026, serverId: "srv") == nil)
     }
 
-    // The reconciliation must not fire when the playlist is healthy — a present cached id is left
-    // untouched, so a normal Discover load never disturbs the markers.
     @Test func fetchYearlyPlaylists_currentYearPlaylistPresent_leavesMarkersIntact() async throws {
         let mock = MockPlaylistSyncClient()
         await mock.seedPlaylists([Playlist(id: "pl-live", name: "Minidisc Wrapped 2026", songCount: 0, duration: 0)])

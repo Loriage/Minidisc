@@ -1,7 +1,6 @@
 import SwiftUI
 
 extension View {
-    /// Applies a zoom navigation transition.
     @ViewBuilder
     func minidiscZoomTransition(sourceID: String?, in namespace: Namespace.ID?) -> some View {
         if let sourceID, let namespace {

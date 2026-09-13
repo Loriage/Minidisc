@@ -6,8 +6,6 @@ import SwiftSonic
 
 // MARK: - Stub transport
 
-/// Returns a fixed response or throws a URLError. Used to drive SwiftSonicClient
-/// through specific code paths without touching the network.
 struct StubHTTPTransport: HTTPTransport, Sendable {
     enum Outcome: Sendable {
         case response(data: Data, statusCode: Int)

@@ -1,7 +1,6 @@
 import SwiftUI
 import SwiftSonic
 
-/// Full-player lyrics panel. Displays all five ViewModel states with tiered blur on lines.
 struct LyricsView: View {
     @Bindable var viewModel: LyricsViewModel
 

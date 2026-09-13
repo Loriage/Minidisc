@@ -2,8 +2,6 @@ import Foundation
 
 // MARK: - YearMonth
 
-/// A year-month pair used to track Wrapped update state.
-/// Comparable so ranges of months can be derived easily.
 nonisolated struct YearMonth: Comparable, Hashable, Sendable, CustomStringConvertible {
     let year: Int
     let month: Int
@@ -25,7 +23,6 @@ nonisolated struct YearMonth: Comparable, Hashable, Sendable, CustomStringConver
         month = m
     }
 
-    /// Returns the YearMonth offset by `months` (negative values go backward).
     func advanced(by months: Int) -> YearMonth {
         let total = (year - 1) * 12 + (month - 1) + months
         return YearMonth(year: total / 12 + 1, month: total % 12 + 1)
@@ -38,9 +35,7 @@ nonisolated struct YearMonth: Comparable, Hashable, Sendable, CustomStringConver
 
 // MARK: - WrappedPreferences
 
-/// Thin UserDefaults wrapper for Wrapped playlist service state.
-/// All keys are namespaced under "minidisc.wrapped." and scoped per-server.
-/// Thread-safe: UserDefaults is documented thread-safe for get/set operations.
+/// Server-scoped Wrapped preferences under minidisc.wrapped.
 nonisolated final class WrappedPreferences: Sendable {
     private let userDefaults: LockedUserDefaults
 
@@ -85,9 +80,7 @@ nonisolated final class WrappedPreferences: Sendable {
         userDefaults.set(id, forKey: Self.playlistIdKey(year, serverId))
     }
 
-    /// Drops the cached id for a year — used when the playlist it named turned out to be gone from
-    /// the server (a rebuild, or a manual deletion). Without this the sync keeps writing into a
-    /// dead id forever.
+    /// Clears stale playlist identity so subsequent syncs can recreate a deleted playlist.
     func clearPlaylistId(year: Int, serverId: String) {
         userDefaults.removeObject(forKey: Self.playlistIdKey(year, serverId))
     }

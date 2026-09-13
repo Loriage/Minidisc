@@ -22,7 +22,6 @@ private final class PDLibraryStub: PlaylistBrowsing {
     func playlists() async throws -> [Playlist] { throw URLError(.unknown) }
 }
 
-/// Serves a configurable LocalPlaylistData; everything else is inert.
 @MainActor
 private final class PDDownloadStub: DownloadServiceProtocol {
     var playlistData: LocalPlaylistData?
@@ -54,7 +53,6 @@ private final class PDDownloadStub: DownloadServiceProtocol {
     func removeAll() async throws { throw URLError(.unknown) }
 }
 
-/// All playlist mutations throw — unused by the offline-load paths under test.
 @MainActor
 private final class PDPlaylistStub: PlaylistServiceProtocol {
     var calls: [String] = []
@@ -113,8 +111,6 @@ struct PlaylistDetailOfflineTests {
         )
     }
 
-    /// An empty-but-successful playlist payload (200 OK, zero entries) — the WARP/Cloudflare
-    /// edge response that returns without throwing.
     private var emptySuccessPlaylist: PlaylistWithSongs {
         PlaylistWithSongs(id: "playlist-1", name: "Road Trip", songCount: 0, duration: 0)
     }

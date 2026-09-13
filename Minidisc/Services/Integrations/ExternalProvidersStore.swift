@@ -1,9 +1,7 @@
 import Foundation
 import OSLog
 
-/// Lightweight synchronous store for user-configured external release providers.
-/// Persists to UserDefaults as JSON. Not an actor — all callers are on MainActor
-/// (SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor applies module-wide).
+/// Synchronous MainActor store for external providers, encoded as JSON in UserDefaults.
 final class ExternalProvidersStore {
     private static let defaultsKey = "app.minidisc.integrations.external-providers"
     private let defaults: UserDefaults

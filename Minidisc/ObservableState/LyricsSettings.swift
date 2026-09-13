@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 
-/// Persisted lyrics source preference used by the player and Settings.
 @Observable
 @MainActor
 final class LyricsSettings {

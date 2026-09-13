@@ -1,9 +1,6 @@
 import Foundation
 import SwiftSonic
 
-/// User-selectable ordering for the "All Songs" library list. String-backed so it persists via
-/// `@AppStorage("minidisc.songSort")`. Sorts the raw `Song` DTOs (which carry `created`/`year`) before they
-/// are mapped to `DisplayableSong` for display.
 nonisolated enum SongSort: String, CaseIterable, Sendable {
     case title
     case artist
@@ -46,6 +43,5 @@ nonisolated enum SongSort: String, CaseIterable, Sendable {
         }
     }
 
-    /// Prefer the server's canonical `sortName` (drops articles like "The") when present, else the title.
     private func key(_ song: Song) -> String { song.sortName ?? song.title }
 }

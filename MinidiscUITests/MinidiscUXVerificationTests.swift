@@ -35,8 +35,7 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try require(toggle)
         XCTAssertEqual(toggle.value as? String, "0", "Preference survives an app restart")
         try tap(regenerate, named: "regenerate-mood-playlists-manually")
-        // The fixture tracks have no mood, genre or BPM tags: report the lack of matches,
-        // rather than claiming that empty playlists were successfully generated.
+        // Untagged fixture tracks must report no matches rather than successful empty generation.
         let result = app.staticTexts["Impossible de régénérer les playlists d’ambiance. Vérifiez votre connexion et vos sources musicales, puis réessayez."]
         try require(result, timeout: 30)
         XCTAssertEqual(toggle.value as? String, "0", "Manual regeneration must not re-enable automatic generation")
@@ -216,7 +215,6 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try tap(app.buttons["Pause"].firstMatch, named: "pause")
         XCTAssertFalse(app.buttons["Pause"].exists)
         try tap(app.buttons["Passer au suivant"], named: "next-paused")
-        // Next is a new explicit playback command and starts the next track.
         try require(app.buttons["Pause"].firstMatch, timeout: 5)
         XCTAssertEqual(try miniPlayerTitle().label, secondTitle)
         XCTAssertFalse(app.staticTexts["Reconnexion…"].exists)
@@ -625,7 +623,6 @@ final class MinidiscUXVerificationTests: XCTestCase {
         captureHierarchy("search-top-exact-playlist")
         try await Task.sleep(for: .seconds(2))
         try tap(searchElement("search.topResult.\(playlistID)"), named: "search-open-playlist")
-        // The destination must contain this playlist's two songs and its own actions.
         try require(app.buttons["Télécharger la playlist"])
         try require(app.staticTexts["Aurore du dimanche"].firstMatch)
         try require(app.staticTexts["Aurore au piano"].firstMatch)
@@ -1069,7 +1066,6 @@ final class MinidiscUXVerificationTests: XCTestCase {
         let station = searchElement("discover.station.ux-search-artist")
         try require(station, timeout: 10)
         try assertStationCardLabels(station)
-        // No ListenBrainz account is configured in this disposable fixture.
         XCTAssertFalse(searchElement("discover.freshReleases").exists)
         captureHierarchy("discover-stations-without-empty-fresh-releases")
         try await Task.sleep(for: .seconds(2))

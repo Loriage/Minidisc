@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Licenses and credits, linked from Settings → About.
 struct AcknowledgementsView: View {
     var body: some View {
         Form {

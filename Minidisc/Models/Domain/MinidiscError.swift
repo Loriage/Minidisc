@@ -16,7 +16,6 @@ nonisolated enum MinidiscError: Error, Sendable {
     case invalidHeaderValue(key: String)
     case serverNotFound(id: UUID)
     case notImplemented
-    /// Requested media is not downloaded and device is offline.
     case offlineUnavailable(songId: String)
     /// Smart Shuffle returned no eligible tracks (library too small or no downloads offline).
     case smartShuffleEmpty
@@ -24,11 +23,9 @@ nonisolated enum MinidiscError: Error, Sendable {
     case instantMixEmpty
     /// All album fetches failed while building the artist's full track list.
     case artistTracksUnavailable
-    /// An operation exceeded its allowed time budget and was cancelled.
     case timeout
     /// iOS audio resources could not recover within the automatic recovery budget.
     case audioSystemUnavailable
-    /// The replacement item could not seek to the saved listening position.
     case playbackPositionUnavailable
 }
 

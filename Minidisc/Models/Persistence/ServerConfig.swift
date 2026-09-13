@@ -10,12 +10,7 @@ final class ServerConfig {
     var isActive: Bool
     var serverVersion: String?
     var createdAt: Date
-    /// Base URL of the AudioMuse-AI instance that analysed THIS server's library, e.g.
-    /// `http://nas.local:8000`. Per-server rather than global because the ids AudioMuse returns
-    /// are this media server's track ids — pointing it at another server would yield ids that
-    /// resolve to nothing. `nil` when the user has not set one up.
-    ///
-    /// The API token lives in Keychain beside the password, in `ServerCredentials`.
+    /// AudioMuse endpoint for this server. Its token is stored separately in Keychain.
     var audioMuseURL: String?
 
     // password + customHeaders are stored in Keychain only.

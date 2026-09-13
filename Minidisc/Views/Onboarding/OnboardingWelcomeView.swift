@@ -118,8 +118,6 @@ private struct AnimatedMinidiscHero: View {
     private var rect: CGRect { CGRect(x: 0, y: 0, width: w, height: h) }
     private var discR: CGFloat { MinidiscCartridgeIcon.windowRadius(in: rect) }
 
-    /// Shutter: the metal band at mid-height, overlapping the disc as it does on the real cartridge —
-    /// it slides over the window rather than sitting beside it. Flush with the shell's trailing edge.
     private var shutterSize: CGSize { CGSize(width: w * 0.42, height: h * 0.27) }
     private var shutterOffset: CGSize {
         CGSize(width: w - shutterSize.width / 2 - w / 2, height: 0)
@@ -161,7 +159,6 @@ private struct AnimatedMinidiscHero: View {
         }
     }
 
-    /// The disc itself: hub plus three arcs of data surface, so the rotation reads.
     private var disc: some View {
         ZStack {
             Circle()

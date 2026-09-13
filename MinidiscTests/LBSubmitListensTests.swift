@@ -241,7 +241,6 @@ struct LBSubmissionGatingTests {
         let countBeforeNotify = transport.requests.count
         await service.notifyTrackStarted(song: makeSong())
         let countAfterNotify = transport.requests.count
-        // Only the validateToken call was made; notifyTrackStarted added nothing.
         #expect(countAfterNotify == countBeforeNotify)
     }
 
@@ -252,7 +251,6 @@ struct LBSubmissionGatingTests {
         try await service.validateAndSaveScrobblingToken("tok", rootURL: defaultRoot)
         await service.notifyTrackStarted(song: makeSong())
         let requests = transport.requests
-        // requests[0] = validateToken, requests[1] = submitPlayingNow
         #expect(requests.count == 2)
         #expect(requests.last?.url?.path.hasSuffix("/1/submit-listens") == true)
     }

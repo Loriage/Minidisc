@@ -1,13 +1,9 @@
 import Foundation
 import OSLog
 
-/// The SF Symbol used everywhere an Instant Mix can be started, so the action reads the same across menus.
 let instantMixSymbol = "sparkles"
 
-/// Builds and starts an Instant Mix from a seed, surfacing the outcome, so every entry point (song / album /
-/// artist menus, detail headers, the player) behaves identically. `instantMixEmpty` is shown as a gentle info
-/// toast (the server simply has no similarity data yet), other failures as an error toast. Returns only once
-/// playback has started (or failed) — callers with a persistent button await it to drive a loading spinner.
+/// Awaits playback startup. Empty mixes produce an informational toast; other failures show an error.
 @MainActor
 func runInstantMix(from seed: InstantMixSeed, using container: AppContainer?, startingWith seedTrack: DisplayableSong? = nil) async {
     guard let container else { return }

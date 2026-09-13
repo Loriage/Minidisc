@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Segmented progress bar shown at the top of the story player.
-/// Segments before `currentIndex` are fully filled; the current segment
-/// fills proportionally to `progress` (0…1); subsequent segments are empty.
 struct WrappedStoryProgressBar: View {
     let totalSlides: Int
     let currentIndex: Int

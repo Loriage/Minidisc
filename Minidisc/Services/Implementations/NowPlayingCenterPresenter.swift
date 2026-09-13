@@ -4,11 +4,7 @@ import OSLog
 
 import UIKit
 
-/// Main-actor boundary for the Objective-C MediaPlayer surface.
-///
-/// Neither `[String: Any]` nor `MPMediaItemArtwork` leaves this type. The
-/// coordinating `NowPlayingService` only exchanges `Sendable` snapshots and
-/// artwork bytes across isolation domains.
+/// Keeps MediaPlayer objects on MainActor; only snapshots and artwork bytes cross actors.
 @MainActor
 final class NowPlayingCenterPresenter {
     private struct RegisteredTarget {

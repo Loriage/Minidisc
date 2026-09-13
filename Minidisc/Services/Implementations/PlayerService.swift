@@ -5,11 +5,7 @@ import Synchronization
 
 import AVFAudio
 
-/// A value-only snapshot of an AVAudioSession interruption.
-///
-/// `Notification` and its `[AnyHashable: Any]` payload are not `Sendable`. Decode the two values
-/// PlayerService needs on NotificationCenter's delivery queue, then cross the actor boundary with
-/// this enum instead of the Foundation notification.
+/// Extract interruption values on the notification queue; Notification itself is not Sendable.
 nonisolated enum AudioSessionInterruptionEvent: Sendable {
     case began(routeDisconnected: Bool)
     case ended(shouldResume: Bool)
@@ -36,7 +32,6 @@ nonisolated enum AudioSessionInterruptionEvent: Sendable {
 }
 
 nonisolated enum NetworkPlaybackRecoveryAction: Equatable, Sendable {
-    /// No current finite network stream is affected.
     case none
     /// Keep playing buffered audio, but rebuild the item on the next explicit resume.
     case reloadOnResume
@@ -152,7 +147,6 @@ actor PlayerService: PlayerServiceProtocol {
     private nonisolated static let personalRouteReconnectGrace: TimeInterval = 10
 
     private var endOfTrackEventsInProgress: Set<AudioEnginePlaybackToken> = []
-    /// Makes resume restart at track zero after the queue completed.
     private var stoppedAtEndOfQueue = false
     private var isRestoringSession = false
     private var restorePauseTask: Task<Void, Never>?
@@ -179,7 +173,6 @@ actor PlayerService: PlayerServiceProtocol {
         let expectedCurrentIndex: Int
     }
     private var preparedNextPlayback: PreparedNextPlayback?
-    /// Latest coherent path observed from NetworkMonitor. Generation zero is the launch baseline.
     private var latestNetworkPathEvent: NetworkPathEvent = .initial
     /// Track-specific marker: a Bool could accidentally survive a skip and rebuild the wrong item.
     private var networkReloadRequiredTrackID: String?
@@ -1111,7 +1104,6 @@ actor PlayerService: PlayerServiceProtocol {
 
     // MARK: - Instant Mix
 
-    /// Starts the seed immediately when available and builds the rest in the background.
     func playInstantMix(from seed: InstantMixSeed, startingWith seedTrack: DisplayableSong?) async throws {
         // Like Smart Shuffle, claim before resolving the seed: the result of an
         // older, slower request must never replace a newer playback intent.
@@ -1266,7 +1258,6 @@ actor PlayerService: PlayerServiceProtocol {
         instantMixTask = nil
     }
 
-    /// Blocking fallback for seeds that do not provide a starter track.
     private func buildThenPlayInstantMix(
         from seed: InstantMixSeed,
         requestGeneration: UInt64
@@ -1491,20 +1482,13 @@ actor PlayerService: PlayerServiceProtocol {
         return appendedCount
     }
 
-    /// New queue count after dropping the auto-extended tail, or `nil` when there is nothing to drop.
-    ///
-    /// Turning endless play off means "stop growing my queue", and the tracks it already grew are just
-    /// as unwanted as the ones it would have added next — so they go too. The one thing never removed is
-    /// the track currently playing: yanking it out mid-listen would stop the music on a toggle that says
-    /// nothing about stopping. So inside the original zone the whole tail goes; inside the extended zone
-    /// the current track survives as the new last entry and playback ends naturally after it.
+    /// Truncates generated tracks after endless play is disabled, retaining the current track.
     nonisolated static func truncationTarget(boundary: Int?, currentIndex: Int, queueCount: Int) -> Int? {
         guard let boundary, boundary < queueCount else { return nil }
         let target = currentIndex < boundary ? boundary : currentIndex + 1
         return target < queueCount ? target : nil
     }
 
-    /// Drops the tracks auto-extend appended, keeping whatever is playing right now.
     private func truncateExtensions() async {
         let previousNextTrackID = await queuedNextTrackID()
         let (boundary, currentIndex, queueCount) = await MainActor.run {
@@ -1548,8 +1532,7 @@ actor PlayerService: PlayerServiceProtocol {
 
         playbackProgressTracker.breakContinuity()
         engine.pause()
-        // Flip the UI state BEFORE deactivating the audio session — setActive(false) routinely takes
-        // hundreds of ms and used to hold the play/pause icon hostage behind it.
+        // Update the button before deactivating the audio session, which can block briefly.
         await MainActor.run { state.playbackState = .paused }
         playbackDiagnostics.record(.playbackStateChanged(.paused))
         guard transportGeneration == transportIntentGeneration, !Task.isCancelled else { return }
@@ -1579,8 +1562,6 @@ actor PlayerService: PlayerServiceProtocol {
         unavailableTrackIDs.removeAll()
         isRestoringSession = false
 
-        // Resuming after the queue ended restarts at track 0. A normal mid-track pause keeps the
-        // current source. The planner owns that distinction so every resume entry point shares it.
         let wasStoppedAtEndOfQueue = stoppedAtEndOfQueue
         let transition = await queueTransitionSnapshot()
         guard transportGeneration == transportIntentGeneration, !Task.isCancelled else { return }
@@ -1639,7 +1620,6 @@ actor PlayerService: PlayerServiceProtocol {
         beginTransitionCommit()
         defer { endTransitionCommit() }
 
-        // User explicitly pressed play — cancel any pending restore auto-pause and lift eof guard.
         restorePauseTask?.cancel()
         restorePauseTask = nil
         if isMutedForRestore {
@@ -1814,9 +1794,7 @@ actor PlayerService: PlayerServiceProtocol {
     }
 
     func seek(to position: TimeInterval) async {
-        // Reject malformed targets (NaN/inf). A scrubber drag against a zero-width track produces NaN, which
-        // would corrupt the engine's seek math. The single chokepoint for every
-        // seek caller (UI, lyrics, lock screen). A malformed seek is a silent no-op — NOT a jump to zero.
+        // Invalid seek values are ignored, never converted into a jump to zero.
         let stateDuration = await MainActor.run { state.duration }
         let engineDuration = engine.duration
         guard let target = Self.clampedSeekTarget(
@@ -1954,8 +1932,6 @@ actor PlayerService: PlayerServiceProtocol {
         }
     }
 
-    /// Executes a pure transition plan. All I/O and actor hops stay here; the planner contains only
-    /// the queue policy and completion attribution.
     private func executeTransitionPlan(
         _ plan: PlaybackTransitionPlanner.Plan,
         queue: [DisplayableSong],
@@ -2034,7 +2010,6 @@ actor PlayerService: PlayerServiceProtocol {
         if previousMode == .one || mode == .one {
             invalidateStandbyPreload(reason: "repeat mode changed")
         }
-        // Activating any loop mode while in the original zone truncates the auto-extended tail.
         if previousMode == .off && mode != .off {
             await truncateExtensions()
         }
@@ -2145,8 +2120,6 @@ actor PlayerService: PlayerServiceProtocol {
                 )
             }
         }
-        // Empty-queue Play Next falls back to play() above and starts playback immediately,
-        // which is its own visible feedback — no confirmation toast there, matching Play.
     }
 
     func playNext(_ song: DisplayableSong) async {
@@ -2169,8 +2142,6 @@ actor PlayerService: PlayerServiceProtocol {
         await addToQueue([song])
     }
 
-    /// Presents an enqueue confirmation toast on the main actor. Callers guard against empty
-    /// batches (failed lazy loads) and live-stream mode so those no-op paths stay silent.
     private func presentQueueConfirmation(_ message: String, coverArtId: String? = nil) async {
         await MainActor.run { toastService.showConfirmation(message, coverArtId: coverArtId) }
     }
@@ -2339,10 +2310,7 @@ actor PlayerService: PlayerServiceProtocol {
             transportIntentGeneration: transportGeneration
         ) else { return }
 
-        // If the saved session was parked at the END of the last track (the queue had finished, repeat off),
-        // mark it so resume() restarts from track 0 instead of replaying the last track's tail and immediately
-        // hitting EOF — a phantom transition at cold start. pauseAtEndOfQueue parks position exactly at duration,
-        // and a mid-track pause leaves position < duration, so the tight epsilon distinguishes the two.
+        // A session parked at the final duration resumes from queue index zero.
         if data.repeatMode == .off,
            data.currentIndex == data.queue.count - 1,
            data.currentTrackDuration > 0,
@@ -2421,9 +2389,7 @@ actor PlayerService: PlayerServiceProtocol {
         // explicitly starts playback, or kept if user hasn't tapped play yet.
         pendingRestoreInfo = (seekTime: position, pause: true)
 
-        // Apply ReplayGain after restore state is fully committed (no suspension between
-        // currentSource and pendingRestoreInfo above). globalGain is set on the EQ node
-        // and takes effect when audio flows, so applying while paused is correct.
+        // Apply gain after committing the restored source and pending seek without suspension.
         let config = await MainActor.run { replayGainSettings.config }
         guard isCurrentPlaybackIntent(
             playbackGeneration: generation,
@@ -2443,9 +2409,7 @@ actor PlayerService: PlayerServiceProtocol {
         ) else { return }
         Logger.player.info("Session restore: '\(track.title)' queued at \(position, format: .fixed(precision: 1))s (playback deferred)")
 
-        // Populate MPNowPlayingInfoCenter in paused state so lock screen controls appear
-        // immediately when the user resumes — resume() only sends a position-only update
-        // which would start from an empty dict otherwise.
+        // Install base metadata before resume sends its first position-only update.
         let duration = await MainActor.run { state.duration }
         guard isCurrentPlaybackIntent(
             playbackGeneration: generation,
@@ -3111,9 +3075,7 @@ actor PlayerService: PlayerServiceProtocol {
 
     private func performPositionSaveTick() async {
         guard !isRestoringSession else { return }
-        // Position-only update — queue/track/mode already saved at each state change. Check the
-        // actor-local seekability first (no MainActor hop): a non-seekable stream can't restore a
-        // position, so skip the hop entirely rather than reading state only to discard it.
+        // Non-seekable streams cannot restore position; skip persistence and the MainActor hop.
         guard engine.isSeekable else { return }
         let (isPlaying, pos) = await MainActor.run {
             (state.playbackState == .playing, state.position)
@@ -3207,8 +3169,6 @@ actor PlayerService: PlayerServiceProtocol {
 
     // MARK: - Scrobble
 
-    /// Cancels any pending playing-now task. Called when switching tracks,
-    /// switching to radio, or stopping. Safe to call when no task is scheduled.
     private func cancelPendingScrobble() {
         subsonicPlayingNowTask?.cancel()
         subsonicPlayingNowTask = nil
@@ -3307,9 +3267,7 @@ actor PlayerService: PlayerServiceProtocol {
 
     private func checkPrefetchThreshold() async {
         guard !prefetchScheduled else { return }
-        // Snapshot only the scalars each tick — never copy the whole `state.queue` array (it can be large
-        // and this runs every 500ms). The next-song element is read on MainActor only when we actually
-        // proceed, in a single hop alongside the server id (also trimming one MainActor round-trip).
+        // Read only tick scalars here; copying a large queue every 500 ms is unnecessary.
         let (currentIndex, duration, position, hasNextTrack, repeatMode) = await MainActor.run {
             let nextIndex = state.currentIndex + 1
             return (
@@ -3354,10 +3312,7 @@ actor PlayerService: PlayerServiceProtocol {
         )
     }
 
-    /// Pre-buffers the next track in the engine for a seamless hand-off. The crossfade itself is
-    /// delegated here (duration > 0 = engine-blended overlap; gapless pairs stay at 0 when the user
-    /// asked crossfade to stand aside for them). Repeat-one always skips: the queue's next is not
-    /// what actually plays next.
+    /// Preloads the next item except under Repeat One; album pairs can suppress crossfade.
     private func preloadNextForGapless(
         nextSong: DisplayableSong,
         serverId: UUID,
@@ -3453,12 +3408,7 @@ actor PlayerService: PlayerServiceProtocol {
         }
     }
 
-    /// Silence to cut at the seam between two consecutive album tracks.
-    ///
-    /// Only for a real butt-splice: a crossfade needs the outgoing tail to fade into, and two tracks
-    /// that are not album neighbours were never meant to run together. Downloaded files only —
-    /// measuring means decoding, and doing that over the network for a few milliseconds of silence
-    /// is not a trade worth making.
+    /// Trim only downloaded adjacent album tracks for gapless playback; crossfades need the full tail.
     private func gaplessTrim(
         nextSongId: String,
         serverId: UUID,
@@ -3477,7 +3427,6 @@ actor PlayerService: PlayerServiceProtocol {
         return GaplessTrim(leadIn: headTrim.leadIn, leadOut: tailTrim.leadOut)
     }
 
-    /// True when the current track and queued item are neighbours in the album sequence.
     private func isNextAlbumSequencePair(songId: String) async -> Bool {
         await MainActor.run {
             let nextIndex = state.currentIndex + 1
@@ -3632,18 +3581,14 @@ actor PlayerService: PlayerServiceProtocol {
         }
     }
 
-    /// The queue reached its end with repeat off. Stop cleanly with no muted "parking" play of track 1.
-    /// The queue + current index/track are kept and the position is parked at the end; the transition planner
-    /// makes `resume()` restart the queue from track 0.
+    /// Retains the queue at its final position. Resume restarts from index zero.
     private func pauseAtEndOfQueue() async {
-        // The transition plan set the completion attribution before entering this method.
         await recordCurrentTrackPlayback(trigger: "end_of_queue")
         wasTrackCompletedNaturally = false
         playbackProgressTracker.reset()
 
         stopProgressTimer()
         stopPositionSaveTimer()
-        // The engine is at EOF — stop it (NO parking play) and release the session.
         engine.stop()
         activeEnginePlayback = nil
         sessionActivationRetryTask?.cancel()
@@ -3657,7 +3602,7 @@ actor PlayerService: PlayerServiceProtocol {
         let duration = await MainActor.run { state.duration }
         await MainActor.run {
             state.playbackState = .paused
-            state.position = duration   // park at the very end of the still-selected last track
+            state.position = duration
         }
         await pushPositionSnapshot(rate: 0)
         await saveSession()
@@ -3665,7 +3610,6 @@ actor PlayerService: PlayerServiceProtocol {
 
     // MARK: - Delegate callbacks
 
-    /// Called by the engine bridge when the low-level playback state changes.
     func handleEngineState(
         _ newState: AudioEngineState,
         playbackToken: AudioEnginePlaybackToken
@@ -3727,9 +3671,7 @@ actor PlayerService: PlayerServiceProtocol {
                     playbackProgressTracker.setBaseline(engine.progress)
                 }
                 if info.pause {
-                    // Give processSeekTime() 150 ms to clear the render buffer and reopen
-                    // the HTTP connection at the correct byte offset before pausing.
-                    // Stored so resume() can cancel the deferred pause via task.cancel().
+                    // Delay the restore pause until the seek settles; resume cancels this task.
                     restorePauseTask = Task {
                         try? await Task.sleep(for: .milliseconds(150))
                         guard !Task.isCancelled, self.isCurrentEngineEvent(playbackToken) else { return }
@@ -3785,11 +3727,7 @@ actor PlayerService: PlayerServiceProtocol {
         }
     }
 
-    /// AVPlayer can report `.paused` for a remote item while its connection is being rebound to a
-    /// newly available network interface. The engine's playback intent is still active in that case,
-    /// so resume immediately and let the recovery probe handle a genuinely unavailable stream.
-    /// Explicit user pauses are excluded because they update `state.playbackState` before the engine
-    /// callback reaches this actor.
+    /// Reasserts Play after an unexpected network pause. Explicit user pauses remain authoritative.
     private func resumeAfterNetworkPauseIfNeeded(
         playbackToken: AudioEnginePlaybackToken
     ) async {
@@ -3864,7 +3802,6 @@ actor PlayerService: PlayerServiceProtocol {
         )
     }
 
-    /// Called by the engine bridge on unexpected errors.
     func handleEngineError(
         _ failure: AudioEngineFailure,
         playbackToken: AudioEnginePlaybackToken
@@ -3994,8 +3931,6 @@ actor PlayerService: PlayerServiceProtocol {
         }
     }
 
-    /// Downloads the track from its stream URL and stores it in AudioStreamCache.
-    /// Uses URLSession.download for disk-streaming efficiency (temporary file → cache file).
     private func downloadAndCache(
         songId: String,
         serverId: UUID,
@@ -4017,8 +3952,7 @@ actor PlayerService: PlayerServiceProtocol {
             throw CacheDownloadError(statusCode: code)
         }
 
-        // Never commit a poisoned payload (Subsonic error-as-200 envelope, empty or
-        // truncated body) — a broken cache file plays as silence through FileAudioSource.
+        // Reject error envelopes and incomplete audio before committing cache files.
         try AudioResponseValidator.validate(fileAt: tempURL, response: response, songId: songId, logger: Logger.cache)
 
         let ext = streamURL.pathExtension
@@ -4059,7 +3993,6 @@ actor PlayerService: PlayerServiceProtocol {
 
     // MARK: - NowPlaying position push
 
-    /// Pushes a position-only snapshot when track metadata hasn't changed (pause/resume/seek).
     private func pushPositionSnapshot(rate: Float? = nil) async {
         let (track, position, playbackState, duration) = await MainActor.run {
             (state.currentTrack, state.position, state.playbackState, state.duration)
@@ -4501,7 +4434,6 @@ extension PlayerService {
         }
     }
 
-    // internal: accessible from tests via @testable import
     func handleRouteChange(
         _ reason: AVAudioSession.RouteChangeReason,
         previousOutputs: [AVAudioSession.Port] = []

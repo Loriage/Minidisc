@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// Reusable layout container for optional onboarding steps.
-/// Renders a branded header (icon + title + subtitle + progress dots),
-/// the step's settings content in a scrollable middle area, and
-/// Skip / Continue buttons pinned at the bottom via safeAreaInset.
 struct OnboardingStepView<Content: View>: View {
     let icon: String
     let title: LocalizedStringKey

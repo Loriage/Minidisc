@@ -1,7 +1,6 @@
 import SwiftUI
 
 extension View {
-    /// Presents a full-screen modal.
     @ViewBuilder
     func minidiscFullScreenCover<Content: View>(
         isPresented: Binding<Bool>,

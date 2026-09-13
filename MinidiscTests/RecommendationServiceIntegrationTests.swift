@@ -118,7 +118,6 @@ struct RecommendationServiceIntegrationTests {
     func lbDisabledFreshReleasesEmpty() async throws {
         let svcTransport = RSITransport()
         let provTransport = RSITransport()
-        // Service is never enabled — stays isEnabled = false
         let (lbProvider, _) = makeLBComponents(serviceTransport: svcTransport, providerTransport: provTransport)
 
         let subsonicMock = RSIMockProvider()  // Subsonic doesn't implement freshReleases → returns []

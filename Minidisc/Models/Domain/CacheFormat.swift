@@ -12,7 +12,6 @@ nonisolated enum CacheFormat: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
-    /// Display label for Settings UI.
     var displayName: String {
         switch self {
         case .matchStream:  return "Match stream format"

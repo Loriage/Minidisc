@@ -1,8 +1,6 @@
 import SwiftUI
 
-/// Render-only view for the 1080×1920 Wrapped share card.
-/// Designed at 360×640 pt, rendered at @3x by ImageRenderer → 1080×1920 px.
-/// Never placed in the live UI hierarchy — instantiated transiently by WrappedClosingSlide.
+/// Render-only 360 × 640 pt share card, exported at 3× (1080 × 1920 pixels).
 struct WrappedShareCardView: View {
     let year: Int
     let data: WrappedData

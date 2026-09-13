@@ -2,11 +2,8 @@ import SwiftUI
 import AVFoundation
 import MediaPlayer
 
-/// Custom volume slider visually identical to the scrubber in FullPlayerView. The slider DISPLAYS the system
-/// volume (`AVAudioSession.outputVolume`, observed via KVO). The system volume is WRITTEN — through a hidden
-/// `MPVolumeView`, the only sanctioned iOS API — ONLY for a value the user posted via the slider's `set`
-/// (`userTarget`), consumed once. A KVO/observation update and the cold-start read NEVER write back, so there
-/// is no feedback loop and no clobber. The write value is never animated.
+/// Reads system volume through KVO and writes only user input through MPVolumeView.
+/// Observation updates must never write back to the system volume.
 struct SystemVolumeView: View {
     var contentColor: Color = .white
 
@@ -16,8 +13,6 @@ struct SystemVolumeView: View {
         ProgressSlider(
             value: Binding(
                 get: { TimeInterval(observer.displayVolume) },
-                // Any user-posted value (drag OR the accessibility adjust, both go through this set) moves the
-                // display immediately AND schedules the one-shot system write. The KVO never comes through here.
                 set: { newValue in
                     let v = Float(max(0, min(1, newValue)))
                     observer.displayVolume = v
@@ -37,12 +32,9 @@ struct SystemVolumeView: View {
             .accessibilityHidden(true)
         }
         .accessibilityLabel("Volume")
-        // Format the percent with a locale-aware FormatStyle (.percent multiplies by 100) rather than a
-        // hand-built "\(x)%" string — the percent symbol and its placement differ per locale.
         .accessibilityValue(Double(observer.displayVolume).formatted(.percent.precision(.fractionLength(0))))
         .task {
-            // Initialize from the REAL current volume on appear — covers a cold-start init that read a stale
-            // outputVolume before the session was configured. Display-only, so it can't clobber the system.
+            // Refresh after audio-session setup without writing back to the system volume.
             observer.refreshFromSystem()
         }
     }
@@ -50,18 +42,13 @@ struct SystemVolumeView: View {
 
 // MARK: - Volume observer
 
-/// Mirrors `AVAudioSession.outputVolume` into `displayVolume` (KVO) so physical buttons / Control Center move
-/// the slider. `displayVolume` drives the slider position; `userTarget` (set ONLY by the slider's `set`) is the
-/// value to push to the system. The KVO/init never set `userTarget`, so observation and the cold-start read
-/// never write back.
+/// Separates displayed volume from pending user input to prevent KVO feedback loops.
 @Observable
 @MainActor
 private final class SystemVolumeObserver {
-    /// Slider position. Updated by the user's input (immediate) and by the KVO (animated, when not dragging).
     var displayVolume: Float = AVAudioSession.sharedInstance().outputVolume
-    /// A value the user posted via the slider that must be pushed to the system ONCE. nil = nothing to write.
+    /// Pending user input; nil means no system-volume write is needed.
     var userTarget: Float?
-    /// True while the user is dragging — keeps the KVO from yanking the slider position out from under the finger.
     var isEditing = false
     private var observation: NSKeyValueObservation?
 
@@ -72,9 +59,7 @@ private final class SystemVolumeObserver {
         ) { [weak self] _, change in
             guard let newVolume = change.newValue else { return }
             Task { @MainActor [weak self] in
-                // The drag drives the value while editing — don't fight it with the observation.
                 guard let self, !self.isEditing else { return }
-                // Spring is cosmetic on the DISPLAY only; the write value (`userTarget`) is separate + un-animated.
                 withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
                     self.displayVolume = newVolume
                 }
@@ -82,21 +67,16 @@ private final class SystemVolumeObserver {
         }
     }
 
-    /// Re-sync the displayed value to the real system volume — used on appear to correct a cold-start init that
-    /// read `outputVolume` before the audio session was configured (it can return a stale value then).
-    /// Display-only; never writes back (`userTarget` is untouched).
+    /// Refreshes display only; outputVolume may have been stale before audio-session setup.
     func refreshFromSystem() {
         displayVolume = AVAudioSession.sharedInstance().outputVolume
     }
 
-    // NSKeyValueObservation auto-invalidates on dealloc — no deinit needed.
 }
 
 // MARK: - Hidden MPVolumeView for writing system volume
 
-/// Pushes a USER-posted `userTarget` to `MPVolumeView`'s internal `UISlider` (the only iOS API to set the
-/// system volume) once, then signals it consumed. A KVO/init-driven display change is never routed here, so
-/// there is no feedback loop and the cold-start read can't clobber the real volume. The write is never animated.
+/// Consumes pending user input through MPVolumeView, without writing KVO updates back.
 private struct HiddenVolumeWriter: UIViewRepresentable {
     let observer: SystemVolumeObserver
 

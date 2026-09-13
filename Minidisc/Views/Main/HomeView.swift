@@ -1,7 +1,6 @@
 import SwiftUI
 import SwiftSonic
 
-/// Listening continuity and familiar music, with server-scoped cached shelves.
 struct HomeView: View {
     @Environment(\.appContainer) private var container
     @Environment(ArtworkImageCache.self) private var artworkImageCache
@@ -69,9 +68,7 @@ struct HomeView: View {
             )
         } else {
             ScrollView {
-                // A plain VStack (not LazyVStack): the feed is a handful of shelves, so a deterministic
-                // content height is cheap — and a LazyVStack's estimated height confuses the
-                // pull-to-refresh inset math, stranding the ScrollView with a blank gap at the top.
+                // A stable VStack height avoids lazy-height estimates leaving the refresh inset open.
                 VStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
                     if !isOnline {
                         OfflineHomeInfo()

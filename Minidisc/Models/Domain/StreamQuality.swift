@@ -1,15 +1,7 @@
 import Foundation
 
-/// Quality of the LIVE stream fetched from the server for playback.
-///
-/// `.original` streams the untouched file (lossless when the source is lossless) — the default,
-/// so nothing changes for users who want bit-perfect playback. The transcoded options ask the
-/// server to re-encode to a lighter codec, which slashes on-device decode cost: lossless (FLAC)
-/// decoding is CPU-heavy and can miss its real-time deadline during a system spike (e.g. taking a
-/// screenshot), producing an audible crackle.
-///
-/// Only MP3 transcodes are offered: a raw byte stream that streams progressively through any
-/// engine and proxy chain without container quirks.
+/// Original audio or server-transcoded MP3. MP3 supports progressive playback without
+/// requiring container metadata at the end of the stream.
 nonisolated enum StreamQuality: String, CaseIterable, Identifiable, Sendable {
     case original
     case mp3_320
@@ -17,7 +9,6 @@ nonisolated enum StreamQuality: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
-    /// Display label for the Settings picker.
     var displayName: String {
         switch self {
         case .original: return "Original"

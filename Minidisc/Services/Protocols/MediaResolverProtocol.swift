@@ -8,9 +8,7 @@ nonisolated enum MediaAvailability: String, Sendable, Equatable {
     case unknown
 }
 
-/// Single entry point for obtaining a playable URL for a given song.
-/// Resolution order: downloaded → cached → stream.
-/// PlayerService always calls this — never SwiftSonic directly.
+/// Resolves playable media in order: permanent download, cache, remote stream.
 nonisolated protocol MediaResolverProtocol: AnyObject, Sendable {
     /// Looks for completed local audio without contacting the server, even while offline.
     func localSource(songId: String, serverId: UUID) async -> MediaSource?

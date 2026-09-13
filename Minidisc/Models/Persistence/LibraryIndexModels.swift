@@ -61,7 +61,6 @@ nonisolated final class IndexedTrack {
     }
 }
 
-/// Searchable metadata for one server album.
 @Model
 nonisolated final class IndexedAlbum {
     #Unique<IndexedAlbum>([\.recordKey])
@@ -110,7 +109,6 @@ nonisolated final class IndexedAlbum {
     }
 }
 
-/// Searchable metadata for one server artist, including the server-provided index bucket.
 @Model
 nonisolated final class IndexedArtist {
     #Unique<IndexedArtist>([\.recordKey])

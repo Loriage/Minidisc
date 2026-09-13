@@ -2,9 +2,7 @@ import Foundation
 import SwiftSonic
 
 protocol PlayerServiceProtocol: AnyObject, Sendable {
-    /// Observable playback state (MainActor-isolated).
-    /// Consumed by MiniPlayer, FullPlayer, NowPlayingService, and (v1.2) CarPlay scene.
-    /// Never duplicate this state in a view model.
+    /// MainActor playback state shared by views and system Now Playing.
     var state: PlayerState { get }
 
     func play(tracks: [DisplayableSong], startIndex: Int) async throws
@@ -41,21 +39,14 @@ protocol PlayerServiceProtocol: AnyObject, Sendable {
     /// Builds a Smart Shuffle queue via LibraryService and starts playback. Replaces the current queue.
     /// Throws `MinidiscError.smartShuffleEmpty` if no eligible tracks (library too small / no downloads offline).
     func playSmartShuffle() async throws
-    /// Builds an Instant Mix from a seed (song/album/artist) via LibraryService similarity and starts playback.
-    /// Replaces the current queue.
-    ///
-    /// Pass `seedTrack` whenever the caller already holds the seed song: it starts playing at once and the
-    /// mix is grafted behind it, so the similarity queries — tens of seconds against an AudioMuse server —
-    /// happen over music instead of silence. Without it the call blocks until the whole mix is built and
-    /// throws `MinidiscError.instantMixEmpty` when the server returns nothing.
+    /// A supplied seedTrack starts immediately while similarity queries build the queue.
+    /// Without it, waits for the mix and throws instantMixEmpty if none is available.
     func playInstantMix(from seed: InstantMixSeed, startingWith seedTrack: DisplayableSong?) async throws
     /// Toggles the auto-extend preference and persists it to UserDefaults.
     /// When enabled and ≤15 tracks remain, the player appends a fresh smart shuffle batch automatically.
     func setAutoExtendEnabled(_ enabled: Bool) async
-    /// Applies the given volume (0.0–1.0) to AVPlayer and persists it to UserDefaults.
     func setVolume(_ volume: Float) async
     func togglePlayPause() async
-    /// Lightweight position-only flush — called from scenePhase .inactive on iOS.
     func saveCurrentPosition() async
     /// Re-reads ReplayGainSettings and reapplies gain to the current track.
     /// Call this whenever the user changes any ReplayGain setting.

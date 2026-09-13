@@ -1,7 +1,6 @@
 import Foundation
 import SwiftData
 
-// TODO(v1.x): consider TTL or LRU eviction if storage grows.
 @Model
 final class CachedLyrics {
     @Attribute(.unique) var compositeKey: String  // "{serverId}:{provider}:{songId}"

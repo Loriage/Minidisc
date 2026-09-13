@@ -1,8 +1,6 @@
 import SwiftUI
 import SwiftSonic
 
-/// Compact album card for horizontal-scroll discover surfaces.
-/// Keeps cover art, album name and artist together, with wider cards for accessibility text.
 struct AlbumCard: View {
     let album: AlbumID3
 
@@ -33,7 +31,6 @@ struct AlbumCard: View {
     }
 }
 
-/// The 160pt album card used by Home-style shelves.
 struct AlbumShelfCard: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let album: AlbumID3

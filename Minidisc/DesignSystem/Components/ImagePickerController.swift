@@ -1,11 +1,9 @@
 import SwiftUI
 import UIKit
 
-// TODO(v2): migrate to PHPickerViewController + custom crop when a replacement for
-// UIImagePickerController's built-in square crop UI is available.
 struct ImagePickerController: UIViewControllerRepresentable {
     let sourceType: UIImagePickerController.SourceType
-    /// UIImagePickerController's built-in square crop is clunky — callers that crop themselves pass `false`.
+    /// Disable built-in editing when the caller provides its own cropper.
     var allowsEditing: Bool = true
     let onPick: (UIImage) -> Void
     let onCancel: () -> Void

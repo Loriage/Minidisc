@@ -7,7 +7,6 @@ nonisolated enum AlbumReleaseCategory: Sendable, Equatable {
 }
 
 extension AlbumID3 {
-    /// Groups OpenSubsonic release types into the two shelves shown on an artist page.
     nonisolated var minidiscReleaseCategory: AlbumReleaseCategory {
         let isSingleOrEP = (releaseTypes ?? []).contains { releaseType in
             let normalized = releaseType.lowercased()

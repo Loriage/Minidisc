@@ -2,11 +2,7 @@ import Foundation
 import SwiftData
 import OSLog
 
-/// Records and manages local playback events for Wrapped statistics.
-///
-/// Pure actor — no MainActor, no singleton, no network access.
-/// Injected via AppContainer. All persistence uses a private ModelContext;
-/// PlaybackEvent PersistentModel instances never leave this actor.
+/// Stores playback events on a private ModelContext; only DTOs leave the actor.
 actor StatsService {
     private let modelContainer: ModelContainer
 
@@ -256,7 +252,6 @@ actor StatsService {
                 groups[e.trackId] = (d, 1, e.trackTitle, e.artistName, e.albumTitle)
             }
         }
-        // Primary: playCount — reflects actual listening intent; loop time is tiebreaker.
         let sorted = groups.sorted {
             if $0.value.count != $1.value.count { return $0.value.count > $1.value.count }
             if $0.value.duration != $1.value.duration { return $0.value.duration > $1.value.duration }
@@ -289,7 +284,6 @@ actor StatsService {
                 groups[albumId] = (d, 1, [e.trackId], e.albumTitle ?? "", e.artistName)
             }
         }
-        // Primary: playCount; tiebreaker: totalSecondsListened.
         let sorted = groups.sorted {
             if $0.value.count != $1.value.count { return $0.value.count > $1.value.count }
             if $0.value.duration != $1.value.duration { return $0.value.duration > $1.value.duration }
@@ -322,7 +316,6 @@ actor StatsService {
                 groups[artistId] = (d, 1, [e.trackId], e.artistName)
             }
         }
-        // Primary: totalSecondsListened; tiebreaker: playCount.
         let sorted = groups.sorted {
             if $0.value.duration != $1.value.duration { return $0.value.duration > $1.value.duration }
             if $0.value.count != $1.value.count { return $0.value.count > $1.value.count }
@@ -364,7 +357,6 @@ actor StatsService {
         if today >= periodRange.start && today < periodRange.end {
             referenceDay = today
         } else {
-            // Period is in the past: use last day of period
             let lastInstant = calendar.date(byAdding: .second, value: -1, to: periodRange.end)!
             referenceDay = calendar.startOfDay(for: lastInstant)
         }

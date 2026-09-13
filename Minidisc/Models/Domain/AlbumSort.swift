@@ -1,9 +1,6 @@
 import Foundation
 import SwiftSonic
 
-/// User-selectable ordering for album collections, shared by the artist discography and the global album
-/// list. String-backed so it persists via `@AppStorage("minidisc.albumSort")`. Sorting is client-side on an
-/// already-fetched array, so a single ordering works identically everywhere.
 nonisolated enum AlbumSort: String, CaseIterable, Sendable {
     case recentlyAdded
     case releaseYear
@@ -37,6 +34,5 @@ nonisolated enum AlbumSort: String, CaseIterable, Sendable {
         }
     }
 
-    /// Prefer the server's canonical `sortName` (drops articles like "The") when present, else the name.
     private func sortKey(_ album: AlbumID3) -> String { album.sortName ?? album.name }
 }

@@ -13,8 +13,6 @@ struct LidarrInteractiveSearchRoute: Hashable {
     let scope: LidarrReleaseScope
 }
 
-/// Interactive search: lists the releases the indexers found for an album or artist. Tapping a release
-/// opens its detail, where the user reads the rejection reasons and grabs it. Mirrors Ruddarr.
 struct LidarrInteractiveSearchView: View {
     let scope: LidarrReleaseScope
     let client: LidarrClient
@@ -26,7 +24,6 @@ struct LidarrInteractiveSearchView: View {
     @State private var sort: SortField = .weight
     @State private var selectedRelease: LidarrRelease?
 
-    // Filters
     @State private var selectedIndexer: String?
     @State private var selectedQuality: String?
     @State private var approvedOnly = false

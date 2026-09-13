@@ -1,17 +1,13 @@
 import Foundation
 import SwiftSonic
 
-/// A seed for an AudioMuse-AI Instant Mix. The case decides which Subsonic similarity endpoint is used:
-/// song/album seeds go through the folder-based `getSimilarSongs`, an artist seed through the ID3-based
-/// `getSimilarSongs2`. ("Radio" is deliberately avoided — it means Internet radio stations elsewhere.)
+/// Song and album seeds use getSimilarSongs; artist seeds use getSimilarSongs2.
 nonisolated enum InstantMixSeed: Sendable, Hashable {
     case song(id: String)
     case album(id: String)
     case artist(id: String)
 }
 
-/// Focused seams for callers that consume only one catalogue capability. They keep
-/// view-model fakes small without splitting the concrete library implementation.
 nonisolated protocol LibrarySearching: AnyObject, Sendable {
     func search(_ query: String) async throws -> SearchResult3
 }
@@ -107,7 +103,6 @@ nonisolated protocol AlbumRecommendationBrowsing: AnyObject, Sendable {
 nonisolated protocol PlaybackQueueBuilding: AnyObject, Sendable {
     /// Smart Shuffle is truly random online and limited to downloaded tracks offline.
     func smartShuffleQueue(targetSize: Int) async throws -> [DisplayableSong]
-    /// Builds a best-effort similarity queue while excluding the current queue and recent listens.
     func similarBackfillQueue(targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong]
     func instantMix(from seed: InstantMixSeed, count: Int) async throws -> [DisplayableSong]
     func endlessExtension(seedTrackId: String?, targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong]
@@ -145,15 +140,12 @@ nonisolated protocol LibraryServiceProtocol:
 }
 
 extension RecentlyAddedTrackBrowsing where Self: RecentlyAddedAlbumBrowsing, Self: AlbumBrowsing {
-    /// Composition of `recentlyAddedAlbums` + `album(id:)` — the only way to reach tracks on a plain Subsonic
-    /// server. Lives here rather than in `LibraryService` because there is nothing server-specific to
-    /// customise: any conformer that can list its newest albums and open one gets the playlist for free.
+    /// Composes newest albums and their tracks because Subsonic has no track-recency endpoint.
     func recentlyAddedTracks(albumLimit: Int, trackLimit: Int) async throws -> [Song] {
         let albums = try await recentlyAddedAlbums(size: albumLimit)
         guard !albums.isEmpty else { return [] }
         try Task.checkCancellation()
 
-        // Bounded to 5 concurrent album fetches — the same ceiling `fetchAllTracks` holds home servers to.
         let maxInFlight = 5
         var collected: [(index: Int, songs: [Song])] = []
         var submitted = 0
@@ -189,9 +181,6 @@ extension RecentlyAddedTrackBrowsing where Self: RecentlyAddedAlbumBrowsing, Sel
 }
 
 extension PlaybackQueueBuilding {
-    /// Default composition of `instantMix` + `similarBackfillQueue` — conformers get the endless
-    /// behaviour without changes, mirroring how Instant Mix itself degrades without a similarity
-    /// service.
     func endlessExtension(seedTrackId: String?, targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong] {
         guard let seedTrackId else {
             return try await similarBackfillQueue(targetSize: targetSize, excludedIds: excludedIds)
@@ -211,7 +200,6 @@ extension PlaybackQueueBuilding {
             picked.append(song)
             seen.insert(song.id)
         }
-        // A short (or empty) similar set is topped up from the library heuristic.
         if picked.count < targetSize {
             let backfill: [DisplayableSong]
             do {

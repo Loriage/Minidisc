@@ -20,7 +20,6 @@ actor ListenBrainzRecommendationProvider: RecommendationProvider {
 
     private var cache: [CacheKey: CacheEntry] = [:]
 
-    // force-unwrap safe: compile-time string constant
     nonisolated private static let coverArtArchiveBase = URL(string: "https://coverartarchive.org")!
 
     nonisolated private static let releaseDateFormatter: DateFormatter = {
@@ -78,7 +77,6 @@ actor ListenBrainzRecommendationProvider: RecommendationProvider {
     }
 
     func similarArtists(toArtistID artistID: String, limit: Int) async throws -> [SimilarArtistRecommendation] {
-        // Resolve Subsonic artist ID → MBID via getArtistInfo2
         let mbid: String
         do {
             guard let resolved = try await libraryService.getArtistMBID(forArtistID: artistID) else {
@@ -91,7 +89,6 @@ actor ListenBrainzRecommendationProvider: RecommendationProvider {
             return []
         }
 
-        // Fetch from LB (up to 18, pre-sorted by score desc)
         let dtos: [LBSimilarArtistDTO]
         do {
             dtos = try await client.similarArtists(mbid: mbid)
@@ -100,7 +97,6 @@ actor ListenBrainzRecommendationProvider: RecommendationProvider {
             return []
         }
 
-        // Enrich with inLibrary flag using name-based lookup against the local artist index
         let limited = Array(dtos.prefix(limit))
         var results: [SimilarArtistRecommendation] = []
         results.reserveCapacity(limited.count)

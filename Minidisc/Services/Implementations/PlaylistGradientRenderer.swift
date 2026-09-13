@@ -1,9 +1,6 @@
 import SwiftUI
 
-/// Renders a `PlaylistGradientSpec` to a square JPEG to become a real playlist cover. Mirrors the proven
-/// `WrappedCoverRenderer` path: `ImageRenderer` (cross-platform) + a platform JPEG-encode bridge (the only
-/// `#if os`). The title is baked in when provided, so the uploaded cover is what the picker previewed —
-/// no client re-composes the text over a live gradient.
+/// Renders a square JPEG with the playlist title baked into the gradient.
 @MainActor
 enum PlaylistGradientRenderer {
     static func jpegData(

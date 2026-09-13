@@ -4,8 +4,6 @@ import OSLog
 
 // MARK: - PlaylistSyncClient
 
-/// Minimal protocol over the two SwiftSonic calls used by WrappedPlaylistService.
-/// SwiftSonicClient satisfies every requirement via its existing methods (empty conformance below).
 nonisolated protocol PlaylistSyncClient: Sendable {
     func getPlaylists(username: String?) async throws -> [Playlist]
     func createPlaylist(name: String?, playlistId: String?, songIds: [String]) async throws -> PlaylistWithSongs
@@ -34,12 +32,7 @@ nonisolated enum SyncResult: Sendable, Equatable {
 
 // MARK: - WrappedPlaylistService
 
-/// Maintains the annual "Minidisc Wrapped <year>" server playlist.
-///
-/// Runs monthly: computes top 100 tracks for the current year via StatsService,
-/// then replaces the playlist contents atomically via SwiftSonic createPlaylist
-/// replace mode. All persistence is either in UserDefaults (WrappedPreferences)
-/// or on the server — no SwiftData access.
+/// Refreshes the annual top-100 playlist monthly using createPlaylist replacement.
 actor WrappedPlaylistService {
     nonisolated static let wrappedPlaylistNamePrefix = "Minidisc Wrapped "
 
@@ -48,7 +41,6 @@ actor WrappedPlaylistService {
     private let makeClient: @Sendable () async throws -> any PlaylistSyncClient
     private let serverService: (any ServerServiceProtocol)?
 
-    /// Production init — captures serverService in the client factory closure.
     init(
         serverService: any ServerServiceProtocol,
         statsService: StatsService,
@@ -60,7 +52,6 @@ actor WrappedPlaylistService {
         self.makeClient = { try await serverService.activeConnection().makeSwiftSonicClient() }
     }
 
-    /// Test init — accepts a pre-built client factory for full isolation.
     init(
         clientFactory: @escaping @Sendable () async throws -> any PlaylistSyncClient,
         statsService: StatsService,
@@ -166,8 +157,6 @@ actor WrappedPlaylistService {
         return .updated(tracksCount: tracks.count)
     }
 
-    /// Returns the cached server playlist ID for the given year, or nil if the playlist
-    /// has not yet been created by a sync run.
     func playlistId(year: Int, serverId: String) -> String? {
         preferences.playlistId(year: year, serverId: serverId)
     }
@@ -201,7 +190,6 @@ actor WrappedPlaylistService {
         Logger.wrapped.info("Year marker → \(currentYear, privacy: .public) (serverId=\(serverId, privacy: .public))")
     }
 
-    /// Returns all server playlists whose names match the wrapped prefix, sorted by year descending.
     func fetchYearlyPlaylists(
         serverId: String,
         calendar: Calendar = .current,
@@ -216,11 +204,7 @@ actor WrappedPlaylistService {
         }
         do {
             let all = try await client.getPlaylists(username: nil)
-            // The playlist list is already in hand, so reconciliation costs nothing extra: if the
-            // id we cached for this year's playlist is no longer on the server, it was deleted out
-            // from under us (a server rebuild wipes playlists). Clearing the cached id and the
-            // month marker lets the next cold-start sync recreate it — otherwise the marker keeps
-            // the sync from ever running and the playlist stays gone for good.
+            // Clear stale identity and cadence markers so a deleted playlist can be recreated.
             reconcileCurrentYearPlaylist(serverId: serverId, livePlaylists: all, calendar: calendar, currentDate: currentDate)
             return all.compactMap { playlist -> WrappedYearlyPlaylist? in
                 guard playlist.name.hasPrefix(WrappedPlaylistService.wrappedPlaylistNamePrefix),
@@ -237,9 +221,6 @@ actor WrappedPlaylistService {
 
     // MARK: - Replace playlist tracks
 
-    /// Atomically replaces a playlist's entire track list using the SwiftSonic
-    /// createPlaylist replace mode: passing a non-nil playlistId sets the full
-    /// song list in one call without a prior fetch.
     private func replacePlaylistTracks(
         playlistId: String,
         trackIds: [String],
@@ -293,9 +274,7 @@ actor WrappedPlaylistService {
         }
     }
 
-    /// Clears the cached id and month marker when this year's playlist has vanished from the server,
-    /// so the sync rebuilds it on the next launch. A no-op unless we hold a cached id that is absent
-    /// from `livePlaylists` — the normal case touches nothing.
+    /// Invalidates the current-year sync markers when its cached playlist is absent from the server.
     private func reconcileCurrentYearPlaylist(
         serverId: String,
         livePlaylists: [Playlist],
@@ -315,10 +294,7 @@ actor WrappedPlaylistService {
     private func getOrCreatePlaylist(for year: Int, serverId: String, client: any PlaylistSyncClient) async throws -> String {
         try Task.checkCancellation()
         let name = "Minidisc Wrapped \(year)"
-        // Fetch the live list first and trust the cached id ONLY if it is still on the server.
-        // A cached id that points to a deleted playlist (server rebuilt, or the user removed it)
-        // would otherwise be handed straight to the replace, which writes into nothing. This is the
-        // only path where getOrCreatePlaylist runs — once a month — so the extra fetch is cheap.
+        // Validate cached IDs against the live list before replacing playlist contents.
         let playlists = try await client.getPlaylists(username: nil)
         try Task.checkCancellation()
 

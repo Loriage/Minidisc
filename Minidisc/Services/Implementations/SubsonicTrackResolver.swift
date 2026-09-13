@@ -2,14 +2,7 @@ import Foundation
 import SwiftSonic
 import OSLog
 
-/// Finds a library track from its metadata, one search at a time.
-///
-/// The escape hatch for AudioMuse handing back ids the music server cannot match: its results still
-/// name the track, so it can be looked up. The choice of tracks remains AudioMuse's — only its
-/// identifiers are thrown away.
-///
-/// Resolutions are cached, hits and misses alike, because the same track routinely turns up in
-/// several moods and a miss is just as expensive to establish as a hit.
+/// Resolves AudioMuse metadata to library IDs. Caches both matches and misses across moods.
 actor SubsonicTrackResolver {
     private let libraryService: any LibrarySearching
     private var resolved: [String: String] = [:]
@@ -19,7 +12,6 @@ actor SubsonicTrackResolver {
         self.libraryService = libraryService
     }
 
-    /// Library id for `descriptor`, or nil when nothing matches confidently.
     func resolve(_ descriptor: TrackDescriptor) async -> String? {
         let key = descriptor.cacheKey
         if let hit = resolved[key] { return hit }
@@ -44,11 +36,7 @@ actor SubsonicTrackResolver {
         return match
     }
 
-    /// Resolves a batch in order, dropping what cannot be found.
-    ///
-    /// Sequential on purpose. This runs inside the weekly background job where nobody is waiting,
-    /// and firing dozens of searches at a self-hosted server at once is the same mistake Instant
-    /// Mix already paid for.
+    /// Resolves sequentially to limit server load, preserving input order and dropping misses.
     func resolveAll(_ descriptors: [TrackDescriptor]) async -> [String] {
         var ids: [String] = []
         for descriptor in descriptors {

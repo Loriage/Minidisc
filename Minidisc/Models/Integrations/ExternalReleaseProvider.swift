@@ -13,8 +13,6 @@ nonisolated struct ExternalReleaseProvider: Sendable, Codable, Identifiable, Equ
         self.urlTemplate = urlTemplate
     }
 
-    /// Builds a search URL by encoding `"\(artistName) \(albumTitle)"` and substituting `%s`.
-    /// Returns `nil` if encoding fails or the resulting string is not a valid URL.
     func buildURL(artistName: String, albumTitle: String) -> URL? {
         let term = "\(artistName.trimmingCharacters(in: .whitespaces)) \(albumTitle.trimmingCharacters(in: .whitespaces))"
         guard let encoded = term.addingPercentEncoding(withAllowedCharacters: Self.searchTermEncoding) else {
@@ -24,15 +22,12 @@ nonisolated struct ExternalReleaseProvider: Sendable, Codable, Identifiable, Equ
         return URL(string: urlString)
     }
 
-    /// Validates a URL template. Returns `.valid` when safe to store.
     static func validate(urlTemplate: String) -> ValidationResult {
         let lower = urlTemplate.trimmingCharacters(in: .whitespaces).lowercased()
-        // Security: explicitly block javascript: and any other non-http(s) scheme.
         if lower.hasPrefix("javascript:") { return .invalidScheme }
         guard lower.hasPrefix("http://") || lower.hasPrefix("https://") else {
             return .invalidScheme
         }
-        // Exactly one %s placeholder required.
         let placeholderCount = urlTemplate.components(separatedBy: "%s").count - 1
         if placeholderCount == 0 { return .missingPlaceholder }
         if placeholderCount > 1  { return .multiplePlaceholders }
@@ -48,7 +43,6 @@ nonisolated struct ExternalReleaseProvider: Sendable, Codable, Identifiable, Equ
         return .valid
     }
 
-    /// Validates a provider name: non-empty after trimming and ≤ 50 characters.
     static func validate(name: String) -> Bool {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         return !trimmed.isEmpty && name.count <= 50

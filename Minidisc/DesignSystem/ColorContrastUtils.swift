@@ -1,10 +1,7 @@
 import SwiftUI
 
 extension MinidiscColors {
-    // Orange-red brand variants, chosen to match the old violets' luminances so the WCAG
-    // decision boundaries below are unchanged — only the hue flips.
-    // Light (#FF6242): WCAG relative luminance ≈ 0.304
-    // Dark  (#8F2408): WCAG relative luminance ≈ 0.071
+    // Relative luminance: #FF6242 ≈ 0.304; #8F2408 ≈ 0.071.
     private static let accentFgLight = Color(hex: "#FF6242")
     private static let accentFgDark  = Color(hex: "#8F2408")
     private static let luminanceFgLight: Double = 0.304
@@ -22,15 +19,12 @@ extension MinidiscColors {
         let lightPasses = cLight >= contrastThreshold
         let darkPasses  = cDark  >= contrastThreshold
         if lightPasses != darkPasses { return lightPasses ? accentFgLight : accentFgDark }
-        // Neither passes (dead zone): always use dark variant.
         if !lightPasses { return accentFgDark }
         // Both pass: pick whichever has higher contrast.
         return lBg > 0.179 ? accentFgDark : accentFgLight
     }
 
-    /// Whether an over-cover control should sit on a LIGHT (white) surface — true for dark covers. Mirrors
-    /// the `accentForeground` light-variant decision (incl. the dead-zone default to dark), so the hero
-    /// buttons pick their variant from the COVER, not the device appearance.
+    /// Chooses a white control surface for dark artwork, independently of device appearance.
     static func prefersLightControl(on background: Color) -> Bool {
         guard let lBg = sRGBLuminance(of: background) else { return false }
         let lightPasses = contrastRatio(lBg, luminanceFgLight) >= contrastThreshold
@@ -40,9 +34,7 @@ extension MinidiscColors {
         return lBg <= 0.179                 // both pass -> light control only on a genuinely dark cover
     }
 
-    /// Unified (background, glyph/label) for ALL hero over-cover buttons (chevron/pencil, transport, Play).
-    /// Dark cover -> WHITE surface + the cover's `dominantColor` glyph; light/mid/dead-zone -> the deep
-    /// orange-red accent surface + white glyph. Single source so every hero button stays consistent.
+    /// Pairs the control surface with a contrasting glyph color derived from the artwork.
     static func heroButtonVariant(on dominantColor: Color) -> (background: Color, foreground: Color) {
         if prefersLightControl(on: dominantColor) {
             return (background: .white, foreground: dominantColor)

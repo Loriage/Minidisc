@@ -3,7 +3,6 @@ import AVFoundation
 import Foundation
 import OSLog
 
-/// Silence to skip at the edges of a track so consecutive album tracks butt together cleanly.
 nonisolated struct GaplessTrim: Sendable, Equatable {
     /// Seconds of silence at the start, skipped by seeking before the deck starts.
     let leadIn: Double
@@ -14,21 +13,11 @@ nonisolated struct GaplessTrim: Sendable, Equatable {
     var isEmpty: Bool { leadIn <= 0 && leadOut <= 0 }
 }
 
-/// Measures the digital silence at each end of a decoded track.
-///
-/// Lossy encoders pad both ends — MP3 typically ~1100 samples of delay, AAC ~2100 — and AVFoundation
-/// only strips that automatically for some containers. Whatever it leaves behind is played as silence
-/// at the seam. Rather than parse LAME/Xing and iTunSMPB per format, this measures the decoded audio,
-/// which is format-agnostic and catches production silence too (a track mastered with a quiet tail).
-///
-/// Deliberately conservative: only true digital silence counts, and the trim is capped. A wrong
-/// measurement here clips music, which is far worse than the gap it was meant to remove.
+/// Measures residual encoder padding as silence at each end of the decoded track.
 nonisolated enum GaplessTrimAnalyzer {
     /// Peak below this is silence — about -60 dBFS, low enough that a fade-out's tail is NOT trimmed.
     private static let silenceThreshold: Float = 0.001
-    /// Never cut more than this from either end, whatever the measurement says.
     private static let maxTrimSeconds = 1.5
-    /// How much of each end to inspect. Beyond this we stop looking and report no trim.
     private static let windowSeconds = 2.0
 
     /// Runs the decode off the caller's executor. Returns `.none` for anything it cannot read.
@@ -75,7 +64,6 @@ nonisolated enum GaplessTrimAnalyzer {
         return buffer.frameLength > 0 ? buffer : nil
     }
 
-    /// Frames from the buffer's start until the first sample above the threshold, on any channel.
     private static func leadingSilentFrames(in buffer: AVAudioPCMBuffer) -> Int {
         guard let channels = buffer.floatChannelData else { return 0 }
         let count = Int(buffer.frameLength)
@@ -90,7 +78,6 @@ nonisolated enum GaplessTrimAnalyzer {
         return firstAudible == count ? 0 : firstAudible
     }
 
-    /// Frames from the last sample above the threshold to the buffer's end, on any channel.
     private static func trailingSilentFrames(in buffer: AVAudioPCMBuffer) -> Int {
         guard let channels = buffer.floatChannelData else { return 0 }
         let count = Int(buffer.frameLength)

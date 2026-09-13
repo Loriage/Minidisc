@@ -15,9 +15,7 @@ private actor RALibraryStub:
     private var _albumFetches: [String] = []
     private var _listSizes: [Int] = []
 
-    /// The newest-first album list `recentlyAddedAlbums` answers with.
     var newestAlbums: [AlbumID3] = []
-    /// Tracks per album id. An absent id makes `album(id:)` throw.
     var tracksPerAlbum: [String: [Song]] = [:]
     /// When true the album LIST itself fails — the one error that must not be swallowed.
     var listFails = false

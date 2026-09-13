@@ -92,7 +92,6 @@ final class AddToPlaylistViewModel {
         error = nil
         defer { addingToPlaylistIds.remove(playlist.id) }
         do {
-            // Refresh server detail, including after an ambiguous append failure.
             let current = try await playlistService.getPlaylist(id: playlist.id)
             let ids = current.entry?.map(\.id) ?? []
             if intents[playlist.id] == nil {

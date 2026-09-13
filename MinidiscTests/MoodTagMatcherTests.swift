@@ -9,8 +9,7 @@ struct MoodTagMatcherTests {
 
     @Test("a track with no tags at all scores nil, not zero")
     func noTagsMeansNoOpinion() {
-        // The distinction matters: nil drops the track, zero would rank it. A library with no tags
-        // must produce an empty result rather than an arbitrary one.
+        // Tracks without usable tags must be excluded, not treated as zero-score candidates.
         #expect(MoodTagMatcher.score(SongTagFeatures(), for: .chill) == nil)
     }
 
@@ -49,7 +48,6 @@ struct MoodTagMatcherTests {
 
     @Test("MOOD tags match on substrings, since they are free text")
     func moodTagsMatchLoosely() {
-        // "Relaxing", "relaxed", "Calm/Relaxed" all have to hit the same keyword.
         for tag in ["Relaxing", "relaxed", "Calm/Relaxed"] {
             let features = SongTagFeatures(moods: [tag])
             #expect(MoodTagMatcher.score(features, for: .chill)! >= MoodTagMatcher.moodTagWeight,
@@ -65,7 +63,6 @@ struct MoodTagMatcherTests {
 
     @Test("BPM only counts for the moods where tempo means something")
     func bpmIsIgnoredForFocus() {
-        // Focus spans a slow piano piece and a steady techno loop equally well.
         #expect(MoodTagMatcher.bpmRange(.focus) == nil)
         let fast = SongTagFeatures(bpm: 170)
         let slow = SongTagFeatures(bpm: 60)

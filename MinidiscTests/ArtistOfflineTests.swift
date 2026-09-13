@@ -4,9 +4,6 @@ import SwiftData
 import SwiftSonic
 @testable import Minidisc
 
-/// Exercises the REAL `DownloadService.localArtistData` reconstruction against an in-memory store,
-/// then the ViewModel fallback on top of it — the same two layers the album and playlist offline
-/// suites cover.
 @Suite("Offline artist — real localArtistData round-trip")
 @MainActor
 struct LocalArtistDataTests {
@@ -111,7 +108,6 @@ struct LocalArtistDataTests {
 
 @MainActor
 private final class ARLibraryStub: ArtistBrowsing, StarredBrowsing, ArtistRecommendationBrowsing {
-    /// When set, `artist(id:)` returns this instead of throwing — drives the empty-but-successful path.
     var artistResult: ArtistID3?
     @MainActor
     func artist(id: String) async throws -> ArtistID3 {

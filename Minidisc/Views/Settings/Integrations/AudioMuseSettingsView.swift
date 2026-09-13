@@ -1,11 +1,6 @@
 import SwiftUI
 import OSLog
 
-/// Connects the active server to its AudioMuse-AI instance, which is what powers the weekly mood
-/// playlists.
-///
-/// Per server rather than global: AudioMuse returns the media server's own track ids, so an
-/// instance analysing a different library would hand back ids that resolve to nothing here.
 struct AudioMuseSettingsView: View {
     @Environment(\.appContainer) private var container
     @Environment(\.dismiss) private var dismiss
@@ -56,8 +51,6 @@ struct AudioMuseSettingsView: View {
             Text("AudioMuse-AI analyses how your music actually sounds, which lets Minidisc build a playlist for a mood rather than for a tag.")
                 .font(.minidiscCaption)
                 .foregroundStyle(.secondary)
-            // Said up front, because the moods appear whether or not the user connects anything, and
-            // somebody seeing them without AudioMuse deserves to know they are on the weaker path.
             Text("Without it, mood playlists still work, built from your library's genre, BPM and mood tags. The match is rougher.")
                 .font(.minidiscCaption)
                 .foregroundStyle(.secondary)
@@ -68,8 +61,6 @@ struct AudioMuseSettingsView: View {
 
     private var connectionSection: some View {
         Section {
-            // `verbatim` so the sample address is not extracted as a translatable key — a URL reads
-            // the same in every language.
             TextField("", text: $urlInput, prompt: Text(verbatim: "http://nas.local:8000"))
                 .textContentType(.URL)
                 .autocorrectionDisabled()
@@ -107,8 +98,6 @@ struct AudioMuseSettingsView: View {
         } header: {
             Text("Server")
         } footer: {
-            // The token is genuinely optional: an instance started with AUTH_ENABLED=false accepts
-            // unauthenticated requests, and saying so saves the user hunting for a token they have not got.
             Text("Leave the token empty if your AudioMuse instance runs without authentication.")
         }
     }
@@ -148,8 +137,6 @@ struct AudioMuseSettingsView: View {
 
     // MARK: - Actions
 
-    /// Saves only after a successful round-trip, so a typo in the URL cannot silently disable the
-    /// feature until the next Wednesday reveals it.
     private func testAndSave() async {
         guard let container, let server = activeServer else { return }
         isTesting = true
@@ -164,16 +151,12 @@ struct AudioMuseSettingsView: View {
         }
 
         do {
-            // Goes through the PROVIDER, not the bare client, so the test exercises exactly what the
-            // weekly sync will do — including recovering tracks whose ids the music server cannot
-            // match. Testing the client alone would pass on ids that later turn out unusable.
+            // Test through the provider to include metadata recovery for unusable AudioMuse IDs.
             let provider = AudioMuseTrackProvider(
                 client: client,
                 resolver: SubsonicTrackResolver(libraryService: container.libraryService)
             )
             let tracks = try await provider.trackIds(for: .chill, limit: 5)
-            // Logged because the on-screen result says whether it worked, never why. The id format
-            // is the one thing that decides between "connected" and "connected but useless".
             Logger.moodPlaylists.info("[AUDIOMUSE-TEST] \(tracks.count, privacy: .public) usable tracks, ids=\(tracks.prefix(3).joined(separator: ","), privacy: .public)")
             guard !tracks.isEmpty else {
                 testResult = .failure(String(localized: "Connected, but the search returned nothing. Has the sonic analysis been run?"))
@@ -181,9 +164,7 @@ struct AudioMuseSettingsView: View {
             }
             try await container.serverService.setAudioMuseConfig(serverId: server.id, urlString: url, token: token)
             testResult = .success(trackCount: tracks.count)
-            // Rebuild at once. The moods are already synced for this week, so without this the
-            // playlists would keep their tag-built contents until Wednesday and the connection would
-            // look like it had done nothing.
+            // Refresh now rather than waiting for the weekly cadence after changing providers.
             await rebuildPlaylists()
         } catch let error as AudioMuseError {
             Logger.moodPlaylists.warning("[AUDIOMUSE-TEST] failed: \(String(describing: error), privacy: .public)")
@@ -200,12 +181,10 @@ struct AudioMuseSettingsView: View {
         urlInput = ""
         tokenInput = ""
         testResult = nil
-        // Rebuild from tags rather than forgetting everything: the playlists stay, they just go back
-        // to the weaker source. Clearing local state would strand them and create duplicates later.
+        // Reuse playlists with tag matching instead of clearing their identities.
         await rebuildPlaylists()
     }
 
-    /// Regenerates all five playlists from whichever source is now configured.
     private func rebuildPlaylists() async {
         guard let container, let server = activeServer else { return }
         isRebuilding = true
@@ -229,8 +208,6 @@ struct AudioMuseSettingsView: View {
         case .unauthorized:
             return String(localized: "The API token was rejected.")
         case .internalIdsOnly:
-            // Reached only when the by-name recovery ALSO found nothing, which points at the two
-            // libraries genuinely holding different music rather than at the id mismatch.
             return String(localized: "AudioMuse found tracks, but none of them exist in your music library. Is it analysing the same collection?")
         case .badURL:
             return String(localized: "That does not look like a valid address.")

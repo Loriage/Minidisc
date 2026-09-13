@@ -1,15 +1,12 @@
 import Foundation
 import SwiftSonic
 
-/// Backs the virtual "The best of <artist>" screen. There is no server playlist behind it — the track list is
-/// recomputed from `getStarred2` on every load, so it always reflects the current stars.
 @Observable
 @MainActor
 final class ArtistBestOfViewModel {
     var songs: [DisplayableSong] = []
     var isLoading = true
     var error: UserFacingError?
-    /// True while the bulk download is walking the track list.
     var isDownloadingAll = false
     var downloadingIds: Set<String> = []
 
@@ -52,11 +49,7 @@ final class ArtistBestOfViewModel {
         }
     }
 
-    /// Downloads the whole list track by track.
-    ///
-    /// Deliberately NOT `download(playlist:)`: that persists a `DownloadedPlaylist` record keyed on a server
-    /// playlist id, and this playlist has none. The tracks land as ordinary individual downloads — playable
-    /// offline from the artist and album screens like any other — and the best-of itself stays purely derived.
+    /// Download tracks individually: this virtual playlist has no server ID to persist.
     func downloadAll(songIds: [String]) async {
         isDownloadingAll = true
         defer { isDownloadingAll = false }

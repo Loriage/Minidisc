@@ -1,17 +1,12 @@
 import Foundation
 import SwiftSonic
 
-/// Fine-grained errors from a server connection test (ping + getUser).
 nonisolated enum ConnectionTestError: Error, Sendable, Equatable {
-    /// The URL string is malformed, missing scheme, or missing host.
     case invalidURL
     /// DNS resolution failed — or iOS Local Network Privacy blocked the lookup.
     case dnsFailure
-    /// TCP connection was refused or the network is unreachable.
     case cannotConnect
-    /// The connection attempt timed out.
     case timeout
-    /// TLS certificate validation failed.
     case certificate
     /// iOS App Transport Security blocked the connection (HTTP on non-ATS-exempt host).
     case atsBlocked
@@ -19,15 +14,11 @@ nonisolated enum ConnectionTestError: Error, Sendable, Equatable {
     case unauthorized
     /// A non-2xx HTTP status code other than 401/403.
     case httpError(statusCode: Int)
-    /// The server returned a Subsonic API-level error.
     case subsonicError(code: SubsonicErrorCode, message: String?)
-    /// The server responded but is not a Subsonic/OpenSubsonic server.
     case notSubsonicServer
-    /// A client-side configuration error prevented building the request.
     case invalidConfiguration
     /// A cross-domain HTTP redirect was blocked to prevent credential leakage.
     case insecureRedirect
-    /// An unclassified error — domain and code are preserved for diagnostics.
     case unknown(domain: String, code: Int)
 }
 

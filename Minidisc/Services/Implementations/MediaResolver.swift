@@ -67,13 +67,11 @@ actor MediaResolver: MediaResolverProtocol {
     }
 
     func localSource(songId: String, serverId: UUID) async -> MediaSource? {
-        // 1. Permanent download — always preferred, works offline.
         if let url = await downloadService.downloadedURL(forSongId: songId, serverId: serverId) {
             Logger.resolver.debug("Resolved '\(songId, privacy: .public)' from permanent download.")
             return .downloaded(url)
         }
 
-        // 2. Ephemeral cache — no network needed.
         if let url = await audioStreamCache.cachedURL(forSongId: songId, serverId: serverId) {
             Logger.resolver.debug("Resolved '\(songId, privacy: .public)' from cache.")
             return .cached(url)
@@ -86,26 +84,16 @@ actor MediaResolver: MediaResolverProtocol {
             return source
         }
 
-        // 3. Offline guard — no local copy available, device has no connectivity.
         let isOnline = await MainActor.run { serverState.isOnline }
         guard isOnline else {
             Logger.resolver.warning("'\(songId, privacy: .public)' not available offline.")
             throw MinidiscError.offlineUnavailable(songId: songId)
         }
 
-        // 4. Stream. Custom headers injected so AVPlayer reaches Cloudflare-protected hosts.
-        // AVURLAssetHTTPHeaderFieldsKey is used at the PlayerService call site.
         let connection = try await serverService.activeConnection()
         let client = connection.makeSwiftSonicClient()
-        // Live-stream quality: `.original` (default) streams the untouched file; a transcoded
-        // option asks the server to re-encode to a lighter codec so on-device decode can't starve
-        // the audio thread under a CPU spike (the crackle fix). The tier follows the current
-        // network (Wi-Fi vs cellular).
         let quality = await MainActor.run { streamSettings.currentQuality }
-        // `estimateContentLength` asks the server to send a Content-Length for a transcoded stream.
-        // Without it the response is chunked, AVPlayer cannot work out the track length, and the
-        // player falls back to the library metadata: the counter freezes at the advertised end while
-        // the audio keeps going, and the crossfade window — armed off that same length — never opens.
+        // Request an estimated stream length for transcoded audio so AVPlayer can track duration.
         guard let streamURL = client.streamURL(
             id: songId,
             maxBitRate: quality.subsonicMaxBitRate,

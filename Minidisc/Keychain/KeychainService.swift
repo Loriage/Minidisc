@@ -3,7 +3,6 @@ import Security
 import OSLog
 
 actor KeychainService: KeychainServiceProtocol {
-    // kSecAttrService groups all Minidisc credentials for bulk queries and cleanup.
     private let service = "app.minidisc.server-credentials"
 
     func store<T: Codable & Sendable>(_ value: T, forKey key: String) async throws {
@@ -21,9 +20,7 @@ actor KeychainService: KeychainServiceProtocol {
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         ]
 
-        // Update in place so a failed write never destroys the previous credential.
-        // The old delete-then-add sequence left the account permanently signed out when
-        // SecItemAdd failed (locked Keychain, entitlement issue, or transient OS error).
+        // Update in place so a failed write preserves the existing credential.
         let updateStatus = SecItemUpdate(itemQuery as CFDictionary, attributes as CFDictionary)
         let status: OSStatus
         if updateStatus == errSecItemNotFound {

@@ -1,11 +1,9 @@
 import Foundation
 
-/// Track metadata extracted from a DisplayableSong for a ListenBrainz submission.
 nonisolated struct LBTrackMetadata: Sendable {
     let trackName: String
     let artistName: String
     let releaseName: String?
-    /// Duration in milliseconds derived from DisplayableSong.duration (seconds × 1000).
     let durationMs: Int?
 
     init(from song: DisplayableSong) {

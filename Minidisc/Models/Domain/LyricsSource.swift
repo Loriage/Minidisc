@@ -1,6 +1,5 @@
 import Foundation
 
-/// User preference for where lyrics are fetched.
 nonisolated enum LyricsSource: String, CaseIterable, Identifiable, Sendable, Codable {
     case automatic = "auto"
     case navidrome

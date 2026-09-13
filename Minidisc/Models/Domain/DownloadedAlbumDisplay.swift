@@ -1,8 +1,6 @@
 import Foundation
 import SwiftData
 
-/// Display projection unifying full `DownloadedAlbum` records with partial albums
-/// inferred from `DownloadedTrack` rows. Used for offline album lists and Settings.
 nonisolated struct DownloadedAlbumDisplay: Identifiable, Sendable, Hashable {
     let id: String              // == albumId
     let albumId: String
@@ -10,7 +8,6 @@ nonisolated struct DownloadedAlbumDisplay: Identifiable, Sendable, Hashable {
     let name: String
     let artist: String?
     let coverArtId: String?
-    /// Number of tracks currently downloaded (always equal to the count of `DownloadedTrack` rows for this albumId).
     let downloadedTracksCount: Int
     /// Total tracks expected. `nil` for partial albums (no `DownloadedAlbum` record).
     let totalTracksCount: Int?
@@ -29,7 +26,6 @@ enum DownloadedAlbumMerger {
     ) -> [DownloadedAlbumDisplay] {
         var byAlbumId: [String: DownloadedAlbumDisplay] = [:]
 
-        // Full-intent albums first.
         for record in records {
             let trackCount = tracks.filter {
                 $0.albumId == record.albumId && $0.serverId == record.serverId
@@ -47,7 +43,6 @@ enum DownloadedAlbumMerger {
             )
         }
 
-        // Partial albums: groups of tracks whose albumId has no matching record.
         let groupedTracks: [String: [DownloadedTrack]] = tracks.reduce(into: [:]) { dict, track in
             guard let id = track.albumId else { return }
             dict[id, default: []].append(track)

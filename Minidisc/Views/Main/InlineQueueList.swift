@@ -7,8 +7,6 @@ private struct QueueRow: View {
     let song: DisplayableSong
     let isCurrent: Bool
     let onRemove: (() -> Void)?
-    // InlineQueueList passes the full player's luminance-adaptive content colors so text reads over the
-    // cover blur; the label defaults cover any caller that doesn't.
     var contentColor: Color = .primary
     var secondaryContentColor: Color = .secondary
     var loadArtwork: Bool = true

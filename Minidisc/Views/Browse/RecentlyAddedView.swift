@@ -1,11 +1,7 @@
 import SwiftUI
 import SwiftData
 
-/// "Recently Added" — the tracks of the library's newest albums, presented as a playlist.
-///
-/// The same lighter surface as `ArtistBestOfView`: no server playlist sits behind it, so editing, reordering,
-/// renaming, deleting and playlist download have nothing to act on and are absent rather than disabled. It
-/// borrows the playlist hero and track rows so it still reads as a playlist.
+/// Virtual recent-track playlist; server playlist editing actions do not apply.
 struct RecentlyAddedView: View {
     /// Cover of the newest album, passed by the row the user came from so the hero has artwork before the
     /// track fetch resolves. Falls back to the first fetched track's cover.
@@ -138,7 +134,6 @@ struct RecentlyAddedView: View {
                     .padding(.bottom, MinidiscSpacing.xs)
             }
 
-            // Shuffle and download flank the Play disc so it stays centred, mirroring the artist hero.
             HStack(spacing: MinidiscSpacing.l) {
                 Button {
                     let shuffled = songs.shuffled()
@@ -161,7 +156,6 @@ struct RecentlyAddedView: View {
                         .fill(.white)
                         .frame(width: 66, height: 66)
                         .overlay {
-                            // Glyph knocked out of the white disc, matching the artist hero's transport.
                             Image(systemName: "play.fill")
                                 .font(.system(size: 26, weight: .bold))
                                 .blendMode(.destinationOut)
@@ -177,8 +171,6 @@ struct RecentlyAddedView: View {
         }
     }
 
-    /// Downloads every track of the list individually (no playlist record — see the view model). Turns into
-    /// a check once they're all on disk; per-track removal stays available from each row's context menu.
     private var downloadButton: some View {
         Button {
             let ids = songs.map(\.id)
@@ -201,7 +193,6 @@ struct RecentlyAddedView: View {
         .accessibilityLabel("Download")
     }
 
-    /// Every visible track already on disk for the active server.
     private var allDownloaded: Bool {
         guard !songs.isEmpty, let serverId = container?.serverState.activeServer?.id else { return false }
         let onDisk = Set(downloadedTracks.filter { $0.serverId == serverId }.map(\.songId))

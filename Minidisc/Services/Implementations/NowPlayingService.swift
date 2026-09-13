@@ -84,7 +84,6 @@ actor NowPlayingService: NowPlayingServiceProtocol {
         contentGeneration &+= 1
         let generation = contentGeneration
 
-        // Commit text first and clear stale artwork while the new image loads.
         currentSong = snapshot
         await presenter.setBaseInfo(for: snapshot, generation: generation)
         guard generation == contentGeneration, currentSong?.songId == snapshot.songId else { return }

@@ -1,15 +1,8 @@
 import SwiftUI
 import SwiftSonic
 
-/// The round avatar for a "Featured Artist" cell. Shows the album cover (which we already have from the
-/// track) immediately, then swaps to the real ARTIST PHOTO once it's resolved and confirmed loadable —
-/// progressively, with no placeholder flash (CoverArtView keeps the prior image until the new one resolves,
-/// and we pre-load the photo so the swap is a RAM hit).
-///
-/// Resolution is **Path A, zero per-artist fetch**: the artist's cover-art id comes from the shared
-/// `LibraryService` artist-name index (`findArtist(byName:)`, built once from `getArtists`), then the bytes
-/// load through the existing `artworkImageCache`. If the artist isn't found (offline / name mismatch / id
-/// collision) or has no photo, the album cover stays — never a placeholder. Cross-platform.
+/// Shows the album cover until a matching artist photo is loaded.
+/// Resolve through the shared artist index and verify identity before swapping.
 struct FeaturedArtistAvatar: View {
     let artist: FeaturedArtist
     var size: CGFloat = MinidiscCarouselMetrics.artistArtwork

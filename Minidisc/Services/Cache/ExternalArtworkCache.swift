@@ -31,9 +31,6 @@ struct URLSessionExternalFetcher: ExternalArtworkFetcher {
 
 // MARK: - Cache actor
 
-/// Disk + memory cache for external cover art (e.g. Cover Art Archive).
-/// Resolution order: memory LRU → disk (Caches/app.minidisc/external-covers/) → network.
-/// Disk entries expire after 90 days; GC enforces a 100 MB size cap on top of TTL.
 actor ExternalArtworkCache {
     /// Serializes disk reads/writes with the full GC scan so GC cannot delete a file while an
     /// atomic replacement is being committed.
@@ -124,14 +121,12 @@ actor ExternalArtworkCache {
     func image(for url: URL) async -> PlatformImage? {
         guard !Task.isCancelled else { return nil }
 
-        // 1. Memory hit
         if let hit = memoryCache[url] {
             touchMemory(url)
             Logger.externalArtwork.debug("ExternalArtworkCache: memory hit \(url.lastPathComponent, privacy: .public)")
             return hit
         }
 
-        // 2. Share any disk/network pipeline already running for this URL.
         let waiterID = UUID()
         if let existing = inFlight[url] {
             return await waitForImage(
@@ -141,8 +136,7 @@ actor ExternalArtworkCache {
             )
         }
 
-        // 3. Resolve disk then network outside the cache actor. File I/O and image decoding can take
-        // hundreds of milliseconds for a cold cache and must not serialize unrelated memory hits.
+        // Disk I/O and decoding must not block unrelated memory-cache hits.
         let fileURL = diskURL(for: url)
         let requestID = UUID()
         let ttl = self.ttl
@@ -270,7 +264,6 @@ actor ExternalArtworkCache {
         accessOrder.removeAll()
     }
 
-    /// Deterministic concurrency/LRU-test seams.
     func inFlightWaiterCount(for url: URL) -> Int {
         inFlight[url]?.waiters.count ?? 0
     }
@@ -325,7 +318,6 @@ actor ExternalArtworkCache {
         var survivors: [(url: URL, modDate: Date, size: Int64)] = []
         var expiredCount = 0
 
-        // Phase 1: TTL purge
         for fileURL in contents {
             let values = try? fileURL.resourceValues(forKeys: resourceKeys)
             let modDate = values?.contentModificationDate ?? .distantPast
@@ -339,7 +331,6 @@ actor ExternalArtworkCache {
             }
         }
 
-        // Phase 2: size cap — delete oldest first until total <= maxSizeBytes
         let totalSize = survivors.reduce(0) { $0 + $1.size }
         var capRemovedCount = 0
         if totalSize > maxSizeBytes {

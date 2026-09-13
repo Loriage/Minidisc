@@ -2,14 +2,10 @@ import SwiftUI
 import SwiftSonic
 import OSLog
 
-/// Library-wide "All Songs" list. Pages the whole library (search3's empty-query wildcard) with a live
-/// progress count, sorts off-main, and shows a Play/Shuffle-all header, a persisted sort control, and an
-/// A–Z jump bar when sorted by title.
 struct SongsListView: View {
     @Environment(\.appContainer) private var container
     @State private var songSelection: SongSelectionRequest?
     @State private var viewModel: SongsListViewModel?
-    /// Persisted sort — Title by default, plus Artist / Recently Added / Release Date.
     @AppStorage("minidisc.songSort") private var songSort: SongSort = .title
 
     var body: some View {
@@ -74,7 +70,6 @@ struct SongsListView: View {
         }
     }
 
-    /// Live count while the library pages in — so a large library shows progress, not a frozen spinner.
     private func loadingProgress(_ vm: SongsListViewModel) -> some View {
         VStack(spacing: MinidiscSpacing.m) {
             ProgressView()

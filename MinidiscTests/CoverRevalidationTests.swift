@@ -85,7 +85,7 @@ struct CoverRevalidationStoreTests {
         let first = CoverRevalidationStore(fileURL: url)
         let checked = Date(timeIntervalSince1970: 1_000_000)
         first.record(id: "al-persist", lastModified: "kept", checkedAt: checked)
-        first.flush()   // write now instead of waiting on the debounce
+        first.flush()
 
         let second = CoverRevalidationStore(fileURL: url)
         #expect(second.lastModified(for: "al-persist") == "kept")

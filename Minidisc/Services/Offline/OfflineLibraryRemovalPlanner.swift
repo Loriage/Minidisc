@@ -1,6 +1,5 @@
 import Foundation
 
-/// Pure ownership policy for removing offline tracks and collections.
 nonisolated enum OfflineLibraryRemovalPlanner {
     enum Request: Equatable, Sendable {
         case track(songId: String)

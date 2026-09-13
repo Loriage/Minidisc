@@ -1,10 +1,6 @@
 import Foundation
 
-/// A mood the app can build a weekly playlist for.
-///
-/// `query` is deliberately English regardless of the app's language: it is fed to AudioMuse's CLAP
-/// model, which embeds audio against English text. Translating it would degrade the match. The
-/// user-facing `title` is localised; the query is not.
+/// AudioMuse CLAP queries remain in English; only the user-facing titles are localized.
 nonisolated enum Mood: String, CaseIterable, Sendable, Identifiable {
     case night
     case energetic
@@ -14,7 +10,6 @@ nonisolated enum Mood: String, CaseIterable, Sendable, Identifiable {
 
     var id: String { rawValue }
 
-    /// Free-text prompt sent to `POST /api/clap/search`.
     var query: String {
         switch self {
         case .night:     return "late night calm atmospheric"
@@ -51,7 +46,5 @@ nonisolated enum Mood: String, CaseIterable, Sendable, Identifiable {
 
     static let playlistPrefix = "Minidisc · "
 
-    /// Tracks requested per mood. Above the 50 a listener plausibly gets through in a week, below
-    /// the point where CLAP's tail stops resembling the prompt.
     static let trackCount = 75
 }

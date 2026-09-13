@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// The sort control for the artists list, bound to the caller's persisted `@AppStorage("minidisc.artistSort")`.
 struct ArtistSortMenu: View {
     @Binding var sort: ArtistSort
 

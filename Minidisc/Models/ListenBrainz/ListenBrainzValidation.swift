@@ -1,9 +1,7 @@
 import Foundation
 
-/// Result of a /1/validate-token call.
 nonisolated struct ListenBrainzValidation: Sendable {
     let isValid: Bool
-    /// Username associated with the token, as returned by the server.
     let username: String?
 }
 

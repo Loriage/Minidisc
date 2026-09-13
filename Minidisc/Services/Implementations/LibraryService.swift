@@ -280,8 +280,7 @@ actor LibraryService: LibraryServiceProtocol {
     }
 
     private func onlineSmartShuffle(targetSize: Int) async throws -> [DisplayableSong] {
-        // Product rule: rediscover is TRULY random — no recency weighting,
-        // no `played` filtering. The server picks uniformly across the library.
+        // Rediscovery uses server-random songs without recency weighting.
         let songs = try await client().getRandomSongs(size: targetSize)
         Logger.library.debug("Smart shuffle online: \(songs.count) random tracks (target \(targetSize))")
         return songs.map { DisplayableSong(from: $0) }
@@ -295,7 +294,6 @@ actor LibraryService: LibraryServiceProtocol {
     nonisolated static let backfillMaxSeedGenres = 3
     nonisolated static let backfillGenreFetchCount = 100
 
-    /// Extracts distinct artist ids and genres from recent plays, newest first.
     nonisolated static func similaritySeeds(
         from events: [PlaybackEventDTO],
         maxArtists: Int = backfillMaxSeedArtists,
@@ -314,8 +312,6 @@ actor LibraryService: LibraryServiceProtocol {
         return (artistIds, genres)
     }
 
-    /// Shuffles the candidate pool, drops excluded and duplicate ids, and caps at
-    /// `targetSize`. Pure — the network-facing caller assembles the inputs.
     nonisolated static func assembleBackfill(
         pool: [DisplayableSong],
         excludedIds: Set<String>,
@@ -336,7 +332,6 @@ actor LibraryService: LibraryServiceProtocol {
         let isOnline = await MainActor.run { serverService.state.isOnline }
         try Task.checkCancellation()
         guard isOnline else {
-            // Offline: keep the downloads-only fallback, still honoring exclusions.
             let downloads = await offlineSmartShuffle(targetSize: targetSize + excludedIds.count)
             try Task.checkCancellation()
             return Self.assembleBackfill(pool: downloads, excludedIds: excludedIds, targetSize: targetSize)
@@ -348,7 +343,6 @@ actor LibraryService: LibraryServiceProtocol {
 
         let recent = await statsService.recentEvents(limit: 20, serverId: serverId.uuidString)
         try Task.checkCancellation()
-        // Never re-serve what the user just heard.
         var excluded = excludedIds
         for event in recent { excluded.insert(event.trackId) }
 
@@ -356,9 +350,7 @@ actor LibraryService: LibraryServiceProtocol {
         let seeds = Self.similaritySeeds(from: recent)
         var pool: [DisplayableSong] = []
         if !recent.isEmpty {
-            // Artist candidates: full discographies via the existing bounded fetcher.
-            // Deliberately NOT getTopSongs — popularity-backed per spec, empty on bare
-            // self-hosted servers; kept out so the heuristic works everywhere.
+            // Fetch discographies: getTopSongs may be empty on servers without popularity data.
             for artistId in seeds.artistIds {
                 try Task.checkCancellation()
                 do {
@@ -367,10 +359,8 @@ actor LibraryService: LibraryServiceProtocol {
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
-                    // Best-effort: another seed or the random top-up can still fill the queue.
                 }
             }
-            // Genre candidates from local tags.
             for genre in seeds.genres {
                 try Task.checkCancellation()
                 do {
@@ -383,14 +373,12 @@ actor LibraryService: LibraryServiceProtocol {
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
-                    // Best-effort: another seed or the random top-up can still fill the queue.
                 }
             }
         }
 
         var result = Self.assembleBackfill(pool: pool, excludedIds: excluded, targetSize: targetSize)
 
-        // Thin pool (small library, empty genres) or no history: top up with random.
         if result.count < targetSize {
             let randomSongs: [Song]
             do {
@@ -670,9 +658,6 @@ actor LibraryService: LibraryServiceProtocol {
     }
 
     func instantMix(from seed: InstantMixSeed, count: Int) async throws -> [DisplayableSong] {
-        // Timing is logged at .info, on one line, because this is the latency the user actually feels:
-        // nothing plays until the whole fan-out returns. The per-call spread of the fan-out is what
-        // says whether the client-side parallelism survives on the server or re-serialises there.
         try Task.checkCancellation()
         let tStart = Date()
         let c = try await client()
@@ -740,11 +725,9 @@ actor LibraryService: LibraryServiceProtocol {
         try Task.checkCancellation()
         let fanMs = Int(Date().timeIntervalSince(tFan) * 1000)
 
-        // 3) Merge + dedup by song id (base first so seed relevance leads).
         var seenIds = Set<String>()
         let merged = (base + expansions).filter { seenIds.insert($0.id).inserted }
 
-        // 4) Round-robin by artist so different artists surface early and none dominates.
         let diversified = Self.diversifyByArtist(merged, maxPerArtist: Self.instantMixMaxPerArtist)
         let distinctArtists = Set(diversified.prefix(count).compactMap { $0.artistId ?? $0.artist }).count
         let totalMs = Int(Date().timeIntervalSince(tStart) * 1000)
@@ -765,15 +748,12 @@ actor LibraryService: LibraryServiceProtocol {
         return diversified.prefix(count).map { DisplayableSong(from: $0) }
     }
 
-    /// Fan-out tuning for Instant Mix diversity. `nonisolated` so the actor's `instantMix` can read them
-    /// synchronously (the module defaults types to MainActor isolation).
+    // Bound Instant Mix fan-out to limit server load.
     nonisolated private static let instantMixFanOutArtists = 8
     nonisolated private static let instantMixFanOutCount = 25
     nonisolated private static let instantMixMaxPerArtist = 4
 
-    /// Interleaves songs so consecutive tracks come from different artists (round-robin over per-artist
-    /// buckets, capped at `maxPerArtist`). Preserves each artist's first-seen relevance order. Pure and
-    /// `nonisolated` — callable from the actor without hopping to the main actor.
+    /// Interleaves artists while preserving their first-seen relevance order and per-artist limit.
     nonisolated private static func diversifyByArtist(_ songs: [Song], maxPerArtist: Int) -> [Song] {
         var buckets: [String: [Song]] = [:]
         var artistOrder: [String] = []
@@ -831,8 +811,6 @@ actor LibraryService: LibraryServiceProtocol {
         return nil
     }
 
-    /// Applies diacritics-insensitive folding, lowercasing, and whitespace trimming.
-    /// `internal` so it is accessible from the test target via `@testable import`.
     nonisolated static func normalizeArtistName(_ name: String) -> String {
         LibraryIndexText.normalized(name)
     }

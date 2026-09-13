@@ -44,8 +44,7 @@ struct PlaylistListView: View {
             await viewModel?.loadBestOf()
             await viewModel?.loadRecentlyAdded()
         }
-        // Deleting a playlist from a detail surface posts this — reload so the list reflects it on return,
-        // without a blanket `.onAppear` reload (which would re-fetch on every navigation).
+        // Reload after confirmed deletion without refetching on every navigation.
         .onReceive(NotificationCenter.default.publisher(for: .minidiscPlaylistDeleted)) { _ in
             Task { await viewModel?.load() }
         }
@@ -80,8 +79,6 @@ struct PlaylistListView: View {
             )
         } else {
             List {
-                // Derived from the library and the user's stars, not stored on the server — hence their own
-                // section rather than being mixed in with the real playlists below.
                 if hasDerivedPlaylists(vm) {
                     Section("Made For You") {
                         if let newest = vm.newestAlbum {
@@ -119,7 +116,6 @@ struct PlaylistListView: View {
         }
     }
 
-    /// True when the "Made For You" section has anything in it — Recently Added, a best-of, or both.
     private func hasDerivedPlaylists(_ vm: PlaylistListViewModel) -> Bool {
         vm.newestAlbum != nil || !vm.bestOfPlaylists.isEmpty
     }
@@ -149,8 +145,6 @@ private struct OnlinePlaylistRow: View {
     @Environment(ArtworkImageCache.self) private var artworkImageCache
     @State private var coverImage: PlatformImage?
     @State private var showDeleteConfirm = false
-    /// Drives the delete dialog's "playlist only / + downloads" choice — present only when the playlist has a
-    /// downloaded copy on this device.
     @Query private var downloadedMatches: [DownloadedPlaylist]
 
     init(playlist: Playlist, namespace: Namespace.ID? = nil, onActionCompleted: (() -> Void)? = nil) {
@@ -202,8 +196,6 @@ private struct OnlinePlaylistRow: View {
                     onActionCompleted?()
                     container.toastService.showConfirmation("Playlist deleted")
                 } catch {
-                    // Server refused / unreachable: surface it and leave the playlist in place. Do NOT refresh
-                    // or remove anything locally — the deletion never happened.
                     Logger.playlist.error("[PLAYLIST] delete failed id=\(playlist.id, privacy: .public): \(error, privacy: .public)")
                     container.toastService.showError("Couldn't delete playlist. Please try again.")
                 }
@@ -214,8 +206,7 @@ private struct OnlinePlaylistRow: View {
 
 // MARK: - Derived "Recently Added" row
 
-/// The virtual "Recently Added" playlist, wearing the newest album's cover. No context menu, for the same
-/// reason as `BestOfPlaylistRow`: there is nothing on the server to rename, delete, pin or download.
+/// Derived playlist: there is no server entity for context-menu mutations.
 private struct RecentlyAddedPlaylistRow: View {
     let coverArtId: String
 
@@ -242,8 +233,7 @@ private struct RecentlyAddedPlaylistRow: View {
 
 // MARK: - Derived "best of" row
 
-/// A virtual best-of playlist. No context menu: there is nothing on the server to rename, delete, pin or
-/// download — the row exists only as a doorway into the derived track list.
+/// Derived playlist: there is no server entity for context-menu mutations.
 private struct BestOfPlaylistRow: View {
     let bestOf: ArtistBestOf
 

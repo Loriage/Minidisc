@@ -1,11 +1,6 @@
 import Foundation
 import SwiftSonic
 
-/// Unified song model for display and playback in Minidisc.
-///
-/// Constructed from either a SwiftSonic `Song` (online) or a `DownloadedTrack` (offline).
-/// PlayerService, SongRow, and all detail ViewModels work exclusively with this type —
-/// SwiftSonic types are DTOs consumed at the API boundary only.
 nonisolated struct DisplayableSong: Identifiable, Hashable, Sendable, Codable {
     let id: String
     let title: String
@@ -76,8 +71,6 @@ extension DisplayableSong {
         self.replayGainFallbackGain = track.replayGainFallbackGain
     }
 
-    /// A copy with `isDownloaded` flipped — the 16 fields are otherwise identical. Rebuilding it by hand (as 10
-    /// sites did) risks silently dropping a newly-added optional field; this can't.
     func withDownloaded(_ flag: Bool) -> DisplayableSong {
         var copy = self
         copy.isDownloaded = flag

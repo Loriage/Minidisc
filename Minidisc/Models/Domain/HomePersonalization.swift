@@ -13,8 +13,6 @@ enum HomePersonalization {
         return albums.filter { seen.insert($0.id).inserted }
     }
 
-    /// A familiar album outside the latest listening history makes a useful rediscovery.
-    /// Its source remains the listener's favorites and most-played albums.
     static func rediscovery(favorites: [AlbumID3], frequent: [AlbumID3], recent: [AlbumID3]) -> [AlbumID3] {
         unique(favorites + frequent, excluding: Set(recent.map(\.id))).prefix(12).map { $0 }
     }

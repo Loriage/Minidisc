@@ -26,8 +26,6 @@ nonisolated final class NetworkPathEventReducer: Sendable {
     }
 }
 
-/// Wraps NWPathMonitor and keeps ServerState.isOnline in sync.
-/// Start once from the MainActor-owned AppContainer.
 @MainActor
 final class NetworkMonitor {
     private let monitor = NWPathMonitor()

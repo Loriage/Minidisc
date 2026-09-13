@@ -1,11 +1,8 @@
 import Foundation
 import SwiftSonic
 
-/// A coherent, versioned snapshot of the active server and its authorization.
-///
-/// The value is created by `ServerService` so a request never combines metadata from one
-/// configuration revision with credentials from another. It must remain process-local because it
-/// contains Keychain-backed secrets.
+/// Couples server metadata and authorization from one revision. Contains secrets and must
+/// remain process-local.
 nonisolated struct ServerConnection: Sendable {
     struct Version: Sendable, Hashable, CustomStringConvertible {
         let serverID: UUID

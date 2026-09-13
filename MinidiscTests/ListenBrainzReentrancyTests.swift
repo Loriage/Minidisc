@@ -531,7 +531,7 @@ struct ListenBrainzReentrancyTests {
             await Task.yield()
         }
 
-        // Neither intent can observe or mutate the half-written pair.
+        // Neither concurrent intent may access a half-written credential pair.
         #expect(components.keychain.mutations.count == 2)
         let duringCommit = await components.service.scrobblingSnapshot()
         #expect(duringCommit.isEnabled)

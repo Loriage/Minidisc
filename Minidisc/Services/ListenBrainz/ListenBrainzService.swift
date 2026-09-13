@@ -8,8 +8,6 @@ nonisolated struct PendingListenQueueFile: Codable, Sendable {
 }
 
 actor ListenBrainzService {
-    // Reuses the shared KeychainService actor (service group = "app.minidisc.server-credentials").
-    // The key "listenbrainz-username" is namespaced to prevent collision with server credentials.
     private static let usernameKeychainKey = "listenbrainz-username"
     private static let isEnabledDefaultsKey = "app.minidisc.listenbrainz.isEnabled"
 
@@ -70,10 +68,7 @@ actor ListenBrainzService {
     /// Set synchronously before the first await in flushOfflineQueue; reset via defer.
     private var isFlushing: Bool = false
 
-    /// Number of listens waiting for a successful flush. Exposed for diagnostics and tests.
     var pendingListenCount: Int { pendingQueue.count }
-    /// Number of configuration intents suspended behind a multi-key Keychain mutation.
-    /// Kept internal so deterministic re-entrancy tests can observe the serialization point.
     var credentialMutationWaiterCount: Int { credentialMutationWaiters.count }
 
     init(
@@ -89,8 +84,6 @@ actor ListenBrainzService {
         self.queueFileURL = queueFileURL ?? Self.makeDefaultQueueFileURL()
     }
 
-    /// Resolves the default queue file path in Application Support, creating the subdirectory if needed.
-    /// Falls back to the temporary directory on unexpected filesystem errors.
     private static func makeDefaultQueueFileURL() -> URL {
         do {
             let appSupport = try FileManager.default.url(
@@ -109,8 +102,6 @@ actor ListenBrainzService {
         }
     }
 
-    /// Loads persisted state for both recommendations and scrobbling.
-    /// Call once from AppContainer after init.
     func loadPersistedState() async {
         await loadRecommendationsState()
         await loadScrobblingState()
@@ -120,7 +111,6 @@ actor ListenBrainzService {
         await waitForCredentialMutation()
         let operation = beginRecommendationsOperation()
 
-        // Recommendations
         let persistedUsername = try? await keychain.retrieve(String.self, forKey: Self.usernameKeychainKey)
         guard isCurrentRecommendationsOperation(operation) else { return }
         username = persistedUsername
@@ -149,7 +139,6 @@ actor ListenBrainzService {
             return
         }
 
-        // Scrobbling
         let persistedUsername = try? await keychain.retrieve(String.self, forKey: Self.scrobblingUsernameKeychainKey)
         guard isCurrentScrobblingOperation(operation) else { return }
         let storedToken = try? await keychain.retrieve(String.self, forKey: Self.scrobblingTokenKeychainKey)
@@ -170,7 +159,6 @@ actor ListenBrainzService {
         markScrobblingAccountChanged()
         Logger.listenBrainz.debug("Scrobbling state loaded — enabled=\(self.scrobblingEnabled, privacy: .public) hasToken=\(self.hasScrobblingToken, privacy: .public)")
 
-        // Offline queue — load persisted listens then attempt an immediate flush
         loadQueue()
         await flushOfflineQueue()
     }
@@ -181,7 +169,6 @@ actor ListenBrainzService {
         ListenBrainzSnapshot(isEnabled: isEnabled, username: username, validationStatus: validationStatus)
     }
 
-    /// Validates the username against ListenBrainz. On success, persists and flips isEnabled.
     func enable(username: String) async throws {
         await waitForCredentialMutation()
         let operation = beginRecommendationsOperation()
@@ -215,8 +202,7 @@ actor ListenBrainzService {
         Logger.listenBrainz.info("ListenBrainz enabled")
     }
 
-    /// Disables integration. Username is intentionally kept in Keychain so re-enabling
-    /// requires no re-entry — minimal friction for temporary disconnection.
+    /// Disables recommendations but retains the username for re-enabling.
     func disable() async {
         await waitForCredentialMutation()
         _ = beginRecommendationsOperation()
@@ -228,7 +214,6 @@ actor ListenBrainzService {
         Logger.listenBrainz.info("ListenBrainz disabled")
     }
 
-    /// Re-runs username validation if a username is stored. No-op if no username is persisted.
     func revalidate() async throws {
         await waitForCredentialMutation()
         let operation = beginRecommendationsOperation()
@@ -249,7 +234,6 @@ actor ListenBrainzService {
         }
     }
 
-    /// Purges all recommendations state — username, enabled flag, validation status.
     func clearCredentials() async {
         await waitForCredentialMutation()
         _ = beginRecommendationsOperation()
@@ -421,7 +405,6 @@ actor ListenBrainzService {
         Logger.listenBrainz.info("Scrobbling token validated and saved")
     }
 
-    /// Re-enables scrobbling without re-validating. No-op if no token has been stored.
     func enableScrobbling() async {
         await waitForCredentialMutation()
         guard hasScrobblingToken,
@@ -438,7 +421,7 @@ actor ListenBrainzService {
         Logger.listenBrainz.info("Scrobbling re-enabled")
     }
 
-    /// Disables scrobbling without removing the stored token — low-friction re-enable.
+    /// Disables scrobbling while retaining its token.
     func disableScrobbling() async {
         await waitForCredentialMutation()
         _ = beginScrobblingOperation()
@@ -526,13 +509,8 @@ actor ListenBrainzService {
 
     // MARK: - Offline queue — flush
 
-    /// Attempts to POST all pending listens as a single "import" batch.
-    /// Triggers: reconnect (MinidiscApp .task), app launch (loadPersistedState),
-    /// after any successful live single submit (free online signal).
-    ///
-    /// Re-entrancy: isFlushing is set synchronously before the first await, preventing
-    /// two concurrent callers from both building and posting the same batch. On confirmed
-    /// 200 only the submitted batch is dropped; listens enqueued during the POST are kept.
+    /// Flushes one captured batch. Set isFlushing before awaiting and remove only confirmed
+    /// submissions so listens added during the POST are retained.
     func flushOfflineQueue() async {
         guard !pendingQueue.isEmpty else { return }
         guard scrobblingEnabled, hasScrobblingToken else { return }
@@ -752,7 +730,6 @@ actor ListenBrainzService {
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
-    /// Trims whitespace and strips trailing slashes for consistent path joining.
     nonisolated static func normalizeServerURL(_ raw: String) -> String {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         while s.hasSuffix("/") { s.removeLast() }

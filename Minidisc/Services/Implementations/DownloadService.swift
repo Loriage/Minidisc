@@ -89,7 +89,6 @@ actor SharedDownloadTaskCoordinator {
         }
     }
 
-    /// Deterministic synchronization seams for the cancellation tests.
     func waiterCount(for key: String) -> Int {
         entries[key]?.waiters.count ?? 0
     }
@@ -172,7 +171,6 @@ nonisolated enum DownloadCancellationPolicy {
     }
 }
 
-// Audio transfers use a durable queue and a system-owned background session.
 actor DownloadService: DownloadServiceProtocol {
     private let serverService: any ServerServiceProtocol
     private let modelContainer: ModelContainer
@@ -209,10 +207,7 @@ actor DownloadService: DownloadServiceProtocol {
 
         let sessionConfig = URLSessionConfiguration.default
         sessionConfig.timeoutIntervalForRequest = 30
-        // A lossless track can legitimately take several minutes on a slow connection.
-        // The old 30-second resource cap made those downloads fail deterministically even
-        // while bytes were still arriving. Keep the short request/inactivity timeout, but
-        // give the complete transfer a realistic upper bound.
+        // Allow slow lossless downloads to continue while retaining the request inactivity timeout.
         sessionConfig.timeoutIntervalForResource = 60 * 60
         self.downloadSession = URLSession(configuration: sessionConfig)
 
@@ -459,9 +454,7 @@ actor DownloadService: DownloadServiceProtocol {
         await toastService.show(String(localized: "Download queued"), subtitle: song.title, action: .navigateToDownloads)
 
         let key = taskKey(songId: song.id, serverId: serverId)
-        // Every caller must observe the real result. Returning immediately used to make
-        // overlapping album/playlist requests count a still-running (or later failing)
-        // transfer as a success.
+        // Await the shared transfer so overlapping collection requests observe its actual outcome.
         try await transferCoordinator.run(key: key) {
             try await queue.wait(songID: song.id, serverID: serverId)
         }
@@ -481,9 +474,7 @@ actor DownloadService: DownloadServiceProtocol {
             throw MinidiscError.downloadFailed(songId: song.id, underlying: HTTPError(statusCode: code))
         }
 
-        // Never save a poisoned payload as a permanent download (Subsonic error-as-200
-        // envelope, empty or truncated body) — unlike the cache it is never evicted,
-        // so a broken file would play as silence forever.
+        // Reject error envelopes and incomplete payloads before storing a permanent download.
         do {
             try AudioResponseValidator.validate(fileAt: tempURL, response: response, songId: song.id, logger: Logger.download)
         } catch {
@@ -491,12 +482,7 @@ actor DownloadService: DownloadServiceProtocol {
         }
 
         let mimeType = response.mimeType ?? "audio/mpeg"
-        // Name the file after what it IS, not what the server says it is. Navidrome has been observed
-        // declaring suffix "m4a" while sending FLAC bytes; the extension is what the playback engine
-        // picks its parser from, so the wrong one makes a healthy file unplayable — it goes to the m4a
-        // parser, which finds no ftyp and reports end-of-track instantly.
-        // Falls back to the server-declared suffix (then the MIME subtype) when the bytes match nothing
-        // known. audio/mpeg → "mpeg", which AVPlayer maps to a video UTI, hence the suffix preference.
+        // Prefer detected bytes over the server suffix. A wrong extension can select the wrong decoder.
         let sniffed = AudioContainer.sniff(atPath: tempURL.path)
         if let sniffed, let declared = song.suffix?.lowercased(), sniffed.rawValue != declared {
             Logger.download.warning("Container mismatch for '\(song.id, privacy: .public)': server declared '\(declared, privacy: .public)', bytes are \(sniffed.rawValue, privacy: .public) — naming the file after the bytes")
@@ -518,17 +504,11 @@ actor DownloadService: DownloadServiceProtocol {
         try FileManager.default.copyItem(at: tempURL, to: fileURL)
         incompleteFileURL = fileURL
 
-        // Faststart-remux non-faststart m4a in place so it keeps a streamable faststart layout
-        // (lossless passthrough; no-op for every other format). MUST run before the fileSize
-        // read below so DownloadedTrack.fileSize matches the on-disk (remuxed) file — otherwise
-        // downloadedURL's size-validity guard would reject the remuxed file as a mismatch.
-        // Logged for every outcome, not just .remuxed: knowing the remuxer ran and decided to do
-        // nothing is what distinguishes "the file was already fine" from "the remuxer never fired".
+        // Remux before reading fileSize so the stored size matches the final file.
         let remuxOutcome = await AudioFaststartRemuxer().remuxToFaststartIfNeeded(at: fileURL, container: sniffed?.rawValue)
         try checkDownloadCancellation()
         Logger.download.info("Remux outcome v\(AudioFaststartRemuxer.diagnosticsVersion) for '\(song.id, privacy: .public)' (suffix: \(song.suffix ?? "nil", privacy: .public)): \(String(describing: remuxOutcome), privacy: .public)")
 
-        // Capture only Sendable values for the MainActor closure.
         let songId = song.id
         let albumId = song.albumId
         let artistId = song.artistId

@@ -1,7 +1,6 @@
 import SwiftUI
 import UIKit
 
-/// In-memory cache for Lidarr cover images, keyed by their path, so a scroll does not re-fetch.
 @MainActor
 final class LidarrImageStore {
     static let shared = LidarrImageStore()
@@ -11,8 +10,6 @@ final class LidarrImageStore {
     func store(_ image: UIImage, for key: String) { images[key] = image }
 }
 
-/// Loads a Lidarr cover through `LidarrClient` (so the API key and reverse-proxy headers are sent),
-/// then displays it. Falls back to `placeholder` while loading or on failure.
 struct LidarrCoverImage<Placeholder: View>: View {
     let path: String?
     let client: LidarrClient

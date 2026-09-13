@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Horizontal scroll card showing personalized fresh releases from ListenBrainz.
-/// Shows an empty state when releases are unavailable instead of collapsing.
 struct FreshReleasesCard: View {
     private let cellWidth: CGFloat = 140
 
@@ -9,7 +7,6 @@ struct FreshReleasesCard: View {
     let isLoading: Bool
     let isListenBrainzConnected: Bool
     let onSeeAll: () -> Void
-    /// Namespace for zoom matched-transition source on each cell.
     var zoomNamespace: Namespace.ID? = nil
 
     var body: some View {
@@ -138,9 +135,7 @@ private struct FreshReleasesSeeAllCell: View {
 
 struct FreshReleaseAlbumCell: View {
     let release: AlbumRecommendation
-    /// Zoom matched-transition source ID.
     var zoomSourceId: String? = nil
-    /// Zoom matched-transition namespace.
     var zoomNamespace: Namespace.ID? = nil
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {

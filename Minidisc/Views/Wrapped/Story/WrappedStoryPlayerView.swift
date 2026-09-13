@@ -2,21 +2,7 @@ import SwiftUI
 import OSLog
 import UIKit
 
-/// Full-screen annual Wrapped story player.
-///
-/// Navigation model (Instagram/Spotify pattern):
-/// - Tap right half  → next slide
-/// - Tap left half   → previous slide
-/// - Hold            → pause auto-advance; release → resume
-/// - Swipe down      → dismiss
-/// - X button        → dismiss
-///
-/// Each slide auto-advances after `slideDuration` seconds.
-/// The segmented progress bar at the top reflects current position.
-///
-/// ZStack z-order (bottom → top):
-///   slideContent → gestureLayer → overlayControls → closingShareOverlay (iOS)
-/// This ensures the X button and share button always sit above the gesture layer.
+/// Keep close/share controls above the navigation gesture layer.
 struct WrappedStoryPlayerView: View {
     let year: Int
 

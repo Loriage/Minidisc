@@ -111,7 +111,6 @@ struct ExternalReleaseProviderBuildURLTests {
     func accentEncoded() {
         let url = provider.buildURL(artistName: "Stromaé", albumTitle: "Racine Carrée")
         let str = url?.absoluteString ?? ""
-        // é = %C3%A9 in UTF-8
         #expect(str.contains("%C3%A9"), "Accented 'é' must be percent-encoded")
     }
 
@@ -127,7 +126,6 @@ struct ExternalReleaseProviderBuildURLTests {
     func whitespaceTrimmed() {
         let urlWithSpaces = provider.buildURL(artistName: "  Daft Punk  ", albumTitle: "  Discovery  ")
         let urlClean = provider.buildURL(artistName: "Daft Punk", albumTitle: "Discovery")
-        // Both should produce the same encoded term
         #expect(urlWithSpaces?.absoluteString == urlClean?.absoluteString)
     }
 }

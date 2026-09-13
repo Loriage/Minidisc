@@ -31,7 +31,6 @@ nonisolated struct QueueTrackSelection: Equatable, Sendable {
         self.destinationTrackID = destinationTrackID
     }
 
-    /// Resolves only while the current and destination positions still represent the captured intent.
     @MainActor
     func resolve(in playerState: PlayerState) -> Int? {
         let queue = playerState.queue

@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// A subtle pulsing rectangle used as a loading placeholder.
-/// Opacity oscillates discretely (0.05 ↔ 0.10) with a slow ease-in-out, no shimmer sweep.
 struct SkeletonBlock: View {
     let width: CGFloat?
     let height: CGFloat

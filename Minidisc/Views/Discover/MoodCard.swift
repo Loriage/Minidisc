@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Discover uses dedicated mood artwork, independent of the server's album collage.
-/// The destination still follows the reconciled server playlist reference.
 struct MoodCard: View {
     let mood: Mood
     let playlistId: String

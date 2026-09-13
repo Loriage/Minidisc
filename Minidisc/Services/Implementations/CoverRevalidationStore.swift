@@ -3,17 +3,11 @@ import OSLog
 
 // MARK: - Revalidation decision
 
-/// The verdict of comparing the server's current `Last-Modified` against the one we last saw.
-///
-/// Pure and side-effect free so the branching is unit-testable without a network. Navidrome sends
-/// `Last-Modified` on `getCoverArt` but never answers `304`, so we read the header off a HEAD and
-/// decide here rather than relying on HTTP conditional caching.
+/// Compares Last-Modified from HEAD responses because Navidrome does not return 304 here.
 nonisolated enum CoverRevalidationOutcome: Equatable {
     /// First time we check this cover: adopt the server value as the baseline, keep the image.
     case baseline
-    /// Header unchanged — the cover has not changed. Keep the cached image, just reset the timer.
     case unchanged
-    /// Header moved — the cover was replaced on the server. Re-fetch the bytes.
     case changed
     /// No usable `Last-Modified` header (server didn't send one). Cannot tell; leave things be.
     case indeterminate
@@ -27,16 +21,8 @@ nonisolated enum CoverRevalidationOutcome: Equatable {
 
 // MARK: - CoverRevalidationStore
 
-/// Remembers, per cover art id, the `Last-Modified` we last saw and when we last checked — so a
-/// cover can be re-verified on a slow cadence rather than trusted forever.
-///
-/// Navidrome bakes the album's `UpdatedAt` into the cover id, which changes the cache key when the
-/// album record changes — but NOT when only the folder image is swapped, and never at all for
-/// artist art (whose id carries no version). The only signal that survives all three cases is the
-/// `Last-Modified` header. This store is what lets the cache act on it lazily.
-///
-/// Persisted as one small JSON file. Writes are coalesced because the first warm-up after launch
-/// records a baseline for every visible cover at once.
+/// Cover IDs may stay unchanged when artwork is replaced. Persist Last-Modified and
+/// check times to detect those changes; coalesce writes during cache warmup.
 @MainActor
 final class CoverRevalidationStore {
     struct Entry: Codable, Equatable {
@@ -44,8 +30,6 @@ final class CoverRevalidationStore {
         var lastChecked: Date
     }
 
-    /// How long a recorded check is trusted before the cover is re-verified. Cover changes are
-    /// rare, so a week keeps network noise negligible while still self-healing within days.
     nonisolated static let defaultTTL: TimeInterval = 7 * 24 * 3600
 
     private var entries: [String: Entry]
@@ -64,7 +48,6 @@ final class CoverRevalidationStore {
 
     // MARK: - Queries
 
-    /// Whether `id` should be re-verified: never checked, or checked longer ago than `ttl`.
     func isDue(id: String, now: Date = Date(), ttl: TimeInterval = defaultTTL) -> Bool {
         guard let entry = entries[id] else { return true }
         return now.timeIntervalSince(entry.lastChecked) >= ttl

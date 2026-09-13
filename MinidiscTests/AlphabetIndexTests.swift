@@ -12,8 +12,6 @@ struct AlphabetIndexTests {
         #expect(alphabetFirstLetter(of: "almost monday") == "A")
     }
 
-    /// Regression guard: these returned their own initial ("Л", "Ν"), an index entry no row in the
-    /// bar can match — the artists were unreachable and "#" stayed greyed out despite having content.
     @Test("non-Latin scripts fall into the # bucket")
     func nonLatinScripts() {
         #expect(alphabetFirstLetter(of: "ЛЮТИК") == "#")

@@ -13,7 +13,6 @@ struct AudioContainerSnifferTests {
 
     @Test("FLAC bytes are recognised even when the server calls them m4a")
     func flacIsFlac() {
-        // The observed failure: Navidrome declared suffix "m4a" and sent this.
         #expect(AudioContainer.sniff(magic: bytes("fLaC")) == .flac)
     }
 

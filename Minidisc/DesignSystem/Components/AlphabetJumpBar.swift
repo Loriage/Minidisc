@@ -64,12 +64,8 @@ struct AlphabetJumpBar: View {
 
 // MARK: - Helpers
 
-/// Returns the A–Z bucket for `name`, or "#" for anything the bar cannot show a row for.
-///
-/// Diacritics are folded first, so "Édith" indexes under E. Everything that is still not an ASCII
-/// letter — Cyrillic, Greek, CJK, digits, punctuation — belongs under "#". Returning the raw letter
-/// instead (as this did) produced index entries like "Л" that no row in the bar could ever match:
-/// those items were unreachable, and "#" stayed greyed out despite having content.
+/// Folds diacritics into A–Z. Non-ASCII letters, digits and punctuation map to #
+/// because the jump bar has no separate anchors for them.
 func alphabetFirstLetter(of name: String) -> String {
     guard let first = name.first else { return "#" }
     let folded = String(first)
@@ -80,13 +76,11 @@ func alphabetFirstLetter(of name: String) -> String {
 }
 
 extension Collection {
-    /// Computes the set of first letters present in the collection for a given string key path.
     func availableAlphabetLetters(keyPath: KeyPath<Element, String>) -> Set<String> {
         Set(self.map { alphabetFirstLetter(of: $0[keyPath: keyPath]) })
     }
 }
 
-/// Returns the ID of the first item whose key-path value starts with `letter`.
 func firstAlphabetItemID<T: Identifiable>(
     forLetter letter: String,
     in items: [T],

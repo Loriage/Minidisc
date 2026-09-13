@@ -22,7 +22,6 @@ struct ToastView: View {
             }
             .multilineTextAlignment(.leading)
 
-            // Chevron only when the toast is tappable (e.g. add-to-playlist → opens the playlist).
             if case .undoQueueRemoval = toast.action {
                 Text("Undo").font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.minidiscAccent)
@@ -44,8 +43,6 @@ struct ToastView: View {
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
-    /// Leading element: the cover thumbnail (Apple-Music pill) when the toast carries a `coverArtId`,
-    /// otherwise the style icon so plain confirmations (e.g. "Pinned to Home") keep their look.
     @ViewBuilder
     private var leading: some View {
         if let coverArtId = toast.coverArtId {
@@ -67,13 +64,10 @@ struct ToastOverlay: ViewModifier {
     @Environment(\.appContainer) private var container
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Mirrors MainTabView.hasTrack — true while the mini player bar is on screen.
     private var miniPlayerVisible: Bool {
         container?.playerState.currentTrack != nil || container?.playerState.isLiveStream == true
     }
 
-    /// Bottom inset so the toast floats just above the mini player when it is shown, otherwise just
-    /// above the tab bar / home indicator. Tunable if the gap needs nudging on device.
     private var bottomInset: CGFloat {
         reservesMiniPlayerSpace && miniPlayerVisible ? MinidiscSpacing.miniPlayerBottomMargin + MinidiscSpacing.s : MinidiscSpacing.l
     }
@@ -108,8 +102,6 @@ struct ToastOverlay: ViewModifier {
         return "toast.action"
     }
 
-    /// Resolves a tappable toast: dismiss it, then navigate via the existing notification pattern
-    /// (same path as `.minidiscNavigateToArtist`) — no new navigation channel is introduced.
     private func handleTap(_ toast: ToastService.Toast) {
         guard let action = toast.action else { return }
         toastService.dismiss()

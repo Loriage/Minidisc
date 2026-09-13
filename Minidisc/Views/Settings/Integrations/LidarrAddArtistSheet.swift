@@ -1,11 +1,9 @@
 import SwiftUI
 import OSLog
 
-/// Confirms the options for adding an artist to Lidarr (root folder, profiles, monitoring), then adds it.
 struct LidarrAddArtistSheet: View {
     let artist: LidarrArtistLookup
     let client: LidarrClient
-    /// Called on a successful add, so the parent can close the search and show a toast.
     let onAdded: () -> Void
 
     @Environment(\.dismiss) private var dismiss

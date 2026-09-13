@@ -5,8 +5,7 @@ import SwiftSonic
 
 // MARK: - Counting stub
 
-/// Records `search` calls and replays a configurable outcome.
-/// Main-actor test double because the view model and its assertions are UI-isolated.
+// MainActor test double matching the view model’s isolation.
 @MainActor
 private final class SearchLibraryStub: LibrarySearching {
     enum Behavior {
@@ -37,7 +36,6 @@ private final class SearchLibraryStub: LibrarySearching {
 @MainActor
 struct SearchViewModelDebounceTests {
 
-    /// The debounce tests are all about the online path — offline the VM returns before any request.
     private func onlineState() -> ServerState {
         let state = ServerState()
         state.isOnline = true

@@ -1,8 +1,6 @@
 import SwiftUI
 import SwiftSonic
 
-/// Adaptive grid cell for the artists browse surface.
-/// Mirrors AlbumGridCell: square cover art, artist name, album count.
 struct ArtistGridCard: View {
     let artist: ArtistID3
 

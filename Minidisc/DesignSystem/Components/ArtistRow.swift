@@ -1,8 +1,6 @@
 import SwiftUI
 import SwiftSonic
 
-/// List cell for an artist. Avatar uses the artist's initials on an accent-tinted circle
-/// (Subsonic rarely provides artist artwork, so a generic placeholder is the baseline).
 struct ArtistRow: View {
     let artist: ArtistID3
 

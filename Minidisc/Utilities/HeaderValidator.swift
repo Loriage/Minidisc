@@ -1,6 +1,5 @@
 import Foundation
 
-/// Validates HTTP header names and values against RFC 7230 rules.
 nonisolated enum HeaderValidator {
 
     /// Returns true if every character in `name` is an RFC 7230 tchar.

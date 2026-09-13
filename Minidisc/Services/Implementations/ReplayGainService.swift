@@ -23,8 +23,6 @@ nonisolated enum ReplayGainService {
 
     // MARK: - Gain computation
 
-    /// Computes the EQ gain in dB from raw settings values and song RG fields.
-    /// Returns 0.0 when disabled or when no gain data is available (play untouched).
     nonisolated static func computeGain(
         enabled: Bool,
         mode: ReplayGainMode,

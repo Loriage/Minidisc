@@ -420,7 +420,6 @@ struct ExternalArtistImageResolverTests {
 
         _ = await resolver.resolveImageURL(forArtistName: "Test Artist")
 
-        // Score 83 with exact name match → pipeline proceeds → MB artist call happens
         let count = client.callCount
         #expect(count == 2)
     }
@@ -443,7 +442,6 @@ struct ExternalArtistImageResolverTests {
 
     @Test("Concurrent name requests share one Task")
     func nameInflightDedup() async {
-        // Use low-score response: pipeline stops after search (1 call, no rate-limit delay)
         let client = StubHTTPClient(responses: [
             ok(mbSearchResponse(artists: [(id: testMBID, name: "Other", score: 30)]))
         ])

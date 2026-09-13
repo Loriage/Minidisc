@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// The Lidarr tab: a grid of the artists Lidarr manages, with a button to search and add more.
 struct LidarrLibraryView: View {
     @Environment(\.appContainer) private var container
 
@@ -9,14 +8,12 @@ struct LidarrLibraryView: View {
     @State private var errorMessage: String?
     @State private var client: LidarrClient?
     @State private var showSearch = false
-    // Keyed separately from `minidisc.artistSort`: this is a different library, and re-sorting the
-    // Subsonic artists list from the Lidarr tab would be a surprise.
+    // Keep Lidarr’s sort preference separate from the music-server library.
     @AppStorage("minidisc.lidarrArtistSort") private var artistSort: ArtistSort = .name
     @AppStorage("minidisc.lidarrLibraryGrid") private var gridLayout = true
 
     private let columns = [GridItem(.adaptive(minimum: 140, maximum: 180), spacing: MinidiscSpacing.m)]
 
-    /// Server order is alphabetical; this applies the user's choice on top.
     private var sortedArtists: [LidarrArtist] { artistSort.sortedLidarr(artists) }
 
     var body: some View {
@@ -189,11 +186,7 @@ private struct LidarrArtistCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
-            // The square is driven by an inert Color, and the cover rides in an overlay: overlay
-            // content never contributes to its parent's size. Lidarr falls back to a banner when an
-            // artist has no poster, and `scaledToFill` reports a size WIDER than proposed for such a
-            // cover — through a flexible maxWidth frame that width reached the grid, which then
-            // centred the oversized cell over its neighbour. Here it can only overflow the clip.
+            // Size the cell before overlaying artwork so wide banners cannot expand the grid column.
             Color.clear
                 .aspectRatio(1, contentMode: .fit)
                 .overlay {
@@ -225,7 +218,6 @@ private struct LidarrArtistCell: View {
 
 // MARK: - Artist row
 
-/// List-mode counterpart of `LidarrArtistCell`, laid out like `ArtistRow` on the Subsonic side.
 private struct LidarrArtistRow: View {
     let artist: LidarrArtist
     let client: LidarrClient
@@ -276,7 +268,7 @@ private extension ArtistSort {
         case .albumCount:
             return artists.sorted {
                 let a = $0.statistics?.albumCount ?? 0, b = $1.statistics?.albumCount ?? 0
-                if a != b { return a > b } // most albums first
+                if a != b { return a > b }
                 return $0.artistName.localizedStandardCompare($1.artistName) == .orderedAscending
             }
         }

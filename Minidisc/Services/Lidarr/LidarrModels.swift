@@ -17,7 +17,6 @@ nonisolated struct LidarrArtistLookup: Decodable, Sendable, Identifiable {
     var id: String { foreignArtistId }
     var isAlreadyAdded: Bool { existingId != nil }
 
-    /// Best poster URL: the top-level `remotePoster`, else a `poster` image's remote URL.
     var posterURL: URL? {
         if let remotePoster, let url = URL(string: remotePoster) { return url }
         let poster = images?.first { $0.coverType == "poster" }
@@ -37,9 +36,7 @@ nonisolated struct LidarrImage: Decodable, Sendable, Hashable {
     let url: String?
 }
 
-/// Cover types that crop acceptably into a square tile, best first. Consulted when the requested type
-/// is missing, so that an artist without a poster does not fall straight through to the wide formats
-/// Lidarr also returns (`fanart`, `banner`, `screenshot`, `logo`).
+// Prefer square-friendly image types before wide banners or fanart.
 private nonisolated let lidarrSquarishCoverTypes = ["poster", "cover", "headshot", "disc"]
 
 /// The best image path for a cover type: an absolute external URL when Lidarr has one, otherwise the
@@ -75,7 +72,6 @@ nonisolated struct LidarrArtist: Decodable, Sendable, Identifiable, Hashable {
     let statistics: LidarrStatistics?
 
     var posterPath: String? { lidarrImagePath(from: images) }
-    /// Link to the artist on MusicBrainz, Lidarr's metadata source.
     var musicBrainzURL: URL? {
         guard let foreignArtistId, !foreignArtistId.isEmpty else { return nil }
         return URL(string: "https://musicbrainz.org/artist/\(foreignArtistId)")
@@ -98,7 +94,6 @@ nonisolated struct LidarrTrack: Decodable, Sendable, Identifiable {
     let hasFile: Bool
     let mediumNumber: Int?
 
-    /// `m:ss` from the duration in milliseconds.
     var durationText: String? {
         guard let duration, duration > 0 else { return nil }
         let seconds = duration / 1000
@@ -120,7 +115,6 @@ nonisolated struct LidarrAlbum: Decodable, Sendable, Identifiable, Hashable {
     let media: [LidarrMedium]?
 
     var coverPath: String? { lidarrImagePath(from: images) }
-    /// Title for a medium number, e.g. "Digital Media 1", falling back to "Disc N".
     func mediumTitle(for number: Int) -> String {
         let medium = media?.first { $0.mediumNumber == number }
         if let name = medium?.mediumName, !name.isEmpty { return name }
@@ -129,12 +123,10 @@ nonisolated struct LidarrAlbum: Decodable, Sendable, Identifiable, Hashable {
         }
         return "Disc \(number)"
     }
-    /// Release year from the ISO date, if present.
     var year: String? {
         guard let releaseDate, releaseDate.count >= 4 else { return nil }
         return String(releaseDate.prefix(4))
     }
-    /// "downloaded / total" track counts, when Lidarr reports them.
     var trackProgress: String? {
         guard let have = statistics?.trackFileCount, let total = statistics?.totalTrackCount, total > 0 else { return nil }
         return "\(have)/\(total)"
@@ -182,7 +174,6 @@ nonisolated struct LidarrRelease: Decodable, Sendable, Identifiable {
     let downloadProtocol: String?
     /// Indexer flags such as "Freeleech", "Scene". Lidarr sends either names or a bitmask number.
     let indexerFlags: LidarrIndexerFlags?
-    /// The indexer's details page for this release.
     let infoUrl: String?
     let publishDate: String?
 
@@ -197,12 +188,10 @@ nonisolated struct LidarrRelease: Decodable, Sendable, Identifiable {
         let lower = title.lowercased()
         return !lower.contains("repack") && !lower.contains("proper") && !lower.contains("rerip")
     }
-    /// The indexer's info page, when the release has one.
     var infoURL: URL? {
         guard let infoUrl, let url = URL(string: infoUrl) else { return nil }
         return url
     }
-    /// A short "PROPER REPACK" style label built from the title, or nil for a plain release.
     var flagLabel: String? {
         let lower = title.lowercased()
         var flags: [String] = []
@@ -222,7 +211,6 @@ nonisolated struct LidarrRelease: Decodable, Sendable, Identifiable {
 nonisolated struct LidarrIndexerFlags: Decodable, Sendable, Hashable {
     let names: [String]
 
-    /// Lidarr's `IndexerFlags` bitmask, low bits first.
     private static let bitmask: [(Int, String)] = [
         (1, "Freeleech"),
         (2, "Halfleech"),
@@ -253,9 +241,7 @@ nonisolated struct LidarrQualityName: Decodable, Sendable {
     let name: String?
 }
 
-/// Body of `POST /api/v1/release` to grab (download) a release. `albumId`/`artistId` force the target
-/// when Lidarr cannot parse the release itself, so it still grabs and lands in the queue for manual
-/// import. Nil ids are omitted from the JSON. Mirrors how Radarr/Sonarr take `movieId`/`seriesId`.
+/// Grab request; optional album/artist IDs force the target of an unparsed release.
 nonisolated struct LidarrGrabRequest: Encodable, Sendable {
     let guid: String
     let indexerId: Int
@@ -278,7 +264,6 @@ nonisolated struct LidarrRootFolder: Decodable, Sendable, Identifiable {
 
 // MARK: - Add request
 
-/// How Lidarr should monitor an artist's albums after it is added.
 nonisolated enum LidarrMonitorOption: String, CaseIterable, Identifiable, Sendable {
     case all
     case future

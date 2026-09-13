@@ -1,16 +1,11 @@
 import Foundation
 import Observation
 
-/// Sendable snapshot of crossfade settings for crossing actor boundaries.
-/// Captured from CrossfadeSettings on the MainActor before passing into PlayerService.
 nonisolated struct CrossfadeConfig: Sendable {
     let duration: Double
     let disableForGapless: Bool
 }
 
-/// User-configurable crossfade preferences persisted in UserDefaults.
-/// @Observable so SettingsView updates live when the user changes settings.
-/// Injected into AppContainer; services capture a CrossfadeConfig snapshot via MainActor.run.
 @Observable
 @MainActor
 final class CrossfadeSettings {
@@ -60,7 +55,6 @@ final class CrossfadeSettings {
 
     // MARK: - Derived
 
-    /// Captures a sendable snapshot for crossing into actor-isolated code.
     var config: CrossfadeConfig {
         CrossfadeConfig(duration: _duration, disableForGapless: _disableForGapless)
     }

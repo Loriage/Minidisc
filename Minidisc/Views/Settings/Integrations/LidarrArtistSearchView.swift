@@ -1,7 +1,6 @@
 import SwiftUI
 import OSLog
 
-/// Searches Lidarr for an artist and lets the user add it. Presented as a sheet from the Library tab.
 struct LidarrArtistSearchView: View {
     @Environment(\.appContainer) private var container
     @Environment(\.dismiss) private var dismiss
@@ -107,7 +106,6 @@ struct LidarrArtistSearchView: View {
             guard !Task.isCancelled else { return }
             results = found
         } catch {
-            // A newer keystroke cancelled this request — not an error to show.
             if Task.isCancelled { return }
             if let lidarr = error as? LidarrError {
                 switch lidarr {

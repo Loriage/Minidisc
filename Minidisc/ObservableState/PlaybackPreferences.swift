@@ -1,9 +1,6 @@
 import Foundation
 
-/// Persists playback preferences that do not need observable settings UI state.
-///
-/// UserDefaults is not Sendable, so all access stays on MainActor. Keeping the concrete dependency
-/// here gives PlayerState and PlayerService the same initial values while tests use an isolated suite.
+/// Keep UserDefaults access on MainActor and share initial preferences with PlayerState.
 @MainActor
 final class PlaybackPreferences {
     static let defaultVolume: Float = 0.7

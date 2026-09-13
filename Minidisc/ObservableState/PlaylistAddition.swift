@@ -7,7 +7,6 @@ struct PlaylistAdditionRequest: Identifiable {
     var createsPlaylist = false
 }
 
-/// Owns the Add to Playlist selection for one SwiftUI presentation context.
 @MainActor
 @Observable
 final class PlaylistAddition {

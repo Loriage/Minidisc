@@ -1,11 +1,7 @@
 import SwiftUI
 import SwiftData
 
-/// "The best of <artist>" — the user's starred tracks for one artist, presented as a playlist.
-///
-/// Deliberately a lighter surface than `PlaylistDetailView`: there is no server playlist behind it, so
-/// editing, reordering, renaming, deleting and playlist download have nothing to act on and are absent
-/// rather than disabled. It borrows the same hero and track-row components so it still reads as a playlist.
+/// Virtual starred-track playlist; server playlist editing actions do not apply.
 struct ArtistBestOfView: View {
     let artistId: String
     let artistName: String
@@ -16,7 +12,6 @@ struct ArtistBestOfView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var viewModel: ArtistBestOfViewModel?
     @State private var dominantColor: Color = .clear
-    /// Live star state so unstarring a track from its context menu drops it out of the list at once.
     @Query(filter: #Predicate<FavoriteRecord> { $0.itemType == "song" })
     private var songFavorites: [FavoriteRecord]
     /// Unfiltered — the active server isn't known at init, so it's applied at read time (as PlaylistDetailView does).
@@ -142,7 +137,6 @@ struct ArtistBestOfView: View {
                     .padding(.bottom, MinidiscSpacing.xs)
             }
 
-            // Shuffle and download flank the Play disc so it stays centred, mirroring the artist hero.
             HStack(spacing: MinidiscSpacing.l) {
                 Button {
                     let shuffled = songs.shuffled()
@@ -165,7 +159,6 @@ struct ArtistBestOfView: View {
                         .fill(.white)
                         .frame(width: 66, height: 66)
                         .overlay {
-                            // Glyph knocked out of the white disc, matching the artist hero's transport.
                             Image(systemName: "play.fill")
                                 .font(.system(size: 26, weight: .bold))
                                 .blendMode(.destinationOut)
@@ -181,8 +174,6 @@ struct ArtistBestOfView: View {
         }
     }
 
-    /// Downloads every track of the list individually (no playlist record — see the view model). Turns into
-    /// a check once they're all on disk; per-track removal stays available from each row's context menu.
     private var downloadButton: some View {
         Button {
             let ids = songs.map(\.id)
@@ -205,7 +196,6 @@ struct ArtistBestOfView: View {
         .accessibilityLabel("Download")
     }
 
-    /// Every visible track already on disk for the active server.
     private var allDownloaded: Bool {
         guard !songs.isEmpty, let serverId = container?.serverState.activeServer?.id else { return false }
         let onDisk = Set(downloadedTracks.filter { $0.serverId == serverId }.map(\.songId))

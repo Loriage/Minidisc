@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Shared formatters for the Lidarr release views.
 enum LidarrFormat {
     private static let byteFormatter: ByteCountFormatter = {
         let f = ByteCountFormatter()
@@ -18,8 +17,6 @@ enum LidarrFormat {
     }
 }
 
-/// The detail of one indexer release: its flags, the reasons Lidarr rejected it, a link to the indexer
-/// page, and a Download button that grabs it. Presented as a sheet from the interactive search.
 struct LidarrReleaseDetailView: View {
     let release: LidarrRelease
     let client: LidarrClient
@@ -34,7 +31,6 @@ struct LidarrReleaseDetailView: View {
     @State private var showGrabConfirm = false
     @State private var showAlbumPicker = false
 
-    /// The album to force, when Lidarr already mapped the release or the search was album-scoped.
     private var overrideAlbumId: Int? {
         if let id = release.albumId { return id }
         if case .album(let album) = scope { return album.id }
@@ -47,7 +43,6 @@ struct LidarrReleaseDetailView: View {
         case .artist(let artist): return artist.id
         }
     }
-    /// The artist to list albums for when the user must pick one for an unparsable release.
     private var pickerArtistId: Int? {
         if case .artist(let artist) = scope { return artist.id }
         return nil
@@ -229,8 +224,6 @@ struct LidarrReleaseDetailView: View {
         Divider()
     }
 
-    /// Routes a Download tap: grab straight away when the release is fine, confirm when Lidarr rejected
-    /// it, or ask which album to force when the release could not be mapped and the scope has no album.
     private func handleDownloadTap() {
         guard release.isRejected else {
             Task { await grab() }
@@ -266,8 +259,6 @@ struct LidarrReleaseDetailView: View {
 
 // MARK: - Album picker
 
-/// A bottom sheet that lists an artist's albums so the user can force an unparsable release onto one.
-/// It loads the albums itself so it never depends on the presenting view's timing.
 private struct LidarrAlbumPickerSheet: View {
     let artistId: Int
     let client: LidarrClient

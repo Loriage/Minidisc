@@ -1,8 +1,6 @@
 import OSLog
 import SwiftUI
 
-/// Beszel-style settings presentation: a sheet with its own NavigationStack,
-/// inline title, and an X close button.
 struct SettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -52,7 +50,6 @@ struct SettingsView: View {
     private func form(downloadsVM: DownloadsViewModel) -> some View {
         Form {
             serverSection()
-            // Apple Music-style hub: one untitled group, each row pushes a focused sub-page.
             Section {
                 NavigationLink {
                     PlaybackSettingsView()
@@ -107,7 +104,6 @@ struct SettingsView: View {
                 Text("No server configured.")
                     .foregroundStyle(.secondary)
             }
-            // TODO(v1.x): multi-server management (add / remove / switch servers)
         } header: {
             Text("Server")
         }
@@ -831,8 +827,6 @@ private struct IntegrationsSettingsView: View {
 
 // MARK: - Application
 
-/// Appearance and display preferences. Everything here is a pure UI preference, so it lives in
-/// `@AppStorage` rather than the container — the same keys are read directly by `MainTabView`.
 private struct ApplicationSettingsView: View {
     @AppStorage("minidisc.appTheme") private var theme: AppTheme = .system
 

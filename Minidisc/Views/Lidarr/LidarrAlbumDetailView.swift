@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// A Lidarr album: header, a per-medium track list, monitoring, and an album search.
 struct LidarrAlbumDetailView: View {
     let album: LidarrAlbum
     let client: LidarrClient
@@ -19,7 +18,6 @@ struct LidarrAlbumDetailView: View {
         _monitored = State(initialValue: album.monitored)
     }
 
-    /// Track numbers present, grouped by medium in order.
     private var mediumNumbers: [Int] {
         let numbers = Set(tracks.map { $0.mediumNumber ?? 1 })
         return numbers.sorted()

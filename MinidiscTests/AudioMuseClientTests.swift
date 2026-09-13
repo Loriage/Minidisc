@@ -3,7 +3,6 @@ import Foundation
 import Synchronization
 @testable import Minidisc
 
-/// Serves canned responses per path, and records the request bodies it saw.
 private nonisolated final class StubProtocol: URLProtocol, @unchecked Sendable {
     private struct StubbedResponse: Sendable {
         let status: Int
@@ -79,7 +78,6 @@ struct AudioMuseClientTests {
 
     @Test("the search is scoped to the default server")
     func searchScopesToDefaultServer() async throws {
-        // Without this, AudioMuse can answer with canonical ids the music server cannot match.
         StubProtocol.reset()
         StubProtocol.stub("/api/servers", body: #"{"servers":[{"server_id":"nav1","name":"Navidrome"}],"default_id":"nav1"}"#)
         StubProtocol.stub("/api/clap/search", body: #"{"results":[{"item_id":"abc","title":"T"}]}"#)
@@ -151,7 +149,6 @@ struct AudioMuseClientTests {
         StubProtocol.stub("/api/servers", body: #"{"servers":[],"default_id":null}"#)
         StubProtocol.stub("/api/clap/search", body: #"{"results":[{"item_id":"a"}]}"#)
 
-        // An instance running with AUTH_ENABLED=false takes no token at all, so this must not fail.
         _ = try await makeClient(token: nil).search(query: "calm", limit: 5)
         _ = try await makeClient(token: "secret").search(query: "calm", limit: 5)
     }
@@ -176,7 +173,7 @@ struct AudioMuseClientTests {
         StubProtocol.stub("/api/servers", body: #"{"servers":[],"default_id":null}"#)
         StubProtocol.stub("/api/clap/search",
                           body: #"{"results":[{"item_id":"good"},{"item_id":"fp_x","title":"Absent","author":"Nobody"}]}"#)
-        let library = TagLibraryStub()   // search returns nothing
+        let library = TagLibraryStub()
         let provider = AudioMuseTrackProvider(client: makeClient(), resolver: SubsonicTrackResolver(libraryService: library))
 
         #expect(try await provider.trackIds(for: .chill, limit: 5) == ["good"])

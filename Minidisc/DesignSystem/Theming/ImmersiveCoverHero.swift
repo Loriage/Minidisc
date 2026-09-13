@@ -1,18 +1,12 @@
 import SwiftUI
 
-/// The Apple-Music-style immersive cover hero, shared across detail surfaces (playlist, album, …). It is the
-/// FIRST item of a scroll container so it scrolls up with the content. The cover fills full-bleed, blurs and
-/// melts into the themed body color (`PlaylistThemedBackground`), stretches upward on over-scroll, and the
-/// caller's `content` (title / artist / transport …) floats over the cover's lower part.
-///
-/// Pair it with: a solid `bodyColor` page `.background(...)`, `.ignoresSafeArea(.container, edges: .top)` on
-/// the scroll container (so the cover reaches the screen top), and a transparent nav bar.
+/// Place first in a scroll view with a bodyColor background, transparent navigation bar
+/// and ignored top safe area. The cover stretches during overscroll.
 struct ImmersiveCoverHero<Content: View>: View {
     let coverArtId: String?
     let coverImage: PlatformImage?
     let theme: PlaylistTheme
     let heroHeight: CGFloat
-    /// Re-mount key so the cover reloads when it changes (e.g. an edit upload). Defaults to a constant.
     var coverRefreshID: AnyHashable = 0
     /// When true the cover keeps its square ratio and the content sits BELOW it (album/playlist covers shown in
     /// full); when false (default) the content floats over the full-bleed cover (artist photos).
@@ -31,8 +25,6 @@ struct ImmersiveCoverHero<Content: View>: View {
         } else {
             ZStack(alignment: .bottom) {
                 coverHero
-                // Floating content over the cover's lower part. Non-interactive cover behind it stays out of
-                // the way of taps (artist links, transport buttons).
                 content()
                     .padding(.bottom, MinidiscSpacing.l)
             }

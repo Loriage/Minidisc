@@ -8,13 +8,11 @@ struct AudioResponseValidatorTests {
 
     private let logger = Logger(subsystem: "app.minidisc.tests", category: "AudioResponseValidatorTests")
 
-    // Real-world audio file signatures — none start with '<' or '{'.
     private static let id3Header: [UInt8] = [0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00]
     private static let mp3FrameSync: [UInt8] = [0xFF, 0xFB, 0x90, 0x64, 0x00, 0x0F, 0xF0, 0x00]
     private static let flacMagic: [UInt8] = Array("fLaC".utf8) + [0x00, 0x00, 0x00, 0x22]
     private static let oggMagic: [UInt8] = Array("OggS".utf8) + [0x00, 0x02, 0x00, 0x00]
 
-    /// Writes the bytes to a unique temp file, runs the body, removes the file.
     private func withTempFile<T>(_ bytes: [UInt8], _ body: (URL) throws -> T) throws -> T {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("audio-validator-\(UUID().uuidString).bin")

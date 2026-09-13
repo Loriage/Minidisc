@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Flat list cell for an album — cover 60pt, name, artist, year.
-/// Used in search results and any flat album list (not grids; see ArtistDetailView).
 struct AlbumRow: View {
     let albumId: String
     let name: String

@@ -30,14 +30,11 @@ enum MinidiscCornerRadius {
 
 // MARK: - Shadow presets
 
-/// Minidisc shadow values. Unused by covers since drop shadows were removed app-wide;
-/// `MinidiscCoverModifier` (via `.minidiscCoverStyle()`) draws a thin border in dark mode instead.
 enum MinidiscShadow {
     static let coverRadius: CGFloat  = 8
     static let coverY: CGFloat       = 4
     static let coverOpacity: Double  = 0.15
 }
-
 
 // MARK: - View modifier: content width
 
@@ -80,7 +77,6 @@ struct MinidiscCoverModifier: ViewModifier {
 }
 
 extension View {
-    /// Clips to a rounded rectangle and adds a thin border in dark mode.
     func minidiscCoverStyle(cornerRadius: CGFloat = MinidiscCornerRadius.standard) -> some View {
         modifier(MinidiscCoverModifier(cornerRadius: cornerRadius))
     }

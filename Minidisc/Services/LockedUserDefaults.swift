@@ -1,12 +1,7 @@
 import Foundation
 import Synchronization
 
-/// A narrow, compiler-checked synchronization boundary for preferences used by
-/// service actors.
-///
-/// `UserDefaults` never escapes this concrete API. Foundation does not declare
-/// `UserDefaults` as `Sendable`, so this narrow wrapper supplies the missing
-/// conformance while serializing every access through the same mutex.
+/// Serializes UserDefaults through one mutex; the underlying instance never escapes.
 nonisolated final class LockedUserDefaults: @unchecked Sendable {
     private let storage: UserDefaults
     private let lock = Mutex<Void>(())

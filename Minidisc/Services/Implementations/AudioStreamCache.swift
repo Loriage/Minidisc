@@ -2,18 +2,8 @@ import Foundation
 import SwiftData
 import OSLog
 
-/// Streaming cache for recently-played tracks. Holds a byte-bounded sliding window and evicts
-/// least-recently-used entries when the configured capacity is exceeded.
-///
-/// Caches AUDIO BYTES ONLY. It holds no library metadata — no albums, artists, playlists or search
-/// results. The separate library index contains discardable metadata but never audio bytes.
-///
-/// Distinct from DownloadService:
-/// - DownloadService → permanent, user-explicit, never auto-evicted, lives in Documents/.
-/// - AudioStreamCache → transient, automatic, evicted by LRU, lives in Caches/.
-///
-/// Populated via the streaming hook in PlayerService. MediaResolver reads from this cache
-/// between permanent downloads and remote streaming.
+/// Byte-bounded LRU audio cache in Caches. Permanent downloads live separately in Documents
+/// and are never evicted by this service.
 actor AudioStreamCache: AudioStreamCacheProtocol {
     private let modelContainer: ModelContainer
     private lazy var modelContext: ModelContext = ModelContext(modelContainer)
@@ -42,7 +32,6 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
 
     // MARK: - Configuration
 
-    /// Updates the byte capacity and immediately evicts least-recently-used entries if needed.
     func setMaxBytes(_ value: Int64) async {
         maxBytes = max(Self.minMaxBytes, min(Self.maxMaxBytes, value))
         await evictToFitBudget()
@@ -78,7 +67,6 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
 
     // MARK: - Storage
 
-    /// Moves a completed download into the cache. Upserts the SwiftData record, then runs LRU eviction.
     func store(fileAt sourceURL: URL, forSongId songId: String, serverId: UUID, mimeType: String) async throws -> URL {
         let ext = AudioContainer.sniff(atPath: sourceURL.path)?.rawValue ?? audioExtension(mimeType: mimeType)
         // Song IDs are server-controlled and may contain path separators. A generated basename keeps
@@ -157,7 +145,6 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
 
     // MARK: - Eviction
 
-    /// Removes least-recently-used tracks until their recorded byte total fits the budget.
     private func evictToFitBudget(protecting protectedID: UUID? = nil) async {
         let descriptor = FetchDescriptor<CachedTrack>(sortBy: [SortDescriptor(\.cachedAt, order: .forward)])
         let allTracks = (try? modelContext.fetch(descriptor)) ?? []
@@ -195,7 +182,6 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
         }
     }
 
-    /// Manually invalidates a single entry (file + record). No-op if not cached.
     func invalidate(songId: String, serverId: UUID) async {
         let sid = serverId
         let matchingTracks = (try? modelContext.fetch(
@@ -220,7 +206,6 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
         Logger.cache.debug("Invalidated cache for '\(songId, privacy: .public)'")
     }
 
-    /// Clears the entire cache (all servers).
     func clearAll() async {
         let tracks = (try? modelContext.fetch(FetchDescriptor<CachedTrack>())) ?? []
         for filePath in tracks.map(\.filePath) {
@@ -239,7 +224,6 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
         Logger.cache.info("Cleared all cache entries")
     }
 
-    /// Clears all cache entries for a specific server.
     func clearAllForServer(_ serverId: UUID) async {
         let allTracks = (try? modelContext.fetch(FetchDescriptor<CachedTrack>())) ?? []
         let tracks = allTracks.filter { $0.serverId == serverId }
@@ -261,7 +245,6 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
 
     // MARK: - Reporting
 
-    /// Total bytes used by all cached tracks. Used by Settings UI.
     var usedBytes: Int64 {
         get async {
             let tracks = (try? modelContext.fetch(FetchDescriptor<CachedTrack>())) ?? []
@@ -269,7 +252,6 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
         }
     }
 
-    /// Number of cached tracks. Used by Settings UI.
     var trackCount: Int {
         get async {
             let tracks = (try? modelContext.fetch(FetchDescriptor<CachedTrack>())) ?? []

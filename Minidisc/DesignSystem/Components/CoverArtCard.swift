@@ -1,24 +1,9 @@
 import SwiftUI
 
-/// Unified cover art wrapper used everywhere an album or playlist thumbnail appears.
-///
-/// Handles:
-/// - Async loading via CoverArtView
-/// - Consistent 1:1 aspect ratio and clip
-/// - Shadow in light mode / thin border in dark mode via `.minidiscCoverStyle()`
-/// - Accessible placeholder (gradient + music note icon)
-///
-/// Usage:
-/// ```swift
-/// CoverArtCard(id: album.coverArt ?? album.id, size: 60)
-/// CoverArtCard(id: song.coverArt ?? song.id, size: 220, cornerRadius: MinidiscCornerRadius.large)
-/// ```
 struct CoverArtCard: View {
     let id: String
     let size: CGFloat
-    /// Optional explicit tier. Default `nil` preserves CoverArtView's size-based resolution
-    /// (`size*2 >= 480 ? .hero : .thumb`) — existing callers are unaffected. Pass `.hero` for a
-    /// full-res surface whose display size is below 480px (e.g. Wrapped artist cards).
+    /// Overrides size-based tier selection, for example when small cards need hero-resolution artwork.
     var tier: ArtworkTier? = nil
     var cornerRadius: CGFloat = MinidiscCornerRadius.standard
     var placeholderSystemImage: String = "music.note"

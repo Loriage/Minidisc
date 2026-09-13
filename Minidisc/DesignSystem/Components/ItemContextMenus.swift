@@ -2,7 +2,6 @@ import SwiftUI
 import OSLog
 
 // MARK: - Context menu preview views
-// Internal (not private) so SongRow can reference SongContextPreview directly.
 
 struct CollectionContextPreview: View {
     let coverImage: PlatformImage?
@@ -102,7 +101,6 @@ struct SongContextPreview: View {
 
 // MARK: - Song context menu
 
-/// Adds Play / Play Next / Add to Queue / Favorite actions for a single song.
 struct SongContextMenuModifier: ViewModifier {
     let song: DisplayableSong
     let coverImage: PlatformImage?
@@ -173,10 +171,7 @@ struct SongContextMenuModifier: ViewModifier {
 
 // MARK: - Collection context menu (albums and playlists)
 
-/// Adds Play / Shuffle / Play Next / Add to Queue (when songs are provided),
-/// Pin / Unpin, and Favorite (when favoriteType is non-nil) for albums and playlists.
-/// `songs` defaults to empty — omit it on list rows where tracks aren't pre-loaded.
-/// `favoriteType` is nil for playlists (Subsonic does not support playlist starring).
+/// Pass no songs to hide playback actions. Playlists cannot be starred through Subsonic.
 struct CollectionContextMenuModifier: ViewModifier {
     let itemType: PinnedItemType
     let itemId: String
@@ -338,8 +333,6 @@ struct CollectionContextMenuModifier: ViewModifier {
 
 // MARK: - Lazy collection context menu (albums without pre-loaded songs)
 
-/// Like CollectionContextMenuModifier but fetches songs on-demand when a play action is tapped.
-/// Use when tracks are not pre-loaded (e.g., Recently Added albums in HomeView).
 struct LazyCollectionContextMenuModifier: ViewModifier {
     let itemType: PinnedItemType
     let itemId: String
@@ -527,8 +520,6 @@ extension View {
         ))
     }
 
-    /// Variant for items where songs must be fetched on demand.
-    /// `songLoader` is called lazily when a play action is tapped.
     func lazyCollectionContextMenu(
         itemType: PinnedItemType,
         itemId: String,

@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// Cross-platform Color helpers for the playlist gradient system: resolve sRGB components (to freeze a
-/// derived base color) and produce HSB-adjusted variants (to build gradient stops from one base color).
-/// The `#if` is only the UIKit/AppKit bridge — no feature gate.
 extension Color {
     /// sRGB components in `0...1`, or `nil` if the color can't be resolved to RGB.
     var rgbComponents: (red: Double, green: Double, blue: Double)? {
@@ -25,11 +22,8 @@ extension Color {
         )
     }
 
-    /// Vibrance-boosted variant for a DERIVED (averaged, often muddy) gradient base color so the gradient
-    /// pops. Raises saturation MORE for low-saturation colors and less for already-saturated ones
-    /// (`s' = s + (1 - s)·k`, asymptotic to 1 — never blows out), with a gentle brightness floor so very dark
-    /// averages don't read as mud. Already-vibrant colors barely move; the brand default is never routed here
-    /// (it's the neutral path). Returns `self` if the color can't resolve to HSB.
+    /// Boosts low saturation more than high saturation, with a brightness floor for dark averages.
+    /// Returns self when HSB conversion fails.
     func vibranceBoosted(_ k: Double = 0.5) -> Color {
         var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
         guard UIColor(self).getHue(&h, saturation: &s, brightness: &b, alpha: &a) else { return self }

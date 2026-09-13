@@ -26,18 +26,13 @@ nonisolated enum MoodDeletionOutcome: Sendable, Equatable {
 nonisolated enum MoodSyncOutcome: Sendable, Equatable {
     case disabled
     case inProgress
-    /// No provider at all. Not reachable in production — the tag provider always exists — but kept
-    /// so tests can exercise the branch and so a future provider can opt out.
     case notConfigured
-    /// Every mood already refreshed for the current week.
     case upToDate
-    /// An attempt was made too recently; backing off rather than retrying a dead endpoint.
     case throttled
     case finished(source: MoodSourceKind, refreshed: [Mood], kept: [Mood])
     case cancelled
 }
 
-/// Why a single mood was left alone. Its previous playlist stays exactly as it was.
 nonisolated enum MoodSkipReason: Error, Sendable, Equatable {
     case searchFailed(String)
     case noResults
@@ -49,25 +44,8 @@ nonisolated enum MoodSkipReason: Error, Sendable, Equatable {
 
 // MARK: - MoodPlaylistService
 
-/// Maintains five server-side mood playlists, refreshed weekly.
-///
-/// Tracks come from AudioMuse's sonic analysis when it is configured, and from the server's own
-/// MOOD/genre/BPM tags when it is not — so the feature exists on every server, and is better on
-/// some. The choice is made once per run and recorded, because it changes how good the result is
-/// and the user deserves to know which one they got.
-///
-/// Modelled on WrappedPlaylistService: a cadence marker in UserDefaults, playlists owned by the
-/// server, and atomic replacement through createPlaylist's replace mode. The differences that
-/// matter:
-///
-/// - **Five independent units of work.** A mood that fails keeps its old playlist and its old
-///   marker, so the user still has last week's Workout rather than an empty one, and it retries by
-///   itself. Nothing is ever cleared on failure.
-/// - **Sequential, not parallel.** Instant Mix taught us that concurrent similarity queries on a
-///   self-hosted box contend hard — eight parallel calls each took 22s against 12.8s solo. Five
-///   moods one after another is friendlier and, on that evidence, probably not slower.
-/// - **A prepare step.** AudioMuse evicts the CLAP model after ten minutes idle, so a weekly job
-///   always arrives cold and pays the load up front rather than inside the first mood's timeout.
+/// Refreshes moods independently and sequentially to limit similarity-query load.
+/// Failed moods retain their cadence marker for retry; prepare warms AudioMuse before searching.
 actor MoodPlaylistService {
     private var isSyncing = false
     private let preferences: MoodPreferences
@@ -75,11 +53,8 @@ actor MoodPlaylistService {
     private let makePlaylistClient: @Sendable (String) async throws -> (client: any MoodPlaylistClient, owner: String?)
     private let recordMutation: (@Sendable (String, PlaylistWithSongs?, String?) async -> Void)?
     private let makeProvider: @Sendable () async -> (any MoodTrackProvider)?
-    /// Renders and applies a playlist cover. Injected rather than called directly because
-    /// PlaylistCoverManager is MainActor-bound and this is an actor.
     private let applyCover: (@Sendable (PlaylistGradientSpec, String, String) async -> Void)?
 
-    /// Minimum gap between attempts, so an unreachable instance is not re-probed every launch.
     static let attemptThrottle: TimeInterval = 3600
 
     init(
@@ -96,8 +71,6 @@ actor MoodPlaylistService {
         self.preferences = preferences
     }
 
-    /// Production wiring. AudioMuse when it is configured and reachable-looking, the server's own
-    /// tags otherwise — so the moods exist on every server, just better on some.
     init(
         serverService: any ServerServiceProtocol,
         serverState: ServerState,
@@ -306,11 +279,7 @@ actor MoodPlaylistService {
             throw MoodSkipReason.playlistWriteFailed(String(describing: error))
         }
 
-        // Trust what the server says it stored, not what we sent it. A Subsonic server silently
-        // drops track ids it does not recognise and still answers 200, so a whole batch of foreign
-        // ids yields an empty playlist and a perfectly successful-looking call. Treating that as a
-        // failure keeps the previous playlist and retries, instead of reporting a write that only
-        // happened on our side.
+        // Subsonic can accept a request but discard unknown track IDs. Verify the stored count.
         guard written > 0 else {
             throw MoodSkipReason.serverStoredNothing(sent: trackIds.count, sample: Array(trackIds.prefix(3)))
         }
@@ -322,8 +291,6 @@ actor MoodPlaylistService {
         preferences.setSyncedCycle(cycle, mood: mood, serverId: serverId)
         Logger.moodPlaylists.info("[MOOD-SYNC] \(mood.rawValue, privacy: .public) refreshed — server stored \(written, privacy: .public) tracks")
 
-        // Once per playlist, not per refresh: the cover never changes, and re-uploading it every
-        // week would be pure waste. Failures are silent — a playlist without its cover still works.
         if let applyCover, !preferences.hasCover(mood: mood, serverId: serverId) {
             let playlistId = preferences.playlistId(mood: mood, serverId: serverId)
             if let playlistId {
@@ -335,10 +302,7 @@ actor MoodPlaylistService {
         }
     }
 
-    /// Validate the remembered id against the server before replacing any tracks.
-    ///
-    /// The name lookup matters after a reinstall: UserDefaults is gone but the server playlists are
-    /// not, and without it every reinstall would leave a second "Minidisc · Night" behind.
+    /// Validates saved IDs and recovers by name after reinstall to avoid duplicate playlists.
     private func resolvePlaylistId(for mood: Mood, serverId: String, client: any PlaylistSyncClient, owner: String?, automatic: Bool) async throws -> String {
         try checkCanContinue(automatic: automatic)
         let playlists = try await client.getPlaylists(username: nil)
@@ -445,7 +409,6 @@ actor MoodPlaylistService {
 
     // MARK: - Read
 
-    /// Server playlist id backing a mood, or nil before its first successful sync.
     func playlistId(for mood: Mood, serverId: String) -> String? {
         preferences.playlistId(mood: mood, serverId: serverId)
     }
@@ -454,14 +417,11 @@ actor MoodPlaylistService {
         preferences.lastRefresh(serverId: serverId)
     }
 
-    /// Which source last populated the playlists, for the settings screen to be honest about
-    /// whether the user is getting sonic matching or tag matching.
     func lastSource(serverId: String) -> MoodSourceKind? {
         preferences.lastSource(serverId: serverId)
     }
 
-    /// Clears local state when the user disconnects AudioMuse. The server playlists are left in
-    /// place — they are the user's now, and deleting them would be a surprise.
+    /// Clears local AudioMuse state while preserving server playlists.
     func forgetLocalState(serverId: String) {
         preferences.reset(serverId: serverId)
     }

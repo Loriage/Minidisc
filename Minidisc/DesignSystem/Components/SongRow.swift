@@ -13,10 +13,7 @@ struct SongRow: View {
     let song: DisplayableSong
     let index: Int
     var showCoverArt: Bool = false
-    /// Show the artist as the subtitle. Default true; pass false where the artist is implied (e.g. the artist
-    /// detail page) so the row isn't redundant.
     var showArtist: Bool = true
-    /// Optional context-specific secondary line, such as the album title on an artist's top songs.
     var secondaryText: String? = nil
     var coverArtSize: CGFloat = 44
     var coverArtCornerRadius: CGFloat = MinidiscCornerRadius.standard
@@ -132,8 +129,6 @@ struct SongRow: View {
                     cornerRadius: coverArtCornerRadius
                 )
                     .overlay {
-                        // Now-playing equalizer over the thumbnail (with a scrim) for the current track —
-                        // restores the playing cue lost when rows switched to album thumbnails (showCoverArt).
                         if isCurrentTrack {
                             ZStack {
                                 Color.black.opacity(0.45)

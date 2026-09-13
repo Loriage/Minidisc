@@ -101,11 +101,7 @@ struct DiscoverView: View {
         }
     }
 
-    /// Runs the weekly sync if it is due, then reads back whichever moods now have a playlist.
-    ///
-    /// Deliberately awaited inside the screen's own task rather than fired and forgotten: the sync
-    /// is a no-op on all but one launch a week, and on that launch the section should populate
-    /// before the user scrolls past it.
+    /// Await sync before reading the playlists, including the first run that creates them.
     private func refreshMoods(serverId: String) async {
         guard let service = container?.moodPlaylistService else { return }
         _ = await BackgroundActivity.run("mood-playlists") {
@@ -133,7 +129,6 @@ struct DiscoverView: View {
 
     // MARK: - Sections
 
-    // Hidden entirely when ListenBrainz is not connected — no "connect in Settings" teaser.
     @ViewBuilder
     private func freshReleasesSection(vm: DiscoverViewModel) -> some View {
         if isListenBrainzConnected, !vm.freshReleases.isEmpty {

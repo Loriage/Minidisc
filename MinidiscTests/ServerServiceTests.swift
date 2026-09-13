@@ -310,7 +310,6 @@ struct ServerServiceTests {
             username: "user", password: "pass", customHeaders: [:]
         )
 
-        // Simulate app restart: new service with the same container
         let state2 = ServerState()
         let service2 = ServerService(state: state2, keychain: keychain, modelContainer: container, audioStreamCache: MockAudioStreamCache())
 

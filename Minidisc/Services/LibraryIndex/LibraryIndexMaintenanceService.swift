@@ -61,7 +61,6 @@ actor LibraryIndexMaintenanceService {
         try await store.eraseAll()
     }
 
-    /// Refreshes every metadata family for the active server: artists, albums, tracks, playlists.
     func synchronize() async throws {
         let serverID = try await serverService.activeConnection().version.serverID
         try await synchronizer.refreshAll(serverID: serverID)

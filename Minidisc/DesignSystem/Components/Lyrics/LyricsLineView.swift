@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Single lyric line with Apple Music-style tiered blur, opacity, and scale.
-/// Distance from `currentIndex` drives how much each visual effect is applied.
 struct LyricsLineView: View {
     let value: String
     let index: Int

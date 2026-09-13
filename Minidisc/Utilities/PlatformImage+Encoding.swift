@@ -16,7 +16,6 @@ extension PlatformImage {
         return renderer.image { _ in draw(in: CGRect(origin: .zero, size: newSize)) }
     }
 
-    /// JPEG-encodes the receiver at the given quality (0.0–1.0).
     nonisolated func jpgData(quality: CGFloat) -> Data? {
         return jpegData(compressionQuality: quality)
     }

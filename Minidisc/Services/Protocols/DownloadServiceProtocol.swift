@@ -42,36 +42,29 @@ nonisolated struct LocalPlaylistData: Sendable {
 }
 
 protocol DownloadServiceProtocol: AnyObject, Sendable {
-    /// Live stream of in-progress downloads for UI progress display.
     var progressStream: AsyncStream<[DownloadProgress]> { get }
 
     func downloadedURL(forSongId songId: String, serverId: UUID) async -> URL?
     func isDownloaded(songId: String, serverId: UUID) async -> Bool
-    /// Returns all song IDs that have been fully downloaded for a given server.
     func downloadedSongIds(serverId: UUID) async -> Set<String>
 
-    /// Returns the local file URL for a downloaded cover art, or nil if not cached.
     func localCoverArtURL(forId coverArtId: String) async -> URL?
 
     /// Persists cover image data to the shared cover art directory (best-effort, errors are logged).
     func persistCover(_ data: Data, forId coverArtId: String) async
 
-    /// Removes the cached cover art file for the given ID. No-op if not on disk.
     func removeCover(forId coverArtId: String) async
 
     /// Deletes orphaned cover files whose name is not in `referencedIds`. Returns count deleted.
     @discardableResult
     func garbageCollectOrphanedCovers(referencedIds: Set<String>) async -> Int
 
-    /// Number of files and total bytes in the persisted-cover store.
     func coverCacheStats() async -> (count: Int, bytes: Int64)
 
     /// Deletes every persisted cover. Downloaded audio is untouched; covers re-download on demand.
     func clearAllCovers() async
 
-    /// Returns offline-playable album data assembled from persisted tracks, or nil if not downloaded.
     func localAlbumData(albumId: String, serverId: UUID) async -> LocalAlbumData?
-    /// Returns offline-playable playlist data assembled from persisted tracks, or nil if not downloaded.
     func localPlaylistData(playlistId: String, serverId: UUID) async -> LocalPlaylistData?
     /// Returns the artist's downloaded albums and tracks, or nil if nothing of theirs is on disk.
     /// `artistName` is a fallback matcher for tracks whose server omitted `artistId`.
@@ -88,7 +81,6 @@ protocol DownloadServiceProtocol: AnyObject, Sendable {
     func download(album: AlbumID3, serverId: UUID) async throws
     func download(playlist: PlaylistWithSongs, serverId: UUID) async throws
 
-    /// Returns `true` if a download task is currently in-flight for this song.
     func isDownloading(songId: String, serverId: UUID) async -> Bool
     func isDownloadingAlbum(_ albumId: String) async -> Bool
     func isDownloadingPlaylist(_ playlistId: String) async -> Bool

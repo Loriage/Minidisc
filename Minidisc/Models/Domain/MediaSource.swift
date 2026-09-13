@@ -29,7 +29,6 @@ nonisolated enum MediaSource: Sendable {
         }
     }
 
-    /// Whether this source represents a live stream (radio) — non-scrubbable, infinite duration.
     var isLiveStream: Bool {
         if case .liveStream = self { return true }
         return false

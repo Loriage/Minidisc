@@ -19,7 +19,6 @@ final class LidarrSettings {
     @ObservationIgnored private let defaults: UserDefaults
 
     @ObservationIgnored private var _baseURL: String
-    /// True when both a base URL and stored credentials are present. Drives the Settings status.
     private(set) var isConnected: Bool = false
 
     var baseURL: String {
@@ -36,7 +35,6 @@ final class LidarrSettings {
         self._baseURL = defaults.string(forKey: Self.baseURLKey) ?? ""
     }
 
-    /// Reads back whether credentials are present, so `isConnected` is correct after a cold start.
     func loadPersistedState() async {
         let hasCreds = (try? await keychain.retrieve(LidarrCredentials.self, forKey: Self.credentialsKeychainKey)) != nil
         withMutation(keyPath: \.isConnected) {
@@ -45,13 +43,11 @@ final class LidarrSettings {
         Logger.integrations.debug("Lidarr state loaded, connected=\(self.isConnected, privacy: .public)")
     }
 
-    /// The stored credentials, so the Settings screen can pre-fill the fields for editing.
     func currentCredentials() async -> LidarrCredentials? {
         let stored = try? await keychain.retrieve(LidarrCredentials.self, forKey: Self.credentialsKeychainKey)
         return stored ?? nil
     }
 
-    /// Persists the connection after the Settings screen has tested it.
     func connect(baseURL: String, apiKey: String, headers: [String: String]) async throws {
         let trimmedURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         try await keychain.store(LidarrCredentials(apiKey: apiKey, headers: headers), forKey: Self.credentialsKeychainKey)
@@ -67,7 +63,6 @@ final class LidarrSettings {
         withMutation(keyPath: \.isConnected) { isConnected = false }
     }
 
-    /// Builds a client from the stored connection, or nil when nothing is configured.
     func makeClient() async -> LidarrClient? {
         guard !_baseURL.isEmpty, let creds = await currentCredentials() else { return nil }
         return LidarrClient(urlString: _baseURL, apiKey: creds.apiKey, headers: creds.headers)

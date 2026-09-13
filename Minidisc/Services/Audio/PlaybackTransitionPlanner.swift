@@ -1,7 +1,5 @@
 import Foundation
 
-/// Pure queue-transition policy. It decides what playback should do; `PlayerService` performs the
-/// asynchronous work described by the resulting plan.
 nonisolated enum PlaybackTransitionPlanner {
     enum Trigger: Equatable, Sendable {
         case nextRequested

@@ -99,7 +99,6 @@ struct QueueBackfillTests {
         let pool = (1...7).map { song("\($0)") }
         let result = LibraryService.assembleBackfill(pool: pool, excludedIds: ["7"], targetSize: 50)
         #expect(result.count == 6)
-        // The caller's top-up pass excludes already-selected ids the same way:
         let topUp = LibraryService.assembleBackfill(
             pool: (1...60).map { song("r\($0)") },
             excludedIds: Set(result.map(\.id)).union(["7"]),

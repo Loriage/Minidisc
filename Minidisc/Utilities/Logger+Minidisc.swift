@@ -1,8 +1,6 @@
 import OSLog
 
-// All properties are `nonisolated` to prevent SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor
-// from implicitly isolating them, which would cause concurrency warnings when accessed
-// from non-MainActor contexts (actors, background tasks, etc.). Logger is Sendable.
+// Logger is Sendable; nonisolated keeps these properties callable from service actors.
 extension Logger {
     nonisolated static let server     = Logger(subsystem: "app.minidisc.server",     category: "ServerService")
     nonisolated static let player     = Logger(subsystem: "app.minidisc.player",     category: "PlayerService")

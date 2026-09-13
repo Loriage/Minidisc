@@ -38,7 +38,6 @@ nonisolated struct URLSessionLRCLIBTransport: LRCLIBTransport {
     }
 }
 
-/// Small read-only LRCLIB client. Actor isolation serializes requests and retains rate-limit state.
 actor LRCLIBClient: LRCLIBLyricsFetching {
     private static let minimumRequestInterval: TimeInterval = 0.25
 

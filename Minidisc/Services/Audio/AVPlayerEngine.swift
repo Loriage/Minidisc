@@ -5,15 +5,9 @@ import MediaToolbox
 import OSLog
 import Synchronization
 
-/// The system engine: two AVFoundation `AVPlayer` decks with role swapping, so decoding runs on
-/// Apple's hardware path (bit-perfect lossless without the software-decode crackle) AND transitions
-/// can truly overlap. The next track pre-buffers on the standby deck; at a transition the decks either
-/// butt-splice (gapless) or blend with an equal-power ramp (real crossfade — both tracks audible).
-/// Conforms to `AudioEngine`; `PlayerService` keeps all orchestration.
-///
-/// Threading: control methods arrive from the `PlayerService` actor, KVO/notification/ramp callbacks
-/// on other threads; a recursive lock guards the deck roles and transition state. ReplayGain cuts use
-/// each deck's volume; boosts use an `MTAudioProcessingTap` because `AVPlayer.volume` cannot exceed 1.
+/// Two AVPlayer decks alternate active and standby roles for gapless playback and crossfades.
+/// A recursive lock protects deck roles and transition state across control calls and callbacks.
+/// ReplayGain boosts use an audio processing tap because AVPlayer.volume cannot exceed 1.
 nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     private enum StandbyPreparationState {
         case idle
@@ -104,13 +98,10 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     /// watchdog below can never both advance the queue.
     private var didSignalEnd = false
     private var watchdogTimer: DispatchSourceTimer?
-    /// Last playhead reading the watchdog saw, and when it last moved.
     private var lastWatchdogTime: Double = -1
     private var lastWatchdogAdvance = Date()
     private static let watchdogInterval = 500
-    /// How close to the track length counts as "the file is over" once the playhead stops moving.
     private static let endOfFileTolerance: Double = 1.5
-    /// How long the playhead must stay frozen before the watchdog treats it as final rather than a hitch.
     private static let frozenClockGrace: Double = 1.0
 
     private var timeControlObservers: [NSKeyValueObservation] = []
@@ -192,14 +183,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
 
     // MARK: - Asset construction
 
-    /// Options every asset the engine opens is built with.
-    ///
-    /// `PreferPreciseDurationAndTiming` is what makes seeking work on lossless. Left at its default,
-    /// AVFoundation builds an approximate time/byte map rather than indexing the file, and on raw FLAC
-    /// that approximation ignores the container's own seek table — a seek then reports the requested
-    /// second while the audio resumes up to a minute away, and the gap never closes. Asking for precise
-    /// timing costs more work when the asset is opened, which is the right trade for a player whose
-    /// scrubber has to land where the user pointed.
+    /// Precise timing is required for reliable seeks in lossless streams.
     private static func assetOptions(headers: [String: String]) -> [String: Any] {
         var options: [String: Any] = [AVURLAssetPreferPreciseDurationAndTimingKey: true]
         if !headers.isEmpty {
@@ -221,7 +205,6 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
             recreatePlayers()
         }
 
-        // Adopt a hand-off the engine already performed at the natural end of the previous track.
         if trackID == handedOffTrackID,
            currentItem != nil,
            let currentPlaybackToken {
@@ -230,7 +213,6 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
             return currentPlaybackToken
         }
 
-        // Manual skip into the preloaded track: promote the warm standby deck right away.
         if trackID == preloadedTrackID,
            standbyPreparationState == .ready,
            preloadedItem?.status == .readyToPlay {
@@ -240,7 +222,6 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
             return currentPlaybackToken!
         }
 
-        // Fresh start — drop both decks.
         resetDecks()
         let asset = AVURLAsset(url: url, options: Self.assetOptions(headers: headers))
         let item = AVPlayerItem(asset: asset)
@@ -452,12 +433,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         }
 
         let finished = await withCheckedContinuation { continuation in
-            // Zero tolerance, always. A tolerance does not bound how far the playhead ends up from the
-            // target — it grants AVFoundation permission to jump to a position it *estimates* is within
-            // range. On raw FLAC that estimate comes from a time/byte map the framework builds without
-            // reading the file's seek table, and it can be a minute off: the clock reports the requested
-            // second while the audio resumes somewhere else entirely, and the two never resync. Forcing
-            // an exact landing makes it verify by decoding instead of guessing.
+            // Exact seeks avoid approximate time-to-byte mappings on raw FLAC streams.
             player.seek(
                 to: CMTime(seconds: seconds, preferredTimescale: 600),
                 toleranceBefore: .zero,
@@ -517,7 +493,6 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         return currentItem?.seekableTimeRanges.isEmpty == false
     }
 
-    /// Idle and ready to start a fresh source (nothing loaded) — the cold-restore path checks this.
     var isReady: Bool {
         lock.lock()
         defer { lock.unlock() }
@@ -679,8 +654,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
             Logger.player.info("[CROSSFADE] overlap completed")
             overlapTimer?.cancel()
             overlapTimer = nil
-            // Blend complete — the outgoing deck is silent. Hand off NOW instead of waiting for its
-            // (possibly mis-estimated) end-of-file, so the UI advances together with the audio.
+            // Commit at the end of the blend; the outgoing item’s estimated EOF can arrive later.
             endedTransition = finalizeAdvance()
         }
     }
@@ -757,16 +731,8 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         lastWatchdogAdvance = Date()
     }
 
-    /// `didPlayToEndTimeNotification` is the only end-of-file signal AVPlayer gives us, and a streamed
-    /// item that stalls on its last packets — routine once the app is backgrounded and the network is
-    /// throttled — can simply never post it. Nothing downstream notices: the engine reports `.paused`,
-    /// which PlayerService does not act on, so the queue stops for good with the UI still on "playing".
-    ///
-    /// So the end is re-derived from the clock instead of trusted to a single notification. The rule is
-    /// deliberately narrow: act only when playback is *meant* to be running, the playhead has stopped
-    /// moving for longer than a hitch, AND it stopped within a whisker of the track length. A mid-track
-    /// buffer stall leaves the playhead far from the end and is left alone for AVPlayer to recover from;
-    /// a user pause clears `shouldBePlaying` and stops the timer outright.
+    /// Handles a missing EOF notification only when playback is intended, the clock has
+    /// stopped for the grace period, and the position is within the end-of-file tolerance.
     private func watchdogTick() {
         var endedTransition: AudioEngineTrackEnd?
         lock.lock()
@@ -806,9 +772,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         endedTransition = finalizeAdvance()
     }
 
-    /// The current item played to its end. With a preloaded next: retire the finished deck, promote
-    /// the standby (already blending in a crossfade, or started now for gapless), then tell
-    /// PlayerService — whose confirming `play` adopts the promoted deck via `handedOffTrackID`.
+    /// Promotes standby before notifying PlayerService; the subsequent play call adopts that deck.
     @discardableResult
     private func finalizeAdvance() -> AudioEngineTrackEnd? {
         // The notification, the crossfade ramp and the watchdog all land here, and any two of them can
@@ -852,7 +816,6 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         )
     }
 
-    /// Swaps deck roles and makes the preloaded item current.
     private func promotePreloaded(startPlaying: Bool) {
         overlapTimer?.cancel()
         overlapTimer = nil
@@ -994,10 +957,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         ) { [weak self, weak item] _ in
             guard let self else { return }
             self.lock.lock()
-            // A crossfade hand-off retires the outgoing deck before its item reports EOF, and removing
-            // a block observer does not cancel a notification already queued on the main queue. Without
-            // this identity check that late arrival would advance the queue a second time, skipping the
-            // track that just took over.
+            // A queued EOF from the retired deck must not advance the newly promoted track.
             let endedTransition: AudioEngineTrackEnd? = if let item, item === self.currentItem {
                 self.finalizeAdvance()
             } else {
@@ -1008,8 +968,6 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
                 self.delegate?.audioEngineDidReachEndOfTrack(endedTransition)
             }
         }
-        // A mid-stream network failure (connection drop, server hiccup) — surface it so PlayerService
-        // can route to its error handling (radio failover, or a retry/timeout state).
         failObserver = NotificationCenter.default.addObserver(
             forName: AVPlayerItem.failedToPlayToEndTimeNotification,
             object: item,

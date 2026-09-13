@@ -67,8 +67,6 @@ struct FavoritesView: View {
     private func songsSection(_ songs: [DisplayableSong]) -> some View {
         if !songs.isEmpty {
             Section {
-                // Same header as SongsListView — `.bordered` on both, so Play keeps its glyph and the
-                // pair reads as one control rather than a primary/secondary split.
                 HStack(spacing: MinidiscSpacing.m) {
                     Button {
                         HapticFeedback.medium.trigger()

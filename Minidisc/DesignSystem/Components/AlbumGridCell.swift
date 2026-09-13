@@ -1,8 +1,6 @@
 import SwiftUI
 import SwiftSonic
 
-/// Adaptive grid cell for album browse surfaces.
-/// Displays a square cover art, album name, and artist name.
 struct AlbumGridCell: View {
     let album: AlbumID3
     var zoomSourceId: String? = nil

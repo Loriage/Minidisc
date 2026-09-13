@@ -12,7 +12,6 @@ private let utcCalendar: Calendar = {
     return cal
 }()
 
-/// Builds a Date in UTC for the given year/month/day/hour.
 private func utcDate(year: Int, month: Int, day: Int, hour: Int = 12, minute: Int = 0) -> Date {
     var c = DateComponents()
     c.year = year; c.month = month; c.day = day; c.hour = hour; c.minute = minute; c.second = 0
@@ -59,7 +58,6 @@ private func makeDTO(
 @Suite("WrappedAggregation")
 struct WrappedAggregationTests {
 
-    // a) Empty period
     @Test func emptyPeriod_returnsZeros() async throws {
         let service = try makeService()
         let period = WrappedPeriod.month(year: 2026, month: 1)
@@ -79,7 +77,6 @@ struct WrappedAggregationTests {
         #expect(data.lastTrackOfPeriod == nil)
     }
 
-    // b) Single event
     @Test func singleEvent_producesCorrectTotalsAndTops() async throws {
         let service = try makeService()
         let ts = utcDate(year: 2026, month: 3, day: 10)
@@ -99,7 +96,6 @@ struct WrappedAggregationTests {
         #expect(data.topArtists.count == 1)
     }
 
-    // c) Multiple events same track: grouped, summed
     @Test func sameTrack_multipleEvents_grouped() async throws {
         let service = try makeService()
         let base = utcDate(year: 2026, month: 3, day: 1)
@@ -121,12 +117,10 @@ struct WrappedAggregationTests {
         #expect(data.topTracks[0].totalSecondsListened == 300)
     }
 
-    // d) Top 10 cap: 15 distinct tracks, returns top 10 by duration
     @Test func topTracks_cappedAt10_sortedByDuration() async throws {
         let service = try makeService()
         let base = utcDate(year: 2026, month: 3, day: 1)
         for i in 1...15 {
-            // Track i gets i*10 seconds so track-15 is longest
             await service.recordPlayback(makeDTO(
                 trackId: "t\(i)",
                 trackTitle: "Track \(i)",
@@ -141,14 +135,12 @@ struct WrappedAggregationTests {
 
         #expect(data.topTracks.count == 10)
         #expect(data.topTracks[0].rank == 1)
-        #expect(data.topTracks[0].trackId == "t15")   // longest
+        #expect(data.topTracks[0].trackId == "t15")
         #expect(data.topTracks[9].rank == 10)
-        #expect(data.topTracks[9].trackId == "t6")    // 10th longest (t15..t6)
-        // ranks are 1-10 consecutively
+        #expect(data.topTracks[9].trackId == "t6")
         #expect(data.topTracks.map(\.rank) == Array(1...10))
     }
 
-    // e) Duration tie: deterministic by trackId ascending
     @Test func topTracks_durationTie_sortedByTrackIdAscending() async throws {
         let service = try makeService()
         let ts = utcDate(year: 2026, month: 3, day: 1)
@@ -169,7 +161,6 @@ struct WrappedAggregationTests {
         #expect(data.topTracks[2].trackId == "tz")
     }
 
-    // f) dominantGenre: correct genre, tie → alphabetical
     @Test func dominantGenre_picksHighestDuration() async throws {
         let service = try makeService()
         let ts = utcDate(year: 2026, month: 3, day: 1)
@@ -195,11 +186,9 @@ struct WrappedAggregationTests {
         let data = await service.wrappedData(
             for: .month(year: 2026, month: 3), serverId: "srv", calendar: utcCalendar
         )
-        // Tie: Jazz < Rock alphabetically, so Jazz wins
         #expect(data.dominantGenre == "Jazz")
     }
 
-    // g) dominantGenre: all events have no genre → nil
     @Test func dominantGenre_noGenreEvents_returnsNil() async throws {
         let service = try makeService()
         let ts = utcDate(year: 2026, month: 3, day: 1)
@@ -211,7 +200,6 @@ struct WrappedAggregationTests {
         #expect(data.dominantGenre == nil)
     }
 
-    // l) firstTrack / lastTrack: chronological order
     @Test func firstAndLastTrack_chronologicalOrder() async throws {
         let service = try makeService()
         let t1 = utcDate(year: 2026, month: 3, day: 1, hour: 8)
@@ -234,7 +222,6 @@ struct WrappedAggregationTests {
         #expect(data.lastTrackOfPeriod?.rank == 0)
     }
 
-    // m) Period filtering: events outside period are ignored
     @Test func periodFiltering_eventsOutsidePeriodIgnored() async throws {
         let service = try makeService()
         let inPeriod = utcDate(year: 2026, month: 3, day: 15)
@@ -254,7 +241,6 @@ struct WrappedAggregationTests {
         #expect(data.topTracks[0].trackId == "in")
     }
 
-    // n) Multi-server isolation
     @Test func multiServer_eventsOfOtherServerIgnored() async throws {
         let service = try makeService()
         let ts = utcDate(year: 2026, month: 3, day: 10)
@@ -269,7 +255,6 @@ struct WrappedAggregationTests {
         #expect(data.topTracks[0].trackId == "t1")
     }
 
-    // o) Albums with nil albumId excluded from topAlbums but count in totalSecondsListened
     @Test func nilAlbumId_excludedFromTopAlbums_countedInTotal() async throws {
         let service = try makeService()
         let ts = utcDate(year: 2026, month: 3, day: 10)
@@ -287,7 +272,6 @@ struct WrappedAggregationTests {
         #expect(data.topAlbums[0].albumId == "alb2")
     }
 
-    // p) Artists with nil artistId excluded from topArtists but count in total
     @Test func nilArtistId_excludedFromTopArtists_countedInTotal() async throws {
         let service = try makeService()
         let ts = utcDate(year: 2026, month: 3, day: 10)
@@ -305,7 +289,6 @@ struct WrappedAggregationTests {
         #expect(data.topArtists[0].artistId == "a2")
     }
 
-    // hasEventsInPeriod
     @Test func hasEventsInPeriod_noEvents_returnsFalse() async throws {
         let service = try makeService()
         let result = await service.hasEventsInPeriod(
@@ -373,7 +356,6 @@ struct WrappedAggregationTests {
             ))
         }
         let data = await service.wrappedData(for: .month(year: 2026, month: 3), serverId: "srv", calendar: utcCalendar)
-        // Each event capped at 180s; 3 plays → 540s total.
         #expect(data.totalSecondsListened == 540)
         #expect(data.topTracks[0].totalSecondsListened == 540)
         #expect(data.topArtists[0].totalSecondsListened == 540)

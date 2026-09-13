@@ -1,17 +1,12 @@
 import Foundation
 import SwiftData
 
-/// A client-side record of a playlist's chosen GENERATED cover (gradient form + frozen base color), keyed by
-/// `(playlistId, serverId)` — playlist ids collide across servers. Stored per device: the uploaded JPEG is
-/// the cross-device source of truth, this record is the local enrichment (re-render crisp, know the choice).
-///
-/// `isUserPicked` distinguishes an explicit user choice from a system default (e.g. the neutral gradient an
-/// empty playlist gets), so a real choice is never silently overwritten.
+/// Per-server, per-device gradient choice. isUserPicked prevents automatic generation
+/// from replacing a cover chosen by the user.
 @Model
 final class PlaylistCoverChoice {
     var playlistId: String
     var serverId: UUID
-    /// `PlaylistGradientShape.rawValue`.
     var shapeRawValue: String
     var red: Double
     var green: Double

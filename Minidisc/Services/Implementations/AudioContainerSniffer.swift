@@ -1,15 +1,6 @@
 import Foundation
 
-/// The audio container a downloaded payload actually is, decided from its magic bytes.
-///
-/// Downloads are named from the server-declared suffix, and a Subsonic server can declare one
-/// container while sending another — an `m4a` suffix over FLAC bytes, for instance, when a
-/// transcode is configured but not applied. The extension is what the playback engine picks its
-/// parser from, so a wrong one makes a perfectly good file unplayable: it is handed to the m4a
-/// parser, which finds no `ftyp`, yields nothing, and the track ends instantly at full duration.
-///
-/// Sniffing the bytes and naming the file after what it IS makes the download independent of the
-/// server's metadata being truthful.
+/// Detects the actual container because server suffixes can disagree with transcoded bytes.
 nonisolated enum AudioContainer: String, Sendable, CaseIterable {
     case mp4  = "m4a"
     case flac = "flac"
@@ -22,8 +13,7 @@ nonisolated enum AudioContainer: String, Sendable, CaseIterable {
     /// Bytes needed to recognise every container below (`FORM`/`RIFF` need the type at offset 8).
     static let magicPrefixLength = 12
 
-    /// Identifies the container from a file prefix, or nil when it matches nothing known.
-    /// Pure, so the byte patterns are unit-testable without touching the disk.
+    /// Identifies a known container from its byte prefix, or returns nil.
     static func sniff(magic bytes: [UInt8]) -> AudioContainer? {
         func matches(_ ascii: String, at offset: Int) -> Bool {
             let pattern = Array(ascii.utf8)
@@ -46,7 +36,6 @@ nonisolated enum AudioContainer: String, Sendable, CaseIterable {
         return nil
     }
 
-    /// Identifies the container of a file on disk, reading only its first bytes.
     static func sniff(atPath path: String) -> AudioContainer? {
         guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
         defer { try? handle.close() }

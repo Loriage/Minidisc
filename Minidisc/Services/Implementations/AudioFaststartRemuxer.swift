@@ -116,7 +116,6 @@ nonisolated struct AudioFaststartRemuxer: Sendable {
         return boxes.contains("ftyp")
     }
 
-    /// Classifies the ordering of top-level MP4 boxes.
     nonisolated static func classify(boxTypes types: [String]) -> FaststartState {
         guard types.contains("ftyp") else { return .notMP4 }
         guard let moov = types.firstIndex(of: "moov") else { return .faststart }
@@ -124,7 +123,6 @@ nonisolated struct AudioFaststartRemuxer: Sendable {
         return .faststart
     }
 
-    /// Exported output must contain both required boxes in faststart order.
     nonisolated static func isUsableFaststartOutput(boxTypes types: [String]) -> Bool {
         types.contains("moov") && types.contains("mdat") && classify(boxTypes: types) == .faststart
     }
@@ -166,9 +164,7 @@ nonisolated struct AudioFaststartRemuxer: Sendable {
         return types
     }
 
-    /// Walks the ISO-BMFF top-level box chain: each box is an 8-byte header (UInt32 big-endian
-    /// size + 4-char type), with size==1 → 64-bit largesize follows, size==0 → box runs to EOF.
-    /// Advances by box size so payloads (notably a large `mdat`) are never read.
+    /// ISO-BMFF: size 1 uses a 64-bit length; size 0 extends to EOF. Skip payloads by box size.
     private nonisolated static func scanBoxTypes(
         total: UInt64,
         limit: Int,

@@ -59,15 +59,12 @@ struct AudioFaststartRemuxerTests {
 
     @Test("no moov (or no mdat) is treated as faststart / no-op")
     func missingMoovOrMdatIsFaststart() {
-        #expect(AudioFaststartRemuxer.classify(boxTypes: ["ftyp", "mdat"]) == .faststart)   // can't help
-        #expect(AudioFaststartRemuxer.classify(boxTypes: ["ftyp", "moov"]) == .faststart)   // nothing to move
+        #expect(AudioFaststartRemuxer.classify(boxTypes: ["ftyp", "mdat"]) == .faststart)
+        #expect(AudioFaststartRemuxer.classify(boxTypes: ["ftyp", "moov"]) == .faststart)
     }
 
     // MARK: - Output acceptance (pure)
-    //
-    // The rule that decides whether a fresh export may overwrite the original download.
-    // It has to be stricter than classify(): a truncated export is "faststart" to classify
-    // (no moov to move) but must never replace a working file.
+    // Output validation must reject truncated exports even when classify reports faststart.
 
     @Test("a complete faststart export is accepted")
     func usableOutputAccepted() {
@@ -77,7 +74,6 @@ struct AudioFaststartRemuxerTests {
 
     @Test("a truncated export is rejected even though classify calls it faststart")
     func truncatedOutputRejected() {
-        // Each of these is .faststart per classify — the exact hole this guard closes.
         #expect(AudioFaststartRemuxer.classify(boxTypes: ["ftyp"]) == .faststart)
         #expect(AudioFaststartRemuxer.isUsableFaststartOutput(boxTypes: ["ftyp"]) == false)
         #expect(AudioFaststartRemuxer.isUsableFaststartOutput(boxTypes: ["ftyp", "moov"]) == false)
@@ -111,9 +107,7 @@ struct AudioFaststartRemuxerTests {
 
     @Test("fileSize reports the real byte count, not 0")
     func fileSizeReadsTheRealSize() async {
-        // Guards the double-optional cast that made this return 0 for every existing file and
-        // silently disabled the remux: with a size of 0 the box scan loop never runs, the layout
-        // comes back empty, and the file is misreported as "not an MP4".
+        // A zero file size would skip box scanning and misclassify this readable file.
         let bytes = [UInt8](repeating: 0xAB, count: 1234)
         await withTempFile(bytes, ext: "bin") { url in
             #expect(AudioFaststartRemuxer.fileSize(atPath: url.path) == 1234)
@@ -193,11 +187,9 @@ struct AudioFaststartRemuxerTests {
     @Test("isM4AContainer detects an ftyp container regardless of extension")
     func contentDetection() async {
         let mp4 = box("ftyp", payload: 8) + box("mdat", payload: 16) + box("moov", payload: 8)
-        // ftyp content saved with a wrong .mp3 extension is still recognised as a container.
         await withTempFile(mp4, ext: "mp3") { url in
             #expect(AudioFaststartRemuxer.isM4AContainer(atPath: url.path) == true)
         }
-        // Non-MP4 bytes (a flac signature, no ftyp) are not a container.
         let flac = Array("fLaC".utf8) + [UInt8](repeating: 0, count: 64)
         await withTempFile(flac, ext: "flac") { url in
             #expect(AudioFaststartRemuxer.isM4AContainer(atPath: url.path) == false)

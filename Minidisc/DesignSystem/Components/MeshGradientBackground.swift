@@ -1,10 +1,8 @@
 import SwiftUI
 
-/// Reusable mesh gradient background derived from a 3-color palette.
 struct MeshGradientBackground: View {
     /// 3 colors from WrappedYearPalette.
     let palette: [Color]
-    /// When true, subtly animates mesh control points (8s period, ±0.04 amplitude).
     let animated: Bool
 
     @State private var animationPhase: CGFloat = 0
@@ -37,7 +35,6 @@ struct MeshGradientBackground: View {
         ]
     }
 
-    // Diagonal sweep: c0 top-left → c1 center → c2 bottom-right
     private var distributedColors: [Color] {
         guard palette.count >= 3 else {
             return Array(repeating: palette.first ?? .clear, count: 9)

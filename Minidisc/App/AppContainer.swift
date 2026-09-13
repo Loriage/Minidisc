@@ -3,7 +3,6 @@ import OSLog
 import SwiftUI
 import SwiftData
 
-/// Creates and wires the application's services.
 @MainActor
 final class AppContainer {
     let playerState: PlayerState
@@ -330,12 +329,7 @@ extension AppContainer {
     private static let coverArtCacheVersionKey = "minidisc.coverArtCacheVersion"
     private static let currentCoverArtCacheVersion = 5
 
-    /// Purges cover art files from disk on the first launch after a cache format change,
-    /// so stale files don't shadow the new decode pipeline. Version history:
-    ///   v5 — ArtworkImageCache now decodes at 240 px (thumb) / 1200 px (full) via
-    ///         CGImageSourceCreateThumbnailAtIndex; legacy full-res files cause ~800 ms
-    ///         decodes on cold open even after the code fix — wipe forces a clean re-download.
-    ///   v4 and earlier — previous resolution bumps.
+    /// Invalidates older artwork tiers so full-resolution files cannot bypass thumbnail decoding.
     static func invalidateCoverArtCacheIfNeeded(artworkCache: ArtworkImageCache) {
         let stored = UserDefaults.standard.integer(forKey: coverArtCacheVersionKey)
         guard stored < currentCoverArtCacheVersion else { return }
@@ -358,15 +352,7 @@ extension AppContainer {
 extension AppContainer {
     private static let artworkLegacySweepKey = "minidisc.artworkLegacySweep_v2"
 
-    /// One-shot background sweep that deletes untagged cover art files written by
-    /// pre-tier builds (plain `{id}` filenames with no `@thumb` / `@hero` suffix).
-    ///
-    /// These full-res JPEGs can be 2–4 MB each; decoding them at the 240px thumb
-    /// size took ~1100ms per file on a background thread, starving the audio decode
-    /// thread and causing audible crackling during queue load. ArtworkImageCache no
-    /// longer reads them (since the legacy fallback was removed), but they still
-    /// waste disk space and could confuse future disk-hit logic. Deleting them here
-    /// forces a clean re-download at the correct tier size.
+    /// Removes legacy artwork files without @thumb or @hero suffixes.
     @discardableResult
     static func sweepLegacyCoverArtFiles() -> Task<Void, Never>? {
         guard !UserDefaults.standard.bool(forKey: artworkLegacySweepKey) else { return nil }
@@ -382,7 +368,6 @@ extension AppContainer {
             for fileURL in items {
                 guard !Task.isCancelled else { return }
                 let name = fileURL.lastPathComponent
-                // Keep files that have a tier suffix; delete untagged legacy files.
                 guard !name.contains("@thumb") && !name.contains("@hero") else { continue }
                 do {
                     try fm.removeItem(at: fileURL)
@@ -405,18 +390,8 @@ extension AppContainer {
 extension AppContainer {
     private static let audioExtMigrationKey = "minidisc.audioExtMigration_v1"
 
-    /// One-shot migration that fixes downloaded tracks saved with a `.mpeg` extension.
-    ///
-    /// Root cause: the original DownloadService derived the file extension from the HTTP
-    /// Content-Type header. `audio/mpeg` → `.mpeg`, which AVPlayer maps to a video UTI
-    /// (public.mpeg) instead of public.mp3, causing silent playback failure for MP3 files.
-    ///
-    /// This migration:
-    /// 1. Purges the ephemeral AudioStreamCache (all entries may carry .mpeg).
-    /// 2. Renames permanent downloaded files from .mpeg to the correct extension using
-    ///    the server-declared `suffix` stored in DownloadedTrack, falling back to a
-    ///    MIME-type map when suffix is absent.
-    /// 3. Updates the SwiftData filePath records for each successfully renamed file.
+    /// Repairs downloads saved as .mpeg: AVPlayer treats that extension as video, not MP3.
+    /// Clears the stream cache and updates downloaded file paths after renaming.
     static func migrateAudioExtensionsIfNeeded(
         modelContainer: ModelContainer,
         audioStreamCache: any AudioStreamCacheProtocol
@@ -474,26 +449,14 @@ extension AppContainer {
         Logger.migration.info("[ExtMigration] Complete: \(renamedCount) renamed, \(skippedCount) skipped")
     }
 
-    // v3: v2 was burned on installs that ran it against an EMPTY download set (fresh install) —
-    // it set the done-flag on a clean-but-empty pass, so the scan→remux path was never exercised.
-    // The version bump re-runs the migration; both keys bump together so the attempt counter resets.
+    // v2 completed prematurely on empty download stores. Reset the marker and retry counter together.
     private static let m4aFaststartMigrationKey = "minidisc.m4aFaststartMigration_v3"
     private static let m4aFaststartAttemptsKey = "minidisc.m4aFaststartMigration_v3_attempts"
     private static let m4aFaststartMaxAttempts = 3
 
-    /// Migration that faststart-remuxes already-downloaded m4a tracks so their moov atom leads the
-    /// file (kept for cleanliness of the download store). Fire-and-forget at boot.
-    ///
-    /// Retry-safe (unlike v1): the done-flag is set ONLY on a clean pass — save succeeded AND no
-    /// track failed to remux. Failed tracks (e.g. a transient export failure at boot) are retried
-    /// on the next launch, up to `m4aFaststartMaxAttempts` passes, after which it gives up so a
-    /// genuinely irrecoverable file can't trigger an eternal boot-time retry.
-    ///
-    /// Detection is CONTENT-based (`ftyp` sniff), not extension-based, so a mis-served m4a that an
-    /// earlier migration renamed `.mp3` is still caught. A remux REWRITES the bytes, so
-    /// `DownloadedTrack.fileSize` is refreshed from the remuxed file (with the same `?? 0` fallback
-    /// as the download path, so `downloadedURL`'s `fileSize == 0` escape covers a size-read miss
-    /// instead of persisting a stale, mismatched size). Scope: downloaded tracks only.
+    /// Remuxes downloaded M4A files with trailing moov atoms. Detects the container from its bytes.
+    /// Updates file sizes and marks completion only after a successful save with no failed remuxes.
+    /// Failed passes retry on later launches up to m4aFaststartMaxAttempts.
     static func migrateM4AFaststartIfNeeded(modelContainer: ModelContainer) async {
         guard !UserDefaults.standard.bool(forKey: m4aFaststartMigrationKey) else { return }
 
@@ -525,7 +488,7 @@ extension AppContainer {
                 failedCount += 1
                 Logger.migration.warning("[M4AFaststart] export failed '\(track.songId, privacy: .public)' — will retry next boot")
             case .skipped:
-                break   // already faststart or not an MP4 container — nothing to do
+                break
             }
         }
 

@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Keeps the artwork's hue distribution while supporting the player's white secondary labels.
 enum PlayerBackgroundPalette {
     static func colors(from samples: [Color]) -> [Color] {
         samples.enumerated().map { index, sample in

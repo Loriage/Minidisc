@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Five fixed illustrations, available offline and unaffected by playlist contents.
-/// Rasterized once per mood so scrolling never redraws a mesh gradient per tile.
+/// Rasterizes each mood once to avoid mesh rendering during scrolling.
 struct MoodArtwork: View {
     let mood: Mood
     @State private var artwork: UIImage?

@@ -1,19 +1,14 @@
 import Foundation
 import OSLog
 
-/// Thrown when a downloaded payload is rejected before being committed as local audio.
 nonisolated struct AudioResponseRejection: Error, Sendable, CustomStringConvertible {
     let check: String
     let detail: String
     var description: String { "audio response rejected by \(check) check (\(detail))" }
 }
 
-/// Validates a downloaded audio payload before it is committed to the cache or the
-/// permanent downloads store. Subsonic servers can answer HTTP 200 with an XML/JSON
-/// error envelope, and close-delimited transcoded streams can truncate silently on
-/// poor connections — both would otherwise be saved as "valid" local audio and play
-/// as silence. Validation reads only file attributes and a small prefix, never the
-/// whole payload.
+/// Rejects error envelopes and incomplete audio before cache or download persistence.
+/// Reads only attributes and a small prefix, never the whole payload.
 nonisolated enum AudioResponseValidator {
 
     /// Validates the downloaded temp file against the HTTP response that produced it.
@@ -50,8 +45,6 @@ nonisolated enum AudioResponseValidator {
         }
     }
 
-    /// First byte of the payload after skipping a UTF-8 BOM and ASCII whitespace,
-    /// reading at most 512 bytes from disk.
     private static func firstMeaningfulByte(of url: URL) throws -> UInt8? {
         let handle = try FileHandle(forReadingFrom: url)
         defer { try? handle.close() }

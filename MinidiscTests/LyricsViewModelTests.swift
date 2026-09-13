@@ -158,11 +158,9 @@ struct LyricsViewModelUpdateTests {
         let (vm, _) = try makeViewModel(serverId: id, lyrics: syncedList(offset: -500))
         await vm.load()
 
-        // adjustedMs = 400 - (-500) = 900 → still line 0 (line 1 starts at 1000)
         vm.update(elapsedMs: 400)
         #expect(vm.currentLineIndex == 0)
 
-        // adjustedMs = 600 - (-500) = 1100 → line 1
         vm.update(elapsedMs: 600)
         #expect(vm.currentLineIndex == 1)
     }
@@ -173,11 +171,9 @@ struct LyricsViewModelUpdateTests {
         let (vm, _) = try makeViewModel(serverId: id, lyrics: syncedList(offset: 500))
         await vm.load()
 
-        // adjustedMs = 1200 - 500 = 700 → line 0 (line 1 starts at 1000)
         vm.update(elapsedMs: 1200)
         #expect(vm.currentLineIndex == 0)
 
-        // adjustedMs = 1600 - 500 = 1100 → line 1
         vm.update(elapsedMs: 1600)
         #expect(vm.currentLineIndex == 1)
     }
@@ -271,17 +267,14 @@ struct LyricsViewModelLanguageTests {
         let (vm, _) = try makeViewModel(serverId: id, lyrics: multiLanguageList())
         await vm.load()
 
-        // After load, a language should be auto-selected
         let initial = vm.selectedLanguage
 
-        // Simulate a non-nil currentLineIndex
         vm.update(elapsedMs: 0)
 
         vm.selectLanguage("fr")
         #expect(vm.selectedLanguage == "fr")
         #expect(vm.currentLineIndex == nil)
         if initial != "fr" {
-            // Language changed → state should reflect the fr set
             if case .loaded(let structured) = vm.state {
                 #expect(structured.lang == "fr")
             } else {
@@ -298,7 +291,6 @@ struct LyricsViewModelLanguageTests {
         guard let lang = vm.selectedLanguage else { return }
         let stateBefore = vm.state
         vm.selectLanguage(lang)
-        // State must not change
         #expect(vm.state == stateBefore)
     }
 }
@@ -319,39 +311,27 @@ struct LyricsViewModelLoadTests {
     }
 
     @Test func load_autoPicks_frFR_locale() async throws {
-        // The fr set will be picked when the preferred locale is fr_FR.
-        // We indirectly test this by creating a VM and loading with a pre-populated cache
-        // containing a multi-language list, then checking the state reflects a valid selection.
-        // (Direct locale injection not needed here — selectBestLanguage is covered in LyricsServiceTests.)
         let id = UUID()
         let (vm, _) = try makeViewModel(serverId: id, lyrics: multiLanguageList())
         await vm.load()
         if case .loaded(_) = vm.state {
-            // pass
         } else {
             Issue.record("Expected .loaded after successful load, got \(vm.state)")
         }
     }
 
     @Test func load_setsUnsupportedOnNotSupportedError() async throws {
-        // MockLyricsServerService throws on makeSwiftSonicClient → cache miss → networkError,
-        // but we need notSupportedByServer. Use an empty cache (no pre-pop) and the mock
-        // will error. Confirm state is .error (since mock throws MinidiscError.notImplemented,
-        // not LyricsError.notSupportedByServer).
         let (vm, _) = try makeViewModel(lyrics: nil)
         await vm.load()
-        if case .error(_) = vm.state { /* pass */ }
+        if case .error(_) = vm.state {  }
         else { Issue.record("Expected .error when network unavailable and cache empty, got \(vm.state)") }
     }
 
     @Test func load_setsEmptyWhenNoLyrics() async throws {
         let empty = LyricsList(structuredLyrics: [])
-        // Empty list → LyricsService throws .notFound, but we need to hit network.
-        // Instead: populate cache with an empty LyricsList and confirm the VM ends up .empty.
         let id = UUID()
         let (vm, _) = try makeViewModel(serverId: id, lyrics: empty)
         await vm.load()
-        // applyCurrentLanguage with no structuredLyrics → .empty
         #expect(vm.state == .empty)
     }
 }

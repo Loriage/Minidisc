@@ -1,14 +1,5 @@
 import SwiftUI
 
-/// Uniform empty-state placeholder for list and search screens.
-///
-/// Usage examples:
-/// ```swift
-/// EmptyStateView(systemImage: "music.mic", title: "No Artists")
-/// EmptyStateView(systemImage: "wifi.slash", title: "You're Offline",
-///                subtitle: "Downloaded content is still available.",
-///                action: .init(label: "Retry") { Task { await vm.load() } })
-/// ```
 struct EmptyStateView: View {
     struct Action {
         let label: LocalizedStringKey

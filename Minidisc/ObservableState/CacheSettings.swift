@@ -1,9 +1,6 @@
 import Foundation
 import Observation
 
-/// User-configurable cache preferences persisted in UserDefaults.
-/// @Observable so SettingsView updates live when the user changes settings.
-/// Injected into AppContainer; services read values via MainActor.run when needed.
 @Observable
 @MainActor
 final class CacheSettings {

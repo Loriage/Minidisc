@@ -4,12 +4,8 @@ import OSLog
 
 // MARK: - MoodTrackProvider
 
-/// Where a mood's tracks come from. Two implementations, in descending order of quality:
-/// AudioMuse's sonic analysis, and the server's own tags.
 nonisolated protocol MoodTrackProvider: Sendable {
-    /// How the source describes itself in the UI.
     var kind: MoodSourceKind { get }
-    /// One-off setup before a batch of moods. Free to be a no-op.
     func prepare() async
     /// Track ids for a mood, best match first. Empty means "no confident answer" — never a reason
     /// to overwrite an existing playlist.
@@ -17,23 +13,15 @@ nonisolated protocol MoodTrackProvider: Sendable {
 }
 
 nonisolated enum MoodSourceKind: String, Sendable, Equatable {
-    /// AudioMuse-AI: matches on how the audio actually sounds.
     case sonic
-    /// The server's MOOD, genre and BPM tags: matches on what somebody wrote in the files.
     case tags
 }
 
 // MARK: - AudioMuse
 
-/// Sonic search. The good one.
-///
-/// AudioMuse can answer with ids the music server does not recognise — its internal canonical ones,
-/// when its own track mapping is incomplete. Those are recovered rather than discarded: the results
-/// carry title and artist, so the track is looked up in the library instead. What AudioMuse is good
-/// at, choosing the tracks, is kept; what it got wrong, naming them, is redone here.
+/// Resolves internal AudioMuse IDs through track metadata while preserving similarity order.
 nonisolated struct AudioMuseTrackProvider: MoodTrackProvider {
     let client: AudioMuseClient
-    /// Resolves tracks by metadata. Absent in tests that only exercise the id path.
     let resolver: SubsonicTrackResolver?
 
     init(client: AudioMuseClient, resolver: SubsonicTrackResolver? = nil) {
@@ -43,8 +31,6 @@ nonisolated struct AudioMuseTrackProvider: MoodTrackProvider {
 
     var kind: MoodSourceKind { .sonic }
 
-    /// Loads the CLAP model up front — it is evicted after ten minutes idle, so a weekly job always
-    /// arrives cold and would otherwise pay the load inside the first mood's timeout.
     func prepare() async { await client.warmup() }
 
     func trackIds(for mood: Mood, limit: Int) async throws -> [String] {
@@ -78,26 +64,16 @@ nonisolated struct AudioMuseTrackProvider: MoodTrackProvider {
 
 // MARK: - Tags
 
-/// Fallback for servers with no AudioMuse instance: rank the library's own tags.
-///
-/// Genuinely weaker than sonic analysis and does not pretend otherwise — see MoodTagMatcher. What
-/// it does have is universality: `getSongsByGenre`, `moods` and `bpm` are plain OpenSubsonic, so
-/// this works against any server, with nothing to install.
-///
-/// Candidates are gathered per mood by querying that mood's genres rather than by scanning the
-/// library, which keeps the cost to a handful of indexed server queries instead of a full walk.
+/// Ranks genre-query candidates by local tags when AudioMuse is unavailable.
 nonisolated struct LibraryTagTrackProvider: MoodTrackProvider {
     let libraryService: any MoodTrackSourcing
 
-    /// Fetched per genre. Generous, because ranking then cuts it back hard — a wide net matters
-    /// more than a cheap one here, and these are indexed lookups.
     static let perGenreFetch = 200
 
     var kind: MoodSourceKind { .tags }
 
     func prepare() async {}
 
-    /// Broad sample taken when a mood's genres are absent from the library.
     static let fallbackPoolSize = 500
 
     func trackIds(for mood: Mood, limit: Int) async throws -> [String] {
@@ -105,10 +81,7 @@ nonisolated struct LibraryTagTrackProvider: MoodTrackProvider {
         var candidates = try await genreCandidates(for: mood)
         var source = "genres"
 
-        // A library organised around genres this mood does not use — French rap where Night looks
-        // for ambient and jazz — yields nothing at all here, and would keep yielding nothing every
-        // week. Falling back to a broad sample lets the MOOD and BPM tags decide on their own,
-        // which is exactly the case those two signals exist for.
+        // Fall back to a broad sample when genres yield no candidates, then score MOOD and BPM tags.
         if candidates.isEmpty {
             candidates = try await randomCandidates()
             source = "random pool"
@@ -118,8 +91,6 @@ nonisolated struct LibraryTagTrackProvider: MoodTrackProvider {
         let ranked = MoodTagMatcher.rank(candidates, for: mood, limit: limit)
         let withMoodTag = candidates.count { !$0.features.moods.isEmpty }
         let withBpm = candidates.count { ($0.features.bpm ?? 0) > 0 }
-        // The signal breakdown is logged because an empty result is otherwise indistinguishable
-        // between "no candidates" and "candidates with nothing to judge them on".
         Logger.moodPlaylists.info("[MOOD-TAGS] \(mood.rawValue, privacy: .public): \(candidates.count, privacy: .public) candidates via \(source, privacy: .public) (\(withMoodTag, privacy: .public) tagged, \(withBpm, privacy: .public) with BPM) → \(ranked.count, privacy: .public) ranked")
         return ranked
     }

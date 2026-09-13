@@ -1,7 +1,5 @@
 import Foundation
 
-/// The tag signals a mood can be judged on, lifted out of `Song` so the scoring is testable
-/// without constructing SwiftSonic models.
 nonisolated struct SongTagFeatures: Sendable, Equatable {
     let moods: [String]
     let genres: [String]
@@ -14,17 +12,7 @@ nonisolated struct SongTagFeatures: Sendable, Equatable {
     }
 }
 
-/// Scores a track against a mood using only the tags the server already has.
-///
-/// This is the fallback for libraries with no AudioMuse instance. It is genuinely weaker: a MOOD
-/// tag is somebody's opinion written into a file, a genre is a category, and BPM says nothing about
-/// whether a fast track is joyful or bleak. AudioMuse listens to the audio; this reads labels. The
-/// point is to be useful when the good option is absent, not to pretend to match it.
-///
-/// Signals are weighted by how much they actually say:
-/// - a MOOD tag hit is worth most — it is the only tag that describes feel rather than category
-/// - BPM sits in the middle, and only for the moods where tempo means something
-/// - genre is the weakest, but it is the tag libraries actually have
+/// Tag-based fallback when AudioMuse is unavailable. Weights MOOD above BPM above genre.
 nonisolated enum MoodTagMatcher {
 
     static let moodTagWeight = 3.0
@@ -56,9 +44,7 @@ nonisolated enum MoodTagMatcher {
         }
     }
 
-    /// Tempo window, or nil for moods where BPM carries no meaning. Focus is deliberately absent:
-    /// concentration music spans a slow piano piece and a steady 140 BPM techno loop equally well,
-    /// so tempo would only add noise.
+    /// No BPM filter for Focus: both slow pieces and fast, steady tracks can qualify.
     static func bpmRange(_ mood: Mood) -> ClosedRange<Int>? {
         switch mood {
         case .night:     return 40...100
@@ -69,13 +55,8 @@ nonisolated enum MoodTagMatcher {
         }
     }
 
-    /// Folds a tag down to comparable letters so punctuation and joining words stop mattering.
-    ///
-    /// Tag spellings are wildly inconsistent across libraries: "Hip-Hop/Rap", "Hip Hop", "hiphop";
-    /// "Drum & Bass" against "drum and bass"; "R&B" against "r&b". Splitting on non-alphanumerics,
-    /// dropping a standalone "and", and rejoining makes all of those land on the same string.
-    ///
-    /// "and" is dropped as a whole token, never as a substring, so "Sandwich" survives intact.
+    /// Normalizes punctuation and removes the whole token "and", so Hip-Hop/Rap and
+    /// Hip Hop agree without changing words such as Sandwich.
     static func normalise(_ text: String) -> String {
         text.lowercased()
             .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
@@ -89,9 +70,7 @@ nonisolated enum MoodTagMatcher {
         return normalisedTags.contains { tag in normalisedKeywords.contains { !$0.isEmpty && tag.contains($0) } }
     }
 
-    /// Higher is a better match. `nil` means the track carried no usable signal at all — it is not
-    /// a zero score, it is an absence of evidence, and such tracks are dropped rather than ranked
-    /// last, so a library with no tags produces an empty result instead of an arbitrary one.
+    /// nil means no usable tags; zero means tags were present but none matched.
     static func score(_ features: SongTagFeatures, for mood: Mood) -> Double? {
         var total = 0.0
         var sawSignal = false
@@ -112,16 +91,10 @@ nonisolated enum MoodTagMatcher {
         }
 
         guard sawSignal else { return nil }
-        // A track that carried signals but matched none of them is a real "no", not an absence —
-        // keep it scoreable at zero so ranking is well defined, and let the caller cut the tail.
         return total
     }
 
-    /// Ranks candidates for a mood and keeps the best `limit`.
-    ///
-    /// Tracks scoring zero are dropped: they had tags and none of them fit, so including them would
-    /// pad the playlist with music that matches nothing. Ties break on id to keep the output stable
-    /// between runs — a playlist that reshuffles itself for no reason reads as broken.
+    /// Drops zero scores and breaks ties by ID for stable results.
     static func rank(_ candidates: [(id: String, features: SongTagFeatures)], for mood: Mood, limit: Int) -> [String] {
         candidates
             .compactMap { candidate -> (String, Double)? in

@@ -78,14 +78,12 @@ struct AlbumDetailView: View {
 
     private var isAlbumFavorite: Bool { !albumFavoriteMatches.isEmpty }
     private var isOnline: Bool { container?.serverState.isOnline == true }
-    /// Cover id the album theme is keyed on — the colour override is stored under the same id so it takes effect.
     private var albumCoverId: String { viewModel?.coverArtId ?? coverArtId ?? albumId }
     /// Every cover id the override must cover so it's resolved from ANY surface: the album cover + each song's
     /// own cover id (these can differ from the album's while pointing at the same artwork — e.g. the full player).
     private var albumThemeIds: [String] {
         [albumCoverId] + (viewModel?.songs.compactMap { $0.coverArtId } ?? [])
     }
-    /// Drops the manual override and falls back to the colour extracted from the cover.
     private func resetThemeColor() {
         colorExtractor.setColorOverride(nil, forIds: albumThemeIds)
         dominantColor = colorExtractor.cachedColor(for: albumCoverId) ?? dominantColor
@@ -165,10 +163,7 @@ struct AlbumDetailView: View {
             }
             return offlineFallbackSongs
         case .full:
-            // Prefer the VM's catalog list, but back-stop with downloaded tracks whenever
-            // the VM produced nothing — whether it errored OR returned an empty-success
-            // payload (captive proxy / Cloudflare-WARP). This is the view-level safety net
-            // that keeps a downloaded album readable through normal nav, not just Downloads.
+            // Fall back to downloaded tracks if the catalogue fails or returns an empty response.
             if let vm = viewModel, !vm.songs.isEmpty {
                 return vm.songs
             }
@@ -378,9 +373,7 @@ struct AlbumDetailView: View {
                         }
                         .disabled(displaySongs().isEmpty || !isOnline)
                         Divider()
-                        // A ColorPicker cannot live inside a Menu — menu content is limited to buttons and
-                        // pickers — so the swatch moves to a sheet. Which is the better home anyway: "Reset to
-                        // cover colour" used to hide in a contextMenu on a toolbar item, where nobody long-presses.
+                        // ColorPicker requires a sheet rather than Menu content.
                         Button("Theme colour", systemImage: "paintpalette") {
                             showThemeColorSheet = true
                         }
@@ -412,9 +405,6 @@ struct AlbumDetailView: View {
         }
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbarColorScheme(palette.preferredContentScheme, for: .navigationBar)
-        // Keyed on connectivity so the list re-loads from the right source when
-        // NWPathMonitor flips isOnline — same pattern as AlbumDetailMacOS and
-        // PlaylistDetailView.
         .task(id: container?.serverState.isOnline) {
             guard let c = container else { return }
             if viewModel == nil {
@@ -549,8 +539,7 @@ private struct AlbumDetailPalette {
                 ? min(max(Double(brightness) * 0.78, 0.28), 0.48)
                 : min(max(Double(brightness) * 1.08, 0.52), 0.74)
         } else {
-            // Neutral artwork still needs an artwork-led surface. Apple Music turns monochrome covers into a
-            // mid-grey page in both appearances instead of falling back to pure system black or white.
+            // Keep monochrome artwork themed with a neutral grey background.
             adjustedSaturation = min(Double(saturation) * 1.2, 0.10)
             adjustedBrightness = appearance == .dark
                 ? min(max(Double(brightness) * 0.52, 0.18), 0.30)
@@ -935,8 +924,6 @@ private nonisolated enum AlbumDownloadControlState: Equatable {
 
 // MARK: - Live download indicator rows
 
-/// Sub-view that observes DownloadedTrack changes live via @Query,
-/// overriding the isDownloaded flag per row without requiring a VM reload.
 struct AlbumSongRows: View {
     let songs: [DisplayableSong]
     let showArtists: Bool
@@ -1001,8 +988,6 @@ struct AlbumSongRows: View {
 
 // MARK: - Release information
 
-/// Compact album facts supplied by Subsonic/OpenSubsonic metadata. Every line is optional so
-/// sparse or offline libraries show only facts Minidisc can support without guessing.
 private struct AlbumReleaseInformationSection: View {
     let releaseDate: ItemDate?
     let fallbackYear: Int?
@@ -1204,9 +1189,6 @@ private struct AlbumYouMightAlsoLikeSection: View {
 
 // MARK: - Theme colour sheet
 
-/// Host for the album's theme-colour override. A ColorPicker cannot be placed inside a Menu, so the
-/// overflow menu opens this instead — which also gives "Reset to cover colour" a visible home rather
-/// than the long-press-only contextMenu it used to live in.
 struct ThemeColorSheet: View {
     @Binding var color: Color
     let hasOverride: Bool

@@ -1,6 +1,5 @@
 import Foundation
 
-/// A track described by its metadata rather than by an id.
 nonisolated struct TrackDescriptor: Sendable, Equatable, Hashable {
     let title: String
     let artist: String?
@@ -12,34 +11,17 @@ nonisolated struct TrackDescriptor: Sendable, Equatable, Hashable {
         self.album = album
     }
 
-    /// Stable key for caching a resolution across moods, since a track routinely appears in more
-    /// than one.
     var cacheKey: String {
         "\(TrackMatcher.normalise(title))|\(TrackMatcher.normalise(artist ?? ""))"
     }
 }
 
-/// Picks the library track a piece of foreign metadata refers to.
-///
-/// Needed because AudioMuse can answer with its own internal ids, which the music server does not
-/// recognise. Its results still carry title, artist and album, so the track can be found by
-/// searching for it instead — the choice of tracks stays AudioMuse's, only its identifiers are
-/// discarded.
-///
-/// Deliberately conservative: a wrong track in a playlist is worse than a missing one, so anything
-/// short of a confident match returns nil.
+/// Resolves AudioMuse metadata to server IDs when AudioMuse returns its own identifiers.
 nonisolated enum TrackMatcher {
 
-    /// Folds text to comparable letters. Shared with the tag matcher so "Hip-Hop/Rap" and
-    /// "hip hop" agree here too.
     static func normalise(_ text: String) -> String { MoodTagMatcher.normalise(text) }
 
-    /// The candidate that best matches `wanted`, or nil when none is convincing.
-    ///
-    /// The artist is the deciding signal. Titles collide constantly across a library — live
-    /// versions, covers, remasters, "Intro" on every second album — so a title-only match is
-    /// refused whenever the wanted track names an artist. Without an artist to check against, an
-    /// unambiguous title match is accepted and an ambiguous one is not.
+    /// Requires an artist match when supplied. Without an artist, only an unambiguous title qualifies.
     static func bestMatch(for wanted: TrackDescriptor, among candidates: [TrackDescriptor.Candidate]) -> String? {
         let wantedTitle = normalise(wanted.title)
         guard !wantedTitle.isEmpty else { return nil }
@@ -54,7 +36,6 @@ nonisolated enum TrackMatcher {
         guard !titleMatches.isEmpty else { return nil }
 
         guard let wantedArtist = wanted.artist.map(normalise), !wantedArtist.isEmpty else {
-            // No artist to disambiguate with: accept only when the title picks out one track.
             return titleMatches.count == 1 ? titleMatches[0].id : nil
         }
 
@@ -63,12 +44,9 @@ nonisolated enum TrackMatcher {
             guard !artist.isEmpty else { return false }
             return artist == wantedArtist || artist.contains(wantedArtist) || wantedArtist.contains(artist)
         }
-        // A title that matched under the wrong artist is not this track. Falling back to it would
-        // quietly fill the playlist with covers and namesakes.
         guard !artistMatches.isEmpty else { return nil }
 
-        // Prefer an exact title, then an exact artist, then the smallest id — so the same library
-        // always resolves to the same track and the playlist does not reshuffle between runs.
+        // Break ties by ID so repeated resolutions select the same track.
         let ranked = artistMatches.sorted { lhs, rhs in
             let lhsExactTitle = normalise(lhs.title) == wantedTitle
             let rhsExactTitle = normalise(rhs.title) == wantedTitle
@@ -83,7 +61,6 @@ nonisolated enum TrackMatcher {
 }
 
 extension TrackDescriptor {
-    /// A library track offered as a possible match.
     nonisolated struct Candidate: Sendable, Equatable {
         let id: String
         let title: String

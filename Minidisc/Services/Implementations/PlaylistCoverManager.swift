@@ -1,8 +1,7 @@
 import Foundation
 import OSLog
 
-/// Stores playlist covers locally. Local-only by design: Navidrome does not take the uploaded image, so
-/// the rendered cover (title baked in) lives in the app's artwork cache and is what every surface displays.
+/// Covers remain local because Navidrome does not accept custom playlist image uploads.
 @MainActor
 struct PlaylistCoverManager {
     private let downloadService: any DownloadServiceProtocol
@@ -16,9 +15,7 @@ struct PlaylistCoverManager {
         self.artworkImageCache = artworkImageCache
     }
 
-    /// The id a surface must ask `CoverArtView` for when this playlist has a locally rendered cover. The
-    /// server's `coverArt` id changes whenever the playlist is touched (rename, track add), so keying display
-    /// on it would lose the local raster; the playlist id never moves.
+    /// Uses playlist identity because server cover IDs can change after edits.
     static func localCoverId(playlistId: String, downloadService: any DownloadServiceProtocol) async -> String? {
         let tieredId = "\(playlistId)@\(ArtworkTier.thumb.rawValue)"
         guard await downloadService.localCoverArtURL(forId: tieredId) != nil else { return nil }

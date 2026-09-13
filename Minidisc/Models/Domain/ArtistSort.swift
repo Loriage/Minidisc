@@ -29,7 +29,7 @@ nonisolated enum ArtistSort: String, CaseIterable, Sendable {
         case .albumCount:
             return artists.sorted {
                 let a = $0.albumCount ?? 0, b = $1.albumCount ?? 0
-                if a != b { return a > b } // most albums first
+                if a != b { return a > b }
                 return key($0).localizedStandardCompare(key($1)) == .orderedAscending
             }
         }

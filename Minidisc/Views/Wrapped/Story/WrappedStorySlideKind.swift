@@ -1,6 +1,5 @@
 import Foundation
 
-/// The ordered set of slides shown in the annual Wrapped story player.
 nonisolated enum WrappedStorySlideKind: String, CaseIterable, Sendable {
     case intro        = "Intro"
     case minutes      = "Minutes"

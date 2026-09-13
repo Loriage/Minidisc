@@ -1,7 +1,5 @@
 import SwiftSonic
 
-/// All value-based navigation destinations reachable from the Home tab NavigationStack.
-/// Registered via .navigationDestination(for: HomeDestination.self) on HomeView.
 nonisolated enum HomeDestination: Hashable {
 
     // MARK: - Library sections
@@ -13,13 +11,9 @@ nonisolated enum HomeDestination: Hashable {
     case libraryDownloads
 
     // MARK: - Content destinations
-    /// Full AlbumID3 object — used from Recently Added, Recently Played carousels
     case album(AlbumID3)
-    /// Full ArtistID3 object
     case artist(ArtistID3)
-    /// Full Playlist object
     case playlist(Playlist)
-    /// Full DownloadedAlbumDisplay object — used from downloaded content carousels
     case downloadedAlbum(DownloadedAlbumDisplay)
 
     // MARK: - ID-only destinations (for PinnedItem @Model and DownloadedItem)
@@ -38,8 +32,6 @@ nonisolated enum HomeDestination: Hashable {
     case recentlyAdded(coverArtId: String?)
 
     // MARK: - Offline-derived destinations
-    /// Offline artist summary — used from OfflineBrowseContent
     case offlineArtist(OfflineArtistSummary)
-    /// Offline album summary — used from OfflineArtistAlbumsView
     case offlineAlbum(OfflineAlbumSummary)
 }

@@ -12,7 +12,6 @@ private struct MockTransport: ListenBrainzTransport {
     }
 }
 
-/// Transport that always fails with URLError. If called when not expected, tests catch it.
 private struct FailingTransport: ListenBrainzTransport {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         throw URLError(.unknown)

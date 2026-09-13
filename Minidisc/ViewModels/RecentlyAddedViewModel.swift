@@ -1,19 +1,15 @@
 import Foundation
 import SwiftSonic
 
-/// Backs the virtual "Recently Added" screen. There is no server playlist behind it — the track list is
-/// rebuilt from the newest albums on every load, so it always reflects what the library holds now.
 @Observable
 @MainActor
 final class RecentlyAddedViewModel {
     var songs: [DisplayableSong] = []
     var isLoading = true
     var error: UserFacingError?
-    /// True while the bulk download is walking the track list.
     var isDownloadingAll = false
     var downloadingIds: Set<String> = []
 
-    /// Cover of the newest album — the hero falls back to it when the caller had no cover to pass in.
     var coverArtId: String? { rawSongs.first?.coverArt }
 
     /// The fetched payload kept in its server form — `download(song:)` takes a SwiftSonic `Song`, and
@@ -49,11 +45,7 @@ final class RecentlyAddedViewModel {
         }
     }
 
-    /// Downloads the whole list track by track.
-    ///
-    /// Deliberately NOT `download(playlist:)`: that persists a `DownloadedPlaylist` record keyed on a server
-    /// playlist id, and this playlist has none. The tracks land as ordinary individual downloads — playable
-    /// offline from the artist and album screens like any other — and the list itself stays purely derived.
+    /// Download tracks individually: this virtual playlist has no server ID to persist.
     func downloadAll(songIds: [String]) async {
         isDownloadingAll = true
         defer { isDownloadingAll = false }

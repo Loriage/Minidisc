@@ -39,7 +39,6 @@ private struct CoverArtViewContent: View {
 
     @Environment(\.appContainer) private var container
     @Environment(ArtworkImageCache.self) private var artworkCache
-    /// Changes whenever a stored playlist cover must be re-resolved.
     @AppStorage("coverArtUploadVersion") private var coverArtUploadVersion = 0
     @State private var cachedImage: PlatformImage?
     @State private var url: URL?

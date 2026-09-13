@@ -1,10 +1,7 @@
 import SwiftUI
 
-/// One mood tile in Discover, presented like every other playlist in the app: the real server cover
-/// on top, the name underneath. The cover is the gradient generated for the playlist, so a mood
-/// looks the same here, in the playlists list, and in any other Subsonic client.
-///
-/// Discover reconciles these references with the server independently of playlist generation.
+/// Discover uses dedicated mood artwork, independent of the server's album collage.
+/// The destination still follows the reconciled server playlist reference.
 struct MoodCard: View {
     let mood: Mood
     let playlistId: String
@@ -17,7 +14,9 @@ struct MoodCard: View {
             PlaylistDetailView(playlistId: playlistId, name: String(localized: mood.title), coverArtId: coverArtId)
         } label: {
             VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
-                CoverArtCard(id: coverArtId ?? playlistId, size: cardSize, placeholderSystemImage: mood.symbolName)
+                MoodArtwork(mood: mood)
+                    .frame(width: cardSize, height: cardSize)
+                    .minidiscCoverStyle()
                 CoverCardMetadata(title: String(localized: mood.title))
             }
             .frame(width: cardSize, alignment: .leading)

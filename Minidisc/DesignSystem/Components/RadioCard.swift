@@ -11,12 +11,13 @@ struct RadioCard: View {
         Button {
             Task { await play() }
         } label: {
-            ZStack(alignment: .bottomLeading) {
+            VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
                 cardBackground
-                bottomOverlay
+                    .frame(width: 140, height: 140)
+                    .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.large, style: .continuous))
+                CoverCardMetadata(title: station.name)
             }
-            .frame(width: 140, height: 160)
-            .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.large, style: .continuous))
+            .frame(width: 140, alignment: .leading)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Play \(station.name)")
@@ -27,9 +28,9 @@ struct RadioCard: View {
         if let coverArt = station.coverArt, !coverArt.isEmpty {
             ZStack {
                 Color.black
-                CoverArtCard(id: coverArt, size: 160)
+                CoverArtCard(id: coverArt, size: 140)
             }
-            .frame(width: 140, height: 160)
+            .frame(width: 140, height: 140)
             .clipped()
         } else {
             LinearGradient(
@@ -46,22 +47,6 @@ struct RadioCard: View {
                     .foregroundStyle(.white.opacity(0.25))
             }
         }
-    }
-
-    private var bottomOverlay: some View {
-        Text(station.name)
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(.white)
-            .lineLimit(2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(MinidiscSpacing.s)
-            .background(
-                LinearGradient(
-                    colors: [.clear, .black.opacity(0.65)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
     }
 
     private func play() async {

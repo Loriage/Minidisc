@@ -16,7 +16,7 @@ struct WrappedCurrentYearCard: View {
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             MeshGradientBackground(palette: palette, animated: !reduceMotion)
-                .frame(width: 140, height: 160)
+                .frame(width: 140, height: 140)
                 .overlay { cardOverlay }
                 .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.large, style: .continuous))
                 .drawingGroup()

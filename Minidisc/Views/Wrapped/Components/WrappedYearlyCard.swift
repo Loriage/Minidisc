@@ -16,7 +16,7 @@ struct WrappedYearlyCard: View {
                 PlaylistDetailView(playlistId: playlist.id, name: playlist.name, coverArtId: playlist.coverArtId)
             } label: {
                 MeshGradientBackground(palette: WrappedYearPalette.colors(for: playlist.year), animated: !reduceMotion)
-                    .frame(width: 140, height: 160)
+                    .frame(width: 140, height: 140)
                     .overlay { cardOverlay }
                     .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.large, style: .continuous))
                     .drawingGroup()

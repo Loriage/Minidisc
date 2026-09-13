@@ -14,6 +14,7 @@ nonisolated enum AudioContainer: String, Sendable, CaseIterable {
     case mp4  = "m4a"
     case flac = "flac"
     case mp3  = "mp3"
+    case aac  = "aac"
     case ogg  = "ogg"
     case wav  = "wav"
     case aiff = "aiff"
@@ -37,6 +38,9 @@ nonisolated enum AudioContainer: String, Sendable, CaseIterable {
         // ISO-BMFF: the `ftyp` box type sits after the 4-byte box size.
         if matches("ftyp", at: 4) { return .mp4 }
         if matches("ID3", at: 0) { return .mp3 }
+        // ADTS AAC has a 12-bit sync word and layer 00. Check it before the
+        // shorter MPEG sync pattern, otherwise valid AAC is mislabelled as MP3.
+        if bytes.count >= 2, bytes[0] == 0xFF, bytes[1] & 0xF6 == 0xF0 { return .aac }
         // Bare MPEG audio frame sync: 11 set bits.
         if bytes.count >= 2, bytes[0] == 0xFF, bytes[1] & 0xE0 == 0xE0 { return .mp3 }
         return nil

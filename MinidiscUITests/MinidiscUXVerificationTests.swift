@@ -46,6 +46,92 @@ final class MinidiscUXVerificationTests: XCTestCase {
         XCTAssertEqual(toggle.value as? String, "1")
     }
 
+    func testFixtureMoodRecoveryAndDeletion() async throws {
+        try await launchFixtureApp()
+        try tap(app.buttons["Réglages"], named: "mood-recovery-settings")
+        try tap(app.buttons["Application"], named: "mood-recovery-application")
+        let toggle = app.switches["mood-automatic-generation"].firstMatch.switches.firstMatch
+        try require(toggle)
+        if toggle.value as? String == "1" { try tap(toggle, named: "mood-recovery-disable-generation") }
+        try tapBack(named: "mood-settings-back")
+        try tap(app.buttons["Fermer"], named: "mood-settings-close")
+
+        let oldResponse = try await fixturePlaylistMutation("createPlaylist", parameters: [
+            URLQueryItem(name: "name", value: "Minidisc · Night"), URLQueryItem(name: "songId", value: "ux-song-1")
+        ])
+        let oldID = try XCTUnwrap(oldResponse)
+        let wrappedResponse = try await fixturePlaylistMutation("createPlaylist", parameters: [
+            URLQueryItem(name: "name", value: "Minidisc Wrapped 2025"), URLQueryItem(name: "songId", value: "ux-song-2")
+        ])
+        let wrappedID = try XCTUnwrap(wrappedResponse)
+        try tapTab("Découvrir")
+        let night = app.buttons["mood-card-night"]
+        try require(night, timeout: 20)
+        try scrollCardToTop(night, named: "mood-night-card-visible")
+        try tap(night, named: "mood-open-recovered-night")
+        try require(app.buttons["playlist.song.menu.ux-song-1"], timeout: 10)
+        capturePlayerScreenshot("Mood-recovered-server-playlist")
+        try tapBack(named: "mood-night-back")
+        try tapTab("Accueil")
+
+        _ = try await fixturePlaylistMutation("deletePlaylist", parameters: [URLQueryItem(name: "id", value: oldID)])
+        let replacementResponse = try await fixturePlaylistMutation("createPlaylist", parameters: [
+            URLQueryItem(name: "name", value: "Minidisc · Night"), URLQueryItem(name: "songId", value: "ux-song-2")
+        ])
+        let replacementID = try XCTUnwrap(replacementResponse)
+        try tapTab("Découvrir")
+        try require(night, timeout: 20)
+        // Pull to refresh must repair the cached reference even while generation is off.
+        captureHierarchy("mood-before-refresh-stale-reference")
+        app.scrollViews.firstMatch.swipeDown()
+        captureHierarchy("mood-after-refresh-stale-reference")
+        try scrollCardToTop(night, named: "mood-replaced-card-visible")
+        try tap(night, named: "mood-open-replaced-night")
+        try require(app.buttons["playlist.song.menu.ux-song-2"], timeout: 10)
+        capturePlayerScreenshot("Mood-repaired-stale-reference")
+        try tapBack(named: "mood-replaced-night-back")
+        try tapTab("Accueil")
+        try tap(app.buttons["Réglages"], named: "mood-delete-settings")
+        try tap(app.buttons["Application"], named: "mood-delete-application")
+        let delete = app.buttons["mood-delete-playlists"]
+        try tap(delete, named: "mood-delete-prompt")
+        try require(app.alerts.firstMatch)
+        capturePlayerScreenshot("Mood-delete-confirmation")
+        try tap(app.alerts.buttons["Annuler"], named: "mood-cancel-delete")
+        var mutations = try await fixtureMutations()
+        XCTAssertEqual(mutations.filter { $0.endpoint == "deletePlaylist" }.map(\.playlistId), [oldID])
+        try tap(delete, named: "mood-delete-prompt-again")
+        try tap(app.alerts.buttons["Supprimer"], named: "mood-confirm-delete")
+        try require(app.staticTexts["Les playlists d’ambiance ont été supprimées. La génération automatique est désactivée."], timeout: 15)
+        XCTAssertEqual(toggle.value as? String, "0")
+        mutations = try await fixtureMutations()
+        XCTAssertEqual(Set(mutations.filter { $0.endpoint == "deletePlaylist" }.map(\.playlistId)), [oldID, replacementID])
+        XCTAssertFalse(mutations.contains { $0.endpoint == "deletePlaylist" && $0.playlistId == wrappedID })
+        capturePlayerScreenshot("Mood-deletion-completed")
+        try tapBack(named: "mood-delete-settings-back")
+        try tap(app.buttons["Fermer"], named: "mood-delete-settings-close")
+        try tapTab("Découvrir")
+        XCTAssertTrue(night.waitForNonExistence(timeout: 10))
+    }
+
+    /// Mutates only the disposable localhost fixture, never a configured user server.
+    private func fixturePlaylistMutation(_ endpoint: String, parameters: [URLQueryItem]) async throws -> String? {
+        var components = URLComponents(string: "http://127.0.0.1:18992/rest/\(endpoint).view")!
+        components.queryItems = parameters
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.connectionProxyDictionary = ["HTTPEnable": 0, "HTTPSEnable": 0, "SOCKSEnable": 0,
+                                                    "ProxyAutoConfigEnable": 0, "ProxyAutoDiscoveryEnable": 0]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let (data, response) = try await session.data(from: components.url!)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+        XCTAssertEqual(http.value(forHTTPHeaderField: "X-Minidisc-UX-Fixture"), "1")
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let result = try XCTUnwrap(json["subsonic-response"] as? [String: Any])
+        XCTAssertEqual(result["status"] as? String, "ok")
+        return (result["playlist"] as? [String: Any])?["id"] as? String
+    }
+
     func testLocalFixtureOnboarding() async throws {
         try await launchFixtureApp()
     }

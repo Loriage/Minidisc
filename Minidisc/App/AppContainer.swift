@@ -91,7 +91,11 @@ final class AppContainer {
             modelContainer: modelContainer,
             audioStreamCache: cache,
             libraryIndexStore: indexStore,
-            playbackDiagnostics: playbackDiagnostics
+            playbackDiagnostics: playbackDiagnostics,
+            compatibility: inMemory ? nil : NavidromeCompatibility(
+                modelContainer: modelContainer, sessionService: sessionService,
+                indexStore: indexStore, defaults: userDefaults
+            )
         )
         serverService = server
         trackSharingService = TrackSharingService(serverService: server)
@@ -140,6 +144,7 @@ final class AppContainer {
             serverService: server,
             serverState: serverState,
             libraryService: library,
+            catalog: catalog,
             coverApplier: moodCovers
         )
 
@@ -549,8 +554,8 @@ extension AppContainer {
         switch mimeType.lowercased() {
         case "audio/mpeg", "audio/mp3":        return "mp3"
         case "audio/flac", "audio/x-flac":     return "flac"
-        case "audio/mp4", "audio/m4a",
-             "audio/aac", "audio/x-aac":       return "m4a"
+        case "audio/mp4", "audio/m4a":         return "m4a"
+        case "audio/aac", "audio/x-aac", "audio/aacp": return "aac"
         case "audio/ogg":                       return "ogg"
         case "audio/opus":                      return "opus"
         case "audio/wav", "audio/x-wav":       return "wav"

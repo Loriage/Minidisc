@@ -80,7 +80,7 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
 
     /// Moves a completed download into the cache. Upserts the SwiftData record, then runs LRU eviction.
     func store(fileAt sourceURL: URL, forSongId songId: String, serverId: UUID, mimeType: String) async throws -> URL {
-        let ext = audioExtension(mimeType: mimeType)
+        let ext = AudioContainer.sniff(atPath: sourceURL.path)?.rawValue ?? audioExtension(mimeType: mimeType)
         // Song IDs are server-controlled and may contain path separators. A generated basename keeps
         // every entry inside the flat cache directory.
         let relativePath = "\(serverId.uuidString)-\(UUID().uuidString).\(ext)"
@@ -145,8 +145,8 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
         switch mimeType.lowercased() {
         case "audio/mpeg", "audio/mp3":          return "mp3"
         case "audio/flac", "audio/x-flac":       return "flac"
-        case "audio/mp4", "audio/m4a",
-             "audio/aac", "audio/x-aac":         return "m4a"
+        case "audio/mp4", "audio/m4a":           return "m4a"
+        case "audio/aac", "audio/x-aac", "audio/aacp": return "aac"
         case "audio/ogg":                         return "ogg"
         case "audio/opus":                        return "opus"
         case "audio/wav", "audio/x-wav":         return "wav"

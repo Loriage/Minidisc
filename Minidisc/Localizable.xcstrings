@@ -157,6 +157,58 @@
         }
       }
     },
+    "Could not delete mood playlists. Check your connection and permissions, then try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Stimmungsplaylists konnten nicht gelöscht werden. Prüfe deine Verbindung und Berechtigungen und versuche es erneut."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Δεν ήταν δυνατή η διαγραφή των λιστών διάθεσης. Έλεγξε τη σύνδεση και τα δικαιώματά σου και δοκίμασε ξανά."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron eliminar las playlists por estado de ánimo. Comprueba la conexión y los permisos e inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de supprimer les playlists d’ambiance. Vérifiez votre connexion et vos autorisations, puis réessayez."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile eliminare le playlist per umore. Controlla la connessione e le autorizzazioni, poi riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ムードプレイリストを削除できませんでした。接続とアクセス権を確認して、もう一度お試しください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法删除心情歌单。请检查连接和权限，然后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法刪除心情播放清單。請檢查連線和權限，然後再試。"
+          }
+        }
+      }
+    },
     "Could not regenerate mood playlists. Check your connection and music sources, then try again." : {
       "localizations" : {
         "de" : {
@@ -205,6 +257,162 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法重新產生心情播放清單。請檢查連線和音樂來源，然後再試。"
+          }
+        }
+      }
+    },
+    "Delete mood playlists" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimmungsplaylists löschen"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Διαγραφή λιστών διάθεσης"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar playlists por estado de ánimo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer les playlists d’ambiance"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elimina playlist per umore"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ムードプレイリストを削除"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除心情歌单"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除心情播放清單"
+          }
+        }
+      }
+    },
+    "Delete mood playlists?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimmungsplaylists löschen?"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Διαγραφή λιστών διάθεσης;"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Eliminar las playlists por estado de ánimo?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer les playlists d’ambiance ?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminare le playlist per umore?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ムードプレイリストを削除しますか？"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除心情歌单？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要刪除心情播放清單嗎？"
+          }
+        }
+      }
+    },
+    "Deletion cancelled." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Löschen abgebrochen."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Η διαγραφή ακυρώθηκε."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminación cancelada."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suppression annulée."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminazione annullata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "削除をキャンセルしました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已取消删除。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已取消刪除。"
           }
         }
       }
@@ -417,6 +625,58 @@
         }
       }
     },
+    "Mood playlists deleted. Automatic generation is off." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimmungsplaylists gelöscht. Die automatische Erstellung ist deaktiviert."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Οι λίστες διάθεσης διαγράφηκαν. Η αυτόματη δημιουργία είναι απενεργοποιημένη."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlists por estado de ánimo eliminadas. La generación automática está desactivada."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les playlists d’ambiance ont été supprimées. La génération automatique est désactivée."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlist per umore eliminate. La generazione automatica è disattivata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ムードプレイリストを削除しました。自動生成はオフです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "心情歌单已删除。自动生成已关闭。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "心情播放清單已刪除。自動產生功能已關閉。"
+          }
+        }
+      }
+    },
     "Mood playlists regenerated." : {
       "localizations" : {
         "de" : {
@@ -573,6 +833,58 @@
         }
       }
     },
+    "Some mood playlists could not be deleted. Automatic generation is off. Try again later." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einige Stimmungsplaylists konnten nicht gelöscht werden. Die automatische Erstellung ist deaktiviert. Versuche es später erneut."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Δεν ήταν δυνατή η διαγραφή ορισμένων λιστών διάθεσης. Η αυτόματη δημιουργία είναι απενεργοποιημένη. Δοκίμασε ξανά αργότερα."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron eliminar algunas playlists por estado de ánimo. La generación automática está desactivada. Inténtalo de nuevo más tarde."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Certaines playlists d’ambiance n’ont pas pu être supprimées. La génération automatique est désactivée. Réessayez plus tard."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile eliminare alcune playlist per umore. La generazione automatica è disattivata. Riprova più tardi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一部のムードプレイリストを削除できませんでした。自動生成はオフです。後でもう一度お試しください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部分心情歌单无法删除。自动生成已关闭。请稍后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部分心情播放清單無法刪除。自動產生功能已關閉。請稍後再試。"
+          }
+        }
+      }
+    },
     "Some mood playlists could not be regenerated. Try again later." : {
       "localizations" : {
         "de" : {
@@ -621,6 +933,58 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "部分心情播放清單無法重新產生。請稍後再試。"
+          }
+        }
+      }
+    },
+    "This deletes your Minidisc mood playlists from the current server and disables automatic generation. Other playlists and downloaded music are kept." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Minidisc-Stimmungsplaylists werden vom aktuellen Server gelöscht und die automatische Erstellung wird deaktiviert. Andere Playlists und heruntergeladene Musik bleiben erhalten."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Οι λίστες διάθεσης Minidisc θα διαγραφούν από τον τρέχοντα διακομιστή και η αυτόματη δημιουργία θα απενεργοποιηθεί. Οι άλλες λίστες και η ληφθείσα μουσική διατηρούνται."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se eliminarán tus playlists por estado de ánimo de Minidisc del servidor actual y se desactivará la generación automática. Se conservarán las demás playlists y la música descargada."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vos playlists d’ambiance Minidisc seront supprimées du serveur actuel et la génération automatique sera désactivée. Les autres playlists et la musique téléchargée seront conservées."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le tue playlist per umore di Minidisc verranno eliminate dal server attuale e la generazione automatica verrà disattivata. Le altre playlist e la musica scaricata verranno mantenute."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現在のサーバーから自分のMinidiscムードプレイリストを削除し、自動生成をオフにします。他のプレイリストとダウンロード済みの音楽は保持されます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这将从当前服务器删除你的 Minidisc 心情歌单，并关闭自动生成。其他歌单和已下载的音乐将保留。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這會從目前的伺服器刪除你的 Minidisc 心情播放清單，並關閉自動產生功能。其他播放清單和已下載的音樂將保留。"
           }
         }
       }

@@ -994,6 +994,7 @@ actor DownloadService: DownloadServiceProtocol {
 
         let (data, response) = try await downloadSession.data(for: request)
         try checkDownloadCancellation()
+        guard !ArtworkResponsePolicy.isTransient(response) else { throw URLError(.resourceUnavailable) }
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? -1
             struct HTTPError: Error & Sendable { let statusCode: Int }

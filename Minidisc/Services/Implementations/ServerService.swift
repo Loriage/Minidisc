@@ -11,6 +11,7 @@ actor ServerService: ServerServiceProtocol {
     private let audioStreamCache: any AudioStreamCacheProtocol
     private let libraryIndexStore: LibraryIndexStore?
     private let playbackDiagnostics: PlaybackDiagnostics
+    private let compatibility: NavidromeCompatibility?
     private var activeServerSnapshot: ServerSnapshot?
     private var activeConnectionSnapshot: ServerConnection?
     private var connectionVersion: ServerConnection.Version?
@@ -22,7 +23,8 @@ actor ServerService: ServerServiceProtocol {
         modelContainer: ModelContainer,
         audioStreamCache: any AudioStreamCacheProtocol,
         libraryIndexStore: LibraryIndexStore? = nil,
-        playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics()
+        playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics(),
+        compatibility: NavidromeCompatibility? = nil
     ) {
         self.state = state
         self.keychain = keychain
@@ -30,6 +32,7 @@ actor ServerService: ServerServiceProtocol {
         self.audioStreamCache = audioStreamCache
         self.libraryIndexStore = libraryIndexStore
         self.playbackDiagnostics = playbackDiagnostics
+        self.compatibility = compatibility
     }
 
     func addServer(
@@ -252,7 +255,7 @@ actor ServerService: ServerServiceProtocol {
                     ServerCredentials.self,
                     forKey: ServerCredentials.keychainKey(for: activeServer.id)
                 )
-                await publishConnectionChange(server: activeServer, credentials: credentials)
+                await publishConnectionChange(server: activeServer, credentials: credentials, restoringSession: true)
             } else {
                 await publishConnectionRemoval()
             }
@@ -394,22 +397,33 @@ actor ServerService: ServerServiceProtocol {
 
     private func publishConnectionChange(
         server: ServerSnapshot,
-        credentials: ServerCredentials?
+        credentials: ServerCredentials?,
+        restoringSession: Bool = false
     ) async {
         nextConnectionRevision &+= 1
         let version = ServerConnection.Version(
             serverID: server.id,
             revision: nextConnectionRevision
         )
-        activeServerSnapshot = server
-        connectionVersion = version
-        activeConnectionSnapshot = credentials.flatMap { credentials in
+        let connection = credentials.flatMap { credentials in
             try? ServerConnection(
                 version: version,
                 server: server,
                 credentials: credentials
             )
         }
+        if let compatibility, let connection {
+            do {
+                try await compatibility.prepare(connection, restoringSession: restoringSession)
+            } catch {
+                Logger.server.error("Navidrome compatibility update incomplete; will retry at next activation: \(error, privacy: .public)")
+            }
+        }
+        // A different activation can win while the read-only version probe is awaiting.
+        guard version.revision == nextConnectionRevision else { return }
+        activeServerSnapshot = server
+        connectionVersion = version
+        activeConnectionSnapshot = connection
         await MainActor.run {
             state.activeConnectionVersion = version
         }
@@ -428,6 +442,7 @@ actor ServerService: ServerServiceProtocol {
     }
 
     private func publishConnectionRemoval() async {
+        nextConnectionRevision &+= 1
         activeServerSnapshot = nil
         activeConnectionSnapshot = nil
         connectionVersion = nil

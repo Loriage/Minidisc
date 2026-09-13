@@ -612,6 +612,24 @@ actor LibraryIndexStore {
         try purge(serverID)
     }
 
+    /// A fresh 0.64 catalogue already contains canonical IDs and needs no reset.
+    func hasLegacyNavidromeIDs(serverID: UUID) throws -> Bool {
+        let context = ModelContext(modelContainer)
+        let tracks = try context.fetch(FetchDescriptor<IndexedTrack>(predicate: #Predicate { $0.serverId == serverID }))
+        if try tracks.contains(where: { try NavidromeCanonicalID.containsLegacyIDs(in: $0.payload) }) { return true }
+        let albums = try context.fetch(FetchDescriptor<IndexedAlbum>(predicate: #Predicate { $0.serverId == serverID }))
+        if try albums.contains(where: { try NavidromeCanonicalID.containsLegacyIDs(in: $0.payload) }) { return true }
+        let artists = try context.fetch(FetchDescriptor<IndexedArtist>(predicate: #Predicate { $0.serverId == serverID }))
+        if try artists.contains(where: { try NavidromeCanonicalID.containsLegacyIDs(in: $0.payload) }) { return true }
+        let playlists = try context.fetch(FetchDescriptor<IndexedPlaylist>(predicate: #Predicate { $0.serverId == serverID }))
+        if try playlists.contains(where: {
+            try NavidromeCanonicalID.containsLegacyIDs(in: $0.summaryPayload)
+                || ($0.detailPayload.map { try NavidromeCanonicalID.containsLegacyIDs(in: $0) } ?? false)
+        }) { return true }
+        let recommendations = try context.fetch(FetchDescriptor<IndexedAlbumRecommendation>(predicate: #Predicate { $0.serverId == serverID }))
+        return try recommendations.contains { try NavidromeCanonicalID.containsLegacyIDs(in: $0.payload) }
+    }
+
     private func purge(_ serverID: UUID) throws {
         let context = ModelContext(modelContainer)
         let sid = serverID

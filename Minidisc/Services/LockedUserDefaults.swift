@@ -33,6 +33,18 @@ nonisolated final class LockedUserDefaults: @unchecked Sendable {
         lock.withLock { _ in storage.string(forKey: key) }
     }
 
+    func keys() -> [String] {
+        lock.withLock { _ in Array(storage.dictionaryRepresentation().keys) }
+    }
+
+    func stringArray(forKey key: String) -> [String]? {
+        lock.withLock { _ in storage.stringArray(forKey: key) }
+    }
+
+    func set(_ value: [String], forKey key: String) {
+        lock.withLock { _ in storage.set(value, forKey: key) }
+    }
+
     func set(_ value: Bool, forKey key: String) {
         lock.withLock { _ in storage.set(value, forKey: key) }
     }

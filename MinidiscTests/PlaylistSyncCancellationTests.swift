@@ -71,7 +71,7 @@ private actor CancellationBlockingMoodProvider: MoodTrackProvider {
     }
 }
 
-private actor RecordingPlaylistClient: PlaylistSyncClient {
+private actor RecordingPlaylistClient: MoodPlaylistClient {
     private var writeCount = 0
 
     func getPlaylists(username: String?) async throws -> [Playlist] {
@@ -92,6 +92,8 @@ private actor RecordingPlaylistClient: PlaylistSyncClient {
             duration: 0
         )
     }
+
+    func deletePlaylist(id: String) async throws {}
 
     func writes() -> Int {
         writeCount

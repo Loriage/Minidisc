@@ -82,6 +82,19 @@ actor PlaybackSessionService {
         Logger.session.info("Session cleared")
     }
 
+    /// Before cold-start restoration only: the legacy singleton belongs to the
+    /// persisted active server. Never migrate another server's session on a switch.
+    func migrateNavidromeIDs() throws {
+        guard let session = fetchSession(), !session.queueData.isEmpty,
+              try NavidromeCanonicalID.containsLegacyIDs(in: session.queueData) else { return }
+        let migrated = try NavidromeCanonicalID.songData(session.queueData)
+        _ = try JSONDecoder().decode([DisplayableSong].self, from: migrated)
+        session.queueData = migrated
+        session.currentTrackId = session.currentTrackId.map(NavidromeCanonicalID.convert)
+        session.currentTrackCoverArtId = session.currentTrackCoverArtId.map(NavidromeCanonicalID.artwork)
+        try modelContext.save()
+    }
+
     private func fetchOrCreateSession() -> PlaybackSession {
         if let existing = fetchSession() { return existing }
         let new = PlaybackSession()

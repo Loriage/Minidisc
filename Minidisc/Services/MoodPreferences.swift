@@ -59,7 +59,16 @@ nonisolated final class MoodPreferences: Sendable {
     }
 
     func setPlaylistId(_ id: String, mood: Mood, serverId: String) {
+        if playlistId(mood: mood, serverId: serverId) != id {
+            userDefaults.removeObject(forKey: Self.coverKey(mood, serverId))
+        }
         userDefaults.set(id, forKey: Self.playlistIdKey(mood, serverId))
+    }
+
+    func clearPlaylist(mood: Mood, serverId: String) {
+        userDefaults.removeObjects(forKeys: [
+            Self.playlistIdKey(mood, serverId), Self.cycleKey(mood, serverId), Self.coverKey(mood, serverId)
+        ])
     }
 
     func lastAttempt(serverId: String) -> Date? {

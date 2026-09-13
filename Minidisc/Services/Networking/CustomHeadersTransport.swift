@@ -22,10 +22,10 @@ struct CustomHeadersTransport: HTTPTransport, Sendable {
     private let headers: [String: String]
 
     /// Normal use case. Creates a dedicated URLSession with 30-second timeouts.
-    init(headers: [String: String]) {
+    init(headers: [String: String], timeout: TimeInterval = 30) {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 30
+        config.timeoutIntervalForRequest = timeout
+        config.timeoutIntervalForResource = timeout
         // Session-level injection ensures headers reach Cloudflare Access on every
         // request path, including any internal URLSession hop before SwiftSonic
         // intercepts the redirect.

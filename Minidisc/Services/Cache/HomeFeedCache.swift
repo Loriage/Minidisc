@@ -31,5 +31,12 @@ actor HomeFeedCache {
         try data.write(to: file(serverID), options: .atomic)
     }
 
+    func remove(serverID: UUID) throws {
+        let url = file(serverID)
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+    }
+
     private func file(_ id: UUID) -> URL { directory.appendingPathComponent("\(id.uuidString).json") }
 }

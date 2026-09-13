@@ -5,6 +5,22 @@ import Testing
 
 @Suite("Audio stream cache")
 struct AudioStreamCacheTests {
+    @Test(arguments: ["audio/aac", "audio/mp4"])
+    func adtsCacheUsesAACExtensionEvenWithLegacyMIME(mimeType: String) async throws {
+        let container = try ModelContainer(for: CachedTrack.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let cache = AudioStreamCache(modelContainer: container)
+        let source = URL.temporaryDirectory.appendingPathComponent("adts-\(UUID()).tmp")
+        let bytes = Data([0xFF, 0xF1, 0x50, 0x80, 0x01, 0x3F, 0xFC, 0x00])
+        try bytes.write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+        let server = UUID()
+        let stored = try await cache.store(fileAt: source, forSongId: "aac-track", serverId: server, mimeType: mimeType)
+        defer { try? FileManager.default.removeItem(at: stored) }
+        #expect(stored.pathExtension == "aac")
+        #expect(try Data(contentsOf: stored) == bytes)
+        #expect(await cache.cachedURL(forSongId: "aac-track", serverId: server) == stored)
+    }
+
     private func makeTemporaryFile(size: Int) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("minidisc-cache-\(UUID().uuidString).tmp")

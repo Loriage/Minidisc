@@ -64,12 +64,15 @@ private actor GatedMoodProvider: MoodTrackProvider {
     }
 }
 
-private final class PlaylistStub: PlaylistSyncClient, @unchecked Sendable {
+private final class PlaylistStub: MoodPlaylistClient, @unchecked Sendable {
     private let lock = NSLock()
     private var _replacements: [(playlistId: String, songIds: [String])] = []
     private var _created: [String] = []
     var existing: [Playlist] = []
     var failWrites = false
+    var failReads = false
+    var failDeletes: Set<String> = []
+    private(set) var deleted: [String] = []
     /// Emulates a server that accepts the call but stores none of the ids — the failure mode a
     /// foreign id format produces.
     var storesNothing = false
@@ -77,7 +80,16 @@ private final class PlaylistStub: PlaylistSyncClient, @unchecked Sendable {
     var replacements: [(playlistId: String, songIds: [String])] { lock.withLock { _replacements } }
     var created: [String] { lock.withLock { _created } }
 
-    func getPlaylists(username: String?) async throws -> [Playlist] { existing }
+    func getPlaylists(username: String?) async throws -> [Playlist] {
+        if failReads { throw URLError(.notConnectedToInternet) }
+        return existing
+    }
+
+    func deletePlaylist(id: String) async throws {
+        if failDeletes.contains(id) { throw URLError(.cannotConnectToHost) }
+        deleted.append(id)
+        existing.removeAll { $0.id == id }
+    }
 
     func createPlaylist(name: String?, playlistId: String?, songIds: [String]) async throws -> PlaylistWithSongs {
         if failWrites { throw URLError(.badServerResponse) }
@@ -86,6 +98,9 @@ private final class PlaylistStub: PlaylistSyncClient, @unchecked Sendable {
             if playlistId == nil { _created.append(name ?? "?") } else { _replacements.append((id, songIds)) }
         }
         let stored = storesNothing ? 0 : songIds.count
+        let playlistName = name ?? existing.first(where: { $0.id == id })?.name ?? ""
+        existing.removeAll { $0.id == id }
+        existing.append(Playlist(id: id, name: playlistName, songCount: stored, duration: 0))
         return try JSONDecoder().decode(
             PlaylistWithSongs.self,
             from: Data(#"{"id":"\#(id)","name":"\#(name ?? "")","songCount":\#(stored),"duration":0}"#.utf8)
@@ -242,6 +257,7 @@ struct MoodPlaylistServiceTests {
         let run = Task { await service.runWeeklySyncIfNeeded(serverId: serverId, calendar: utc, currentDate: now) }
         await provider.waitUntilSearchStarted()
         #expect(await service.rebuildNow(serverId: serverId) == .inProgress)
+        #expect(await service.deletePlaylists(serverId: serverId) == .inProgress)
         #expect(h.preferences.syncedCycle(mood: .chill, serverId: serverId) == previous)
         h.preferences.automaticGenerationEnabled = false
         await provider.release()
@@ -250,6 +266,100 @@ struct MoodPlaylistServiceTests {
         #expect(playlists.replacements.isEmpty)
         #expect(h.preferences.lastAttempt(serverId: serverId) == nil)
         #expect(await service.rebuildNow(serverId: serverId) == .finished(source: .sonic, refreshed: Mood.allCases, kept: []))
+    }
+
+    @Test("Discovery recovers server playlists despite stale ids, current markers and disabled generation")
+    func discoveryRecoversExistingPlaylists() async throws {
+        let h = Harness()
+        h.preferences.automaticGenerationEnabled = false
+        h.preferences.setPlaylistId("stale-night", mood: .night, serverId: h.serverId)
+        h.preferences.setSyncedCycle(wednesday, mood: .night, serverId: h.serverId)
+        h.preferences.setHasCover(mood: .night, serverId: h.serverId)
+        h.playlists.existing = [Playlist(id: "real-night", name: Mood.night.playlistName, songCount: 25, duration: 100, coverArt: "pl-cover-night")]
+
+        let found = try await h.service.fetchPlaylists(serverId: h.serverId)
+        #expect(found == [MoodPlaylist(mood: .night, id: "real-night", coverArtId: "pl-cover-night")])
+        #expect(h.preferences.playlistId(mood: .night, serverId: h.serverId) == "real-night")
+        #expect(!h.preferences.hasCover(mood: .night, serverId: h.serverId))
+        #expect(h.provider.requested.isEmpty)
+        #expect(h.playlists.replacements.isEmpty)
+    }
+
+    @Test("Discovery adopts playlists after reinstall without generating new contents")
+    func discoveryWithoutLocalState() async throws {
+        let h = Harness()
+        h.playlists.existing = [Playlist(id: "server-night", name: Mood.night.playlistName, songCount: 4, duration: 100)]
+        #expect(try await h.service.fetchPlaylists(serverId: h.serverId).map(\.id) == ["server-night"])
+        #expect(h.playlists.created.isEmpty)
+        #expect(h.provider.requested.isEmpty)
+    }
+
+    @Test("Only a successful server listing removes missing mood references")
+    func discoveryPreservesStateWhenOffline() async throws {
+        let h = Harness()
+        h.preferences.setPlaylistId("old-night", mood: .night, serverId: h.serverId)
+        h.playlists.failReads = true
+        await #expect(throws: URLError.self) { try await h.service.fetchPlaylists(serverId: h.serverId) }
+        #expect(h.preferences.playlistId(mood: .night, serverId: h.serverId) == "old-night")
+        #expect(await h.service.cachedPlaylists(serverId: h.serverId).map(\.id) == ["old-night"])
+        h.playlists.failReads = false
+        #expect(try await h.service.fetchPlaylists(serverId: h.serverId).isEmpty)
+        #expect(h.preferences.playlistId(mood: .night, serverId: h.serverId) == nil)
+    }
+
+    @Test("Regeneration validates stale ids and reuses the actual named playlist")
+    func regenerationRepairsStaleIds() async {
+        let h = Harness()
+        h.preferences.setPlaylistId("stale-night", mood: .night, serverId: h.serverId)
+        h.playlists.existing = [Playlist(id: "real-night", name: Mood.night.playlistName, songCount: 5, duration: 100)]
+        _ = await h.service.rebuildNow(serverId: h.serverId)
+        #expect(h.playlists.replacements.contains { $0.playlistId == "real-night" })
+        #expect(!h.playlists.replacements.contains { $0.playlistId == "stale-night" })
+        #expect(!h.playlists.created.contains(Mood.night.playlistName))
+    }
+
+    @Test("Deletion recovers mood playlists and preserves unrelated and other users' playlists")
+    func deletionTargetsOnlyOwnedMoods() async throws {
+        let h = Harness()
+        let playlists = h.playlists
+        let service = MoodPlaylistService(playlistClientFactory: { playlists }, playlistOwner: "me", providerFactory: { nil }, preferences: h.preferences)
+        playlists.existing = [
+            Playlist(id: "night", name: Mood.night.playlistName, songCount: 4, duration: 100, owner: "me"),
+            Playlist(id: "duplicate-night", name: Mood.night.playlistName, songCount: 4, duration: 100, owner: "me"),
+            Playlist(id: "shared-night", name: Mood.night.playlistName, songCount: 4, duration: 100, owner: "someone-else"),
+            Playlist(id: "wrapped", name: "Minidisc Wrapped 2025", songCount: 4, duration: 100, owner: "me"),
+            Playlist(id: "custom", name: "Minidisc · My favourites", songCount: 4, duration: 100, owner: "me")
+        ]
+        h.preferences.setPlaylistId("custom", mood: .night, serverId: h.serverId)
+        #expect(await service.deletePlaylists(serverId: h.serverId) == .finished(deleted: 2, failed: 0))
+        #expect(Set(playlists.deleted) == ["night", "duplicate-night"])
+        #expect(!h.preferences.automaticGenerationEnabled)
+        #expect(try await service.fetchPlaylists(serverId: h.serverId).isEmpty)
+        #expect(await service.runWeeklySyncIfNeeded(serverId: h.serverId) == .disabled)
+    }
+
+    @Test("Partial deletion preserves failed playlists for retry")
+    func partialDeletionCanBeRetried() async {
+        let h = Harness()
+        _ = await h.service.rebuildNow(serverId: h.serverId)
+        let nightId = h.preferences.playlistId(mood: .night, serverId: h.serverId)!
+        h.playlists.failDeletes = [nightId]
+        #expect(await h.service.deletePlaylists(serverId: h.serverId) == .finished(deleted: 4, failed: 1))
+        #expect(h.preferences.playlistId(mood: .night, serverId: h.serverId) == nightId)
+        #expect(h.preferences.playlistId(mood: .chill, serverId: h.serverId) == nil)
+        h.playlists.failDeletes = []
+        #expect(await h.service.deletePlaylists(serverId: h.serverId) == .finished(deleted: 1, failed: 0))
+        #expect(h.preferences.playlistId(mood: .night, serverId: h.serverId) == nil)
+    }
+
+    @Test("An offline deletion does not forget playlists or report success")
+    func offlineDeletionKeepsReferences() async {
+        let h = Harness()
+        h.preferences.setPlaylistId("night", mood: .night, serverId: h.serverId)
+        h.playlists.failReads = true
+        #expect(await h.service.deletePlaylists(serverId: h.serverId) == .failed)
+        #expect(h.preferences.playlistId(mood: .night, serverId: h.serverId) == "night")
+        #expect(h.playlists.deleted.isEmpty)
     }
 
     @Test("a first run refreshes all five moods")

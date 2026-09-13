@@ -13,9 +13,8 @@ struct DiscoverView: View {
     @State private var showAllFreshReleases = false
     @State private var allReleasesVM: AllFreshReleasesViewModel?
     @State private var isListenBrainzConnected: Bool = false
-    /// Moods that have a server playlist to open. Empty when AudioMuse is unconfigured or has
-    /// never completed a sync — the section then disappears entirely rather than showing dead tiles.
-    @State private var availableMoods: [(mood: Mood, playlistId: String)] = []
+    @State private var availableMoods: [MoodPlaylist] = []
+    @State private var moodReloadID = 0
 
     var body: some View {
         ScrollView {
@@ -53,6 +52,16 @@ struct DiscoverView: View {
             await refreshDiscover(forceRefresh: false)
         }
         .refreshable { await refreshDiscover(forceRefresh: true) }
+        .onReceive(NotificationCenter.default.publisher(for: .minidiscMoodPlaylistsChanged)) { _ in
+            moodReloadID += 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .minidiscPlaylistsChanged)) { _ in
+            moodReloadID += 1
+        }
+        .task(id: moodReloadID) {
+            guard let serverId = container?.serverState.activeServer?.id.uuidString else { return }
+            await loadMoodPlaylists(serverId: serverId)
+        }
         .navigationDestination(for: AlbumRecommendation.self) { release in
             FreshReleaseDetailView(
                 release: release,
@@ -83,7 +92,7 @@ struct DiscoverView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: MinidiscSpacing.s) {
                         ForEach(availableMoods, id: \.mood) { entry in
-                            MoodCard(mood: entry.mood, playlistId: entry.playlistId)
+                            MoodCard(mood: entry.mood, playlistId: entry.id, coverArtId: entry.coverArtId)
                         }
                     }
                     .padding(.horizontal, MinidiscSpacing.l)
@@ -102,13 +111,23 @@ struct DiscoverView: View {
         _ = await BackgroundActivity.run("mood-playlists") {
             await service.runWeeklySyncIfNeeded(serverId: serverId)
         }
-        var found: [(mood: Mood, playlistId: String)] = []
-        for mood in Mood.allCases {
-            if let id = await service.playlistId(for: mood, serverId: serverId) {
-                found.append((mood, id))
-            }
+        await loadMoodPlaylists(serverId: serverId)
+    }
+
+    private func loadMoodPlaylists(serverId: String) async {
+        guard let service = container?.moodPlaylistService else { return }
+        let found: [MoodPlaylist]
+        do {
+            found = try await service.fetchPlaylists(serverId: serverId)
+        } catch is CancellationError {
+            return
+        } catch {
+            // Keep offline navigation on a cold launch without discarding a previously loaded cover.
+            guard availableMoods.isEmpty else { return }
+            found = await service.cachedPlaylists(serverId: serverId)
         }
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled,
+              container?.serverState.activeServer?.id.uuidString == serverId else { return }
         availableMoods = found
     }
 

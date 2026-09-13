@@ -27,7 +27,13 @@ struct AudioContainerSnifferTests {
     func mp3IsMP3() {
         #expect(AudioContainer.sniff(magic: bytes("ID3")) == .mp3)
         #expect(AudioContainer.sniff(magic: [0xFF, 0xFB, 0x90, 0x00]) == .mp3)
-        #expect(AudioContainer.sniff(magic: [0xFF, 0xF1, 0x00, 0x00]) == .mp3)
+    }
+
+    @Test("ADTS AAC is distinguished from MPEG audio and MP4")
+    func adtsAACIsAAC() {
+        #expect(AudioContainer.sniff(magic: [0xFF, 0xF1, 0x50, 0x80]) == .aac)
+        #expect(AudioContainer.sniff(magic: [0xFF, 0xF9, 0x50, 0x80]) == .aac)
+        #expect(AudioContainer.sniff(magic: [0xFF, 0xF0, 0x50, 0x80]) == .aac)
     }
 
     @Test("ogg, wav and aiff are recognised")

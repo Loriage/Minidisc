@@ -532,6 +532,7 @@ final class ArtworkImageCache {
             Logger.artworkCache.warning("[NET-COVER] failed status=\(http.statusCode) id=\(coverArtId, privacy: .public)")
             return nil
         }
+        guard !ArtworkResponsePolicy.isTransient(response) else { return nil }
         let image = await imageDecoder(data, maxDim)
         guard !Task.isCancelled, let image else {
             Logger.artworkCache.warning("[NET-COVER] failed (decode) id=\(coverArtId, privacy: .public) duration=\(Int(Date().timeIntervalSince(t0) * 1000))ms")
@@ -623,6 +624,8 @@ final class ArtworkImageCache {
             revalidationDeferred.insert(coverArtId)
             return
         }
+
+        guard (200..<300).contains(http.statusCode), !ArtworkResponsePolicy.isTransient(http) else { return }
 
         let serverLM = http.value(forHTTPHeaderField: "Last-Modified")
         switch CoverRevalidationOutcome.decide(stored: revalidationStore.lastModified(for: coverArtId), server: serverLM) {

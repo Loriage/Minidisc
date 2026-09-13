@@ -45,7 +45,7 @@ actor ArtworkLoader {
             Logger.artworkCache.warning("ArtworkLoader: artwork could not be decoded from \(url, privacy: .public)")
             return nil
         }
-        cache[url] = normalizedData
+        if !ArtworkResponsePolicy.isTransient(response) { cache[url] = normalizedData }
         return normalizedData
     }
 

@@ -4,25 +4,26 @@ import SwiftUI
 /// on top, the name underneath. The cover is the gradient generated for the playlist, so a mood
 /// looks the same here, in the playlists list, and in any other Subsonic client.
 ///
-/// Rendered only once the mood has been synced at least once — DiscoverView filters on `playlistId`
-/// first, so this never navigates to a playlist that does not exist yet.
+/// Discover reconciles these references with the server independently of playlist generation.
 struct MoodCard: View {
     let mood: Mood
     let playlistId: String
+    let coverArtId: String?
 
     private let cardSize: CGFloat = 140
 
     var body: some View {
         NavigationLink {
-            PlaylistDetailView(playlistId: playlistId, name: String(localized: mood.title), coverArtId: playlistId)
+            PlaylistDetailView(playlistId: playlistId, name: String(localized: mood.title), coverArtId: coverArtId)
         } label: {
             VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
-                CoverArtCard(id: playlistId, size: cardSize, placeholderSystemImage: mood.symbolName)
+                CoverArtCard(id: coverArtId ?? playlistId, size: cardSize, placeholderSystemImage: mood.symbolName)
                 CoverCardMetadata(title: String(localized: mood.title))
             }
             .frame(width: cardSize, alignment: .leading)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("mood-card-\(mood.rawValue)")
         .accessibilityLabel(String(localized: mood.title))
     }
 }

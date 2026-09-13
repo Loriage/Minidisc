@@ -150,6 +150,9 @@ struct MinidiscApp: App {
         }
 
         await newContainer.setup()
+        // Detect an upgraded Navidrome before any cache maintenance or queue
+        // restoration reads resource IDs from the local stores.
+        await newContainer.serverService.loadPersistedState()
         // Start reachability before the UI is interactive so serverState.isOnline
         // is corrected from its optimistic default before any view loads data.
         newContainer.networkMonitor.start(
@@ -173,8 +176,6 @@ struct MinidiscApp: App {
         newContainer.retainLifecycleTask(Task { [modelContainer] in
             await AppContainer.migrateM4AFaststartIfNeeded(modelContainer: modelContainer)
         })
-        // The active server must be loaded before session restoration resolves its media URL.
-        await newContainer.serverService.loadPersistedState()
         await newContainer.playerService.restoreSession()
         let downloadService = newContainer.downloadService
         newContainer.retainLifecycleTask(Task { [modelContainer, downloadService] in

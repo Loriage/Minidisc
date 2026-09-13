@@ -3,6 +3,7 @@ import Foundation
 enum MinidiscURLs {
     /// Let the recipient's App Store choose the storefront and available localization.
     static let appStore = URL(string: "https://apps.apple.com/app/id6794636813")!
+    static let appStoreReview = URL(string: "https://apps.apple.com/app/id6794636813?action=write-review")!
     /// This fork's own repository — Settings' GitHub / issues entries.
     static let repo = URL(string: "https://github.com/Loriage/Minidisc")!
     static let repoIssues = URL(string: "https://github.com/Loriage/Minidisc/issues")!

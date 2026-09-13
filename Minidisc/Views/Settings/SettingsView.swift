@@ -110,10 +110,6 @@ struct SettingsView: View {
             // TODO(v1.x): multi-server management (add / remove / switch servers)
         } header: {
             Text("Server")
-        } footer: {
-            if let server = container?.serverState.activeServer {
-                Text(server.baseURL)
-            }
         }
     }
 
@@ -125,6 +121,11 @@ struct SettingsView: View {
 
     private func aboutSection() -> some View {
         Section {
+            Link(destination: MinidiscURLs.appStoreReview) {
+                Label("Leave a Review", systemImage: "star.fill")
+            }
+            .foregroundStyle(.primary)
+            .accessibilityIdentifier("settings-leave-review")
             ShareLink(item: MinidiscURLs.appStore) {
                 Label("Share the App", systemImage: "square.and.arrow.up")
             }

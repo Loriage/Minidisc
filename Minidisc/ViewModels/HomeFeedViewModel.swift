@@ -146,7 +146,9 @@ final class HomeFeedViewModel {
                 guard request == generation, !Task.isCancelled else { group.cancelAll(); return }
                 pendingSections.remove(result.section)
                 switch result {
-                case .playlists(let values): staged.playlists = values.prefix(60).map(IndexedPlaylistPayload.init)
+                case .playlists(let values):
+                    staged.playlists = values.filter { !Self.isGeneratedPlaylist($0) }
+                        .prefix(60).map(IndexedPlaylistPayload.init)
                 case .history(let values): staged.recentlyPlayed = values
                 case .recent(let values): staged.recentlyAdded = values
                 case .genres(let values): staged.genres = values
@@ -186,11 +188,17 @@ final class HomeFeedViewModel {
     }
 
     private func apply(_ snapshot: HomeFeedSnapshot) {
-        topPicks = snapshot.playlists.map(\.summary)
+        topPicks = snapshot.playlists.map(\.summary).filter { !Self.isGeneratedPlaylist($0) }
         recentlyPlayed = snapshot.recentlyPlayed
         recentlyAdded = snapshot.recentlyAdded
         genreShelves = snapshot.genres
         favorites = snapshot.favorites ?? HomeFavorites()
         mostPlayed = snapshot.mostPlayed ?? []
+    }
+
+    private nonisolated static func isGeneratedPlaylist(_ playlist: Playlist) -> Bool {
+        if Mood.allCases.contains(where: { $0.playlistName == playlist.name }) { return true }
+        let prefix = WrappedPlaylistService.wrappedPlaylistNamePrefix
+        return playlist.name.hasPrefix(prefix) && Int(playlist.name.dropFirst(prefix.count)) != nil
     }
 }

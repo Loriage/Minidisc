@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>IntentPhrases</key>
+	<array>
+		<dict>
+			<key>IntentName</key>
+			<string>INSearchForMediaIntent</string>
+			<key>IntentExamples</key>
+			<array>
+				<string>在Minidisc中搜索Daft Punk</string>
+				<string>在Minidisc中搜索Discover Weekly播放列表</string>
+			</array>
+		</dict>
+		<dict>
+			<key>IntentName</key>
+			<string>INPlayMediaIntent</string>
+			<key>IntentExamples</key>
+			<array>
+				<string>用Minidisc播放音乐</string>
+				<string>用Minidisc播放Discover Weekly播放列表</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

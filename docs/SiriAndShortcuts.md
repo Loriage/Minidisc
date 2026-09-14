@@ -44,6 +44,12 @@ results. Siri-supplied identifiers outside Minidisc's ID format fall back to the
 provided title; valid Minidisc IDs still enforce their original account scope.
 Search requests return matching media without starting playback.
 
+SiriKit example phrases for both supported intents are shipped in
+`AppIntentVocabulary.plist` in each of the nine language folders, with an English
+`Base.lproj` fallback. These resources are separate from `AppShortcuts.xcstrings`;
+keep them complete when adding an intent or localization to avoid App Store
+Connect warning ITMS-90626. See Apple's [Intent Phrases reference](https://developer.apple.com/documentation/sirikit/intent-phrases).
+
 Playback Diagnostics records the entry point (`sirikit-resolve`, `sirikit-play`,
 `audio-search`, `audio-play`) and search result counts. It does not retain spoken
 phrases, media titles or resource identifiers. These markers distinguish a

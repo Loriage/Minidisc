@@ -672,6 +672,41 @@ actor LibraryIndexStore {
         return Set(try context.fetch(descriptor).map(\.sourceAlbumId))
     }
 
+    func intentRecords(references: [MusicIntentID], serverID: UUID, scope: String) throws -> [MusicIntentRecord] {
+        let context = ModelContext(modelContainer)
+        let sid = serverID
+        var result: [MusicIntentRecord] = []
+        let songIDs = references.filter { $0.kind == .song && $0.scope == scope }.map(\.resourceID)
+        if !songIDs.isEmpty {
+            let rows = try context.fetch(FetchDescriptor<IndexedTrack>(predicate: #Predicate {
+                $0.serverId == sid && songIDs.contains($0.itemId)
+            }))
+            result += rows.compactMap(decodeSong).map { MusicIntentRecord(scope: scope, song: $0) }
+        }
+        let albumIDs = references.filter { $0.kind == .album && $0.scope == scope }.map(\.resourceID)
+        if !albumIDs.isEmpty {
+            let rows = try context.fetch(FetchDescriptor<IndexedAlbum>(predicate: #Predicate {
+                $0.serverId == sid && albumIDs.contains($0.itemId)
+            }))
+            result += rows.compactMap(decodeAlbum).map { MusicIntentRecord(scope: scope, album: $0) }
+        }
+        let artistIDs = references.filter { $0.kind == .artist && $0.scope == scope }.map(\.resourceID)
+        if !artistIDs.isEmpty {
+            let rows = try context.fetch(FetchDescriptor<IndexedArtist>(predicate: #Predicate {
+                $0.serverId == sid && artistIDs.contains($0.itemId)
+            }))
+            result += rows.compactMap(decodeArtist).map { MusicIntentRecord(scope: scope, artist: $0) }
+        }
+        let playlistIDs = references.filter { $0.kind == .playlist && $0.scope == scope }.map(\.resourceID)
+        if !playlistIDs.isEmpty {
+            let rows = try context.fetch(FetchDescriptor<IndexedPlaylist>(predicate: #Predicate {
+                $0.serverId == sid && playlistIDs.contains($0.itemId)
+            }))
+            result += rows.compactMap(decodePlaylist).map { MusicIntentRecord(scope: scope, playlist: $0) }
+        }
+        return result
+    }
+
     func search(_ query: String, serverID: UUID) throws -> LibraryIndexSearchResults {
         let context = ModelContext(modelContainer)
         let sid = serverID

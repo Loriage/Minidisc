@@ -803,7 +803,7 @@ struct PlayerRecoveryIntegrationTests {
         let request = Task {
             try await h.player.play(preparingQueue: {
                 await gate.wait()
-                return PreparedPlaybackQueue(tracks: tracks, startIndex: 1)
+                return PreparedPlaybackQueue(tracks: tracks, startIndex: 1, repeatMode: .all)
             })
         }
         try await h.waitUntil { await gate.isWaiting }
@@ -813,9 +813,20 @@ struct PlayerRecoveryIntegrationTests {
         #expect(h.state.currentTrack?.id == "a")
         #expect(h.state.playbackState == .paused)
         #expect(h.engine.playCount == 1)
+        #expect(h.state.repeatMode == .off)
         await h.player.stop()
     }
 
+    @Test func preparedPlaybackAppliesExplicitRepeatMode() async throws {
+        let h = try RecoveryHarness(startupGrace: .seconds(3))
+        try await h.play()
+        let tracks = h.state.queue
+        try await h.player.play(preparingQueue: {
+            PreparedPlaybackQueue(tracks: tracks, startIndex: 0, repeatMode: .all)
+        })
+        #expect(h.state.repeatMode == .all)
+        await h.player.stop()
+    }
 }
 
 private actor PlaylistPreparationGate {

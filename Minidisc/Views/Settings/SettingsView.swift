@@ -845,6 +845,7 @@ private struct ApplicationSettingsView: View {
                 Text("System follows your device's light or dark setting.")
             }
             MoodPlaylistSettingsSection()
+            SiriSettingsSection()
             ApplicationDebugSection()
         }
         .formStyle(.grouped)

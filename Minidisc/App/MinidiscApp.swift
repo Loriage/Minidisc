@@ -3,6 +3,7 @@ import SwiftData
 import OSLog
 import Foundation
 import BackgroundTasks
+import AppIntents
 
 @main
 struct MinidiscApp: App {
@@ -10,11 +11,14 @@ struct MinidiscApp: App {
     @State private var launchState: AppLaunchState = .launching
     @State private var launchAttempt = 1
     @Environment(\.scenePhase) private var scenePhase
-    private let playbackDiagnostics = PlaybackDiagnostics()
+    private let runtime = MinidiscRuntime.shared
+    private var playbackDiagnostics: PlaybackDiagnostics { runtime.diagnostics }
 
     private nonisolated static let backgroundSyncCoordinator = BackgroundSyncCoordinator()
 
     init() {
+        let intentRuntime = MinidiscRuntime.shared
+        AppDependencyManager.shared.add(dependency: intentRuntime)
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: "app.minidisc.wrapped.monthly-update",
             using: nil,
@@ -72,6 +76,7 @@ struct MinidiscApp: App {
                         try await container.libraryCatalog.prepare(
                             automaticRefreshAllowed: snapshot.automaticRefreshAllowed
                         )
+                        MinidiscShortcuts.updateAppShortcutParameters()
                     } catch is CancellationError {
                     } catch {
                         // The persistent cache remains usable; a later reconnect or manual
@@ -80,6 +85,12 @@ struct MinidiscApp: App {
                             "Library index preparation deferred: \(error, privacy: .public)"
                         )
                     }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .minidiscPlaylistsChanged)) { _ in
+                    MinidiscShortcuts.updateAppShortcutParameters()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .minidiscMoodPlaylistsChanged)) { _ in
+                    MinidiscShortcuts.updateAppShortcutParameters()
                 }
         }
         .onChange(of: scenePhase) { _, newPhase in
@@ -122,7 +133,7 @@ struct MinidiscApp: App {
 
         let newContainer: AppContainer
         do {
-            newContainer = try AppContainer(playbackDiagnostics: playbackDiagnostics)
+            newContainer = try await runtime.container()
         } catch {
             let failure = error as NSError
             Logger.boot.fault(
@@ -148,6 +159,13 @@ struct MinidiscApp: App {
             return
         }
 
+        launchState = .ready(newContainer)
+        playbackDiagnostics.record(.application(.servicesReady))
+        Logger.boot.info("App services ready")
+    }
+
+    static func makeContainer(diagnostics: PlaybackDiagnostics) async throws -> AppContainer {
+        let newContainer = try AppContainer(playbackDiagnostics: diagnostics)
         await newContainer.setup()
         // Detect an upgraded Navidrome before any cache maintenance or queue
         // restoration reads resource IDs from the local stores.
@@ -195,15 +213,13 @@ struct MinidiscApp: App {
             }
         })
         MinidiscApp.scheduleWrappedUpdate()
-        launchState = .ready(newContainer)
-        playbackDiagnostics.record(.application(.servicesReady))
-        Logger.boot.info("App services ready")
+        return newContainer
     }
 
     // MARK: - Cover art garbage collection
 
     @MainActor
-    private func runCoverArtGarbageCollection(
+    private static func runCoverArtGarbageCollection(
         modelContainer: ModelContainer,
         downloadService: any DownloadServiceProtocol
     ) async {

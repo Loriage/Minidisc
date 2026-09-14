@@ -1698,6 +1698,11 @@ actor PlayerService: PlayerServiceProtocol {
         let queue = try await preparingQueue()
         guard request == queueBuildGeneration, transport == transportIntentGeneration,
               !Task.isCancelled else { return }
+        if let mode = queue.repeatMode {
+            await setRepeatMode(mode)
+            guard request == queueBuildGeneration, transport == transportIntentGeneration,
+                  !Task.isCancelled else { return }
+        }
         try await play(tracks: queue.tracks, startIndex: queue.startIndex)
     }
 

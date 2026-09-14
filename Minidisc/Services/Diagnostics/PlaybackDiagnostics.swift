@@ -13,6 +13,18 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         case launchFailed(errorDomain: String, errorCode: Int)
     }
 
+    enum MusicIntentEvent: Sendable, Equatable {
+        case siriKitResolution
+        case siriKitPlayback
+        case siriKitSearch
+        case unrecognizedMediaIdentifier
+        case audioSearch
+        case audioPlayback
+        case searchStarted
+        case searchCompleted(count: Int)
+        case selectionPlayback
+    }
+
     enum PlaybackCommand: Sendable, Equatable {
         case play(queueCount: Int, startIndex: Int)
         case playRadio
@@ -181,6 +193,7 @@ nonisolated final class PlaybackDiagnostics: Sendable {
     }
 
     enum Event: Sendable, Equatable {
+        case musicIntent(MusicIntentEvent)
         case application(ApplicationEvent)
         case connectionChanged(version: ServerConnection.Version, endpoint: ServerEndpoint)
         case connectionRemoved
@@ -291,6 +304,18 @@ nonisolated final class PlaybackDiagnostics: Sendable {
 
     private static func describe(_ event: Event) -> String {
         switch event {
+        case .musicIntent(let intent):
+            switch intent {
+            case .siriKitResolution: "music-intent sirikit-resolve"
+            case .siriKitPlayback: "music-intent sirikit-play"
+            case .siriKitSearch: "music-intent sirikit-search"
+            case .unrecognizedMediaIdentifier: "music-intent unrecognized-identifier searching-by-name"
+            case .audioSearch: "music-intent audio-search"
+            case .audioPlayback: "music-intent audio-play"
+            case .searchStarted: "music-intent search-started"
+            case .searchCompleted(let count): "music-intent search-completed count=\(count)"
+            case .selectionPlayback: "music-intent selection-play"
+            }
         case .application(.launchStarted(let attempt)):
             "app launch-started attempt=\(attempt)"
         case .application(.servicesReady):

@@ -1,4 +1,7 @@
 import XCTest
+#if compiler(>=6.4) && canImport(AppIntentsTesting)
+import AppIntentsTesting
+#endif
 
 /// Uses only Scripts/Testing/ux-fixture-server.py on a disposable simulator.
 /// Capture externally with simctl when a UX_STEP marker is emitted.
@@ -12,6 +15,59 @@ final class MinidiscUXVerificationTests: XCTestCase {
         super.setUp()
         continueAfterFailure = false
     }
+
+    #if compiler(>=6.4) && canImport(AppIntentsTesting)
+    @available(iOS 27.0, *)
+    func testFixtureMusicShortcutsColdStart() async throws {
+        try await launchFixtureApp()
+        let definitions = IntentDefinitions(bundleIdentifier: "com.nohitdev.minidisc")
+        app.terminate()
+
+        let songs = try await definitions.entities["MinidiscMusicEntity"].entities(matching: firstTitle)
+        let song = try XCTUnwrap(songs.first)
+        let title: String = try song.title
+        XCTAssertEqual(title, firstTitle)
+        let songID = try XCTUnwrap(song.identifier.instanceIdentifier)
+        let restored = try await definitions.entities["MinidiscMusicEntity"].entities(identifiers: [songID])
+        XCTAssertEqual(restored.count, 1)
+
+        let siriMatches = try await definitions.entities["SiriSongEntity"].entities(matching: firstTitle)
+        XCTAssertEqual(siriMatches.count, 1)
+        XCTAssertEqual(try siriMatches[0].title, firstTitle)
+
+        try await definitions.intents["PlayMinidiscMusicIntent"].makeIntent(music: song, shuffle: false).run()
+        app.activate()
+        try require(app.buttons["Pause"].firstMatch, timeout: 10)
+        XCTAssertEqual(try miniPlayerTitle().label, firstTitle)
+        try await definitions.intents["PauseMinidiscIntent"].makeIntent().run()
+        try require(app.buttons["Lecture"].firstMatch)
+        try await definitions.intents["ResumeMinidiscIntent"].makeIntent().run()
+        try require(app.buttons["Pause"].firstMatch)
+        XCTAssertEqual(try miniPlayerTitle().label, firstTitle)
+        try await definitions.intents["PauseMinidiscIntent"].makeIntent().run()
+        captureHierarchy("shortcuts-cold-start-and-resume")
+    }
+
+    @available(iOS 27.0, *)
+    func testFixtureDiscoverWeeklyShortcut() async throws {
+        try await launchFixtureApp(queueCatalog: true)
+        _ = try await fixturePlaylistMutation("createPlaylist", parameters: [
+            URLQueryItem(name: "name", value: "Discover Weekly"), URLQueryItem(name: "songId", value: "ux-song-1")
+        ])
+        let definitions = IntentDefinitions(bundleIdentifier: "com.nohitdev.minidisc")
+        let playlists = try await definitions.entities["SiriPlaylistEntity"].entities(matching: "Discover Weekly")
+        XCTAssertEqual(playlists.count, 1)
+        XCTAssertEqual(try playlists[0].title, "Discover Weekly")
+        let music = try await definitions.entities["MinidiscMusicEntity"].entities(matching: "Discover Weekly")
+        let playlist = try XCTUnwrap(music.first)
+        XCTAssertEqual(try playlist.title, "Discover Weekly")
+        try await definitions.intents["PlayMinidiscMusicIntent"].makeIntent(music: playlist, shuffle: false).run()
+        try require(app.buttons["Pause"].firstMatch)
+        XCTAssertEqual(try miniPlayerTitle().label, firstTitle)
+        try await definitions.intents["PauseMinidiscIntent"].makeIntent().run()
+        captureHierarchy("discover-weekly-shortcut-playing")
+    }
+    #endif
 
     func testFixtureMoodPlaylistSettings() async throws {
         try await launchFixtureApp()
@@ -43,6 +99,18 @@ final class MinidiscUXVerificationTests: XCTestCase {
         capturePlayerScreenshot("Mood-settings-no-matching-tracks")
         try tap(toggle, named: "reenable-mood-generation")
         XCTAssertEqual(toggle.value as? String, "1")
+    }
+
+    func testFixtureSiriSettings() async throws {
+        try await launchFixtureApp()
+        try tap(app.buttons["Réglages"], named: "siri-settings")
+        try tap(app.buttons["Application"], named: "siri-application-settings")
+        let authorization = app.buttons["siri-authorization"]
+        try require(authorization)
+        XCTAssertTrue(authorization.isEnabled)
+        XCTAssertTrue(authorization.label.contains("Activer Siri") || authorization.label.contains("Gérer l’accès à Siri") || authorization.label.contains("Ouvrir les réglages"))
+        try require(app.staticTexts["Autorisez Siri à rechercher dans votre bibliothèque Minidisc et à contrôler la lecture musicale."])
+        captureHierarchy("siri-authorization-settings")
     }
 
     func testFixtureMoodRecoveryAndDeletion() async throws {

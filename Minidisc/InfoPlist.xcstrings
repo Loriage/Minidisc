@@ -1,0 +1,64 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSSiriUsageDescription" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow Siri to search your Minidisc library and control music playback."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorisez Siri à rechercher dans votre bibliothèque Minidisc et à contrôler la lecture musicale."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaube Siri, deine Minidisc-Mediathek zu durchsuchen und die Musikwiedergabe zu steuern."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Επιτρέψτε στο Siri να κάνει αναζήτηση στη βιβλιοθήκη σας στο Minidisc και να ελέγχει την αναπαραγωγή μουσικής."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permite que Siri busque en tu biblioteca de Minidisc y controle la reproducción de música."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consenti a Siri di cercare nella tua libreria Minidisc e controllare la riproduzione musicale."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SiriによるMinidiscライブラリの検索と音楽再生の操作を許可します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允许 Siri 搜索你的 Minidisc 音乐库并控制音乐播放。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "允許 Siri 搜尋你的 Minidisc 音樂資料庫並控制音樂播放。"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

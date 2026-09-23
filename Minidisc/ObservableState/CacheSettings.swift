@@ -11,6 +11,7 @@ final class CacheSettings {
     @ObservationIgnored private var _cacheFormat: CacheFormat
     @ObservationIgnored private var _cacheOverCellular: Bool
     @ObservationIgnored private var _cacheArtwork: Bool
+    @ObservationIgnored private var _keepFavoritesOffline: Bool
 
     // MARK: - Visible properties (manual observation hooks)
 
@@ -72,6 +73,17 @@ final class CacheSettings {
         }
     }
 
+    var keepFavoritesOffline: Bool {
+        get {
+            access(keyPath: \.keepFavoritesOffline)
+            return _keepFavoritesOffline
+        }
+        set {
+            withMutation(keyPath: \.keepFavoritesOffline) { _keepFavoritesOffline = newValue }
+            defaults.set(newValue, forKey: Self.keepFavoritesOfflineKey)
+        }
+    }
+
     // MARK: - Defaults & keys
 
     static let defaultCapacityMegabytes = 512
@@ -86,12 +98,14 @@ final class CacheSettings {
     private static let legacyMaxTracksKey = "minidisc.cache.maxTracks"
     private static let cacheFormatKey = "minidisc.cache.format"
     private static let cacheOverCellularKey = "minidisc.cache.cellular"
+    private static let keepFavoritesOfflineKey = "minidisc.cache.favoritesOffline"
     private static let cacheArtworkKey = "minidisc.cache.artwork"
 
     // MARK: - Init
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        self._keepFavoritesOffline = defaults.object(forKey: Self.keepFavoritesOfflineKey) as? Bool ?? true
 
         if defaults.object(forKey: Self.capacityMegabytesKey) != nil {
             self._capacityMegabytes = Self.normalizedCapacity(

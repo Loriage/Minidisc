@@ -8,6 +8,7 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
     private let modelContainer: ModelContainer
     private lazy var modelContext: ModelContext = ModelContext(modelContainer)
     private let cacheDirectory: URL
+    private let offlineFavorites: OfflineFavoritesStore?
     private(set) var maxBytes: Int64
 
     nonisolated static let defaultMaxBytes: Int64 = 512 * 1_000_000
@@ -16,7 +17,8 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
     nonisolated static let minMaxBytes: Int64 = 1
     nonisolated static let maxMaxBytes: Int64 = 2_048 * 1_000_000
 
-    init(modelContainer: ModelContainer, maxBytes: Int64 = AudioStreamCache.defaultMaxBytes) {
+    init(modelContainer: ModelContainer, maxBytes: Int64 = AudioStreamCache.defaultMaxBytes, offlineFavorites: OfflineFavoritesStore? = nil) {
+        self.offlineFavorites = offlineFavorites
         self.modelContainer = modelContainer
         self.maxBytes = max(Self.minMaxBytes, min(Self.maxMaxBytes, maxBytes))
 
@@ -33,13 +35,24 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
     // MARK: - Configuration
 
     func setMaxBytes(_ value: Int64) async {
+        defer { Task { @MainActor in postOfflineLibraryChanged() } }
         maxBytes = max(Self.minMaxBytes, min(Self.maxMaxBytes, value))
         await evictToFitBudget()
     }
 
     // MARK: - Lookup
 
+    func availableSongIDs(serverID: UUID) throws -> Set<String> {
+        let entries = try modelContext.fetch(FetchDescriptor<CachedTrack>(predicate: #Predicate { $0.serverId == serverID }))
+        return Set(entries.compactMap { entry in
+            let url = cacheDirectory.appendingPathComponent(entry.filePath)
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            return size > 0 && Int64(size) == entry.fileSize ? entry.songId : nil
+        })
+    }
+
     func cachedURL(forSongId songId: String, serverId: UUID) async -> URL? {
+        if let url = await offlineFavorites?.localURL(songID: songId, serverID: serverId) { return url }
         let sid = serverId
         var descriptor = FetchDescriptor<CachedTrack>(
             predicate: #Predicate { $0.songId == songId && $0.serverId == sid }
@@ -68,6 +81,7 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
     // MARK: - Storage
 
     func store(fileAt sourceURL: URL, forSongId songId: String, serverId: UUID, mimeType: String) async throws -> URL {
+        defer { Task { @MainActor in postOfflineLibraryChanged() } }
         let ext = AudioContainer.sniff(atPath: sourceURL.path)?.rawValue ?? audioExtension(mimeType: mimeType)
         // Song IDs are server-controlled and may contain path separators. A generated basename keeps
         // every entry inside the flat cache directory.
@@ -183,6 +197,8 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
     }
 
     func invalidate(songId: String, serverId: UUID) async {
+        defer { Task { @MainActor in postOfflineLibraryChanged() } }
+        try? await offlineFavorites?.invalidate(songID: songId, serverID: serverId)
         let sid = serverId
         let matchingTracks = (try? modelContext.fetch(
             FetchDescriptor<CachedTrack>(
@@ -207,6 +223,7 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
     }
 
     func clearAll() async {
+        defer { Task { @MainActor in postOfflineLibraryChanged() } }
         let tracks = (try? modelContext.fetch(FetchDescriptor<CachedTrack>())) ?? []
         for filePath in tracks.map(\.filePath) {
             do {
@@ -225,6 +242,7 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
     }
 
     func clearAllForServer(_ serverId: UUID) async {
+        defer { Task { @MainActor in postOfflineLibraryChanged() } }
         let allTracks = (try? modelContext.fetch(FetchDescriptor<CachedTrack>())) ?? []
         let tracks = allTracks.filter { $0.serverId == serverId }
         for filePath in tracks.map(\.filePath) {

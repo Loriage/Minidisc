@@ -27,7 +27,7 @@ struct RecentlyAddedView: View {
 
     private var effectiveCoverArtId: String? { coverArtId ?? viewModel?.coverArtId }
 
-    private var songs: [DisplayableSong] { viewModel?.songs ?? [] }
+    private var songs: [DisplayableSong] { container?.visibleSongs(viewModel?.songs ?? []) ?? [] }
 
     var body: some View {
         Group {

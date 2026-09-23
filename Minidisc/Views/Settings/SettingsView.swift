@@ -52,6 +52,12 @@ struct SettingsView: View {
             serverSection()
             Section {
                 NavigationLink {
+                    ApplicationSettingsView()
+                } label: {
+                    Label("Application", systemImage: "paintbrush")
+                        .foregroundStyle(.primary)
+                }
+                NavigationLink {
                     PlaybackSettingsView()
                 } label: {
                     Label("Playback", systemImage: "play.circle")
@@ -67,12 +73,6 @@ struct SettingsView: View {
                     IntegrationsSettingsView()
                 } label: {
                     Label("Integrations", systemImage: "puzzlepiece.extension")
-                        .foregroundStyle(.primary)
-                }
-                NavigationLink {
-                    ApplicationSettingsView()
-                } label: {
-                    Label("Application", systemImage: "paintbrush")
                         .foregroundStyle(.primary)
                 }
             }
@@ -267,6 +267,10 @@ struct StorageSettingsView: View {
                 Text("Downloaded tracks are stored permanently and available offline.")
             }
 
+            if let container {
+                OfflineFavoritesSettingsSection(settings: container.cacheSettings, sync: container.offlineFavoritesSync)
+            }
+
             Section {
                 LabeledContent {
                     Text(verbatim: "\(ByteCountFormatter.string(fromByteCount: usedBytes, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: capacityBytes, countStyle: .file)) · \(trackCount)")
@@ -341,8 +345,6 @@ struct StorageSettingsView: View {
                 Text("Keeps recently-played music for instant replay. Least-recently-played tracks are removed when the size limit is reached.")
             }
 
-            LibraryIndexStorageSection()
-
             Section {
                 LabeledContent {
                     Text(coverCount == 1 ? "1 image · \(ByteCountFormatter.string(fromByteCount: coverBytes, countStyle: .file))" : "\(coverCount) images · \(ByteCountFormatter.string(fromByteCount: coverBytes, countStyle: .file))")
@@ -378,6 +380,8 @@ struct StorageSettingsView: View {
             } footer: {
                 Text("Covers re-download on demand. Turning caching off keeps artwork in memory only.")
             }
+
+            LibraryIndexStorageSection()
         }
         .formStyle(.grouped)
         .navigationTitle("Storage")
@@ -828,10 +832,20 @@ private struct IntegrationsSettingsView: View {
 // MARK: - Application
 
 private struct ApplicationSettingsView: View {
+    @Environment(\.appContainer) private var container
     @AppStorage("minidisc.appTheme") private var theme: AppTheme = .system
 
     var body: some View {
         Form {
+            if let container {
+                @Bindable var state = container.serverState
+                Section {
+                    Toggle("Offline Mode", isOn: $state.isOfflineModeEnabled)
+                        .accessibilityIdentifier("offline-mode-toggle")
+                } footer: {
+                    Text("Only show and play music saved on this device, even when connected to the internet.")
+                }
+            }
             Section {
                 Picker("Theme", selection: $theme) {
                     ForEach(AppTheme.allCases, id: \.self) { option in

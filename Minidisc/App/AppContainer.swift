@@ -6,7 +6,7 @@ import SwiftData
 @MainActor
 final class AppContainer {
     let playerState: PlayerState
-    let serverState = ServerState()
+    let serverState: ServerState
     let playbackPreferences: PlaybackPreferences
     let cacheSettings: CacheSettings
 
@@ -17,6 +17,10 @@ final class AppContainer {
     let keychainService: any KeychainServiceProtocol
     let serverService: any ServerServiceProtocol
     let libraryService: any LibraryServiceProtocol
+    let offlineLibrary: OfflineBrowsingLibrary
+    let offlineBrowsingReader: OfflineBrowsingReader
+    let offlineFavoritesStore: OfflineFavoritesStore
+    let offlineFavoritesSync: OfflineFavoritesSync
     let audioStreamCache: any AudioStreamCacheProtocol
     let downloadService: any DownloadServiceProtocol
     let downloadActivity = DownloadActivityState()
@@ -57,6 +61,7 @@ final class AppContainer {
         playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics(),
         userDefaults: UserDefaults = .standard
     ) throws {
+        serverState = ServerState(defaults: userDefaults)
         let playbackPreferences = PlaybackPreferences(defaults: userDefaults)
         self.playbackPreferences = playbackPreferences
         playerState = PlayerState(isAutoExtendEnabled: playbackPreferences.isAutoExtendEnabled)
@@ -78,7 +83,11 @@ final class AppContainer {
         keychainService = keychain
         lidarrSettings = LidarrSettings(keychain: keychain, defaults: userDefaults)
 
-        let cache = AudioStreamCache(modelContainer: modelContainer, maxBytes: cacheSettings.capacityBytes)
+        let favoritesStore = OfflineFavoritesStore(directory: inMemory
+            ? URL.temporaryDirectory.appendingPathComponent("minidisc-favorites-\(UUID())")
+            : URL.applicationSupportDirectory.appendingPathComponent("minidisc-offline-favorites"))
+        offlineFavoritesStore = favoritesStore
+        let cache = AudioStreamCache(modelContainer: modelContainer, maxBytes: cacheSettings.capacityBytes, offlineFavorites: favoritesStore)
         audioStreamCache = cache
 
         let stats = StatsService(modelContainer: modelContainer)
@@ -94,7 +103,8 @@ final class AppContainer {
             compatibility: inMemory ? nil : NavidromeCompatibility(
                 modelContainer: modelContainer, sessionService: sessionService,
                 indexStore: indexStore, defaults: userDefaults
-            )
+            ),
+            offlineFavorites: favoritesStore
         )
         serverService = server
         trackSharingService = TrackSharingService(serverService: server)
@@ -113,6 +123,10 @@ final class AppContainer {
         let download = DownloadService(serverService: server, modelContainer: modelContainer, toastService: toastService,
                                        transferTransport: inMemory ? nil : BackgroundDownloadTransport.shared, diagnostics: playbackDiagnostics)
         downloadService = download
+        let offlineReader = OfflineBrowsingReader(models: modelContainer, downloads: download, cache: cache,
+                                                  favorites: favoritesStore, index: indexStore)
+        offlineBrowsingReader = offlineReader
+        offlineLibrary = OfflineBrowsingLibrary(state: serverState, reader: offlineReader)
 
         let library = LibraryService(
             serverService: server,
@@ -120,7 +134,9 @@ final class AppContainer {
             downloadService: download,
             statsService: stats,
             catalog: catalog,
-            indexStore: indexStore
+            indexStore: indexStore,
+            offlineFavorites: favoritesStore,
+            offlineReader: offlineReader
         )
         libraryService = library
         libraryIndexMaintenance = LibraryIndexMaintenanceService(
@@ -132,6 +148,10 @@ final class AppContainer {
 
         artworkImageCache = ArtworkImageCache(downloadService: download, libraryService: library)
         artworkImageCache.persistCoversEnabled = cacheSettings.cacheArtwork
+        offlineFavoritesSync = OfflineFavoritesSync(
+            store: favoritesStore, settings: cacheSettings, streamSettings: streamSettings,
+            server: server, downloads: download, cache: cache, artwork: artworkImageCache
+        )
         let moodCovers: @Sendable (PlaylistGradientSpec, String, String) async -> Void = { [artworkImageCache] spec, playlistId, title in
             let manager = await PlaylistCoverManager(
                 downloadService: download,
@@ -209,10 +229,13 @@ final class AppContainer {
         searchHistoryService = SearchHistoryService(container: modelContainer)
 
         lifecycleTasks = [
-            Task { [download, downloadActivity] in
+            Task { [download, downloadActivity, offlineLibrary] in
+                var previousIDs = Set<String>()
                 for await transfers in download.progressStream {
                     guard !Task.isCancelled else { break }
                     downloadActivity.transfers = transfers
+                    let ids = Set(transfers.map { "\($0.serverId):\($0.songId)" })
+                    if ids != previousIDs { offlineLibrary.revision += 1; previousIDs = ids }
                 }
             },
             Task { [playlist] in

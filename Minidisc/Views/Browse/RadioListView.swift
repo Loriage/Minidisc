@@ -10,7 +10,13 @@ struct RadioListView: View {
 
     var body: some View {
         Group {
-            if isLoading && stations.isEmpty {
+            if container?.serverState.isOnline == false {
+                ContentUnavailableView {
+                    Label("You're Offline", systemImage: "wifi.slash")
+                } description: {
+                    Text(UserFacingError.noNetwork.displayMessage)
+                }
+            } else if isLoading && stations.isEmpty {
                 LoadingStateView()
             } else if let error, stations.isEmpty {
                 EmptyStateView(

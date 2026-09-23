@@ -60,17 +60,15 @@ final class NetworkMonitor {
                 playbackDiagnostics.record(
                     .networkPathChanged(PlaybackDiagnostics.NetworkPath(event))
                 )
-                serverState.isOnline = event.descriptor.isOnline
-                serverState.isExpensive = event.descriptor.isExpensive
                 streamSettings.networkPathDidChange(isCellular: event.descriptor.isCellular)
                 // Publish the coherent event after its matching online/expensive/quality state.
                 // The final flag then permits automatic index work using that known path.
-                serverState.networkPathEvent = event
-                serverState.hasObservedNetworkPath = true
+                serverState.applyNetworkPath(event)
                 // Playback recovery must not depend on a SwiftUI view task being mounted or surviving
                 // cancellation. Deliver every post-baseline path transition directly to the actor.
-                if event.generation > 0 {
-                    await playerService.handleNetworkPathChanged(event)
+                let effectiveEvent = serverState.networkPathEvent
+                if effectiveEvent.generation > 0 {
+                    await playerService.handleNetworkPathChanged(effectiveEvent)
                 }
             }
         }

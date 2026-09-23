@@ -57,8 +57,14 @@ extension Notification.Name {
     static let minidiscNavigateToArtist   = Notification.Name("minidiscNavigateToArtist")
     static let minidiscNavigateToPlaylist = Notification.Name("minidiscNavigateToPlaylist")
     static let minidiscPlaylistDeleted    = Notification.Name("minidisc.playlistDeleted")
+    static let minidiscOfflineLibraryChanged = Notification.Name("minidisc.offlineLibraryChanged")
+    static let minidiscFavoritesChanged = Notification.Name("minidisc.favoritesChanged")
     static let minidiscPlaylistsChanged   = Notification.Name("minidisc.playlistsChanged")
     static let minidiscMoodPlaylistsChanged = Notification.Name("minidisc.moodPlaylistsChanged")
     static let lidarrLibraryDidChange     = Notification.Name("minidisc.lidarrLibraryDidChange")
     static let lidarrQueueDidChange       = Notification.Name("minidisc.lidarrQueueDidChange")
+}
+
+func postOfflineLibraryChanged() {
+    NotificationCenter.default.post(name: .minidiscOfflineLibraryChanged, object: nil)
 }

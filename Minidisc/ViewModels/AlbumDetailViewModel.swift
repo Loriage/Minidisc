@@ -28,19 +28,22 @@ final class AlbumDetailViewModel {
     private let downloadService: any DownloadServiceProtocol
     private let toastService: ToastService
     private let serverState: ServerState
+    private let offlineFavorites: OfflineFavoritesStore?
 
     init(
         albumId: String,
         libraryService: any AlbumBrowsing,
         downloadService: any DownloadServiceProtocol,
         toastService: ToastService,
-        serverState: ServerState
+        serverState: ServerState,
+        offlineFavorites: OfflineFavoritesStore? = nil
     ) {
         self.albumId = albumId
         self.libraryService = libraryService
         self.downloadService = downloadService
         self.toastService = toastService
         self.serverState = serverState
+        self.offlineFavorites = offlineFavorites
     }
 
     func load() async {
@@ -88,14 +91,23 @@ final class AlbumDetailViewModel {
     /// the UI into offline mode while songs from a previous load are still shown.
     @discardableResult
     private func loadFromLocal() async -> Bool {
-        guard let serverId = serverState.activeServer?.id,
-              let data = await downloadService.localAlbumData(albumId: albumId, serverId: serverId),
-              !data.songs.isEmpty else { return false }
+        guard let serverId = serverState.activeServer?.id else { return false }
+        let manual = await downloadService.localAlbumData(albumId: albumId, serverId: serverId)
+        let automatic = await offlineFavorites?.localAlbumData(albumID: albumId, serverID: serverId)
+        guard serverState.activeServer?.id == serverId, let data = manual ?? automatic else { return false }
+        var seen = Set<String>()
+        let localSongs = ((manual?.songs ?? []) + (automatic?.songs ?? []))
+            .filter { seen.insert($0.id).inserted }
+            .sorted {
+                if ($0.discNumber ?? 1) != ($1.discNumber ?? 1) { return ($0.discNumber ?? 1) < ($1.discNumber ?? 1) }
+                return ($0.trackNumber ?? 0) < ($1.trackNumber ?? 0)
+            }
+        guard !localSongs.isEmpty else { return false }
         albumName = data.albumName
         artistName = data.artistName
         coverArtId = data.coverArtId
-        songCount = data.songs.count
-        songs = data.songs
+        songCount = localSongs.count
+        songs = localSongs
         // Offline records carry no year/genre/artistId — clear stale online values so a re-load after going
         // offline (the long-lived VM re-runs load() on connectivity change) doesn't keep showing them.
         year = nil

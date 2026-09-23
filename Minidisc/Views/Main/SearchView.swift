@@ -121,7 +121,7 @@ struct SearchView: View {
                 AlbumDetailView(albumId: entry.itemId, albumName: entry.displayName, coverArtId: entry.coverArtId)
             }
         }
-        .task(id: serverId) {
+        .task(id: container?.serverState.accessSnapshot) {
             guard let container else { return }
             // Initialize and load on the same stable view task. Switching from history
             // to results must not cancel a separate initial playlist load.
@@ -132,16 +132,27 @@ struct SearchView: View {
                                             playlistBrowser: container.libraryService)
                 loadedServerId = serverId
             }
-            await viewModel?.loadPlaylists()
+            if container.serverState.isOnline { await viewModel?.loadPlaylists() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .minidiscPlaylistsChanged)) { _ in
             Task { await viewModel?.loadPlaylists() }
         }
-        .task(id: SearchRequest(serverId: loadedServerId, query: searchQuery)) {
-            await viewModel?.search(query: searchQuery)
+        .task(id: SearchRequest(serverId: loadedServerId, query: searchQuery, online: container?.serverState.isOnline == true)) {
+            if container?.serverState.isOnline == true { await viewModel?.search(query: searchQuery) }
         }
         .sheet(item: $songSelection) { SongSelectionSheet(request: $0) }
         .minidiscContentWidth()
+    }
+
+    private var offlineMatches: [LibrarySearchMatch] {
+        guard let local = container?.offlineLibrary.snapshot else { return [] }
+        let matches = local.songs.map(LibrarySearchMatch.song) + local.albums.map(LibrarySearchMatch.album)
+            + local.artists.map(LibrarySearchMatch.artist) + local.playlists.map(LibrarySearchMatch.playlist)
+        return matches.filter { LibrarySearchRanking.score($0, query: searchQuery) > 0 }.sorted {
+            let lhs = LibrarySearchRanking.score($0, query: searchQuery)
+            let rhs = LibrarySearchRanking.score($1, query: searchQuery)
+            return lhs == rhs ? $0.title.localizedStandardCompare($1.title) == .orderedAscending : lhs > rhs
+        }
     }
 
     private var selectableSongs: [DisplayableSong] {
@@ -154,20 +165,25 @@ struct SearchView: View {
     private struct SearchRequest: Equatable {
         let serverId: String?
         let query: String
+        let online: Bool
     }
 
     // Search results live below this view's navigation owner. In particular, favorites and
     // downloaded-track queries must never invalidate the navigation destinations themselves.
     @ViewBuilder
     private func activeSearchContent(_ vm: SearchViewModel) -> some View {
-        let matches = vm.matches
+        let matches = container?.serverState.isOnline == false ? offlineMatches : vm.matches
         if !matches.isEmpty {
             SearchResultsContent(matches: matches, scope: $scope,
                                  onAddToPlaylist: playlistAddition.present,
                                  canSelectSongs: container?.serverState.isOnline == true && !selectableSongs.isEmpty,
                                  onSelectSongs: { songSelection = SongSelectionRequest(songs: selectableSongs) })
         }
-        if vm.isSearching || (scope == .playlists && vm.isLoadingPlaylists) {
+        if container?.serverState.isOnline == false {
+            if matches.filter({ scope == .all || $0.scope == scope }).isEmpty {
+                EmptyStateView(systemImage: "magnifyingglass", title: "No results", subtitle: "Try another category or search term.")
+            }
+        } else if vm.isSearching || (scope == .playlists && vm.isLoadingPlaylists) {
             let title: LocalizedStringResource = matches.isEmpty ? "Searching…" : "Updating results…"
             HStack(spacing: MinidiscSpacing.s) {
                 ProgressView()
@@ -181,13 +197,13 @@ struct SearchView: View {
         } else if let error = vm.searchError {
             SearchRetryRow(message: error.displayMessage) { Task { await vm.search(query: searchQuery) } }
         }
-        if (vm.isOffline || vm.searchError != nil), scope != .playlists {
+        if container?.serverState.isOnline == true && (vm.isOffline || vm.searchError != nil), scope != .playlists {
             LocalSearchResultsSection(
                 query: searchQuery.trimmingCharacters(in: .whitespaces),
                 scope: scope,
                 onAddToPlaylist: playlistAddition.present
             )
-        } else if matches.filter({ scope == .all || $0.scope == scope }).isEmpty,
+        } else if container?.serverState.isOnline == true, matches.filter({ scope == .all || $0.scope == scope }).isEmpty,
                   !vm.isSearching, !vm.isLoadingPlaylists,
                   vm.resultsQuery == searchQuery.trimmingCharacters(in: .whitespaces),
                   vm.searchError == nil, (scope != .playlists || vm.playlistError == nil) {
@@ -368,7 +384,17 @@ struct SearchView: View {
         }
 
         private var serverHistory: [SearchHistoryEntry] {
-            historyEntries.filter { $0.serverId == serverId }
+            historyEntries.filter { entry in
+                guard entry.serverId == serverId else { return false }
+                guard container?.serverState.isOnline == false else { return true }
+                guard let local = container?.offlineLibrary.snapshot else { return false }
+                switch entry.itemType {
+                case "artist": return local.artistIDs.contains(entry.itemId)
+                case "playlist": return local.playlistIDs.contains(entry.itemId)
+                case "song": return local.songIDs.contains(entry.itemId)
+                default: return local.albumIDs.contains(entry.itemId)
+                }
+            }
         }
 
         var body: some View {

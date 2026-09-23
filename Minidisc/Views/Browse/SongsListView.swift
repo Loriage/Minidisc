@@ -35,31 +35,34 @@ struct SongsListView: View {
         .task(id: loadID) {
             guard let svc = container?.libraryService else { return }
             if viewModel == nil { viewModel = SongsListViewModel(libraryService: svc) }
-            await viewModel?.load(sort: songSort)
+            if container?.serverState.isOnline == true { await viewModel?.load(sort: songSort) }
         }
         .onChange(of: songSort) { _, newSort in
             Task { await viewModel?.changeSort(newSort) }
         }
     }
 
+    private func displayedSongs(_ vm: SongsListViewModel) -> [DisplayableSong] {
+        guard container?.serverState.isOnline == false else { return vm.displaySongs }
+        let songs = container?.offlineLibrary.snapshot.songs ?? []
+        let byID = Dictionary(songs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return songSort.sorted(songs.map { $0.asSong() }).compactMap { byID[$0.id] }
+    }
+
     @ViewBuilder
     private func content(_ vm: SongsListViewModel) -> some View {
-        if vm.isLoading && vm.displaySongs.isEmpty {
+        if container?.serverState.isOnline != false && vm.isLoading && displayedSongs(vm).isEmpty {
             loadingProgress(vm)
-        } else if container?.serverState.isOnline == false && vm.displaySongs.isEmpty {
-            EmptyStateView(
-                systemImage: "wifi.slash",
-                title: "You're Offline",
-                subtitle: "Connect to your server to browse all songs."
-            )
-        } else if let error = vm.error, vm.displaySongs.isEmpty {
+        } else if container?.serverState.isOnline == false && displayedSongs(vm).isEmpty {
+            OfflineBrowsingEmptyView()
+        } else if let error = vm.error, displayedSongs(vm).isEmpty {
             EmptyStateView(
                 systemImage: "exclamationmark.triangle",
                 title: "Unable to Load Songs",
                 subtitle: LocalizedStringKey(error.displayMessage),
                 action: .init(label: "Retry") { Task { await vm.load(sort: songSort) } }
             )
-        } else if vm.displaySongs.isEmpty {
+        } else if displayedSongs(vm).isEmpty {
             EmptyStateView(
                 systemImage: "music.note",
                 title: "No Songs",
@@ -83,10 +86,10 @@ struct SongsListView: View {
     }
 
     private func songList(_ vm: SongsListViewModel) -> some View {
-        let songs = vm.displaySongs
+        let songs = displayedSongs(vm)
         return ScrollViewReader { proxy in
             List {
-                if vm.didTruncate {
+                if container?.serverState.isOnline != false && vm.didTruncate {
                     Text("Showing the first \(songs.count.formatted()) songs.")
                         .font(.minidiscCaption)
                         .foregroundStyle(.secondary)
@@ -186,6 +189,7 @@ struct SongsListView: View {
         if container?.serverState.isOnline == true {
             try? await container?.libraryCatalog.refreshTracks()
         }
-        await viewModel.load(sort: songSort)
+        if container?.serverState.isOnline == true { await viewModel.load(sort: songSort) }
+        else { await container?.offlineLibrary.refresh() }
     }
 }

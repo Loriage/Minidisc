@@ -156,6 +156,10 @@ struct AlbumDetailView: View {
     }
 
     private func displaySongs() -> [DisplayableSong] {
+        if !isOnline {
+            let local = container?.offlineLibrary.snapshot.albumSongs(albumId) ?? []
+            return mode == .downloadedOnly ? local.filter(\.isDownloaded) : local
+        }
         switch mode {
         case .downloadedOnly:
             if let vm = viewModel, vm.error == nil, !vm.songs.isEmpty {
@@ -413,7 +417,8 @@ struct AlbumDetailView: View {
                     libraryService: c.libraryService,
                     downloadService: c.downloadService,
                     toastService: c.toastService,
-                    serverState: c.serverState
+                    serverState: c.serverState,
+                    offlineFavorites: mode == .downloadedOnly ? nil : c.offlineFavoritesStore
                 )
             }
             await viewModel?.load()

@@ -39,6 +39,7 @@ final class ArtistDetailViewModel {
     private let recommendationService: RecommendationService
     private let imageResolver: ExternalArtistImageResolver
     private let serverState: ServerState
+    private let offlineReader: OfflineBrowsingReader?
 
     init(
         artistId: String,
@@ -47,7 +48,8 @@ final class ArtistDetailViewModel {
         downloadService: any DownloadServiceProtocol,
         recommendationService: RecommendationService,
         imageResolver: ExternalArtistImageResolver,
-        serverState: ServerState
+        serverState: ServerState,
+        offlineReader: OfflineBrowsingReader? = nil
     ) {
         self.artistId = artistId
         self.artistName = artistName
@@ -56,6 +58,7 @@ final class ArtistDetailViewModel {
         self.recommendationService = recommendationService
         self.imageResolver = imageResolver
         self.serverState = serverState
+        self.offlineReader = offlineReader
     }
 
     func load() async {
@@ -88,14 +91,20 @@ final class ArtistDetailViewModel {
     /// `isOffline` only then — a transient online failure must not blank a page that already loaded.
     @discardableResult
     private func loadFromLocal() async -> Bool {
-        guard let serverId = serverState.activeServer?.id,
-              let data = await downloadService.localArtistData(
-                  artistId: artistId,
-                  artistName: artistName ?? artist?.name,
-                  serverId: serverId
-              ),
-              !data.albums.isEmpty
-        else { return false }
+        guard let serverId = serverState.activeServer?.id else { return false }
+        let data: LocalArtistData?
+        if let offlineReader, let snapshot = try? await offlineReader.read(serverID: serverId) {
+            let tracks = snapshot.artistSongs(artistId)
+            let albums = snapshot.albums.filter { $0.artistId == artistId }.map {
+                LocalAlbumData(albumId: $0.id, albumName: $0.name, artistName: $0.artist,
+                               coverArtId: $0.coverArt, songs: snapshot.albumSongs($0.id))
+            }
+            data = tracks.isEmpty ? nil : LocalArtistData(artistId: artistId, artistName: artistName ?? tracks[0].artist ?? artistId,
+                coverArtId: tracks[0].coverArtId, albums: albums, tracks: tracks)
+        } else {
+            data = await downloadService.localArtistData(artistId: artistId, artistName: artistName ?? artist?.name, serverId: serverId)
+        }
+        guard !Task.isCancelled, serverState.activeServer?.id == serverId, let data, !data.tracks.isEmpty else { return false }
 
         setArtist(ArtistID3(
             id: data.artistId,

@@ -26,6 +26,7 @@ final class PlaylistDetailViewModel {
     private let playlistService: any PlaylistServiceProtocol
     private let toastService: ToastService
     private let serverState: ServerState
+    private let offlineReader: OfflineBrowsingReader?
 
     init(
         playlistId: String,
@@ -33,7 +34,8 @@ final class PlaylistDetailViewModel {
         downloadService: any DownloadServiceProtocol,
         playlistService: any PlaylistServiceProtocol,
         toastService: ToastService,
-        serverState: ServerState
+        serverState: ServerState,
+        offlineReader: OfflineBrowsingReader? = nil
     ) {
         self.playlistId = playlistId
         self.libraryService = libraryService
@@ -41,6 +43,7 @@ final class PlaylistDetailViewModel {
         self.playlistService = playlistService
         self.toastService = toastService
         self.serverState = serverState
+        self.offlineReader = offlineReader
     }
 
     func load() async {
@@ -103,6 +106,9 @@ final class PlaylistDetailViewModel {
     /// Revalidate an old screen before creating a new queue. A removed playlist never causes
     /// dozens of dead streams to be started; its downloaded copy remains playable.
     func playbackSongs(from requested: [DisplayableSong]) async -> [DisplayableSong] {
+        if !serverState.isOnline, offlineReader != nil {
+            await load()
+        }
         if serverState.isOnline, lastValidatedAt.map({ Date().timeIntervalSince($0) > 30 }) ?? true {
             await load()
         }
@@ -125,6 +131,15 @@ final class PlaylistDetailViewModel {
 
     @discardableResult
     private func loadFromLocal(generation: UInt64, serverId: UUID) async -> Bool {
+        if let offlineReader, let snapshot = try? await offlineReader.read(serverID: serverId),
+           isCurrent(generation, serverId: serverId) {
+            songs = snapshot.playlistSongs[playlistId] ?? []
+            if let playlist = snapshot.playlists.first(where: { $0.id == playlistId }) {
+                name = playlist.name; coverArtId = playlist.coverArt
+            }
+            isOffline = true
+            return !songs.isEmpty
+        }
         guard let data = await downloadService.localPlaylistData(playlistId: playlistId, serverId: serverId),
               isCurrent(generation, serverId: serverId), !data.songs.isEmpty else { return false }
         name = data.name

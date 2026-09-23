@@ -161,6 +161,7 @@ struct LidarrAddArtistSheet: View {
         switch lidarr {
         case .unauthorized: return String(localized: "The API key was rejected.")
         case .htmlResponse: return String(localized: "A reverse proxy is blocking the request.")
+        case .offline: return UserFacingError.noNetwork.displayMessage
         case .cancelled: return String(localized: "The request was cancelled.")
         case .badURL: return String(localized: "The Lidarr address is not valid.")
         case .transport(let detail), .decoding(let detail): return detail

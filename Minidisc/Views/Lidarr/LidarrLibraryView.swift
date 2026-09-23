@@ -5,6 +5,8 @@ struct LidarrLibraryView: View {
 
     @State private var artists: [LidarrArtist] = []
     @State private var isLoading = true
+    @State private var failedOffline = false
+    @State private var loadGeneration = 0
     @State private var errorMessage: String?
     @State private var client: LidarrClient?
     @State private var showSearch = false
@@ -14,13 +16,26 @@ struct LidarrLibraryView: View {
 
     private let columns = [GridItem(.adaptive(minimum: 140, maximum: 180), spacing: MinidiscSpacing.m)]
 
+    private var isOffline: Bool { container?.serverState.isOnline == false || failedOffline }
+
     private var sortedArtists: [LidarrArtist] { artistSort.sortedLidarr(artists) }
 
     var body: some View {
         Group {
-            if isLoading {
+            if isOffline && artists.isEmpty {
+                ContentUnavailableView {
+                    Label("You're Offline", systemImage: "wifi.slash")
+                } description: {
+                    Text("Reconnect to browse Lidarr and manage your music library. Your offline music is still available in Minidisc.")
+                } actions: {
+                    Button("Retry") { Task { await load() } }
+                        .buttonStyle(.bordered)
+                        .disabled(container?.serverState.isOnline == false)
+                }
+                .accessibilityIdentifier("lidarr-offline")
+            } else if isLoading && artists.isEmpty {
                 LoadingStateView()
-            } else if let errorMessage {
+            } else if let errorMessage, artists.isEmpty {
                 EmptyStateView(
                     systemImage: "exclamationmark.triangle",
                     title: "Couldn't Load Lidarr",
@@ -35,34 +50,51 @@ struct LidarrLibraryView: View {
                 )
             } else {
                 grid
+                    .disabled(isOffline)
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        if isOffline {
+                            Label("Offline — showing previously loaded artists.", systemImage: "wifi.slash")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .padding()
+                                .frame(maxWidth: .infinity)
+                                .background(.bar)
+                        } else if let errorMessage {
+                            Text(errorMessage).font(.subheadline).foregroundStyle(.secondary).padding()
+                        }
+                    }
             }
         }
         .navigationTitle("Lidarr")
         .toolbar {
-            ToolbarItemGroup(placement: .topBarLeading) {
-                Button(
-                    gridLayout ? "List view" : "Grid view",
-                    systemImage: gridLayout ? "list.bullet" : "square.grid.2x2"
-                ) { gridLayout.toggle() }
-                .tint(.primary)
-                Menu {
-                    Picker("Sort By", selection: $artistSort) {
-                        ForEach(ArtistSort.allCases, id: \.self) { option in
-                            Label(option.label, systemImage: option.systemImage).tag(option)
-                        }
-                    }
-                } label: {
-                    Label("Sort", systemImage: "arrow.up.arrow.down")
-                }
-                .tint(.primary)
-            }
-            ToolbarItemGroup(placement: .primaryAction) {
-                NavigationLink(value: LidarrQueueRoute()) {
-                    Label("Activity", systemImage: "waveform.path.ecg")
-                }
-                .tint(.primary)
-                Button("Add Artist", systemImage: "plus") { showSearch = true }
+            if !artists.isEmpty {
+                ToolbarItemGroup(placement: .topBarLeading) {
+                    Button(
+                        gridLayout ? "List view" : "Grid view",
+                        systemImage: gridLayout ? "list.bullet" : "square.grid.2x2"
+                    ) { gridLayout.toggle() }
                     .tint(.primary)
+                    Menu {
+                        Picker("Sort By", selection: $artistSort) {
+                            ForEach(ArtistSort.allCases, id: \.self) { option in
+                                Label(option.label, systemImage: option.systemImage).tag(option)
+                            }
+                        }
+                    } label: {
+                        Label("Sort", systemImage: "arrow.up.arrow.down")
+                    }
+                    .tint(.primary)
+                }
+            }
+            if !isOffline {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    NavigationLink(value: LidarrQueueRoute()) {
+                        Label("Activity", systemImage: "waveform.path.ecg")
+                    }
+                    .tint(.primary)
+                    Button("Add Artist", systemImage: "plus") { showSearch = true }
+                        .tint(.primary)
+                }
             }
         }
         .sheet(isPresented: $showSearch, onDismiss: { Task { await load() } }) {
@@ -83,10 +115,7 @@ struct LidarrLibraryView: View {
                 LidarrQueueView(client: client)
             }
         }
-        .task {
-            if client == nil { client = await container?.lidarrSettings.makeClient() }
-            await load()
-        }
+        .task(id: container?.serverState.isOnline) { await load() }
         .refreshable { await load() }
         .onReceive(NotificationCenter.default.publisher(for: .lidarrLibraryDidChange)) { _ in
             Task { await load() }
@@ -149,20 +178,33 @@ struct LidarrLibraryView: View {
     }
 
     private func load() async {
+        loadGeneration += 1
+        let generation = loadGeneration
+        failedOffline = false
+        errorMessage = nil
+        guard container?.serverState.isOnline != false else {
+            isLoading = false
+            return
+        }
+        isLoading = artists.isEmpty
+        defer { if loadGeneration == generation { isLoading = false } }
         if client == nil { client = await container?.lidarrSettings.makeClient() }
         guard let client else {
             isLoading = false
             errorMessage = String(localized: "Lidarr is not connected.")
             return
         }
+        guard !Task.isCancelled, generation == loadGeneration else { return }
         errorMessage = nil
         do {
             let fetched = try await client.artists()
+            guard !Task.isCancelled, generation == loadGeneration else { return }
             artists = fetched.sorted { $0.artistName.localizedCaseInsensitiveCompare($1.artistName) == .orderedAscending }
         } catch {
-            if let lidarr = error as? LidarrError, case .cancelled = lidarr {} else {
-                errorMessage = (error as? LidarrError).map(Self.message(for:)) ?? error.localizedDescription
-            }
+            guard !Task.isCancelled, generation == loadGeneration else { return }
+            if let lidarr = error as? LidarrError, lidarr == .cancelled { return }
+            failedOffline = (error as? LidarrError) == .offline || UserFacingError.from(error) == .noNetwork
+            errorMessage = (error as? LidarrError).map(Self.message(for:)) ?? UserFacingError.from(error).displayMessage
         }
         isLoading = false
     }
@@ -173,7 +215,9 @@ struct LidarrLibraryView: View {
         case .htmlResponse: return String(localized: "A reverse proxy is blocking the request.")
         case .cancelled: return ""
         case .badURL: return String(localized: "The Lidarr address is not valid.")
-        case .transport(let d), .decoding(let d): return d
+        case .offline: return UserFacingError.noNetwork.displayMessage
+        case .transport: return UserFacingError.serverUnreachable.displayMessage
+        case .decoding: return String(localized: "Lidarr returned an unreadable response. Try again later.")
         }
     }
 }

@@ -101,6 +101,43 @@ final class MinidiscUXVerificationTests: XCTestCase {
         XCTAssertEqual(toggle.value as? String, "1")
     }
 
+    func testFixtureOfflineFavoritesSettings() async throws {
+        try await launchFixtureApp(homeCatalog: true)
+        try tap(app.buttons["Réglages"], named: "favorites-settings")
+        try tap(app.buttons["Stockage"], named: "favorites-storage")
+        let row = app.switches["offline-favorites-toggle"].firstMatch
+        try require(row)
+        let toggle = row.switches.firstMatch.exists ? row.switches.firstMatch : row
+        func revealToggle() {
+            for _ in 0..<5 {
+                if toggle.isHittable && toggle.frame.maxY < app.frame.maxY - 160 { break }
+                app.swipeUp(velocity: .slow)
+            }
+        }
+        revealToggle()
+        if toggle.value as? String == "0" { try tap(toggle, named: "enable-offline-favorites") }
+        XCTAssertEqual(toggle.value as? String, "1")
+        captureHierarchy("offline-favorites-enabled")
+        try tap(toggle, named: "disable-offline-favorites")
+        XCTAssertEqual(toggle.value as? String, "0")
+        app.terminate()
+        app.launch()
+        try require(app.tabBars.buttons["Accueil"], timeout: 10)
+        try tap(app.buttons["Réglages"], named: "favorites-settings-relaunch")
+        try tap(app.buttons["Stockage"], named: "favorites-storage-relaunch")
+        revealToggle()
+        try require(row)
+        XCTAssertEqual(toggle.value as? String, "0")
+        try tap(toggle, named: "restore-offline-favorites")
+        XCTAssertEqual(toggle.value as? String, "1")
+        capturePlayerScreenshot("Offline-favorites-before-count-check")
+        let usage = app.descendants(matching: .any).matching(identifier: "offline-favorites-usage").firstMatch
+        let saved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "3 pistes"), object: usage)
+        XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 20), .completed)
+        captureHierarchy("offline-favorites-restored")
+        capturePlayerScreenshot("Offline-favorites-storage")
+    }
+
     func testFixtureSiriSettings() async throws {
         try await launchFixtureApp()
         try tap(app.buttons["Réglages"], named: "siri-settings")

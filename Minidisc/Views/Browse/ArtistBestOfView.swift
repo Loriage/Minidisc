@@ -31,7 +31,7 @@ struct ArtistBestOfView: View {
 
     private var songs: [DisplayableSong] {
         ArtistBestOf.filteredByLocalStars(
-            viewModel?.songs ?? [],
+            container?.visibleSongs(viewModel?.songs ?? []) ?? [],
             starredSongIds: Set(songFavorites.map(\.itemId))
         )
     }

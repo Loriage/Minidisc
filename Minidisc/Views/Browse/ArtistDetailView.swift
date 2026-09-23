@@ -74,8 +74,9 @@ struct ArtistDetailView: View {
                         action: .init(label: "Retry") { Task { await vm.load() } }
                     )
                 } else {
-                    let albums = vm.artist?.album ?? []
-                    if albums.isEmpty {
+                    let albums = container?.visibleAlbums(vm.artist?.album ?? []) ?? []
+                    let localTracks = !isOnline ? container?.offlineLibrary.snapshot.artistSongs(artist.id) ?? [] : []
+                    if albums.isEmpty && localTracks.isEmpty {
                         if vm.isOffline || !isOnline {
                             EmptyStateView(
                                 systemImage: "wifi.slash",
@@ -93,14 +94,24 @@ struct ArtistDetailView: View {
                         ScrollView {
                             artistHero(vm: vm)
                             VStack(alignment: .leading, spacing: MinidiscSpacing.xl) {
+                                if !isOnline && albums.isEmpty {
+                                    ForEach(Array(localTracks.enumerated()), id: \.element.id) { index, song in
+                                        SongRow(song: song, index: index + 1, showCoverArt: true)
+                                            .onTapGesture {
+                                                Task { await container?.toastService.perform {
+                                                    try await container?.playerService.play(tracks: localTracks, startIndex: index)
+                                                } }
+                                            }
+                                    }
+                                }
                                 // Hidden offline: downloads carry no release year, so "Latest" would be
                                 // an arbitrary pick.
-                                if !vm.isOffline, let featured = latestRelease(vm) {
+                                if isOnline, !vm.isOffline, let featured = latestRelease(vm) {
                                     featuredReleaseSection(featured)
                                 }
-                                if vm.isLoadingTopSongs {
+                                if isOnline && vm.isLoadingTopSongs {
                                     ArtistTopSongsSkeleton()
-                                } else if !vm.topSongs.isEmpty {
+                                } else if isOnline && !vm.topSongs.isEmpty {
                                     ArtistTopSongsSection(
                                         artistName: artist.name,
                                         songs: vm.topSongs,
@@ -112,26 +123,26 @@ struct ArtistDetailView: View {
                                 // inline, enough of them collapse into the best-of card. Crossing the
                                 // threshold swaps the content in place instead of moving the discography.
                                 let liked = likedSongs(vm)
-                                if vm.isLoadingLikedSongs {
+                                if isOnline && vm.isLoadingLikedSongs {
                                     likedSongsSkeleton
                                 } else if liked.count >= ArtistBestOf.minimumSongs {
                                     bestOfSection(liked)
                                 } else if !liked.isEmpty {
                                     likedSongsSection(liked)
                                 }
-                                if !vm.albumReleases.isEmpty {
+                                if !(container?.visibleAlbums(vm.albumReleases) ?? []).isEmpty {
                                     ArtistAlbumShelf(
                                         title: "Albums",
-                                        albums: albumSort.sorted(vm.albumReleases)
+                                        albums: albumSort.sorted((container?.visibleAlbums(vm.albumReleases) ?? []))
                                     )
                                 }
-                                if !vm.singlesAndEPs.isEmpty {
+                                if !(container?.visibleAlbums(vm.singlesAndEPs) ?? []).isEmpty {
                                     ArtistAlbumShelf(
                                         title: "Singles & EPs",
-                                        albums: albumSort.sorted(vm.singlesAndEPs)
+                                        albums: albumSort.sorted((container?.visibleAlbums(vm.singlesAndEPs) ?? []))
                                     )
                                 }
-                                if vm.isLoadingSimilarArtists || !vm.similarArtists.isEmpty {
+                                if isOnline && (vm.isLoadingSimilarArtists || !vm.similarArtists.isEmpty) {
                                     ArtistSimilarArtistsShelf(
                                         recommendations: vm.similarArtists,
                                         imageURLs: vm.outOfLibraryArtistImages,
@@ -209,7 +220,8 @@ struct ArtistDetailView: View {
                     downloadService: c.downloadService,
                     recommendationService: c.recommendationService,
                     imageResolver: c.externalArtistImageResolver,
-                    serverState: c.serverState
+                    serverState: c.serverState,
+                    offlineReader: c.offlineBrowsingReader
                 )
             }
             await viewModel?.load()
@@ -244,7 +256,7 @@ struct ArtistDetailView: View {
     // MARK: - Hero
 
     private func artistHero(vm: ArtistDetailViewModel) -> some View {
-        let albums = vm.artist?.album ?? []
+        let albums = container?.visibleAlbums(vm.artist?.album ?? []) ?? []
         return ImmersiveCoverHero(
             coverArtId: heroCoverArtId,
             coverImage: nil,
@@ -290,7 +302,7 @@ struct ArtistDetailView: View {
                         .compositingGroup()
                 }
                 .buttonStyle(.plain)
-                .disabled(vm.isPlayLoading || albums.isEmpty)
+                .disabled(vm.isPlayLoading || (albums.isEmpty && vm.offlineTracks.isEmpty))
 
                 Button {
                     HapticFeedback.light.trigger()
@@ -413,7 +425,7 @@ struct ArtistDetailView: View {
 
     /// Applies live local star changes to the fetched artist snapshot.
     private func likedSongs(_ vm: ArtistDetailViewModel) -> [DisplayableSong] {
-        ArtistBestOf.filteredByLocalStars(vm.likedSongs, starredSongIds: Set(songFavorites.map(\.itemId)))
+        ArtistBestOf.filteredByLocalStars(container?.visibleSongs(vm.likedSongs) ?? [], starredSongIds: Set(songFavorites.map(\.itemId)))
     }
 
     private func bestOfSection(_ songs: [DisplayableSong]) -> some View {

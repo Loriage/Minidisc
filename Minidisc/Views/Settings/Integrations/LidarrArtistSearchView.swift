@@ -109,6 +109,7 @@ struct LidarrArtistSearchView: View {
             if Task.isCancelled { return }
             if let lidarr = error as? LidarrError {
                 switch lidarr {
+                case .offline: errorMessage = UserFacingError.noNetwork.displayMessage
                 case .cancelled: return
                 case .unauthorized: errorMessage = String(localized: "The API key was rejected.")
                 case .htmlResponse: errorMessage = String(localized: "A reverse proxy is blocking the request.")

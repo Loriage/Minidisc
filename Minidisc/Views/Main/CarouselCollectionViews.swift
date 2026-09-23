@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftSonic
 
 struct AlbumCarouselCollectionView: View {
+    @Environment(\.appContainer) private var container
     private let title: Text
     private let albums: [AlbumID3]
     private let columns = [
@@ -21,7 +22,7 @@ struct AlbumCarouselCollectionView: View {
     var body: some View {
         ScrollView {
             LazyVGrid(columns: columns, alignment: .leading, spacing: MinidiscSpacing.l) {
-                ForEach(albums) { album in
+                ForEach(container?.visibleAlbums(albums) ?? []) { album in
                     NavigationLink {
                         AlbumDetailView(album: album)
                     } label: {
@@ -39,6 +40,7 @@ struct AlbumCarouselCollectionView: View {
 }
 
 struct PlaylistCarouselCollectionView: View {
+    @Environment(\.appContainer) private var container
     private let title: Text
     private let playlists: [Playlist]
     private let columns = [
@@ -53,7 +55,7 @@ struct PlaylistCarouselCollectionView: View {
     var body: some View {
         ScrollView {
             LazyVGrid(columns: columns, alignment: .leading, spacing: MinidiscSpacing.l) {
-                ForEach(playlists) { playlist in
+                ForEach(container?.visiblePlaylists(playlists) ?? []) { playlist in
                     NavigationLink {
                         PlaylistDetailView(
                             playlist: playlist,

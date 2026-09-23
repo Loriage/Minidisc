@@ -10,6 +10,8 @@ actor LibraryService: LibraryServiceProtocol {
     private let statsService: StatsService
     private let catalog: LibraryCatalog
     private let indexStore: LibraryIndexStore
+    private let offlineReader: OfflineBrowsingReader?
+    private let offlineFavorites: OfflineFavoritesStore?
     private var cachedClient: SwiftSonicClient?
     private var cachedConnectionVersion: ServerConnection.Version?
     private var artistInfoCache: [String: ArtistInfo] = [:]
@@ -20,7 +22,9 @@ actor LibraryService: LibraryServiceProtocol {
         downloadService: any DownloadServiceProtocol,
         statsService: StatsService,
         catalog: LibraryCatalog,
-        indexStore: LibraryIndexStore
+        indexStore: LibraryIndexStore,
+        offlineFavorites: OfflineFavoritesStore? = nil,
+        offlineReader: OfflineBrowsingReader? = nil
     ) {
         self.serverService = serverService
         self.modelContainer = modelContainer
@@ -28,6 +32,8 @@ actor LibraryService: LibraryServiceProtocol {
         self.statsService = statsService
         self.catalog = catalog
         self.indexStore = indexStore
+        self.offlineFavorites = offlineFavorites
+        self.offlineReader = offlineReader
     }
 
     private func client() async throws -> SwiftSonicClient {
@@ -64,7 +70,24 @@ actor LibraryService: LibraryServiceProtocol {
     }
 
     func album(id: String) async throws -> AlbumID3 {
-        try await catalog.album(id: id)
+        let version = await serverService.activeConnectionVersion()
+        if let version, await !serverService.state.isOnline,
+           let value = try? await offlineFavorites?.snapshot(serverID: version.serverID),
+           let album = value.albums[id] {
+            try Task.checkCancellation()
+            guard await serverService.activeConnectionVersion() == version else { throw CancellationError() }
+            return album
+        }
+        do { return try await catalog.album(id: id) }
+        catch {
+            guard Self.permitsOfflineFallback(error),
+                  let version, await serverService.activeConnectionVersion() == version,
+                  let snapshot = try? await offlineFavorites?.snapshot(serverID: version.serverID),
+                  let album = snapshot.albums[id] else { throw error }
+            try Task.checkCancellation()
+            guard await serverService.activeConnectionVersion() == version else { throw CancellationError() }
+            return album
+        }
     }
 
     func playlists() async throws -> [Playlist] {
@@ -99,14 +122,44 @@ actor LibraryService: LibraryServiceProtocol {
 
     func star(songIds: [String], albumIds: [String], artistIds: [String]) async throws {
         try await client().star(songIds: songIds, albumIds: albumIds, artistIds: artistIds)
+        await MainActor.run { NotificationCenter.default.post(name: .minidiscFavoritesChanged, object: nil) }
     }
 
     func unstar(songIds: [String], albumIds: [String], artistIds: [String]) async throws {
         try await client().unstar(songIds: songIds, albumIds: albumIds, artistIds: artistIds)
+        await MainActor.run { NotificationCenter.default.post(name: .minidiscFavoritesChanged, object: nil) }
     }
 
     func getStarred2() async throws -> Starred2 {
-        try await client().getStarred2()
+        let version = await serverService.activeConnectionVersion()
+        if let version, await !serverService.state.isOnline,
+           let value = try? await offlineFavorites?.snapshot(serverID: version.serverID),
+           let favorites = value.favorites {
+            try Task.checkCancellation()
+            guard await serverService.activeConnectionVersion() == version else { throw CancellationError() }
+            return favorites
+        }
+        do {
+            let value = try await client().getStarred2()
+            try Task.checkCancellation()
+            guard await serverService.activeConnectionVersion() == version else { throw CancellationError() }
+            if let version { try? await offlineFavorites?.saveFavorites(value, serverID: version.serverID) }
+            return value
+        } catch {
+            guard Self.permitsOfflineFallback(error),
+                  let version, await serverService.activeConnectionVersion() == version,
+                  let snapshot = try? await offlineFavorites?.snapshot(serverID: version.serverID),
+                  let value = snapshot.favorites else { throw error }
+            try Task.checkCancellation()
+            guard await serverService.activeConnectionVersion() == version else { throw CancellationError() }
+            return value
+        }
+    }
+
+    private static func permitsOfflineFallback(_ error: any Error) -> Bool {
+        guard !UserFacingError.isCancellation(error) else { return false }
+        let mapped = UserFacingError.from(error)
+        return mapped == .noNetwork || mapped == .serverUnreachable || mapped == .contentUnavailableOffline
     }
 
     func recentlyAddedAlbums(size: Int) async throws -> [AlbumID3] {
@@ -821,6 +874,9 @@ actor LibraryService: LibraryServiceProtocol {
             return []
         }
 
+        if let offlineReader, let snapshot = try? await offlineReader.read(serverID: activeServerId) {
+            return Array(snapshot.songs.shuffled().prefix(targetSize))
+        }
         let songs: [DisplayableSong] = await MainActor.run {
             let context = ModelContext(modelContainer)
             let descriptor = FetchDescriptor<DownloadedTrack>(

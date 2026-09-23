@@ -175,6 +175,9 @@ struct PlaylistDetailView: View {
     }
 
     private func resolvedSongs(_ vm: PlaylistDetailViewModel?) -> [DisplayableSong] {
+        if container?.serverState.isOnline == false {
+            return container?.offlineLibrary.snapshot.playlistSongs[playlistId] ?? []
+        }
         if vm?.isRemovedFromServer == true { return vm?.songs ?? [] }
         if let songs = vm?.songs, !songs.isEmpty { return songs }
         return downloadedFallbackSongs
@@ -412,7 +415,8 @@ struct PlaylistDetailView: View {
                     downloadService: c.downloadService,
                     playlistService: c.playlistService,
                     toastService: c.toastService,
-                    serverState: c.serverState
+                    serverState: c.serverState,
+                    offlineReader: c.offlineBrowsingReader
                 )
             }
             await viewModel?.load()
@@ -853,7 +857,7 @@ struct PlaylistDetailView: View {
     }
 
     private func downloadControl(for vm: PlaylistDetailViewModel?) -> PlaylistDownloadControl? {
-        guard vm?.isOffline != true else { return nil }
+        guard container?.serverState.isOnline == true, vm?.isOffline != true else { return nil }
         guard let vm else { return .download }
         if vm.isDownloadingPlaylist { return .cancel }
         switch downloadState(for: vm) {

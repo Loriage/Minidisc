@@ -220,6 +220,7 @@ struct LidarrSettingsView: View {
             return String(localized: "The API key was rejected.")
         case .htmlResponse:
             return String(localized: "The server returned a web page, not Lidarr data. A reverse proxy is probably blocking the request. Add its headers under Custom Headers.")
+        case .offline: return UserFacingError.noNetwork.displayMessage
         case .cancelled:
             return String(localized: "The request was cancelled.")
         case .badURL:

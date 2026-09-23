@@ -40,32 +40,28 @@ struct ArtistListView: View {
         .task(id: loadID) {
             guard let svc = container?.libraryService else { return }
             if viewModel == nil { viewModel = ArtistListViewModel(libraryService: svc) }
-            await viewModel?.load()
+            if container?.serverState.isOnline == true { await viewModel?.load() }
         }
+    }
+
+    private func displayedArtists(_ vm: ArtistListViewModel) -> [ArtistID3] {
+        container?.serverState.isOnline == false ? container?.offlineLibrary.snapshot.artists ?? [] : vm.indexes.flatMap(\.artist)
     }
 
     @ViewBuilder
     private func browseContent(_ vm: ArtistListViewModel) -> some View {
-        if vm.isLoading && vm.indexes.isEmpty {
+        if container?.serverState.isOnline != false && vm.isLoading && displayedArtists(vm).isEmpty {
             LoadingStateView()
-        } else if container?.serverState.isOnline == false && vm.indexes.isEmpty {
-            if let serverId = container?.serverState.activeServer?.id {
-                OfflineBrowseContent(serverId: serverId)
-            } else {
-                EmptyStateView(
-                    systemImage: "wifi.slash",
-                    title: "You're Offline",
-                    subtitle: "Connect to your server to browse artists."
-                )
-            }
-        } else if let error = vm.error, vm.indexes.isEmpty {
+        } else if container?.serverState.isOnline == false && displayedArtists(vm).isEmpty {
+            OfflineBrowsingEmptyView()
+        } else if let error = vm.error, displayedArtists(vm).isEmpty {
             EmptyStateView(
                 systemImage: "exclamationmark.triangle",
                 title: "Unable to Load Artists",
                 subtitle: LocalizedStringKey(error.displayMessage),
                 action: .init(label: "Retry") { Task { await vm.load() } }
             )
-        } else if vm.indexes.isEmpty {
+        } else if displayedArtists(vm).isEmpty {
             EmptyStateView(
                 systemImage: "music.mic",
                 title: "No Artists",
@@ -80,7 +76,7 @@ struct ArtistListView: View {
 
     private func flatList(_ vm: ArtistListViewModel) -> some View {
         AlphabetIndexedContent(entries: artistIndex(vm), prepareJump: { artistSort = .name }) {
-            List(artistSort.sorted(vm.indexes.flatMap(\.artist))) { artist in
+            List(artistSort.sorted(displayedArtists(vm))) { artist in
                 NavigationLink(value: HomeDestination.artist(artist)) {
                     ArtistRow(artist: artist)
                 }
@@ -96,7 +92,7 @@ struct ArtistListView: View {
         AlphabetIndexedContent(entries: artistIndex(vm), prepareJump: { artistSort = .name }) {
             ScrollView {
                 LazyVGrid(columns: gridColumns, spacing: MinidiscSpacing.l) {
-                    ForEach(artistSort.sorted(vm.indexes.flatMap(\.artist))) { artist in
+                    ForEach(artistSort.sorted(displayedArtists(vm))) { artist in
                         NavigationLink(value: HomeDestination.artist(artist)) {
                             ArtistGridCard(artist: artist)
                         }
@@ -112,7 +108,7 @@ struct ArtistListView: View {
     }
 
     private func artistIndex(_ vm: ArtistListViewModel) -> [AlphabetScrollEntry] {
-        ArtistSort.name.sorted(vm.indexes.flatMap(\.artist)).map { AlphabetScrollEntry(id: $0.id, name: $0.sortName ?? $0.name) }
+        ArtistSort.name.sorted(displayedArtists(vm)).map { AlphabetScrollEntry(id: $0.id, name: $0.sortName ?? $0.name) }
     }
 
     private var loadID: ServerAccessSnapshot? {
@@ -123,7 +119,8 @@ struct ArtistListView: View {
         if container?.serverState.isOnline == true {
             _ = try? await container?.libraryCatalog.refreshArtists()
         }
-        await viewModel.load()
+        if container?.serverState.isOnline == true { await viewModel.load() }
+        else { await container?.offlineLibrary.refresh() }
     }
 }
 
@@ -146,114 +143,6 @@ nonisolated struct OfflineArtistSummary: Sendable, Identifiable, Hashable {
     var artistId: String?
     var coverArtId: String?
     var id: String { artistId ?? name }
-}
-
-/// Derives the offline artist/album hierarchy from DownloadedTrack — the single source of truth
-/// for all offline content, regardless of whether it came from an album or a playlist download.
-private struct OfflineBrowseContent: View {
-    let serverId: UUID
-    @Query private var tracks: [DownloadedTrack]
-
-    init(serverId: UUID) {
-        self.serverId = serverId
-        let sid = serverId
-        _tracks = Query(
-            filter: #Predicate<DownloadedTrack> { track in track.serverId == sid }
-        )
-    }
-
-    private struct AlbumEntry {
-        let summary: OfflineAlbumSummary
-        let artistId: String?
-    }
-
-    private var artistSummaries: [OfflineArtistSummary] {
-        let withAlbum = tracks.filter { $0.albumId != nil }
-        let byAlbum = Dictionary(grouping: withAlbum) { $0.albumId! }
-        let entries = byAlbum.map { albumId, albumTracks -> AlbumEntry in
-            let first = albumTracks[0]
-            return AlbumEntry(
-                summary: OfflineAlbumSummary(
-                    albumId: albumId,
-                    albumName: first.album ?? albumId,
-                    artistName: first.artist,
-                    coverArtId: first.coverArtId,
-                    trackCount: albumTracks.count
-                ),
-                artistId: albumTracks.compactMap(\.artistId).first
-            )
-        }
-        // Group by artist ID, falling back to case-folded names when IDs are missing.
-        let byArtist = Dictionary(grouping: entries) { entry in
-            entry.artistId ?? "name:\(entry.summary.artistName?.lowercased() ?? "")"
-        }
-        return byArtist.map { _, entries in
-            let albums = entries.map(\.summary).sorted {
-                $0.albumName.localizedCaseInsensitiveCompare($1.albumName) == .orderedAscending
-            }
-            return OfflineArtistSummary(
-                name: entries.first?.summary.artistName ?? String(localized: "Unknown Artist"),
-                albums: albums,
-                artistId: entries.compactMap(\.artistId).first,
-                coverArtId: albums.first?.coverArtId
-            )
-        }
-        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
-
-    var body: some View {
-        if tracks.isEmpty {
-            EmptyStateView(
-                systemImage: "wifi.slash",
-                title: "You're Offline",
-                subtitle: "No downloaded music available. Download albums or playlists while online to listen offline."
-            )
-        } else {
-            AlphabetIndexedContent(entries: artistSummaries.map { AlphabetScrollEntry(id: $0.id, name: $0.name) }) {
-                List {
-                    Section("Downloaded Artists") {
-                        ForEach(artistSummaries) { artist in
-                            NavigationLink(value: destination(for: artist)) {
-                                OfflineArtistRow(artist: artist)
-                            }
-                            .id(artist.id)
-                            .accessibilityIdentifier("browse.artist.\(artist.id)")
-                        }
-                    }
-                }
-                .listStyle(.plain)
-            }
-        }
-    }
-
-    private func destination(for artist: OfflineArtistSummary) -> HomeDestination {
-        guard let artistId = artist.artistId else { return .offlineArtist(artist) }
-        return .artistById(id: artistId, name: artist.name, coverArtId: artist.coverArtId)
-    }
-}
-
-private struct OfflineArtistRow: View {
-    let artist: OfflineArtistSummary
-
-    var body: some View {
-        HStack(spacing: MinidiscSpacing.m) {
-            // The album cover stands in for the artist photo: artist art is only on disk if it was
-            // fetched while browsing, whereas an album cover ships with every download.
-            CoverArtView(id: artist.coverArtId ?? artist.id, size: 88)
-                .frame(width: 44, height: 44)
-                .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.s))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(artist.name)
-                    .font(.minidiscCellTitle)
-                    .lineLimit(1)
-                Text("\(artist.albums.count) albums")
-                    .font(.minidiscCaption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, MinidiscSpacing.xs)
-    }
 }
 
 struct OfflineArtistAlbumsView: View {

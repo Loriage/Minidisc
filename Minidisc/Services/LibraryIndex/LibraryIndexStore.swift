@@ -824,6 +824,20 @@ actor LibraryIndexStore {
         return try context.fetch(descriptor).compactMap(decodeSong)
     }
 
+    func songs(ids: Set<String>, serverID: UUID) throws -> [Song] {
+        let context = ModelContext(modelContainer)
+        let allIDs = Array(ids)
+        var result: [Song] = []
+        for start in stride(from: 0, to: allIDs.count, by: 500) {
+            let batch = Array(allIDs[start..<min(start + 500, allIDs.count)])
+            let descriptor = FetchDescriptor<IndexedTrack>(
+                predicate: #Predicate { $0.serverId == serverID && batch.contains($0.itemId) }
+            )
+            result += try context.fetch(descriptor).compactMap(decodeSong)
+        }
+        return result
+    }
+
     func songs(artistID: String, serverID: UUID) throws -> [Song] {
         let context = ModelContext(modelContainer)
         return try songs(artistID: artistID, serverID: serverID, in: context)

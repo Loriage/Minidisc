@@ -91,7 +91,29 @@ final class ServerState {
     var activeServer: ServerSnapshot?
     var activeConnectionVersion: ServerConnection.Version?
     var isConnected: Bool = false
-    var isOnline: Bool = true
+    private let defaults: UserDefaults?
+    private var networkIsOnline = true
+    private var physicalNetworkPathEvent: NetworkPathEvent = .initial
+    private var offlineModeRevision: UInt64 = 0
+    var isOfflineModeEnabled: Bool {
+        didSet {
+            guard oldValue != isOfflineModeEnabled else { return }
+            defaults?.set(isOfflineModeEnabled, forKey: "minidisc.offlineMode")
+            offlineModeRevision &+= 1
+            publishEffectiveNetworkPath()
+        }
+    }
+    var isOnline: Bool {
+        get { networkIsOnline && !isOfflineModeEnabled }
+        set { networkIsOnline = newValue }
+    }
+
+    init(defaults: UserDefaults? = nil) {
+        self.defaults = defaults
+        isOfflineModeEnabled = defaults?.bool(forKey: "minidisc.offlineMode") ?? false
+        if isOfflineModeEnabled { offlineModeRevision = 1 }
+        publishEffectiveNetworkPath()
+    }
     /// Updated by NetworkMonitor. True when the connection is metered (cellular, hotspot).
     /// Default false — optimistic until the first NWPath update corrects it on launch (~100ms).
     var isExpensive: Bool = false
@@ -104,6 +126,26 @@ final class ServerState {
     // Prevents OnboardingView flash before persisted state is restored on launch.
     var isLoadingPersistedState: Bool = true
 
+    func applyNetworkPath(_ event: NetworkPathEvent) {
+        physicalNetworkPathEvent = event
+        networkIsOnline = event.isOnline
+        isExpensive = event.descriptor.isExpensive
+        publishEffectiveNetworkPath()
+        hasObservedNetworkPath = true
+    }
+
+    private func publishEffectiveNetworkPath() {
+        let path = physicalNetworkPathEvent.descriptor
+        networkPathEvent = NetworkPathEvent(
+            generation: physicalNetworkPathEvent.generation &+ offlineModeRevision,
+            descriptor: NetworkPathDescriptor(
+                isOnline: isOnline, isExpensive: path.isExpensive, isConstrained: path.isConstrained,
+                supportsDNS: path.supportsDNS, supportsIPv4: path.supportsIPv4,
+                supportsIPv6: path.supportsIPv6, interfaces: path.interfaces, gateways: path.gateways
+            )
+        )
+    }
+
     var accessSnapshot: ServerAccessSnapshot {
         ServerAccessSnapshot(connectionVersion: activeConnectionVersion, isOnline: isOnline)
     }
@@ -113,7 +155,7 @@ final class ServerState {
         return LibraryIndexPreparationSnapshot(
             connectionVersion: activeConnectionVersion,
             isOnline: isOnline,
-            automaticRefreshAllowed: hasObservedNetworkPath
+            automaticRefreshAllowed: isOnline && hasObservedNetworkPath
                 && path.isOnline
                 && !path.isExpensive
                 && !path.isConstrained

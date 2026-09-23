@@ -1,7 +1,7 @@
 import SwiftSonic
 
 extension DisplayableSong {
-    func asSong() -> Song {
+    nonisolated func asSong() -> Song {
         Song(
             id: id,
             title: title,

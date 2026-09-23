@@ -9,7 +9,10 @@ struct AlbumsListView: View {
     @AppStorage("minidisc.albumSort") private var albumSort: AlbumSort = .recentlyAdded
     @AppStorage("minidisc.albumListGrid") private var gridLayout = false
 
-    private func sortedAlbums(_ vm: AlbumListViewModel) -> [AlbumID3] { albumSort.sorted(vm.albums) }
+    private func displayedAlbums(_ vm: AlbumListViewModel) -> [AlbumID3] {
+        container?.serverState.isOnline == false ? container?.offlineLibrary.snapshot.albums ?? [] : vm.albums
+    }
+    private func sortedAlbums(_ vm: AlbumListViewModel) -> [AlbumID3] { albumSort.sorted(displayedAlbums(vm)) }
 
     var body: some View {
         Group {
@@ -45,32 +48,24 @@ struct AlbumsListView: View {
                 return
             }
             if viewModel == nil { viewModel = AlbumListViewModel(libraryService: svc) }
-            await viewModel?.load()
+            if container?.serverState.isOnline == true { await viewModel?.load() }
         }
     }
 
     @ViewBuilder
     private func content(_ vm: AlbumListViewModel) -> some View {
-        if vm.isLoading && vm.albums.isEmpty {
+        if container?.serverState.isOnline != false && vm.isLoading && displayedAlbums(vm).isEmpty {
             LoadingStateView()
-        } else if container?.serverState.isOnline == false && vm.albums.isEmpty {
-            if let serverId = container?.serverState.activeServer?.id {
-                OfflineAlbumsContent(serverId: serverId)
-            } else {
-                EmptyStateView(
-                    systemImage: "wifi.slash",
-                    title: "You're Offline",
-                    subtitle: "Connect to your server to browse albums."
-                )
-            }
-        } else if let error = vm.error, vm.albums.isEmpty {
+        } else if container?.serverState.isOnline == false && displayedAlbums(vm).isEmpty {
+            OfflineBrowsingEmptyView()
+        } else if let error = vm.error, displayedAlbums(vm).isEmpty {
             EmptyStateView(
                 systemImage: "exclamationmark.triangle",
                 title: "Unable to Load Albums",
                 subtitle: LocalizedStringKey(error.displayMessage),
                 action: .init(label: "Retry") { Task { await vm.load() } }
             )
-        } else if vm.albums.isEmpty {
+        } else if displayedAlbums(vm).isEmpty {
             EmptyStateView(
                 systemImage: "square.stack",
                 title: "No Albums",
@@ -127,7 +122,7 @@ struct AlbumsListView: View {
     }
 
     private func albumIndex(_ vm: AlbumListViewModel) -> [AlphabetScrollEntry] {
-        AlbumSort.name.sorted(vm.albums).map { AlphabetScrollEntry(id: $0.id, name: $0.sortName ?? $0.name) }
+        AlbumSort.name.sorted(displayedAlbums(vm)).map { AlphabetScrollEntry(id: $0.id, name: $0.sortName ?? $0.name) }
     }
 
     private var loadID: ServerAccessSnapshot? {
@@ -138,60 +133,8 @@ struct AlbumsListView: View {
         if container?.serverState.isOnline == true {
             _ = try? await container?.libraryCatalog.refreshAlbums()
         }
-        await viewModel.load()
+        if container?.serverState.isOnline == true { await viewModel.load() }
+        else { await container?.offlineLibrary.refresh() }
     }
 
-}
-
-// MARK: - Offline Albums
-
-private struct OfflineAlbumsContent: View {
-    let serverId: UUID
-    @Query private var albums: [DownloadedAlbum]
-    @Query private var tracks: [DownloadedTrack]
-
-    init(serverId: UUID) {
-        self.serverId = serverId
-        let sid = serverId
-        _albums = Query(
-            filter: #Predicate<DownloadedAlbum> { album in album.serverId == sid },
-            sort: [SortDescriptor(\DownloadedAlbum.name)]
-        )
-        _tracks = Query(filter: #Predicate<DownloadedTrack> { track in track.serverId == sid })
-    }
-
-    private var displayAlbums: [DownloadedAlbumDisplay] {
-        DownloadedAlbumMerger.merge(records: albums, tracks: tracks)
-    }
-
-    var body: some View {
-        if displayAlbums.isEmpty {
-            EmptyStateView(
-                systemImage: "wifi.slash",
-                title: "You're Offline",
-                subtitle: "No downloaded albums available. Download albums while online to listen offline."
-            )
-        } else {
-            AlphabetIndexedContent(entries: displayAlbums.map { AlphabetScrollEntry(id: $0.id, name: $0.name) }) {
-                List {
-                    Section("Downloaded Albums") {
-                        ForEach(displayAlbums) { display in
-                            NavigationLink(value: HomeDestination.downloadedAlbum(display)) {
-                                AlbumRow(
-                                    albumId: display.albumId,
-                                    name: display.name,
-                                    artist: display.artist,
-                                    year: nil,
-                                    coverArtId: display.coverArtId
-                                )
-                            }
-                            .id(display.id)
-                            .accessibilityIdentifier("browse.album.\(display.albumId)")
-                        }
-                    }
-                }
-                .listStyle(.plain)
-            }
-        }
-    }
 }

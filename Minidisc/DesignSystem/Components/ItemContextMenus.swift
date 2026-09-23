@@ -355,13 +355,24 @@ struct LazyCollectionContextMenuModifier: ViewModifier {
         return container?.favoritesService.isFavorite(itemType: ft, itemId: itemId) == true
     }
 
+    private func playableSongs() async throws -> [DisplayableSong] {
+        if let container, !container.serverState.isOnline {
+            let local = container.offlineLibrary.snapshot
+            switch itemType {
+            case .album: return local.albumSongs(itemId)
+            case .playlist: return local.playlistSongs[itemId] ?? []
+            }
+        }
+        return try await songLoader()
+    }
+
     func body(content: Content) -> some View {
         content
             .contextMenu {
                 Group {
                 Button {
                     Task {
-                        guard let songs = try? await songLoader(), !songs.isEmpty else { return }
+                        guard let songs = try? await playableSongs(), !songs.isEmpty else { return }
                         do {
                             try await container?.playerService.play(tracks: songs, startIndex: 0)
                         } catch {
@@ -374,7 +385,7 @@ struct LazyCollectionContextMenuModifier: ViewModifier {
 
                 Button {
                     Task {
-                        guard let songs = try? await songLoader(), !songs.isEmpty else { return }
+                        guard let songs = try? await playableSongs(), !songs.isEmpty else { return }
                         do {
                             try await container?.playerService.play(tracks: songs.shuffled(), startIndex: 0)
                         } catch {
@@ -387,7 +398,7 @@ struct LazyCollectionContextMenuModifier: ViewModifier {
 
                 Button {
                     Task {
-                        guard let songs = try? await songLoader(), !songs.isEmpty else { return }
+                        guard let songs = try? await playableSongs(), !songs.isEmpty else { return }
                         await container?.playerService.playNext(songs)
                     }
                 } label: {
@@ -396,7 +407,7 @@ struct LazyCollectionContextMenuModifier: ViewModifier {
 
                 Button {
                     Task {
-                        guard let songs = try? await songLoader(), !songs.isEmpty else { return }
+                        guard let songs = try? await playableSongs(), !songs.isEmpty else { return }
                         await container?.playerService.addToQueue(songs)
                     }
                 } label: {

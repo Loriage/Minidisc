@@ -16,18 +16,31 @@ struct DiscoverView: View {
     @State private var availableMoods: [MoodPlaylist] = []
     @State private var moodReloadID = 0
 
+    private var isOnline: Bool { container?.serverState.isOnline == true }
+    private var visibleMoods: [MoodPlaylist] {
+        guard !isOnline else { return availableMoods }
+        return (container?.offlineLibrary.snapshot.playlists ?? []).compactMap { playlist in
+            guard let mood = Mood.allCases.first(where: { $0.playlistName == playlist.name }) else { return nil }
+            return MoodPlaylist(mood: mood, id: playlist.id, coverArtId: playlist.coverArt)
+        }
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
                 if let vm {
-                    freshReleasesSection(vm: vm)
-                    stationsSection(vm)
-                    SmartShuffleCard(coverIDs: shuffleCoverIDs(vm), isStarting: isStartingShuffle) {
-                        Task { await triggerSmartShuffle() }
+                    if isOnline {
+                        freshReleasesSection(vm: vm)
+                        stationsSection(vm)
+                    }
+                    if isOnline || container?.offlineLibrary.snapshot.songs.isEmpty == false {
+                        SmartShuffleCard(coverIDs: shuffleCoverIDs(vm), isStarting: isStartingShuffle) {
+                            Task { await triggerSmartShuffle() }
+                        }
                     }
                     moodsSection
                     wrappedSection
-                    internetRadioSection
+                    if isOnline { internetRadioSection }
                 }
             }
             .padding(.top, MinidiscSpacing.m)
@@ -49,7 +62,8 @@ struct DiscoverView: View {
                 availableMoods = []
                 isListenBrainzConnected = false
             }
-            await refreshDiscover(forceRefresh: false)
+            if isOnline { await refreshDiscover(forceRefresh: false) }
+            else if let serverID { await loadMoodPlaylists(serverId: serverID.uuidString) }
         }
         .refreshable { await refreshDiscover(forceRefresh: true) }
         .onReceive(NotificationCenter.default.publisher(for: .minidiscMoodPlaylistsChanged)) { _ in
@@ -83,7 +97,7 @@ struct DiscoverView: View {
 
     @ViewBuilder
     private var moodsSection: some View {
-        if !availableMoods.isEmpty {
+        if !visibleMoods.isEmpty {
             VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
                 Text("Moods")
                     .font(.minidiscShelfTitle)
@@ -91,7 +105,7 @@ struct DiscoverView: View {
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: MinidiscSpacing.s) {
-                        ForEach(availableMoods, id: \.mood) { entry in
+                        ForEach(visibleMoods, id: \.mood) { entry in
                             MoodCard(mood: entry.mood, playlistId: entry.id, coverArtId: entry.coverArtId)
                         }
                     }
@@ -112,6 +126,10 @@ struct DiscoverView: View {
 
     private func loadMoodPlaylists(serverId: String) async {
         guard let service = container?.moodPlaylistService else { return }
+        if !isOnline {
+            availableMoods = await service.cachedPlaylists(serverId: serverId)
+            return
+        }
         let found: [MoodPlaylist]
         do {
             found = try await service.fetchPlaylists(serverId: serverId)
@@ -161,7 +179,8 @@ struct DiscoverView: View {
 
     private func shuffleCoverIDs(_ vm: DiscoverViewModel) -> [String] {
         var seen = Set<String>()
-        return (vm.recentlyPlayed + vm.mostPlayed).map { $0.coverArt ?? $0.id }
+        let albums = isOnline ? vm.recentlyPlayed + vm.mostPlayed : container?.offlineLibrary.snapshot.albums ?? []
+        return albums.map { $0.coverArt ?? $0.id }
             .filter { seen.insert($0).inserted }.prefix(3).map { $0 }
     }
 
@@ -176,7 +195,7 @@ struct DiscoverView: View {
     }
 
     private func refreshDiscover(forceRefresh: Bool) async {
-        guard let vm else { return }
+        guard let vm, isOnline else { return }
         async let personal: Void = vm.load(forceRefresh: forceRefresh)
         async let releases: Void = refreshFreshReleases(vm)
         async let radio: Void = loadRadioStations(forceRefresh: forceRefresh)
@@ -250,20 +269,20 @@ struct DiscoverView: View {
     }
 
     private var wrappedItems: [WrappedCarouselItem] {
-        var items = yearlyPlaylists.map(WrappedCarouselItem.yearly)
-        if let year = currentYearCardYear {
+        let playlists = isOnline ? yearlyPlaylists : (container?.offlineLibrary.snapshot.playlists ?? []).compactMap { playlist -> WrappedYearlyPlaylist? in
+            let prefix = WrappedPlaylistService.wrappedPlaylistNamePrefix
+            guard playlist.name.hasPrefix(prefix), let year = Int(playlist.name.dropFirst(prefix.count)) else { return nil }
+            return WrappedYearlyPlaylist(id: playlist.id, year: year, name: playlist.name, coverArtId: playlist.coverArt)
+        }
+        var items = playlists.map(WrappedCarouselItem.yearly)
+        let year = Calendar.current.component(.year, from: Date())
+        if !playlists.contains(where: { $0.year == year }) {
             items.append(.currentYear(year))
         }
         items.append(contentsOf: currentYearMonths.map {
             .month(year: $0.year, month: $0.month)
         })
         return items
-    }
-
-    private var currentYearCardYear: Int? {
-        let year = Calendar.current.component(.year, from: Date())
-        guard !yearlyPlaylists.contains(where: { $0.year == year }) else { return nil }
-        return year
     }
 
     private var currentYearMonths: [(year: Int, month: Int)] {

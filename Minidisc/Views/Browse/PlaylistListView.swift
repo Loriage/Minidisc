@@ -50,28 +50,24 @@ struct PlaylistListView: View {
         }
     }
 
+    private func displayedPlaylists(_ vm: PlaylistListViewModel) -> [Playlist] {
+        container?.serverState.isOnline == false ? container?.offlineLibrary.snapshot.playlists ?? [] : vm.playlists
+    }
+
     @ViewBuilder
     private func content(_ vm: PlaylistListViewModel) -> some View {
-        if vm.isLoading && vm.playlists.isEmpty {
+        if container?.serverState.isOnline != false && vm.isLoading && displayedPlaylists(vm).isEmpty {
             LoadingStateView()
-        } else if container?.serverState.isOnline == false && vm.playlists.isEmpty {
-            if let serverId = container?.serverState.activeServer?.id {
-                OfflinePlaylistContent(serverId: serverId)
-            } else {
-                EmptyStateView(
-                    systemImage: "wifi.slash",
-                    title: "You're Offline",
-                    subtitle: "Connect to your server to browse playlists."
-                )
-            }
-        } else if let error = vm.error, vm.playlists.isEmpty {
+        } else if container?.serverState.isOnline == false && displayedPlaylists(vm).isEmpty {
+            OfflineBrowsingEmptyView()
+        } else if let error = vm.error, displayedPlaylists(vm).isEmpty {
             EmptyStateView(
                 systemImage: "exclamationmark.triangle",
                 title: "Unable to Load Playlists",
                 subtitle: LocalizedStringKey(error.displayMessage),
                 action: .init(label: "Retry") { Task { await vm.load() } }
             )
-        } else if vm.playlists.isEmpty && !hasDerivedPlaylists(vm) {
+        } else if displayedPlaylists(vm).isEmpty && !hasDerivedPlaylists(vm) {
             EmptyStateView(
                 systemImage: "list.bullet",
                 title: "No Playlists",
@@ -103,7 +99,7 @@ struct PlaylistListView: View {
                 // from — on its own the header would just repeat the screen title.
                 if !hasDerivedPlaylists(vm) {
                     serverPlaylistRows(vm)
-                } else if !vm.playlists.isEmpty {
+                } else if !displayedPlaylists(vm).isEmpty {
                     Section("Playlists") { serverPlaylistRows(vm) }
                 }
             }
@@ -117,12 +113,12 @@ struct PlaylistListView: View {
     }
 
     private func hasDerivedPlaylists(_ vm: PlaylistListViewModel) -> Bool {
-        vm.newestAlbum != nil || !vm.bestOfPlaylists.isEmpty
+        container?.serverState.isOnline != false && (vm.newestAlbum != nil || !vm.bestOfPlaylists.isEmpty)
     }
 
     @ViewBuilder
     private func serverPlaylistRows(_ vm: PlaylistListViewModel) -> some View {
-        ForEach(vm.playlists) { playlist in
+        ForEach(displayedPlaylists(vm)) { playlist in
             NavigationLink(value: HomeDestination.playlist(playlist)) {
                 OnlinePlaylistRow(
                     playlist: playlist,
@@ -257,72 +253,3 @@ private struct BestOfPlaylistRow: View {
 }
 
 // MARK: - Offline Playlists
-
-private struct OfflinePlaylistContent: View {
-    let serverId: UUID
-    @Query private var playlists: [DownloadedPlaylist]
-
-    init(serverId: UUID) {
-        self.serverId = serverId
-        let sid = serverId
-        _playlists = Query(
-            filter: #Predicate<DownloadedPlaylist> { playlist in playlist.serverId == sid },
-            sort: [SortDescriptor(\DownloadedPlaylist.name)]
-        )
-    }
-
-    var body: some View {
-        if playlists.isEmpty {
-            EmptyStateView(
-                systemImage: "wifi.slash",
-                title: "You're Offline",
-                subtitle: "No downloaded playlists available. Download playlists while online to listen offline."
-            )
-        } else {
-            List {
-                Section("Downloaded Playlists") {
-                    ForEach(playlists) { playlist in
-                        NavigationLink(value: HomeDestination.playlistById(id: playlist.playlistId, name: playlist.name, coverArtId: playlist.coverArtId)) {
-                            OfflinePlaylistRow(playlist: playlist)
-                        }
-                    }
-                }
-            }
-            .listStyle(.plain)
-        }
-    }
-}
-
-private struct OfflinePlaylistRow: View {
-    let playlist: DownloadedPlaylist
-
-    @Environment(ArtworkImageCache.self) private var artworkImageCache
-    @State private var coverImage: PlatformImage?
-
-    var body: some View {
-        HStack(spacing: MinidiscSpacing.m) {
-            PlaylistCoverThumbnail(playlistId: playlist.playlistId, serverId: nil, coverArtId: playlist.coverArtId ?? playlist.playlistId, title: playlist.name, size: 56)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(playlist.name)
-                    .font(.minidiscCellTitle)
-                    .lineLimit(1)
-                Text("\(playlist.tracksCount) tracks")
-                    .font(.minidiscCaption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, MinidiscSpacing.xs)
-        .task(id: playlist.playlistId) {
-            coverImage = await artworkImageCache.load(coverArtId: playlist.coverArtId ?? playlist.playlistId)
-        }
-        .collectionContextMenu(
-            itemType: .playlist,
-            itemId: playlist.playlistId,
-            displayName: playlist.name,
-            displaySubtitle: "Playlist",
-            coverArtId: playlist.coverArtId,
-            coverImage: coverImage
-        )
-    }
-}

@@ -67,6 +67,11 @@ struct LibraryView: View {
             )
         }
         return (albumItems + playlistItems)
+            .filter { item in
+                guard !isOnline else { return true }
+                let local = container?.offlineLibrary.snapshot
+                return item.type == .album ? local?.albumIDs.contains(item.itemId) == true : local?.playlistIDs.contains(item.itemId) == true
+            }
             .sorted { $0.downloadedAt > $1.downloadedAt }
             .prefix(24)
             .map { $0 }
@@ -78,20 +83,11 @@ struct LibraryView: View {
     }
 
     private func isAvailableOffline(_ item: PinnedItem) -> Bool {
-        let itemId = item.itemId
+        guard let snapshot = container?.offlineLibrary.snapshot else { return false }
         switch PinnedItemType(rawValue: item.itemType) {
-        case .album:
-            let descriptor = FetchDescriptor<DownloadedAlbum>(
-                predicate: #Predicate { $0.albumId == itemId }
-            )
-            return (try? modelContext.fetch(descriptor).first) != nil
-        case .playlist:
-            let descriptor = FetchDescriptor<DownloadedPlaylist>(
-                predicate: #Predicate { $0.playlistId == itemId }
-            )
-            return (try? modelContext.fetch(descriptor).first) != nil
-        case .none:
-            return false
+        case .album: return snapshot.albumIDs.contains(item.itemId)
+        case .playlist: return snapshot.playlistIDs.contains(item.itemId)
+        case .none: return false
         }
     }
 
@@ -100,6 +96,9 @@ struct LibraryView: View {
             VStack(alignment: .leading, spacing: MinidiscSpacing.xl) {
                 if !visiblePinnedItems.isEmpty {
                     pinnedSection
+                }
+                if !isOnline && container?.offlineLibrary.snapshot.songs.isEmpty != false {
+                    OfflineBrowsingEmptyView()
                 }
                 librarySection
                 recentlySection
@@ -234,37 +233,50 @@ struct LibraryView: View {
     // MARK: - Library section
 
     private var librarySection: some View {
-        VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
+        let local = container?.offlineLibrary.snapshot ?? OfflineBrowsingSnapshot()
+        return VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
             VStack(spacing: 0) {
-                NavigationLink(value: HomeDestination.libraryPlaylists) {
-                    HomeLibraryRowLabel(title: "Playlists", systemImage: "music.note.list")
+                if isOnline || (!local.playlists.isEmpty) {
+                    NavigationLink(value: HomeDestination.libraryPlaylists) {
+                        HomeLibraryRowLabel(title: "Playlists", systemImage: "music.note.list")
+                    }
+                    .buttonStyle(.plain)
+                    Divider().padding(.leading, 52)
                 }
-                .buttonStyle(.plain)
-                Divider().padding(.leading, 52)
-                NavigationLink(value: HomeDestination.libraryAlbums) {
-                    HomeLibraryRowLabel(title: "Albums", systemImage: "square.stack")
+                if isOnline || (!local.albums.isEmpty) {
+                    NavigationLink(value: HomeDestination.libraryAlbums) {
+                        HomeLibraryRowLabel(title: "Albums", systemImage: "square.stack")
+                    }
+                    .buttonStyle(.plain)
+                    Divider().padding(.leading, 52)
                 }
-                .buttonStyle(.plain)
-                Divider().padding(.leading, 52)
-                NavigationLink(value: HomeDestination.libraryArtists) {
-                    HomeLibraryRowLabel(title: "Artists", systemImage: "music.mic")
+                if isOnline || (!local.artists.isEmpty) {
+                    NavigationLink(value: HomeDestination.libraryArtists) {
+                        HomeLibraryRowLabel(title: "Artists", systemImage: "music.mic")
+                    }
+                    .buttonStyle(.plain)
+                    Divider().padding(.leading, 52)
                 }
-                .buttonStyle(.plain)
-                Divider().padding(.leading, 52)
-                NavigationLink(value: HomeDestination.librarySongs) {
-                    HomeLibraryRowLabel(title: "Songs", systemImage: "music.note")
+                if isOnline || (!local.songs.isEmpty) {
+                    NavigationLink(value: HomeDestination.librarySongs) {
+                        HomeLibraryRowLabel(title: "Songs", systemImage: "music.note")
+                    }
+                    .buttonStyle(.plain)
+                    Divider().padding(.leading, 52)
                 }
-                .buttonStyle(.plain)
-                Divider().padding(.leading, 52)
-                NavigationLink(value: HomeDestination.libraryFavorites) {
-                    HomeLibraryRowLabel(title: "Favorites", systemImage: "star.fill")
+                if isOnline || (!local.favorites.songs.isEmpty || !local.favorites.albums.isEmpty || !local.favorites.artists.isEmpty) {
+                    NavigationLink(value: HomeDestination.libraryFavorites) {
+                        HomeLibraryRowLabel(title: "Favorites", systemImage: "star.fill")
+                    }
+                    .buttonStyle(.plain)
+                    Divider().padding(.leading, 52)
                 }
-                .buttonStyle(.plain)
-                Divider().padding(.leading, 52)
-                NavigationLink(value: HomeDestination.libraryDownloads) {
-                    HomeLibraryRowLabel(title: "Downloads", systemImage: "arrow.down.circle.fill")
+                if isOnline || (local.songs.contains(where: \.isDownloaded)) {
+                    NavigationLink(value: HomeDestination.libraryDownloads) {
+                        HomeLibraryRowLabel(title: "Downloads", systemImage: "arrow.down.circle.fill")
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -294,7 +306,7 @@ struct LibraryView: View {
                     }
                 }
             }
-        } else {
+        } else if !recentDownloadedItems.isEmpty {
             VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
                 Text("Recently Downloaded")
                     .font(.minidiscShelfTitle)
@@ -375,6 +387,14 @@ private struct HomePinnedCard: View {
             favoriteType: item.itemType == PinnedItemType.album.rawValue ? .album : nil
         ) {
             let itemId = item.itemId
+            if let container, !container.serverState.isOnline {
+                let local = container.offlineLibrary.snapshot
+                switch PinnedItemType(rawValue: item.itemType) {
+                case .album: return local.albumSongs(itemId)
+                case .playlist: return local.playlistSongs[itemId] ?? []
+                case .none: return []
+                }
+            }
             switch PinnedItemType(rawValue: item.itemType) {
             case .album:
                 if container?.serverState.isOnline == true,

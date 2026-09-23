@@ -837,6 +837,7 @@ actor DownloadService: DownloadServiceProtocol {
     // MARK: - Remove
 
     func remove(songId: String, serverId: UUID) async throws {
+        defer { Task { @MainActor in postOfflineLibraryChanged() } }
         let key = DownloadIntentRegistry.Key(serverID: serverId, owner: .track, songID: songId)
         intents.beginRemoval(key)
         defer { intents.endRemoval(key) }
@@ -845,6 +846,7 @@ actor DownloadService: DownloadServiceProtocol {
     }
 
     func remove(albumId: String, serverId: UUID) async throws {
+        defer { Task { @MainActor in postOfflineLibraryChanged() } }
         let key = DownloadIntentRegistry.Key(serverID: serverId, owner: .album(albumId))
         intents.beginRemoval(key)
         defer { intents.endRemoval(key) }
@@ -853,6 +855,7 @@ actor DownloadService: DownloadServiceProtocol {
     }
 
     func remove(playlistId: String, serverId: UUID) async throws {
+        defer { Task { @MainActor in postOfflineLibraryChanged() } }
         let key = DownloadIntentRegistry.Key(serverID: serverId, owner: .playlist(playlistId))
         intents.beginRemoval(key)
         defer { intents.endRemoval(key) }
@@ -861,6 +864,7 @@ actor DownloadService: DownloadServiceProtocol {
     }
 
     func removeAll() async throws {
+        defer { Task { @MainActor in postOfflineLibraryChanged() } }
         guard !isRemovingAllDownloads else { return }
         isRemovingAllDownloads = true
         intents.beginRemovingAll()

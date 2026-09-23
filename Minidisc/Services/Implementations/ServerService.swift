@@ -10,6 +10,7 @@ actor ServerService: ServerServiceProtocol {
     private let modelContainer: ModelContainer
     private let audioStreamCache: any AudioStreamCacheProtocol
     private let libraryIndexStore: LibraryIndexStore?
+    private let offlineFavorites: OfflineFavoritesStore?
     private let playbackDiagnostics: PlaybackDiagnostics
     private let compatibility: NavidromeCompatibility?
     private var activeServerSnapshot: ServerSnapshot?
@@ -24,7 +25,8 @@ actor ServerService: ServerServiceProtocol {
         audioStreamCache: any AudioStreamCacheProtocol,
         libraryIndexStore: LibraryIndexStore? = nil,
         playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics(),
-        compatibility: NavidromeCompatibility? = nil
+        compatibility: NavidromeCompatibility? = nil,
+        offlineFavorites: OfflineFavoritesStore? = nil
     ) {
         self.state = state
         self.keychain = keychain
@@ -33,6 +35,7 @@ actor ServerService: ServerServiceProtocol {
         self.libraryIndexStore = libraryIndexStore
         self.playbackDiagnostics = playbackDiagnostics
         self.compatibility = compatibility
+        self.offlineFavorites = offlineFavorites
     }
 
     func addServer(
@@ -106,6 +109,8 @@ actor ServerService: ServerServiceProtocol {
         if removedActiveServer {
             await publishConnectionRemoval()
         }
+
+        try? await offlineFavorites?.removeServer(id)
 
         // Best-effort: an orphaned Keychain entry is harmless if this fails.
         try? await keychain.delete(forKey: credKey)
@@ -215,6 +220,7 @@ actor ServerService: ServerServiceProtocol {
                 }
                 return (nil, libraryIdentityChanged)
             }
+            if libraryIdentityChanged { try? await offlineFavorites?.removeServer(id) }
             if libraryIdentityChanged, let libraryIndexStore {
                 do {
                     try await libraryIndexStore.resetServer(id)

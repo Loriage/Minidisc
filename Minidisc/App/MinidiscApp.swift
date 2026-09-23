@@ -68,9 +68,9 @@ struct MinidiscApp: App {
                 }
                 .task(id: activeContainer?.serverState.libraryIndexPreparationSnapshot) {
                     guard let container = activeContainer else { return }
-                    await container.downloadService.restorePendingDownloads()
                     let snapshot = container.serverState.libraryIndexPreparationSnapshot
                     guard snapshot.isOnline else { return }
+                    await container.downloadService.restorePendingDownloads()
                     await container.listenBrainzService.flushOfflineQueue()
                     do {
                         try await container.libraryCatalog.prepare(
@@ -86,6 +86,23 @@ struct MinidiscApp: App {
                         )
                     }
                 }
+                .task(id: activeContainer?.offlineLibrary.request) {
+                    await activeContainer?.offlineLibrary.refresh()
+                }
+                .onChange(of: activeContainer?.serverState.isOfflineModeEnabled) { _, _ in
+                    guard let container = activeContainer else { return }
+                    let event = container.serverState.networkPathEvent
+                    Task { await container.playerService.handleNetworkPathChanged(event) }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .minidiscOfflineLibraryChanged)) { _ in
+                    activeContainer?.offlineLibrary.revision += 1
+                }
+                .task(id: activeContainer?.offlineFavoritesSync.request) {
+                    await activeContainer?.offlineFavoritesSync.synchronize()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .minidiscFavoritesChanged)) { _ in
+                    activeContainer?.offlineFavoritesSync.revision += 1
+                }
                 .onReceive(NotificationCenter.default.publisher(for: .minidiscPlaylistsChanged)) { _ in
                     MinidiscShortcuts.updateAppShortcutParameters()
                 }
@@ -94,6 +111,10 @@ struct MinidiscApp: App {
                 }
         }
         .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                activeContainer?.offlineFavoritesSync.revision += 1
+                activeContainer?.offlineLibrary.revision += 1
+            }
             if newPhase == .inactive, let container = activeContainer {
                 Task { await container.playerService.saveCurrentPosition() }
                 Logger.session.info("App inactive — position flushed (iOS kill guard)")

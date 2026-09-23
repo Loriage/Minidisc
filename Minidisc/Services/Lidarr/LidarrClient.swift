@@ -6,6 +6,7 @@ nonisolated enum LidarrError: Error, Equatable, Sendable {
     case unauthorized
     case htmlResponse
     case cancelled
+    case offline
     case transport(String)
     case decoding(String)
 }
@@ -218,6 +219,8 @@ actor LidarrClient {
             (data, response) = try await session.data(for: request)
         } catch let urlError as URLError where urlError.code == .cancelled {
             throw LidarrError.cancelled
+        } catch let error as URLError where error.code == .notConnectedToInternet || error.code == .networkConnectionLost {
+            throw LidarrError.offline
         } catch {
             throw LidarrError.transport(String(describing: error))
         }

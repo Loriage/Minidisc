@@ -51,8 +51,20 @@ struct HomeView: View {
 
     @ViewBuilder
     private func content(_ vm: HomeFeedViewModel) -> some View {
+        let picks = container?.visiblePlaylists(vm.topPicks) ?? []
+        let favorites = isOnline ? vm.favorites : container?.offlineLibrary.snapshot.favorites ?? HomeFavorites()
+        let genres = vm.genreShelves.compactMap { shelf -> HomeFeedViewModel.GenreShelf? in
+            let albums = container?.visibleAlbums(shelf.albums) ?? []
+            return albums.isEmpty ? nil : .init(name: shelf.name, albums: albums)
+        }
         if !vm.isLoading, vm.isEmpty, !isOnline {
-            OfflineHomeInfo()
+            ScrollView {
+                VStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
+                    OfflineHomeInfo()
+                    HomeFavoriteSongsSection(songs: favorites.songs)
+                    HomeAlbumSection(title: "Albums", albums: container?.offlineLibrary.snapshot.albums ?? [], identifier: "home.offlineAlbums")
+                }
+            }
         } else if let error = vm.error, vm.isEmpty, !vm.isLoading {
             EmptyStateView(
                 systemImage: "exclamationmark.triangle",
@@ -82,41 +94,41 @@ struct HomeView: View {
                         }
                         .padding(.horizontal, MinidiscSpacing.l)
                     }
-                    if vm.topPicks.isEmpty, vm.pendingSections.contains(.playlists) {
+                    if isOnline, picks.isEmpty, vm.pendingSections.contains(.playlists) {
                         HomeShelfPlaceholder(title: "Your Playlists", side: 250)
                     }
-                    if !vm.topPicks.isEmpty {
+                    if !picks.isEmpty {
                         MinidiscShelf {
                             MinidiscCarouselHeaderLink(
                                 "Your Playlists",
-                                itemCount: vm.topPicks.count
+                                itemCount: picks.count
                             ) {
                                 PlaylistCarouselCollectionView(
                                     "Your Playlists",
-                                    playlists: vm.topPicks
+                                    playlists: picks
                                 )
                             }
                         } content: {
-                            ForEach(Array(vm.topPicks.prefix(MinidiscCarouselMetrics.previewLimit))) { playlist in
+                            ForEach(Array(picks.prefix(MinidiscCarouselMetrics.previewLimit))) { playlist in
                                 TopPickCard(playlist: playlist, namespace: homeZoomNamespace)
                             }
                         }
                         .accessibilityIdentifier("home.playlists")
                     }
-                    HomeFavoriteSongsSection(songs: vm.favorites.songs)
-                    HomeAlbumSection(title: "Your Favorite Albums", albums: vm.favorites.albums, identifier: "home.favoriteAlbums")
-                    if vm.recentlyPlayed.isEmpty, vm.pendingSections.contains(.history) {
+                    HomeFavoriteSongsSection(songs: favorites.songs)
+                    HomeAlbumSection(title: "Your Favorite Albums", albums: favorites.albums, identifier: "home.favoriteAlbums")
+                    if isOnline, vm.recentlyPlayed.isEmpty, vm.pendingSections.contains(.history) {
                         HomeShelfPlaceholder(title: "Recently Played", side: 160)
                     }
-                    HomeAlbumSection(title: "Recently Played", albums: vm.recentlyPlayed, identifier: "home.recentlyPlayed")
-                    HomeAlbumSection(title: "In Heavy Rotation", albums: vm.heavyRotation, identifier: "home.heavyRotation")
-                    HomeAlbumSection(title: "Rediscover", albums: vm.rediscovery, identifier: "home.rediscover")
-                    HomeAlbumSection(title: "Recently Added from Your Artists", albums: vm.relevantAdditions, identifier: "home.relevantAdditions")
-                    if vm.recentlyAdded.isEmpty, vm.pendingSections.contains(.recent) {
+                    HomeAlbumSection(title: "Recently Played", albums: container?.visibleAlbums(vm.recentlyPlayed) ?? [], identifier: "home.recentlyPlayed")
+                    HomeAlbumSection(title: "In Heavy Rotation", albums: container?.visibleAlbums(vm.heavyRotation) ?? [], identifier: "home.heavyRotation")
+                    HomeAlbumSection(title: "Rediscover", albums: container?.visibleAlbums(vm.rediscovery) ?? [], identifier: "home.rediscover")
+                    HomeAlbumSection(title: "Recently Added from Your Artists", albums: container?.visibleAlbums(vm.relevantAdditions) ?? [], identifier: "home.relevantAdditions")
+                    if isOnline, vm.recentlyAdded.isEmpty, vm.pendingSections.contains(.recent) {
                         HomeShelfPlaceholder(title: "Recently Added", side: 160)
                     }
-                    HomeAlbumSection(title: "Recently Added", albums: vm.otherAdditions, identifier: "home.recentlyAdded")
-                    ForEach(vm.genreShelves) { shelf in
+                    HomeAlbumSection(title: "Recently Added", albums: container?.visibleAlbums(vm.otherAdditions) ?? [], identifier: "home.recentlyAdded")
+                    ForEach(genres) { shelf in
                         MinidiscShelf {
                             MinidiscCarouselHeaderLink(
                                 verbatim: shelf.name,
@@ -229,18 +241,22 @@ private struct TopPickCard: View {
 }
 
 private struct OfflineHomeInfo: View {
+    @Environment(\.appContainer) private var container
+
     var body: some View {
         VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
-            Label("You're Offline", systemImage: "wifi.slash").font(.headline)
-            Text("Your saved library stays here. Downloaded music is ready to play.")
-                .font(.subheadline)
+            OfflineHomeCard(
+                isManual: container?.serverState.isOfflineModeEnabled == true,
+                songCount: container?.offlineLibrary.snapshot.songs.count ?? 0,
+                isLoading: container?.offlineLibrary.isLoading == true,
+                onDisable: { container?.serverState.isOfflineModeEnabled = false }
+            )
+            Text("While offline, the app only shows content available on this device.")
+                .font(.footnote)
                 .foregroundStyle(.secondary)
-            NavigationLink(value: HomeDestination.libraryDownloads) {
-                Label("Downloaded Music", systemImage: "arrow.down.circle")
-                    .frame(minHeight: 44)
-            }
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, MinidiscSpacing.m)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, MinidiscSpacing.l)
     }
 }

@@ -62,18 +62,18 @@ struct PlaylistPlaybackControls: View {
             .frame(maxWidth: scaledPlayWidth)
             .accessibilityIdentifier("playlist.detail.play")
 
-            if let downloadControl {
-                Button(action: onDownload) {
-                    Image(systemName: downloadControl.symbol)
-                        .font(.minidiscCellTitle)
-                        .foregroundStyle(.white)
-                        .frame(width: controlSize, height: controlSize)
-                        .background(.white.opacity(0.1), in: Circle())
-                        .contentShape(Circle())
-                }
-                .accessibilityLabel(downloadControl.label)
-                .accessibilityIdentifier("playlist.detail.download")
+            Button(action: onDownload) {
+                Image(systemName: (downloadControl ?? .download).symbol)
+                    .font(.minidiscCellTitle)
+                    .foregroundStyle(.white)
+                    .frame(width: controlSize, height: controlSize)
+                    .background(.white.opacity(0.1), in: Circle())
+                    .contentShape(Circle())
             }
+            .disabled(downloadControl == nil)
+            .opacity(downloadControl == nil ? 0.4 : 1)
+            .accessibilityLabel((downloadControl ?? .download).label)
+            .accessibilityIdentifier("playlist.detail.download")
         }
         .buttonStyle(.borderless)
         .disabled(!isEnabled)

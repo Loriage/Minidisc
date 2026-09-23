@@ -1,16 +1,26 @@
 import SwiftUI
+import SwiftSonic
 
 struct WrappedYearlyListView: View {
     @Environment(\.appContainer) private var container
     @State private var playlists: [WrappedYearlyPlaylist] = []
     @State private var isLoading = true
 
+    private var visiblePlaylists: [WrappedYearlyPlaylist] {
+        guard container?.serverState.isOnline == false else { return playlists }
+        return (container?.offlineLibrary.snapshot.playlists ?? []).compactMap { playlist in
+            let prefix = WrappedPlaylistService.wrappedPlaylistNamePrefix
+            guard playlist.name.hasPrefix(prefix), let year = Int(playlist.name.dropFirst(prefix.count)) else { return nil }
+            return WrappedYearlyPlaylist(id: playlist.id, year: year, name: playlist.name, coverArtId: playlist.coverArt)
+        }
+    }
+
     private var currentYear: Int {
         Calendar.current.component(.year, from: Date())
     }
 
     private var hasCurrentYearPlaylist: Bool {
-        playlists.contains { $0.year == currentYear }
+        visiblePlaylists.contains { $0.year == currentYear }
     }
 
     private var currentYearMonths: [(year: Int, month: Int)] {
@@ -22,7 +32,7 @@ struct WrappedYearlyListView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: MinidiscSpacing.l) {
-                if isLoading {
+                if isLoading && container?.serverState.isOnline != false {
                     ProgressView()
                         .frame(maxWidth: .infinity)
                         .padding(.top, MinidiscSpacing.xxxxl)
@@ -36,7 +46,7 @@ struct WrappedYearlyListView: View {
                         if !hasCurrentYearPlaylist {
                             WrappedRecapMonthCard(period: .year(currentYear))
                         }
-                        ForEach(playlists) { playlist in
+                        ForEach(visiblePlaylists) { playlist in
                             WrappedYearlyCard(playlist: playlist)
                         }
                         ForEach(currentYearMonths, id: \.month) { item in
@@ -77,12 +87,13 @@ struct WrappedYearlyListView: View {
         }
         .minidiscContentWidth()
         .navigationTitle("Wrapped")
-        .task {
+        .task(id: container?.serverState.accessSnapshot) {
             guard let container,
                   let serverId = container.serverState.activeServer?.id.uuidString else {
                 isLoading = false
                 return
             }
+            guard container.serverState.isOnline else { isLoading = false; return }
             playlists = await container.wrappedPlaylistService.fetchYearlyPlaylists(serverId: serverId)
             isLoading = false
         }

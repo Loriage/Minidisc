@@ -18,18 +18,23 @@ struct FavoritesView: View {
         .minidiscContentWidth()
         .navigationTitle("Favorites")
         .toolbarTitleDisplayMode(.inline)
-        .onAppear {
+        .task(id: container?.serverState.accessSnapshot) {
             guard let svc = container?.libraryService else { return }
             if viewModel == nil { viewModel = FavoritesViewModel(libraryService: svc) }
+            if container?.serverState.isOnline == true { await viewModel?.load() }
         }
-        .task { await viewModel?.load() }
     }
 
     @ViewBuilder
     private func content(_ vm: FavoritesViewModel) -> some View {
-        let isEmpty = vm.songs.isEmpty && vm.albums.isEmpty && vm.artists.isEmpty
-        if vm.isLoading && isEmpty {
+        let offline = container?.serverState.isOnline == false
+        let favorites = offline ? container?.offlineLibrary.snapshot.favorites ?? HomeFavorites()
+            : HomeFavorites(songs: vm.songs, albums: vm.albums, artists: vm.artists)
+        let isEmpty = favorites.songs.isEmpty && favorites.albums.isEmpty && favorites.artists.isEmpty
+        if !offline && vm.isLoading && isEmpty {
             LoadingStateView()
+        } else if offline && isEmpty {
+            OfflineBrowsingEmptyView()
         } else if let error = vm.error, isEmpty {
             EmptyStateView(
                 systemImage: "exclamationmark.triangle",
@@ -44,10 +49,10 @@ struct FavoritesView: View {
                 subtitle: "Songs, albums, and artists you favorite will appear here."
             )
         } else {
-            let displayableSongs = vm.songs.map { DisplayableSong(from: $0) }
+            let displayableSongs = favorites.songs.map { DisplayableSong(from: $0) }
                 .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
-            let albums = AlbumSort.name.sorted(vm.albums)
-            let artists = ArtistSort.name.sorted(vm.artists)
+            let albums = AlbumSort.name.sorted(favorites.albums)
+            let artists = ArtistSort.name.sorted(favorites.artists)
             let index = displayableSongs.map { AlphabetScrollEntry(id: $0.favoriteScrollID, name: $0.title) }
                 + albums.map { AlphabetScrollEntry(id: $0.favoriteScrollID, name: $0.sortName ?? $0.name) }
                 + artists.map { AlphabetScrollEntry(id: $0.favoriteScrollID, name: $0.sortName ?? $0.name) }
@@ -58,7 +63,10 @@ struct FavoritesView: View {
                     artistsSection(artists)
                 }
                 .listStyle(.plain)
-                .refreshable { await vm.load() }
+                .refreshable {
+                    if offline { await container?.offlineLibrary.refresh() }
+                    else { await vm.load() }
+                }
             }
         }
     }

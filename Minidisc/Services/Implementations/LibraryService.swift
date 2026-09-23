@@ -12,9 +12,16 @@ actor LibraryService: LibraryServiceProtocol {
     private let indexStore: LibraryIndexStore
     private let offlineReader: OfflineBrowsingReader?
     private let offlineFavorites: OfflineFavoritesStore?
+    private let clientFactory: @Sendable (ServerConnection) -> SwiftSonicClient
     private var cachedClient: SwiftSonicClient?
     private var cachedConnectionVersion: ServerConnection.Version?
-    private var artistInfoCache: [String: ArtistInfo] = [:]
+    private nonisolated struct ArtistInfoCacheKey: Hashable {
+        let connectionVersion: ServerConnection.Version
+        let artistID: String
+        let count: Int
+    }
+
+    private var artistInfoCache: [ArtistInfoCacheKey: ArtistInfo] = [:]
 
     init(
         serverService: any ServerServiceProtocol,
@@ -24,7 +31,8 @@ actor LibraryService: LibraryServiceProtocol {
         catalog: LibraryCatalog,
         indexStore: LibraryIndexStore,
         offlineFavorites: OfflineFavoritesStore? = nil,
-        offlineReader: OfflineBrowsingReader? = nil
+        offlineReader: OfflineBrowsingReader? = nil,
+        clientFactory: @escaping @Sendable (ServerConnection) -> SwiftSonicClient = { $0.makeSwiftSonicClient() }
     ) {
         self.serverService = serverService
         self.modelContainer = modelContainer
@@ -34,6 +42,7 @@ actor LibraryService: LibraryServiceProtocol {
         self.indexStore = indexStore
         self.offlineFavorites = offlineFavorites
         self.offlineReader = offlineReader
+        self.clientFactory = clientFactory
     }
 
     private func client() async throws -> SwiftSonicClient {
@@ -47,7 +56,14 @@ actor LibraryService: LibraryServiceProtocol {
         }
         Logger.library.debug("[CLIENT] cache miss → activeConnection")
         let connection = try await serverService.activeConnection()
-        let fresh = connection.makeSwiftSonicClient()
+        return client(for: connection)
+    }
+
+    private func client(for connection: ServerConnection) -> SwiftSonicClient {
+        if cachedConnectionVersion == connection.version, let cachedClient {
+            return cachedClient
+        }
+        let fresh = clientFactory(connection)
         Logger.library.debug("[CLIENT] ← activeConnection done")
         cachedClient = fresh
         cachedConnectionVersion = connection.version
@@ -830,18 +846,29 @@ actor LibraryService: LibraryServiceProtocol {
     }
 
     func getArtistInfo(forArtistID artistID: String, count: Int) async throws -> ArtistInfo {
-        if let cached = artistInfoCache[artistID] {
+        try Task.checkCancellation()
+        let connection = try await serverService.activeConnection()
+        try Task.checkCancellation()
+        let client = client(for: connection)
+        let key = ArtistInfoCacheKey(connectionVersion: connection.version, artistID: artistID, count: count)
+        if let cached = artistInfoCache[key] {
+            guard await serverService.activeConnectionVersion() == connection.version else { throw CancellationError() }
+            try Task.checkCancellation()
             Logger.library.debug("[ARTIST-INFO] cache hit artistId=\(artistID, privacy: .public) similarCount=\(cached.similarArtist?.count ?? 0, privacy: .public)")
             return cached
         }
         Logger.library.debug("[ARTIST-INFO] cache miss — network call artistId=\(artistID, privacy: .public) count=\(count, privacy: .public)")
         let started = Date()
         do {
-            let info = try await client().getArtistInfo2(id: artistID, count: count)
+            let info = try await client.getArtistInfo2(id: artistID, count: count)
+            guard await serverService.activeConnectionVersion() == connection.version else { throw CancellationError() }
+            try Task.checkCancellation()
             let elapsed = Date().timeIntervalSince(started)
             Logger.library.debug("[ARTIST-INFO] success artistId=\(artistID, privacy: .public) \(String(format: "%.2f", elapsed), privacy: .public)s similarCount=\(info.similarArtist?.count ?? 0, privacy: .public)")
-            artistInfoCache[artistID] = info
+            artistInfoCache[key] = info
             return info
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             let elapsed = Date().timeIntervalSince(started)
             Logger.library.warning("[ARTIST-INFO] FAILED after \(String(format: "%.2f", elapsed), privacy: .public)s artistId=\(artistID, privacy: .public): \(error, privacy: .public)")

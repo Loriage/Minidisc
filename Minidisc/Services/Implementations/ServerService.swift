@@ -17,6 +17,23 @@ actor ServerService: ServerServiceProtocol {
     private var activeConnectionSnapshot: ServerConnection?
     private var connectionVersion: ServerConnection.Version?
     private var nextConnectionRevision: UInt64 = 0
+    private var changingConfiguration = false
+    private var configurationWaiters: [CheckedContinuation<Void, Never>] = []
+    private var libraryChangeHandler: (@Sendable () async -> Void)?
+
+    func setLibraryChangeHandler(_ handler: @escaping @Sendable () async -> Void) {
+        libraryChangeHandler = handler
+    }
+
+    private func acquireConfiguration() async {
+        if !changingConfiguration { changingConfiguration = true; return }
+        await withCheckedContinuation { configurationWaiters.append($0) }
+    }
+
+    private func releaseConfiguration() {
+        if configurationWaiters.isEmpty { changingConfiguration = false }
+        else { configurationWaiters.removeFirst().resume() }
+    }
 
     init(
         state: ServerState,
@@ -45,6 +62,8 @@ actor ServerService: ServerServiceProtocol {
         password: String,
         customHeaders: [String: String]
     ) async throws {
+        await acquireConfiguration()
+        defer { releaseConfiguration() }
         try validateHeaders(customHeaders)
 
         let configId = UUID()
@@ -85,7 +104,10 @@ actor ServerService: ServerServiceProtocol {
     }
 
     func removeServer(id: UUID) async throws {
+        await acquireConfiguration()
+        defer { releaseConfiguration() }
         let credKey = ServerCredentials.keychainKey(for: id)
+        if activeServerSnapshot?.id == id { await libraryChangeHandler?() }
 
         let removedActiveServer = try await MainActor.run {
             let context = ModelContext(modelContainer)
@@ -129,6 +151,9 @@ actor ServerService: ServerServiceProtocol {
     }
 
     func setActiveServer(id: UUID) async throws {
+        await acquireConfiguration()
+        defer { releaseConfiguration() }
+        if activeServerSnapshot?.id != id { await libraryChangeHandler?() }
         let (allServerIds, activeServer) = try await MainActor.run {
             let context = ModelContext(modelContainer)
             let all = try context.fetch(FetchDescriptor<ServerConfig>())
@@ -161,6 +186,8 @@ actor ServerService: ServerServiceProtocol {
     }
 
     func updateCustomHeaders(_ headers: [String: String], forServer id: UUID) async throws {
+        await acquireConfiguration()
+        defer { releaseConfiguration() }
         try validateHeaders(headers)
         let credKey = ServerCredentials.keychainKey(for: id)
         guard let existing = try await keychain.retrieve(ServerCredentials.self, forKey: credKey) else {
@@ -185,67 +212,61 @@ actor ServerService: ServerServiceProtocol {
         password: String,
         customHeaders: [String: String]
     ) async throws {
+        await acquireConfiguration()
+        defer { releaseConfiguration() }
         try validateHeaders(customHeaders)
-
-        let credKey = ServerCredentials.keychainKey(for: id)
+        let selection = try await MainActor.run {
+            let context = ModelContext(modelContainer)
+            guard let config = try context.fetch(FetchDescriptor<ServerConfig>(predicate: #Predicate { $0.id == id })).first else {
+                throw MinidiscError.serverNotFound(id: id)
+            }
+            return try ServerLibraryScopes.select(currentID: id, currentURL: config.baseURL,
+                currentUser: config.username, saved: config.libraryScopesData, url: baseURL, user: username)
+        }
+        let oldKey = ServerCredentials.keychainKey(for: id)
+        let credKey = ServerCredentials.keychainKey(for: selection.id)
+        let oldCredentials = try await keychain.retrieve(ServerCredentials.self, forKey: oldKey)
         let previousCredentials = try await keychain.retrieve(ServerCredentials.self, forKey: credKey)
-        let creds = ServerCredentials(
-            password: password,
-            customHeaders: customHeaders,
-            audioMuseToken: previousCredentials?.audioMuseToken
-        )
-
-        // Keychain first — mirrors addServer rollback strategy.
+        let creds = ServerCredentials(password: password, customHeaders: customHeaders,
+                                      audioMuseToken: oldCredentials?.audioMuseToken)
+        if selection.id != id, activeServerSnapshot?.id == id { await libraryChangeHandler?() }
         try await keychain.store(creds, forKey: credKey)
-
         do {
-            let (updatedActiveServer, libraryIdentityChanged): (ServerSnapshot?, Bool) = try await MainActor.run {
+            let updatedActiveServer: ServerSnapshot? = try await MainActor.run {
                 let context = ModelContext(modelContainer)
-                let descriptor = FetchDescriptor<ServerConfig>(predicate: #Predicate { $0.id == id })
-                guard let config = try context.fetch(descriptor).first else {
+                context.autosaveEnabled = false
+                guard let config = try context.fetch(FetchDescriptor<ServerConfig>(predicate: #Predicate { $0.id == id })).first else {
                     throw MinidiscError.serverNotFound(id: id)
                 }
-                let libraryIdentityChanged = config.baseURL != baseURL || config.username != username
+                config.id = selection.id
+                config.libraryScopesData = selection.data
                 config.displayName = displayName
                 config.baseURL = baseURL
                 config.username = username
                 try context.save()
                 let snapshot = ServerSnapshot(from: config)
-                if let idx = state.servers.firstIndex(where: { $0.id == id }) {
-                    state.servers[idx] = snapshot
-                }
+                if let index = state.servers.firstIndex(where: { $0.id == id }) { state.servers[index] = snapshot }
                 if state.activeServer?.id == id {
                     state.activeServer = snapshot
-                    return (snapshot, libraryIdentityChanged)
+                    return snapshot
                 }
-                return (nil, libraryIdentityChanged)
+                return nil as ServerSnapshot?
             }
-            if libraryIdentityChanged { try? await offlineFavorites?.removeServer(id) }
-            if libraryIdentityChanged, let libraryIndexStore {
-                do {
-                    try await libraryIndexStore.resetServer(id)
-                } catch {
-                    Logger.library.warning(
-                        "Library index: failed to reset changed server: \(error, privacy: .public)"
-                    )
-                }
-            }
+            // Old media and metadata keep their old scope. No file is deleted or reassigned.
             if let updatedActiveServer {
                 await publishConnectionChange(server: updatedActiveServer, credentials: creds)
             }
+            if credKey != oldKey { try? await keychain.delete(forKey: oldKey) }
         } catch {
-            // Restore the exact prior credential state. Besides avoiding a metadata/secret
-            // split-brain, this removes the orphan Keychain item created for an unknown id.
-            if let previousCredentials {
-                try? await keychain.store(previousCredentials, forKey: credKey)
-            } else {
-                try? await keychain.delete(forKey: credKey)
-            }
+            if let previousCredentials { try? await keychain.store(previousCredentials, forKey: credKey) }
+            else { try? await keychain.delete(forKey: credKey) }
             throw error
         }
     }
 
     func loadPersistedState() async {
+        await acquireConfiguration()
+        defer { releaseConfiguration() }
         do {
             let (serverIDs, activeServer) = try await MainActor.run {
                 let context = ModelContext(modelContainer)
@@ -336,6 +357,8 @@ actor ServerService: ServerServiceProtocol {
 
     /// Updates AudioMuse separately from server credentials. A nil endpoint also deletes its token.
     func setAudioMuseConfig(serverId: UUID, urlString: String?, token: String?) async throws {
+        await acquireConfiguration()
+        defer { releaseConfiguration() }
         let trimmedURL = urlString?.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedURL = (trimmedURL?.isEmpty == false) ? trimmedURL : nil
         let trimmedToken = token?.trimmingCharacters(in: .whitespacesAndNewlines)

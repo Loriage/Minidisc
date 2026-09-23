@@ -30,15 +30,15 @@ struct ArtistDetailView: View {
 
     init(artist: ArtistID3) {
         self.artist = artist
-        let cid = "artist:\(artist.id)"
-        _artistFavoriteMatches = Query(filter: #Predicate<FavoriteRecord> { $0.id == cid })
+        let cid = artist.id
+        _artistFavoriteMatches = Query(filter: #Predicate<FavoriteRecord> { $0.itemType == "artist" && $0.itemId == cid })
     }
 
     init(artistId: String, artistName: String, coverArtId: String?) {
         self.init(artist: ArtistID3(id: artistId, name: artistName, coverArt: coverArtId))
     }
 
-    private var isArtistFavorite: Bool { !artistFavoriteMatches.isEmpty }
+    private var isArtistFavorite: Bool { artistFavoriteMatches.contains { $0.serverId == container?.serverState.activeServer?.id } }
     private var isOnline: Bool { container?.serverState.isOnline == true }
 
     // MARK: - Theming
@@ -425,7 +425,7 @@ struct ArtistDetailView: View {
 
     /// Applies live local star changes to the fetched artist snapshot.
     private func likedSongs(_ vm: ArtistDetailViewModel) -> [DisplayableSong] {
-        ArtistBestOf.filteredByLocalStars(container?.visibleSongs(vm.likedSongs) ?? [], starredSongIds: Set(songFavorites.map(\.itemId)))
+        ArtistBestOf.filteredByLocalStars(container?.visibleSongs(vm.likedSongs) ?? [], starredSongIds: Set(songFavorites.filter { $0.serverId == container?.serverState.activeServer?.id }.map(\.itemId)))
     }
 
     private func bestOfSection(_ songs: [DisplayableSong]) -> some View {
@@ -659,7 +659,7 @@ private struct ArtistTopSongsList: View {
     private var songFavorites: [FavoriteRecord]
 
     private var favoriteSongIDs: Set<String> {
-        Set(songFavorites.map(\.itemId))
+        Set(songFavorites.filter { $0.serverId == container?.serverState.activeServer?.id }.map(\.itemId))
     }
 
     var body: some View {

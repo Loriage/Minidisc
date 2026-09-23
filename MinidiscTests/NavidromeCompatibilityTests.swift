@@ -96,12 +96,12 @@ struct NavidromeCompatibilityTests {
         let downloadedPlaylist = try #require(read.fetch(FetchDescriptor<DownloadedPlaylist>()).first)
         #expect(downloadedPlaylist.playlistId == "7rke2SAWaicSeSYzkhww6R")
         #expect(downloadedPlaylist.songIds == [canonical, canonical])
-        #expect(try read.fetch(FetchDescriptor<PinnedItem>()).first?.id == "playlist:7rke2SAWaicSeSYzkhww6R")
+        #expect(try read.fetch(FetchDescriptor<PinnedItem>()).first?.id == ServerItemIdentity.key(serverID: serverID, type: "playlist", itemID: "7rke2SAWaicSeSYzkhww6R"))
         let event = try #require(read.fetch(FetchDescriptor<PlaybackEvent>()).first)
         #expect(event.trackId == canonical)
         #expect(event.durationListened == 99)
         #expect(try read.fetch(FetchDescriptor<DownloadedAlbum>()).first?.localCoverArtPath == "al-\(canonical)_0")
-        #expect(try read.fetch(FetchDescriptor<FavoriteRecord>()).first?.id == "song:\(canonical)")
+        #expect(try read.fetch(FetchDescriptor<FavoriteRecord>()).first?.id == ServerItemIdentity.key(serverID: serverID, type: "song", itemID: canonical))
         #expect(try read.fetch(FetchDescriptor<CachedLyrics>()).first?.compositeKey.hasSuffix(":" + canonical) == true)
     }
 

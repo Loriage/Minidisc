@@ -91,6 +91,7 @@ actor MediaResolver: MediaResolverProtocol {
         }
 
         let connection = try await serverService.activeConnection()
+        guard connection.version.serverID == serverId else { throw CancellationError() }
         let client = connection.makeSwiftSonicClient()
         let quality = await MainActor.run { streamSettings.currentQuality }
         // Request an estimated stream length for transcoded audio so AVPlayer can track duration.

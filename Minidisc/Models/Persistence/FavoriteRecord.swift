@@ -11,7 +11,7 @@ nonisolated enum FavoriteType: String, CaseIterable, Sendable {
 /// and updated optimistically on star/unstar actions.
 @Model
 final class FavoriteRecord {
-    @Attribute(.unique) var id: String  // "{type}:{itemId}", e.g. "song:abc123"
+    @Attribute(.unique) var id: String  // "{serverId}:{type}:{itemId}"
     var itemType: String
     var itemId: String
     var starredDate: Date
@@ -20,7 +20,7 @@ final class FavoriteRecord {
     init(itemType: FavoriteType, itemId: String, starredDate: Date, serverId: UUID) {
         self.itemType = itemType.rawValue
         self.itemId = itemId
-        self.id = "\(itemType.rawValue):\(itemId)"
+        self.id = ServerItemIdentity.key(serverID: serverId, type: itemType.rawValue, itemID: itemId)
         self.starredDate = starredDate
         self.serverId = serverId
     }

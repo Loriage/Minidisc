@@ -136,12 +136,12 @@ actor NavidromeCompatibility {
         }
         for item in try context.fetch(FetchDescriptor<PinnedItem>(predicate: #Predicate { $0.serverId == serverID })) {
             item.itemId = convert(item.itemId)
-            item.id = "\(item.itemType):\(item.itemId)"
+            item.id = ServerItemIdentity.key(serverID: item.serverId, type: item.itemType, itemID: item.itemId)
             item.coverArtId = artwork(item.coverArtId)
         }
         for item in try context.fetch(FetchDescriptor<FavoriteRecord>(predicate: #Predicate { $0.serverId == serverID })) {
             item.itemId = convert(item.itemId)
-            item.id = "\(item.itemType):\(item.itemId)"
+            item.id = ServerItemIdentity.key(serverID: item.serverId, type: item.itemType, itemID: item.itemId)
         }
         for item in try context.fetch(FetchDescriptor<PlaylistCoverChoice>(predicate: #Predicate { $0.serverId == serverID })) {
             item.playlistId = convert(item.playlistId)

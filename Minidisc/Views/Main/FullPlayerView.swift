@@ -391,11 +391,11 @@ private struct TrackInfoSection: View {
         self.secondaryContentColor = secondaryContentColor
         self.compact = compact
         self.trackSwipe = trackSwipe
-        let cid = "song:\(playerState.currentTrack?.id ?? "")"
-        _favoriteMatches = Query(filter: #Predicate<FavoriteRecord> { $0.id == cid })
+        let cid = playerState.currentTrack?.id ?? ""
+        _favoriteMatches = Query(filter: #Predicate<FavoriteRecord> { $0.itemType == "song" && $0.itemId == cid })
     }
 
-    private var isFavorite: Bool { !favoriteMatches.isEmpty }
+    private var isFavorite: Bool { favoriteMatches.contains { $0.serverId == container?.serverState.activeServer?.id } }
     private var isOnline: Bool { container?.serverState.isOnline == true }
 
     var body: some View {

@@ -12,6 +12,8 @@ final class ServerConfig {
     var createdAt: Date
     /// AudioMuse endpoint for this server. Its token is stored separately in Keychain.
     var audioMuseURL: String?
+    /// Previously used endpoint/account scopes; nil for pre-upgrade configurations.
+    var libraryScopesData: Data?
 
     // password + customHeaders are stored in Keychain only.
     // Keychain key: ServerCredentials.keychainKey(for: id)

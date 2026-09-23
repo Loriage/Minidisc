@@ -6,356 +6,214 @@ import OSLog
 actor PlaylistService: PlaylistServiceProtocol {
     private let serverService: any ServerServiceProtocol
     private let modelContainer: ModelContainer
-    private let downloadService: DownloadService
+    private let downloadService: any DownloadServiceProtocol
     private let libraryCatalog: LibraryCatalog
-    private var cachedClient: SwiftSonicClient?
-    private var cachedConnectionVersion: ServerConnection.Version?
+    private let clientFactory: @Sendable (ServerConnection) -> SwiftSonicClient
+    private var mutations: [String: [CheckedContinuation<Void, Never>]] = [:]
 
-    private var listCache: [Playlist]?
-    private var detailCache: [String: PlaylistWithSongs] = [:]
-
-    init(
-        serverService: any ServerServiceProtocol,
-        modelContainer: ModelContainer,
-        downloadService: DownloadService,
-        libraryCatalog: LibraryCatalog
-    ) {
+    init(serverService: any ServerServiceProtocol, modelContainer: ModelContainer,
+         downloadService: any DownloadServiceProtocol, libraryCatalog: LibraryCatalog,
+         clientFactory: @escaping @Sendable (ServerConnection) -> SwiftSonicClient = { $0.makeSwiftSonicClient() }) {
         self.serverService = serverService
         self.modelContainer = modelContainer
         self.downloadService = downloadService
         self.libraryCatalog = libraryCatalog
+        self.clientFactory = clientFactory
     }
 
-    // MARK: - Client
-
-    private func client() async throws -> SwiftSonicClient {
-        let activeVersion = await serverService.activeConnectionVersion()
-        if let cached = cachedClient,
-           let activeVersion,
-           cachedConnectionVersion == activeVersion {
-            return cached
-        }
-        let connection = try await serverService.activeConnection()
-        let fresh = connection.makeSwiftSonicClient()
-        cachedClient = fresh
-        cachedConnectionVersion = connection.version
-        listCache = nil
-        detailCache = [:]
-        return fresh
-    }
-
-    // MARK: - Read
-
-    func listPlaylists() async throws -> [Playlist] {
-        _ = try await client()
-        let playlists = try await libraryCatalog.playlists()
-        listCache = playlists
-        return playlists
-    }
-
-    func getPlaylist(id: String) async throws -> PlaylistWithSongs {
-        _ = try await client()
-        let playlist = try await libraryCatalog.refreshPlaylist(id: id)
-        detailCache[id] = playlist
-        return playlist
-    }
-
-    // MARK: - Create / Delete
+    func listPlaylists() async throws -> [Playlist] { try await libraryCatalog.playlists() }
+    func getPlaylist(id: String) async throws -> PlaylistWithSongs { try await libraryCatalog.refreshPlaylist(id: id) }
 
     @discardableResult
     func createPlaylist(name: String, description: String?) async throws -> PlaylistWithSongs {
-        var result = try await client().createPlaylist(name: name)
-        if let desc = description, !desc.isEmpty {
-            try await client().updatePlaylist(id: result.id, comment: desc)
-            result = copying(result, comment: desc)
+        let connection = try await serverService.activeConnection()
+        let client = clientFactory(connection)
+        var result = try await client.createPlaylist(name: name)
+        if let description, !description.isEmpty {
+            try await client.updatePlaylist(id: result.id, comment: description)
+            result = copying(result, comment: description)
         }
-        listCache = nil
-        detailCache[result.id] = result
-        await recordSuccessfulMutation(id: result.id)
-        Logger.playlist.info("Created playlist '\(name, privacy: .private)' id=\(result.id, privacy: .public)")
+        await record(result, serverID: connection.version.serverID)
         return result
     }
 
     func deletePlaylist(id: String, purgeDownloads: Bool) async throws {
-        let previousList = listCache
-        let previousDetail = detailCache[id]
-        listCache?.removeAll { $0.id == id }
-        detailCache[id] = nil
-        do {
-            try await client().deletePlaylist(id: id)
-            Logger.playlist.info("Deleted playlist id=\(id, privacy: .public) purgeDownloads=\(purgeDownloads, privacy: .public)")
-        } catch {
-            // Confirmed absence is an idempotent delete; other errors restore the cached entry and propagate.
-            guard Self.isNotFound(error) else {
-                listCache = previousList
-                detailCache[id] = previousDetail
-                throw error
-            }
-            Logger.playlist.info("Playlist id=\(id, privacy: .public) already absent server-side — delete is a no-op")
+        let connection = try await serverService.activeConnection()
+        let key = mutationKey(id, connection)
+        await acquire(key)
+        defer { release(key) }
+        try await validate(connection)
+        do { try await clientFactory(connection).deletePlaylist(id: id) }
+        catch {
+            // A proxy's HTTP 404 cannot establish that this playlist is absent.
+            guard let sonic = error as? SwiftSonicError,
+                  case .api(let detail) = sonic, detail.code == .notFound else { throw error }
         }
-        // Remove local downloads and cover choice only after confirmed deletion and explicit purge choice.
-        if purgeDownloads, let serverId = await MainActor.run(body: { serverService.state.activeServer?.id }) {
-            try? await downloadService.remove(playlistId: id, serverId: serverId)
-            let container = modelContainer
+        let serverID = connection.version.serverID
+        if purgeDownloads {
+            try await downloadService.remove(playlistId: id, serverId: serverID)
             await MainActor.run {
-                PlaylistCoverStore(modelContainer: container).remove(playlistId: id, serverId: serverId)
+                PlaylistCoverStore(modelContainer: modelContainer).remove(playlistId: id, serverId: serverID)
             }
         }
-        await libraryCatalog.recordPlaylistMutation(summary: nil, detail: nil, deletedID: id)
+        await libraryCatalog.recordPlaylistMutation(summary: nil, detail: nil, deletedID: id, serverID: serverID)
     }
-
-    /// Recognizes confirmed absence so deleting an already-removed playlist remains idempotent.
-    private nonisolated static func isNotFound(_ error: Error) -> Bool {
-        guard let sse = error as? SwiftSonicError else { return false }
-        switch sse {
-        case .api(let apiError) where apiError.code == .notFound:
-            return true
-        case .httpError(let statusCode, _, _) where statusCode == 404:
-            return true
-        default:
-            return false
-        }
-    }
-
-    // MARK: - Metadata updates
 
     func renamePlaylist(id: String, newName: String) async throws {
-        let previousList = listCache
-        let previousDetail = detailCache[id]
-        if let idx = listCache?.firstIndex(where: { $0.id == id }), let p = listCache?[idx] {
-            listCache?[idx] = copying(p, name: newName)
-        }
-        if let p = detailCache[id] {
-            detailCache[id] = copying(p, name: newName)
-        }
-        do {
-            try await client().updatePlaylist(id: id, name: newName)
-            await recordSuccessfulMutation(id: id)
-            Logger.playlist.info("Renamed playlist id=\(id, privacy: .public) to '\(newName, privacy: .private)'")
-        } catch {
-            listCache = previousList
-            detailCache[id] = previousDetail
-            throw error
+        try await mutate(id) { client, original in
+            try await client.updatePlaylist(id: id, name: newName)
+            return self.copying(original, name: newName)
         }
     }
 
     func updateDescription(id: String, description: String) async throws {
-        let previousDetail = detailCache[id]
-        if let p = detailCache[id] {
-            detailCache[id] = copying(p, comment: description)
-        }
-        do {
-            try await client().updatePlaylist(id: id, comment: description)
-            await recordSuccessfulMutation(id: id)
-            Logger.playlist.info("Updated description for playlist id=\(id, privacy: .public)")
-        } catch {
-            detailCache[id] = previousDetail
-            throw error
+        try await mutate(id) { client, original in
+            try await client.updatePlaylist(id: id, comment: description)
+            return self.copying(original, comment: description)
         }
     }
 
-    // MARK: - Track mutations
-
     func addTracks(playlistId: String, songs: [Song]) async throws {
-        let previousDetail = detailCache[playlistId]
-        let previousList = listCache
-        let addedDuration = songs.reduce(0) { $0 + ($1.duration ?? 0) }
-        if let p = detailCache[playlistId] {
-            detailCache[playlistId] = copying(p,
-                songCountDelta: songs.count,
-                durationDelta: addedDuration,
-                entry: (p.entry ?? []) + songs
-            )
-        }
-        if let idx = listCache?.firstIndex(where: { $0.id == playlistId }), let p = listCache?[idx] {
-            listCache?[idx] = copying(p, songCountDelta: songs.count, durationDelta: addedDuration)
-        }
-        do {
-            try await client().updatePlaylist(id: playlistId, songIdsToAdd: songs.map(\.id))
-            await recordSuccessfulMutation(id: playlistId)
-            Logger.playlist.info("Added \(songs.count, privacy: .public) track(s) to playlist id=\(playlistId, privacy: .public)")
-            await syncDownloadedPlaylistAfterAdd(playlistId: playlistId, addedSongs: songs)
-        } catch {
-            detailCache[playlistId] = previousDetail
-            listCache = previousList
-            throw error
+        try await mutate(playlistId) { client, original in
+            try await client.updatePlaylist(id: playlistId, songIdsToAdd: songs.map(\.id))
+            return self.copying(original, entry: (original.entry ?? []) + songs)
         }
     }
 
     func removeTracks(playlistId: String, indices: [Int]) async throws {
-        let previousDetail = detailCache[playlistId]
-        let previousList = listCache
-        let indexSet = Set(indices)
-        let removedSongIds: [String] = {
-            guard let entry = detailCache[playlistId]?.entry else { return [] }
-            return indices.compactMap { idx in idx < entry.count ? entry[idx].id : nil }
-        }()
-        if let p = detailCache[playlistId], let entry = p.entry {
-            let removedDuration = indexSet.reduce(0) { sum, idx in
-                sum + (idx < entry.count ? entry[idx].duration ?? 0 : 0)
-            }
-            let newEntry = entry.enumerated().filter { !indexSet.contains($0.offset) }.map(\.element)
-            detailCache[playlistId] = copying(p,
-                songCountDelta: -indexSet.count,
-                durationDelta: -removedDuration,
-                entry: newEntry
-            )
-            if let idx = listCache?.firstIndex(where: { $0.id == playlistId }), let lp = listCache?[idx] {
-                listCache?[idx] = copying(lp, songCountDelta: -indexSet.count, durationDelta: -removedDuration)
-            }
-        }
-        do {
-            try await client().updatePlaylist(id: playlistId, songIndexesToRemove: indices)
-            await recordSuccessfulMutation(id: playlistId)
-            Logger.playlist.info("Removed \(indices.count, privacy: .public) track(s) from playlist id=\(playlistId, privacy: .public)")
-            await syncDownloadedPlaylistAfterRemove(playlistId: playlistId, removedSongIds: removedSongIds)
-        } catch {
-            detailCache[playlistId] = previousDetail
-            listCache = previousList
-            throw error
+        try await mutate(playlistId) { client, original in
+            let entries = original.entry ?? []
+            guard indices.allSatisfy({ entries.indices.contains($0) }) else { throw CancellationError() }
+            let removed = Set(indices)
+            try await client.updatePlaylist(id: playlistId, songIndexesToRemove: Array(removed).sorted())
+            return self.copying(original, entry: entries.enumerated().filter { !removed.contains($0.offset) }.map(\.element))
         }
     }
 
     func reorderTracks(playlistId: String, orderedSongIds: [String]) async throws {
-        let previousDetail = detailCache[playlistId]
-        if let p = detailCache[playlistId], let entry = p.entry {
-            let songById = Dictionary(entry.map { ($0.id, $0) }, uniquingKeysWith: { f, _ in f })
-            let reordered = orderedSongIds.compactMap { songById[$0] }
-            detailCache[playlistId] = copying(p, entry: reordered)
+        try await mutate(playlistId) { client, _ in
+            try await client.createPlaylist(playlistId: playlistId, songIds: orderedSongIds)
         }
+    }
+
+    /// Capture one connection for the whole operation. An actor alone does not serialize
+    /// mutations across network suspensions; the per-playlist gate does.
+    private func mutate(_ id: String,
+                        operation: (SwiftSonicClient, PlaylistWithSongs) async throws -> PlaylistWithSongs) async throws {
+        let connection = try await serverService.activeConnection()
+        let key = mutationKey(id, connection)
+        await acquire(key)
+        defer { release(key) }
+        try await validate(connection)
+        let client = clientFactory(connection)
+        let original = try await client.getPlaylist(id: id)
+        try await validate(connection)
+        let result = try await operation(client, original)
+        await record(result, serverID: connection.version.serverID)
+    }
+
+    private func validate(_ connection: ServerConnection) async throws {
+        try Task.checkCancellation()
+        guard await serverService.activeConnectionVersion() == connection.version else { throw CancellationError() }
+    }
+
+    private func mutationKey(_ id: String, _ connection: ServerConnection) -> String {
+        "\(connection.version.serverID):\(id)"
+    }
+
+    private func acquire(_ key: String) async {
+        if mutations[key] == nil { mutations[key] = []; return }
+        await withCheckedContinuation { mutations[key, default: []].append($0) }
+    }
+
+    private func release(_ key: String) {
+        guard var waiting = mutations[key], !waiting.isEmpty else { mutations[key] = nil; return }
+        let next = waiting.removeFirst()
+        mutations[key] = waiting
+        next.resume()
+    }
+
+    private func record(_ playlist: PlaylistWithSongs, serverID: UUID) async {
+        // The remote write has succeeded. Never turn an index failure into a retry of an append.
         do {
-            try await client().createPlaylist(playlistId: playlistId, songIds: orderedSongIds)
-            await recordSuccessfulMutation(id: playlistId)
-            Logger.playlist.info("Reordered tracks in playlist id=\(playlistId, privacy: .public)")
-        } catch {
-            detailCache[playlistId] = previousDetail
-            throw error
-        }
-    }
-
-    // MARK: - Offline sync
-
-    private func recordSuccessfulMutation(id: String) async {
-        await libraryCatalog.recordPlaylistMutation(
-            summary: listCache?.first(where: { $0.id == id }),
-            detail: detailCache[id]
-        )
-    }
-
-    private func syncDownloadedPlaylistAfterAdd(playlistId: String, addedSongs: [Song]) async {
-        let serverId: UUID? = await MainActor.run { () -> UUID? in
-            let context = modelContainer.mainContext
-            let pid = playlistId
-            let descriptor = FetchDescriptor<DownloadedPlaylist>(
-                predicate: #Predicate { $0.playlistId == pid }
-            )
-            guard let record = try? context.fetch(descriptor).first else { return nil }
-            record.songIds.append(contentsOf: addedSongs.map(\.id))
-            try? context.save()
-            return record.serverId
-        }
-        guard let serverId else { return }
-        for song in addedSongs {
-            Task { [weak self] in
-                try? await self?.downloadService.download(song: song, serverId: serverId)
+            let downloaded = try await DownloadedPlaylistReconciler.reconcile(
+                playlist, serverID: serverID, modelContainer: modelContainer)
+            if downloaded {
+                for song in playlist.entry ?? [] {
+                    Task { [downloadService] in
+                        try? await downloadService.download(song: song, serverId: serverID)
+                    }
+                }
             }
+        } catch {
+            Logger.playlist.error("Could not reconcile downloaded playlist: \(error)")
         }
-    }
-
-    private func syncDownloadedPlaylistAfterRemove(playlistId: String, removedSongIds: [String]) async {
-        guard !removedSongIds.isEmpty else { return }
-        await MainActor.run {
-            let context = modelContainer.mainContext
-            let pid = playlistId
-            let descriptor = FetchDescriptor<DownloadedPlaylist>(
-                predicate: #Predicate { $0.playlistId == pid }
-            )
-            guard let record = try? context.fetch(descriptor).first else { return }
-            let removedSet = Set(removedSongIds)
-            record.songIds.removeAll { removedSet.contains($0) }
-            try? context.save()
-        }
+        await libraryCatalog.recordPlaylistMutation(summary: nil, detail: playlist, serverID: serverID)
     }
 
     func retryMissingPlaylistDownloads() async {
-        let records = await MainActor.run { () -> [(playlistId: String, serverId: UUID, songIds: [String])] in
-            let context = modelContainer.mainContext
-            let descriptor = FetchDescriptor<DownloadedPlaylist>()
-            guard let fetched = try? context.fetch(descriptor) else { return [] }
-            return fetched
-                .filter { !$0.songIds.isEmpty }
-                .map { (playlistId: $0.playlistId, serverId: $0.serverId, songIds: $0.songIds) }
+        guard let connection = try? await serverService.activeConnection() else { return }
+        let serverID = connection.version.serverID
+        let records = await MainActor.run {
+            let context = ModelContext(modelContainer)
+            return ((try? context.fetch(FetchDescriptor<DownloadedPlaylist>(predicate: #Predicate { $0.serverId == serverID }))) ?? [])
+                .map { (id: $0.playlistId, songIDs: $0.songIds) }
         }
-        guard !records.isEmpty else { return }
-
         for record in records {
-            let downloadedIds = await downloadService.downloadedSongIds(serverId: record.serverId)
-            let missingIds = record.songIds.filter { !downloadedIds.contains($0) }
-
-            guard !missingIds.isEmpty else { continue }
-
-            Logger.playlist.info("Retrying \(missingIds.count, privacy: .public) missing track(s) for playlist '\(record.playlistId, privacy: .public)'")
-
-            guard let playlist = try? await client().getPlaylist(id: record.playlistId) else {
-                Logger.playlist.warning("Failed to fetch playlist '\(record.playlistId, privacy: .public)' for retry — skipping.")
-                continue
-            }
-
-            let missingIdSet = Set(missingIds)
-            let songsToDownload = (playlist.entry ?? []).filter { missingIdSet.contains($0.id) }
-            let serverId = record.serverId
-
-            for song in songsToDownload {
-                Task { [weak self] in
-                    try? await self?.downloadService.download(song: song, serverId: serverId)
+            let key = mutationKey(record.id, connection)
+            await acquire(key)
+            defer { release(key) }
+            do {
+                try await validate(connection)
+                let downloaded = await downloadService.downloadedSongIds(serverId: serverID)
+                let missing = Set(record.songIDs).subtracting(downloaded)
+                guard !missing.isEmpty else { continue }
+                let playlist = try await clientFactory(connection).getPlaylist(id: record.id)
+                try await validate(connection)
+                // Retry saved membership only. A server-side edit must not replace a
+                // deliberately retained offline copy during startup recovery.
+                for song in playlist.entry ?? [] where missing.contains(song.id) {
+                    Task { [downloadService] in
+                        try? await downloadService.download(song: song, serverId: serverID)
+                    }
                 }
+            } catch {
+                if UserFacingError.isCancellation(error) { return }
+                Logger.playlist.warning("Could not retry playlist downloads: \(error)")
             }
         }
     }
 
-    // MARK: - Copy helpers
-
-    private func copying(
-        _ p: Playlist,
-        name: String? = nil,
-        comment: String? = nil,
-        songCountDelta: Int = 0,
-        durationDelta: Int = 0
-    ) -> Playlist {
-        Playlist(
-            id: p.id,
-            name: name ?? p.name,
-            songCount: max(0, p.songCount + songCountDelta),
-            duration: max(0, p.duration + durationDelta),
-            comment: comment ?? p.comment,
-            owner: p.owner,
-            isPublic: p.isPublic,
-            created: p.created,
-            changed: p.changed,
-            coverArt: p.coverArt
-        )
+    private func copying(_ p: PlaylistWithSongs, name: String? = nil,
+                         comment: String? = nil, entry: [Song]? = nil) -> PlaylistWithSongs {
+        PlaylistWithSongs(id: p.id, name: name ?? p.name, songCount: entry?.count ?? p.songCount,
+                          duration: entry?.reduce(0) { $0 + ($1.duration ?? 0) } ?? p.duration,
+                          comment: comment ?? p.comment, owner: p.owner, isPublic: p.isPublic,
+                          created: p.created, changed: p.changed, coverArt: p.coverArt, entry: entry ?? p.entry)
     }
+}
 
-    private func copying(
-        _ p: PlaylistWithSongs,
-        name: String? = nil,
-        comment: String? = nil,
-        songCountDelta: Int = 0,
-        durationDelta: Int = 0,
-        entry: [Song]? = nil
-    ) -> PlaylistWithSongs {
-        PlaylistWithSongs(
-            id: p.id,
-            name: name ?? p.name,
-            songCount: max(0, p.songCount + songCountDelta),
-            duration: max(0, p.duration + durationDelta),
-            comment: comment ?? p.comment,
-            owner: p.owner,
-            isPublic: p.isPublic,
-            created: p.created,
-            changed: p.changed,
-            coverArt: p.coverArt,
-            entry: entry ?? p.entry
-        )
+@MainActor
+enum DownloadedPlaylistReconciler {
+    /// Replaces ordered membership, including duplicates and an intentionally empty playlist.
+    /// Audio stays on disk; collection removal remains the responsibility of DownloadService.
+    @discardableResult
+    static func reconcile(_ playlist: PlaylistWithSongs, serverID: UUID, modelContainer: ModelContainer) throws -> Bool {
+        let context = ModelContext(modelContainer)
+        context.autosaveEnabled = false
+        let id = playlist.id
+        guard let record = try context.fetch(FetchDescriptor<DownloadedPlaylist>(
+            predicate: #Predicate { $0.serverId == serverID && $0.playlistId == id })).first else { return false }
+        let downloaded = Set(try context.fetch(FetchDescriptor<DownloadedTrack>(
+            predicate: #Predicate { $0.serverId == serverID })).map(\.songId))
+        record.songIds = (playlist.entry ?? []).map(\.id)
+        record.name = playlist.name
+        record.comment = playlist.comment
+        record.coverArtId = playlist.coverArt
+        record.totalTracksCount = record.songIds.count
+        record.tracksCount = record.songIds.filter { downloaded.contains($0) }.count
+        try context.save()
+        NotificationCenter.default.post(name: .minidiscOfflineLibraryChanged, object: nil)
+        return true
     }
 }

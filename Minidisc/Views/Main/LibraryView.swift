@@ -78,8 +78,9 @@ struct LibraryView: View {
     }
 
     private var visiblePinnedItems: [PinnedItem] {
-        guard container?.serverState.isOnline != true else { return localPinnedItems }
-        return localPinnedItems.filter { isAvailableOffline($0) }
+        let scoped = localPinnedItems.filter { $0.serverId == container?.serverState.activeServer?.id }
+        guard container?.serverState.isOnline != true else { return scoped }
+        return scoped.filter { isAvailableOffline($0) }
     }
 
     private func isAvailableOffline(_ item: PinnedItem) -> Bool {

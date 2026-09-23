@@ -219,7 +219,7 @@ final class AppContainer {
         nowPlayingService = nowPlaying
 
         favoritesService = FavoritesService(libraryService: library, serverState: serverState, modelContainer: modelContainer)
-        let pin = PinService(modelContainer: modelContainer)
+        let pin = PinService(modelContainer: modelContainer, serverState: serverState)
         pinService = pin
         let playlist = PlaylistService(
             serverService: server,
@@ -273,6 +273,9 @@ final class AppContainer {
     /// PlayerService→NowPlayingService wiring is complete before any user
     /// interaction is possible.
     func setup() async {
+        if let server = serverService as? ServerService {
+            await server.setLibraryChangeHandler { [weak player = _player] in await player?.stop() }
+        }
         await _player.setNowPlayingService(nowPlayingService)
         await nowPlayingService.setFavoritesService(favoritesService)
         await _player.crossfadeSettingsDidChange()
@@ -324,7 +327,9 @@ extension ModelContainer {
             PlaylistCoverChoice.self
         ])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: inMemory)
-        return try ModelContainer(for: schema, configurations: config)
+        let container = try ModelContainer(for: schema, configurations: config)
+        try ServerItemIdentity.migrate(in: container)
+        return container
     }
 
     /// Keeps frequent position saves out of the main SwiftData observation graph.

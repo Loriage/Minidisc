@@ -330,7 +330,7 @@ struct SearchView: View {
         @Query private var allFavorites: [FavoriteRecord]
 
         private var favoriteSongIds: Set<String> {
-            Set(allFavorites.map(\.id))
+            Set(allFavorites.filter { $0.serverId == container?.serverState.activeServer?.id && $0.itemType == "song" }.map(\.itemId))
         }
 
         var body: some View {
@@ -341,7 +341,7 @@ struct SearchView: View {
                             song: song,
                             index: index + 1,
                             showCoverArt: true,
-                            isFavorite: favoriteSongIds.contains("song:\(song.id)"),
+                            isFavorite: favoriteSongIds.contains(song.id),
                             onAddToPlaylist: { s in onAddToPlaylist(s) }
                         )
                         .contentShape(Rectangle())

@@ -34,9 +34,9 @@ struct AlbumDetailView: View {
         initialArtistName = album.artist
         self.coverArtId = coverArtId
         self.initialCoverImage = initialCoverImage
-        let cid = "album:\(album.id)"
+        let cid = album.id
         let aid = album.id
-        _albumFavoriteMatches = Query(filter: #Predicate<FavoriteRecord> { $0.id == cid })
+        _albumFavoriteMatches = Query(filter: #Predicate<FavoriteRecord> { $0.itemType == "album" && $0.itemId == cid })
         _downloadedAlbumTracks = Query(filter: #Predicate<DownloadedTrack> { $0.albumId == aid })
         self.zoomSourceId = zoomSourceId
         self.zoomNamespace = zoomNamespace
@@ -51,9 +51,9 @@ struct AlbumDetailView: View {
         initialArtistName = nil
         self.coverArtId = coverArtId
         self.initialCoverImage = initialCoverImage
-        let cid = "album:\(albumId)"
+        let cid = albumId
         let aid = albumId
-        _albumFavoriteMatches = Query(filter: #Predicate<FavoriteRecord> { $0.id == cid })
+        _albumFavoriteMatches = Query(filter: #Predicate<FavoriteRecord> { $0.itemType == "album" && $0.itemId == cid })
         _downloadedAlbumTracks = Query(filter: #Predicate<DownloadedTrack> { $0.albumId == aid })
         self.zoomSourceId = zoomSourceId
         self.zoomNamespace = zoomNamespace
@@ -76,7 +76,7 @@ struct AlbumDetailView: View {
     @Query private var albumFavoriteMatches: [FavoriteRecord]
     @Query private var downloadedAlbumTracks: [DownloadedTrack]
 
-    private var isAlbumFavorite: Bool { !albumFavoriteMatches.isEmpty }
+    private var isAlbumFavorite: Bool { albumFavoriteMatches.contains { $0.serverId == container?.serverState.activeServer?.id } }
     private var isOnline: Bool { container?.serverState.isOnline == true }
     private var albumCoverId: String { viewModel?.coverArtId ?? coverArtId ?? albumId }
     /// Every cover id the override must cover so it's resolved from ANY surface: the album cover + each song's
@@ -944,7 +944,7 @@ struct AlbumSongRows: View {
     @Query private var allFavorites: [FavoriteRecord]
 
     private var favoriteSongIds: Set<String> {
-        Set(allFavorites.map(\.id))
+        Set(allFavorites.filter { $0.itemType == "song" }.map(\.itemId))
     }
 
     init(songs: [DisplayableSong], albumId: String, serverId: UUID, showArtists: Bool = false, downloadingIds: Set<String> = [], titleColor: Color = .primary, secondaryColor: Color = .secondary, onTap: @escaping (Int) -> Void, onDownload: ((String) -> Void)? = nil, onRemoveDownload: ((String) -> Void)? = nil, onAddToPlaylist: ((DisplayableSong) -> Void)? = nil) {
@@ -959,6 +959,7 @@ struct AlbumSongRows: View {
         self.onAddToPlaylist = onAddToPlaylist
         let aid = albumId
         let sid = serverId
+        _allFavorites = Query(filter: #Predicate<FavoriteRecord> { $0.serverId == sid })
         _downloadedTracks = Query(
             filter: #Predicate<DownloadedTrack> { track in
                 track.albumId == aid && track.serverId == sid
@@ -978,7 +979,7 @@ struct AlbumSongRows: View {
             let downloadAction: (() -> Void)? = (liveDownloaded || isDownloading) ? nil : onDownload.map { action in { action(song.id) } }
             let removeAction: (() -> Void)? = liveDownloaded ? onRemoveDownload.map { action in { action(song.id) } } : nil
             VStack(spacing: 0) {
-                SongRow(song: liveSong, index: index + 1, showArtist: showArtists, isFavorite: favoriteSongIds.contains("song:\(song.id)"), titleColor: titleColor, secondaryColor: secondaryColor, trailingAccessory: .menu, onDownload: downloadAction, onRemoveDownload: removeAction, isDownloading: isDownloading, onAddToPlaylist: onAddToPlaylist, onTap: { onTap(index) })
+                SongRow(song: liveSong, index: index + 1, showArtist: showArtists, isFavorite: favoriteSongIds.contains(song.id), titleColor: titleColor, secondaryColor: secondaryColor, trailingAccessory: .menu, onDownload: downloadAction, onRemoveDownload: removeAction, isDownloading: isDownloading, onAddToPlaylist: onAddToPlaylist, onTap: { onTap(index) })
                     .padding(.vertical, MinidiscSpacing.xs)
                     .padding(.horizontal, MinidiscSpacing.l)
                 if index < songs.count - 1 {

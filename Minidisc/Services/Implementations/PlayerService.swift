@@ -2308,7 +2308,8 @@ actor PlayerService: PlayerServiceProtocol {
                 currentPosition: state.position,
                 queue: state.queue,
                 currentTrack: state.currentTrack,
-                repeatMode: state.repeatMode
+                repeatMode: state.repeatMode,
+                serverId: serverService.state.activeServer?.id
             )
         }
         await sessionService.save(playerState: snapshot)
@@ -2322,7 +2323,8 @@ actor PlayerService: PlayerServiceProtocol {
         let generation = playbackGeneration
         let transportGeneration = transportIntentGeneration
 
-        guard let data = await sessionService.loadRestoredSession() else { return }
+        let serverID = await MainActor.run { serverService.state.activeServer?.id }
+        guard let data = await sessionService.loadRestoredSession(serverID: serverID) else { return }
         guard isCurrentPlaybackIntent(
             playbackGeneration: generation,
             transportIntentGeneration: transportGeneration

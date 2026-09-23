@@ -114,7 +114,7 @@ struct MainTabView: View {
             selectedTab = .library
         }
 
-        .task(id: container?.serverState.isOnline) {
+        .task(id: container?.serverState.accessSnapshot) {
             guard container?.serverState.isOnline == true else { return }
             try? await container?.favoritesService.syncFromServer()
         }

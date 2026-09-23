@@ -18,8 +18,8 @@ struct EditPlaylistSheet: View {
 
     @State private var editName: String = ""
     @State private var editComment: String = ""
-    @State private var editSongs: [DisplayableSong] = []
-    @State private var selectedSongIds: Set<String> = []
+    @State private var editSongs: [PlaylistEntry] = []
+    @State private var selectedSongIds: Set<PlaylistEntry.ID> = []
     @State private var selectedGradient: PlaylistGradientShape?
     @State private var photoIsCover = false
     @State private var coverDirty = false
@@ -56,9 +56,9 @@ struct EditPlaylistSheet: View {
                 .listRowSeparator(.hidden)
 
                 Section {
-                    ForEach(editSongs) { song in
-                        trackRow(song)
-                            .tag(song.id)
+                    ForEach(editSongs) { entry in
+                        trackRow(entry.song)
+                            .tag(entry.id)
                     }
                     .onMove { from, to in
                         editSongs.move(fromOffsets: from, toOffset: to)
@@ -76,9 +76,9 @@ struct EditPlaylistSheet: View {
                 if let c = container {
                     AddMusicSheet(
                         playlistName: currentName,
-                        existingTrackIds: editSongs.map(\.id)
+                        existingTrackIds: editSongs.map(\.song.id)
                     ) { added in
-                        editSongs.append(contentsOf: added)
+                        editSongs = PlaylistEntry.appending(added, to: editSongs)
                         return true
                     }
                     .environment(colorExtractor)
@@ -128,7 +128,7 @@ struct EditPlaylistSheet: View {
                 loaded = true
                 editName = currentName
                 editComment = currentComment
-                editSongs = songs
+                editSongs = PlaylistEntry.make(songs)
                 loadCurrentChoice()
             }
         }
@@ -256,12 +256,12 @@ struct EditPlaylistSheet: View {
         let trimmedName = editName.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedComment = editComment.trimmingCharacters(in: .whitespacesAndNewlines)
         let commentChanged = trimmedComment != currentComment.trimmingCharacters(in: .whitespacesAndNewlines)
-        let songsChanged = editSongs.map(\.id) != songs.map(\.id)
+        let songsChanged = editSongs.map(\.song.id) != songs.map(\.id)
 
         let nameChanged = !trimmedName.isEmpty && trimmedName != currentName.trimmingCharacters(in: .whitespacesAndNewlines)
         let edits = PlaylistEdits(
             name: nameChanged ? trimmedName : nil,
-            orderedSongIDs: songsChanged ? editSongs.map(\.id) : nil,
+            orderedSongIDs: songsChanged ? editSongs.map(\.song.id) : nil,
             description: songsChanged || commentChanged ? trimmedComment : nil
         )
         guard await c.toastService.perform({
@@ -277,7 +277,7 @@ struct EditPlaylistSheet: View {
         }
         await AddMusicCommitter.deriveFirstTrackCoverIfNeeded(
             wasEmpty: songs.isEmpty,
-            firstSong: editSongs.first,
+            firstSong: editSongs.first?.song,
             playlistId: playlistId,
             playlistName: editName,
             coverArtId: currentCoverArtId,

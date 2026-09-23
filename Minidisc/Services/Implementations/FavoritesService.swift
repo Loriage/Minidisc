@@ -19,7 +19,8 @@ actor FavoritesService: FavoritesServiceProtocol {
 
     @MainActor
     func isFavorite(itemType: FavoriteType, itemId: String) -> Bool {
-        let compositeId = "\(itemType.rawValue):\(itemId)"
+        guard let serverId = serverState.activeServer?.id else { return false }
+        let compositeId = ServerItemIdentity.key(serverID: serverId, type: itemType.rawValue, itemID: itemId)
         var descriptor = FetchDescriptor<FavoriteRecord>(
             predicate: #Predicate<FavoriteRecord> { $0.id == compositeId }
         )
@@ -53,7 +54,8 @@ actor FavoritesService: FavoritesServiceProtocol {
     // MARK: - Unstar
 
     func unstar(itemType: FavoriteType, itemId: String) async throws {
-        let compositeId = "\(itemType.rawValue):\(itemId)"
+        guard let serverId = await MainActor.run(body: { serverState.activeServer?.id }) else { throw MinidiscError.serverNotConfigured }
+        let compositeId = ServerItemIdentity.key(serverID: serverId, type: itemType.rawValue, itemID: itemId)
         var descriptor = FetchDescriptor<FavoriteRecord>(
             predicate: #Predicate<FavoriteRecord> { $0.id == compositeId }
         )
@@ -100,7 +102,7 @@ actor FavoritesService: FavoritesServiceProtocol {
         var unchanged = 0
 
         func upsert(type: FavoriteType, itemId: String) {
-            let compositeId = "\(type.rawValue):\(itemId)"
+            let compositeId = ServerItemIdentity.key(serverID: serverId, type: type.rawValue, itemID: itemId)
             newIds.insert(compositeId)
             if existingIds.contains(compositeId) {
                 unchanged += 1

@@ -116,7 +116,7 @@ private struct QueueRow: View {
             } label: {
                 Label("Add to Playlist...", systemImage: "music.note.list")
             }
-            .disabled(!isOnline)
+            .disabled(!isOnline || song.isLocalFile)
 
             Divider()
 
@@ -135,7 +135,7 @@ private struct QueueRow: View {
                     systemImage: isFavorite ? "star.slash" : "star"
                 )
             }
-            .disabled(!isOnline)
+            .disabled(!isOnline || song.isLocalFile)
 
             if let onRemove {
                 Divider()

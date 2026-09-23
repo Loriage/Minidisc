@@ -97,7 +97,8 @@ struct LibraryView: View {
                 if !visiblePinnedItems.isEmpty {
                     pinnedSection
                 }
-                if !isOnline && container?.offlineLibrary.snapshot.songs.isEmpty != false {
+                if !isOnline && container?.offlineLibrary.snapshot.songs.isEmpty != false
+                    && container?.localMusic.snapshot.tracks.contains(where: \.isAvailable) != true {
                     OfflineBrowsingEmptyView()
                 }
                 librarySection
@@ -236,6 +237,13 @@ struct LibraryView: View {
         let local = container?.offlineLibrary.snapshot ?? OfflineBrowsingSnapshot()
         return VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
             VStack(spacing: 0) {
+                if container?.localMusic.snapshot.folders.isEmpty == false {
+                    NavigationLink { LocalMusicView() } label: {
+                        HomeLibraryRowLabel(title: "Local Files", systemImage: "folder.fill", tableName: "LocalMusic")
+                    }
+                    .buttonStyle(.plain)
+                    Divider().padding(.leading, 52)
+                }
                 if isOnline || (!local.playlists.isEmpty) {
                     NavigationLink(value: HomeDestination.libraryPlaylists) {
                         HomeLibraryRowLabel(title: "Playlists", systemImage: "music.note.list")
@@ -438,6 +446,7 @@ private struct HomePinnedCard: View {
 private struct HomeLibraryRowLabel: View {
     let title: LocalizedStringKey
     let systemImage: String
+    var tableName: String? = nil
 
     var body: some View {
         HStack(spacing: MinidiscSpacing.m) {
@@ -450,7 +459,7 @@ private struct HomeLibraryRowLabel: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(.white)
             }
-            Text(title)
+            Text(title, tableName: tableName)
                 .font(.minidiscCellTitle)
                 .foregroundStyle(.primary)
             Spacer(minLength: 0)

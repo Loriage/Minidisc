@@ -36,6 +36,7 @@ nonisolated final class PlaybackDiagnostics: Sendable {
     }
 
     enum SourceKind: String, Sendable, Equatable {
+        case localFile
         case download
         case cache
         case remoteStream

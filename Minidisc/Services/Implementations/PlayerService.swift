@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import SwiftSonic
 import OSLog
@@ -147,6 +148,7 @@ actor PlayerService: PlayerServiceProtocol {
     private nonisolated static let personalRouteReconnectGrace: TimeInterval = 10
 
     private var endOfTrackEventsInProgress: Set<AudioEnginePlaybackToken> = []
+    private let localMusicStore: LocalMusicStore?
     private var stoppedAtEndOfQueue = false
     private var isRestoringSession = false
     private var restorePauseTask: Task<Void, Never>?
@@ -166,7 +168,7 @@ actor PlayerService: PlayerServiceProtocol {
     /// a natural transition commit without asking the network to resolve the same song twice.
     private struct PreparedNextPlayback: Sendable {
         let trackID: String
-        let serverID: UUID
+        let serverID: UUID?
         let source: MediaSource
         let playbackGeneration: UInt64
         let prefetchGeneration: UInt64
@@ -256,8 +258,10 @@ actor PlayerService: PlayerServiceProtocol {
         engine: AudioEngine,
         networkRecoveryTiming: PlaybackNetworkRecoveryTiming = PlaybackNetworkRecoveryTiming(),
         audioSession: any AudioSessionControlling = SystemAudioSessionController(),
-        audioRecoveryTiming: PlaybackAudioRecoveryTiming = PlaybackAudioRecoveryTiming()
+        audioRecoveryTiming: PlaybackAudioRecoveryTiming = PlaybackAudioRecoveryTiming(),
+        localMusicStore: LocalMusicStore? = nil
     ) {
+        self.localMusicStore = localMusicStore
         self.state = state
         self.mediaResolver = mediaResolver
         self.serverService = serverService
@@ -403,11 +407,25 @@ actor PlayerService: PlayerServiceProtocol {
 
     private func diagnosticSourceKind(_ source: MediaSource) -> PlaybackDiagnostics.SourceKind {
         switch source {
+        case .localFile: .localFile
         case .downloaded: .download
         case .cached: .cache
         case .stream: .remoteStream
         case .liveStream: .liveStream
         }
+    }
+
+    private func resolveSource(_ song: DisplayableSong, serverId: UUID?) async throws -> MediaSource {
+        if let reference = song.localFile {
+            guard let localMusicStore else { throw LocalMusicError.folderAccess }
+            let access = try await localMusicStore.access(reference)
+            guard (try? await AVURLAsset(url: access.url).load(.isPlayable)) == true else {
+                throw LocalMusicError.unsupported
+            }
+            return .localFile(access)
+        }
+        guard let serverId else { throw MinidiscError.serverNotConfigured }
+        return try await mediaResolver.resolve(songId: song.id, serverId: serverId)
     }
 
     // MARK: - Play
@@ -480,7 +498,8 @@ actor PlayerService: PlayerServiceProtocol {
             playbackGeneration: generation,
             transportIntentGeneration: transportGeneration
         ) else { return }
-        guard let serverId = activeServerID else {
+        let serverId = tracks[startIndex].isLocalFile ? nil : activeServerID
+        guard serverId != nil || tracks[startIndex].isLocalFile else {
             await MainActor.run { state.playbackState = .error(.serverNotConfigured) }
             throw MinidiscError.serverNotConfigured
         }
@@ -504,7 +523,7 @@ actor PlayerService: PlayerServiceProtocol {
            preparedPlayback.serverID == serverId {
             source = preparedPlayback.source
             Logger.player.debug("[TRANSITION] adopting source prepared for '\(song.id, privacy: .public)'")
-        } else if let promoted = engineTransition?.promotedPlayback,
+        } else if !song.isLocalFile, let promoted = engineTransition?.promotedPlayback,
                   promoted.trackID == song.id {
             // Defensive fallback: the engine is already rendering this exact source. Local URLs are
             // treated as cache entries; remote URLs retain the authorization headers used by AVPlayer.
@@ -516,7 +535,7 @@ actor PlayerService: PlayerServiceProtocol {
             )
         } else {
             do {
-                source = try await mediaResolver.resolve(songId: song.id, serverId: serverId)
+                source = try await resolveSource(song, serverId: serverId)
             } catch let e as MinidiscError {
                 guard isCurrentPlaybackIntent(
                     playbackGeneration: generation,
@@ -560,7 +579,7 @@ actor PlayerService: PlayerServiceProtocol {
         startIndex: Int,
         song: DisplayableSong,
         source: MediaSource,
-        serverId: UUID,
+        serverId: UUID?,
         isNewQueue: Bool,
         generation: UInt64,
         transportGeneration: UInt64,
@@ -709,8 +728,10 @@ actor PlayerService: PlayerServiceProtocol {
             playbackGeneration: generation,
             transportIntentGeneration: transportGeneration
         ) else { return }
-        subsonicPlayingNowTask = Task { [libraryService] in
-            await libraryService.scrobble(songId: songId, submission: false)
+        if !song.isLocalFile {
+            subsonicPlayingNowTask = Task { [libraryService] in
+                await libraryService.scrobble(songId: songId, submission: false)
+            }
         }
         let playingNowDelay = max(0, 3 - (promotedPlayback?.audibleDuration ?? 0))
         playingNowTask = Task { [listenBrainzService, weak self] in
@@ -725,7 +746,7 @@ actor PlayerService: PlayerServiceProtocol {
             await listenBrainzService.notifyTrackStarted(song: song)
         }
 
-        if case .stream(let streamURL, let customHeaders) = source {
+        if case .stream(let streamURL, let customHeaders) = source, let serverId {
             let (allowCellular, cacheFormat) = await MainActor.run {
                 (cacheSettings.cacheOverCellular, cacheSettings.cacheFormat)
             }
@@ -1375,7 +1396,7 @@ actor PlayerService: PlayerServiceProtocol {
             return (state.isAutoExtendEnabled, state.repeatMode, state.currentRadio, remaining, Set(state.queue.map(\.id)), state.currentTrack?.id)
         }
         guard expectedQueueGeneration == queueGeneration else { return }
-        guard isEnabled else { return }
+        guard isEnabled, await MainActor.run(body: { state.currentTrack?.isLocalFile != true }) else { return }
         guard repeatMode == .off else { return }
         guard currentRadio == nil else { return }
         guard autoExtendFetchTask == nil else { return }
@@ -1562,6 +1583,20 @@ actor PlayerService: PlayerServiceProtocol {
         unavailableTrackIDs.removeAll()
         isRestoringSession = false
 
+        if let reference = await MainActor.run(body: { state.currentTrack?.localFile }) {
+            do {
+                guard let localMusicStore else { throw LocalMusicError.folderAccess }
+                _ = try await localMusicStore.access(reference)
+            } catch {
+                guard transportGeneration == transportIntentGeneration else { return }
+                engine.pause()
+                await MainActor.run {
+                    state.playbackState = .paused
+                    toastService.showError(LocalMusicError.unavailable.localizedDescription)
+                }
+                return
+            }
+        }
         let wasStoppedAtEndOfQueue = stoppedAtEndOfQueue
         let transition = await queueTransitionSnapshot()
         guard transportGeneration == transportIntentGeneration, !Task.isCancelled else { return }
@@ -1681,10 +1716,10 @@ actor PlayerService: PlayerServiceProtocol {
     /// Returns nil (caller keeps the stored source) when the track or server is
     /// unknown or resolution fails — local copies resolve without any network.
     private func refreshedColdStartSource() async -> MediaSource? {
-        guard let track = await MainActor.run(body: { state.currentTrack }),
-              let serverId = await MainActor.run(body: { serverService.state.activeServer?.id }) else { return nil }
+        guard let track = await MainActor.run(body: { state.currentTrack }) else { return nil }
+        let serverId = await MainActor.run { serverService.state.activeServer?.id }
         do {
-            return try await mediaResolver.resolve(songId: track.id, serverId: serverId)
+            return try await resolveSource(track, serverId: serverId)
         } catch {
             Logger.player.warning("[RESTORE] cold-start re-resolve failed — keeping stored source: \(error, privacy: .public)")
             return nil
@@ -2363,14 +2398,15 @@ actor PlayerService: PlayerServiceProtocol {
             playbackGeneration: generation,
             transportIntentGeneration: transportGeneration
         ) else { return }
-        guard let serverId = activeServerID else {
+        let serverId = track.isLocalFile ? nil : activeServerID
+        guard serverId != nil || track.isLocalFile else {
             Logger.player.warning("Session restore: no active server, skipping player prep")
             return
         }
 
         let source: MediaSource
         do {
-            source = try await mediaResolver.resolve(songId: track.id, serverId: serverId)
+            source = try await resolveSource(track, serverId: serverId)
         } catch {
             guard isCurrentPlaybackIntent(
                 playbackGeneration: generation,
@@ -3194,8 +3230,10 @@ actor PlayerService: PlayerServiceProtocol {
         ) else {
             return
         }
-        Task { [libraryService] in
-            await libraryService.scrobble(songId: songId, submission: true)
+        if !song.isLocalFile {
+            Task { [libraryService] in
+                await libraryService.scrobble(songId: songId, submission: true)
+            }
         }
         Task { [listenBrainzService] in
             await listenBrainzService.notifyScrobbleThreshold(song: song, startDate: startDate)
@@ -3298,10 +3336,12 @@ actor PlayerService: PlayerServiceProtocol {
         guard PlayerService.shouldSchedulePrefetch(crossfadeDuration: crossfadeConfig.duration, remaining: remaining) else { return }
 
         let nextIndex = currentIndex + 1
-        let resolved: (nextSong: DisplayableSong, serverId: UUID)? = await MainActor.run {
-            guard state.queue.indices.contains(nextIndex),
-                  let serverId = serverService.state.activeServer?.id else { return nil }
-            return (state.queue[nextIndex], serverId)
+        let resolved: (nextSong: DisplayableSong, serverId: UUID?)? = await MainActor.run {
+            guard state.queue.indices.contains(nextIndex) else { return nil }
+            let next = state.queue[nextIndex]
+            let serverId = next.isLocalFile ? nil : serverService.state.activeServer?.id
+            guard next.isLocalFile || serverId != nil else { return nil }
+            return (next, serverId)
         }
         guard let resolved else { return }
 
@@ -3320,7 +3360,7 @@ actor PlayerService: PlayerServiceProtocol {
     /// Preloads the next item except under Repeat One; album pairs can suppress crossfade.
     private func preloadNextForGapless(
         nextSong: DisplayableSong,
-        serverId: UUID,
+        serverId: UUID?,
         generation: UInt64,
         prefetchGeneration: UInt64
     ) async {
@@ -3341,7 +3381,7 @@ actor PlayerService: PlayerServiceProtocol {
             isGaplessPair: isPair
         )
 
-        guard let source = try? await mediaResolver.resolve(songId: songId, serverId: serverId) else {
+        guard let source = try? await resolveSource(nextSong, serverId: serverId) else {
             Logger.player.warning("[CROSSFADE] unable to resolve next track '\(songId, privacy: .public)' for preload")
             return
         }
@@ -3397,7 +3437,7 @@ actor PlayerService: PlayerServiceProtocol {
 
     private func isPrefetchContextValid(
         songId: String,
-        serverId: UUID,
+        serverId: UUID?,
         generation: UInt64,
         prefetchGeneration: UInt64
     ) async -> Bool {
@@ -3406,8 +3446,8 @@ actor PlayerService: PlayerServiceProtocol {
               !Task.isCancelled else { return false }
         return await MainActor.run {
             let nextIndex = state.currentIndex + 1
-            return serverService.state.activeServer?.id == serverId
-                && state.queue.indices.contains(nextIndex)
+            return state.queue.indices.contains(nextIndex)
+                && (state.queue[nextIndex].isLocalFile || serverService.state.activeServer?.id == serverId)
                 && state.queue[nextIndex].id == songId
                 && state.currentTrack != nil
         }
@@ -3416,11 +3456,11 @@ actor PlayerService: PlayerServiceProtocol {
     /// Trim only downloaded adjacent album tracks for gapless playback; crossfades need the full tail.
     private func gaplessTrim(
         nextSongId: String,
-        serverId: UUID,
+        serverId: UUID?,
         isPair: Bool,
         overlap: Double
     ) async -> GaplessTrim {
-        guard isPair, overlap == 0,
+        guard isPair, overlap == 0, let serverId,
               let nextURL = await downloadService.downloadedURL(forSongId: nextSongId, serverId: serverId),
               let currentId = await MainActor.run(body: { state.currentTrack?.id }),
               let currentURL = await downloadService.downloadedURL(forSongId: currentId, serverId: serverId)
@@ -3522,7 +3562,7 @@ actor PlayerService: PlayerServiceProtocol {
         trigger: String = "unknown",
         finalProgress: TimeInterval? = nil
     ) async {
-        guard let song = await MainActor.run(body: { state.currentTrack }) else { return }
+        guard let song = await MainActor.run(body: { state.currentTrack }), !song.isLocalFile else { return }
         guard let serverId = await MainActor.run(body: { serverService.state.activeServer?.id }) else { return }
         await accumulatePlaybackProgress(finalProgress ?? engine.progress)
         let trackDuration = await MainActor.run { state.duration }
@@ -3874,6 +3914,10 @@ actor PlayerService: PlayerServiceProtocol {
     // MARK: - Artwork / NowPlaying helpers
 
     private func resolveArtworkURL(for song: DisplayableSong) async -> URL? {
+        if song.isLocalFile {
+            await artworkImageCache.load(coverArtId: song.coverArtId, tier: .hero)
+            return nil
+        }
         guard let client = try? await serverService.activeConnection().makeSwiftSonicClient() else { return nil }
         let artId = song.coverArtId ?? song.id
         return client.coverArtURL(id: artId, size: 600)

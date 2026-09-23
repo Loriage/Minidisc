@@ -34,7 +34,7 @@ struct SongQuickActions: ViewModifier {
                     Button(role: .destructive, action: onRemove) {
                         Label("Remove from Queue", systemImage: "minus.circle")
                     }
-                } else {
+                } else if !song.isLocalFile {
                     Button {
                         if let onAddToPlaylist { onAddToPlaylist(song) }
                         else { playlistAddition?.present(song) }

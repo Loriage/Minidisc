@@ -70,6 +70,14 @@ struct SettingsView: View {
                         .foregroundStyle(.primary)
                 }
                 NavigationLink {
+                    LocalMusicFoldersView()
+                } label: {
+                    Label { Text("Local Files", tableName: "LocalMusic") } icon: {
+                        Image(systemName: "folder")
+                    }
+                    .foregroundStyle(.primary)
+                }
+                NavigationLink {
                     IntegrationsSettingsView()
                 } label: {
                     Label("Integrations", systemImage: "puzzlepiece.extension")

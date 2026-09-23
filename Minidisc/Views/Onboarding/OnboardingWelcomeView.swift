@@ -8,6 +8,7 @@ struct OnboardingWelcomeView: View {
     @State private var viewModel: OnboardingViewModel?
     @State private var showingServerForm = false
     @State private var appeared = false
+    @AppStorage("minidisc.localMusicEnabled") private var localMusicEnabled = false
 
     var body: some View {
         ZStack {
@@ -73,6 +74,11 @@ struct OnboardingWelcomeView: View {
             .padding(.horizontal, MinidiscSpacing.xxxl)
 
             Spacer(minLength: MinidiscSpacing.xl)
+
+            Button { localMusicEnabled = true } label: {
+                Text("Use Local Files", tableName: "LocalMusic")
+            }
+            .padding(.bottom, MinidiscSpacing.l)
 
             getStartedButton
                 .padding(.horizontal, MinidiscSpacing.xxxl)

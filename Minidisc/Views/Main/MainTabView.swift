@@ -46,21 +46,25 @@ struct MainTabView: View {
 
     private var tabs: some View {
         TabView(selection: $selectedTab) {
-            Tab("Home", image: "HomeTabIcon", value: AppTab.home) {
-                NavigationStack(path: $homePath) {
-                    HomeView()
+            if container?.serverState.activeServer != nil {
+                Tab("Home", image: "HomeTabIcon", value: AppTab.home) {
+                    NavigationStack(path: $homePath) {
+                        HomeView()
+                    }
                 }
-            }
 
-            Tab("Discover", systemImage: "square.grid.2x2.fill", value: AppTab.discover) {
-                NavigationStack(path: $discoverPath) {
-                    DiscoverView()
+                Tab("Discover", systemImage: "square.grid.2x2.fill", value: AppTab.discover) {
+                    NavigationStack(path: $discoverPath) {
+                        DiscoverView()
+                    }
                 }
+
             }
 
             Tab("Library", systemImage: "music.note.square.stack.fill", value: AppTab.library) {
                 NavigationStack(path: $libraryPath) {
-                    LibraryView()
+                    if container?.serverState.activeServer == nil { LocalMusicView() }
+                    else { LibraryView() }
                 }
             }
 
@@ -74,16 +78,19 @@ struct MainTabView: View {
 
             // Bare `Tab(value:role:)`: the search role renders its own detached button, glyph and
             // label. Passing a title and systemImage here draws a second glyph over the system's.
-            Tab(value: AppTab.search, role: .search) {
-                NavigationStack(path: $searchPath) {
-                    SearchView(searchQuery: $searchText, path: $searchPath)
-                        .navigationTitle("Search")
-                        .toolbarTitleDisplayMode(.inlineLarge)
+            if container?.serverState.activeServer != nil {
+                Tab(value: AppTab.search, role: .search) {
+                    NavigationStack(path: $searchPath) {
+                        SearchView(searchQuery: $searchText, path: $searchPath)
+                            .navigationTitle("Search")
+                            .toolbarTitleDisplayMode(.inlineLarge)
+                    }
+                    .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always),
+                                prompt: "Artists, albums, songs, playlists…")
                 }
-                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always),
-                            prompt: "Artists, albums, songs, playlists…")
             }
         }
+        .onAppear { if container?.serverState.activeServer == nil { selectedTab = .library } }
         .accentColor(.minidiscAccent)
         .preferredColorScheme(theme.colorScheme)
         .onChange(of: container?.serverState.activeServer?.id) {

@@ -66,6 +66,8 @@ private struct CoverArtViewContent: View {
                 Image(platformImage: cached)
                     .resizable()
                     .scaledToFill()
+            } else if id.hasPrefix("local:") {
+                placeholder
             } else {
                 AsyncImage(url: url) { phase in
                     switch phase {
@@ -101,12 +103,17 @@ private struct CoverArtViewContent: View {
                 return
             }
 
-            if online, let image = await artworkCache.load(coverArtId: id, tier: t) {
+            if online || id.hasPrefix("local:"), let image = await artworkCache.load(coverArtId: id, tier: t) {
                 guard !Task.isCancelled else { return }
                 apply(image, for: id)
                 return
             }
 
+            if id.hasPrefix("local:") {
+                cachedImage = nil
+                displayedId = nil
+                return
+            }
             if displayedId == id { return }
 
             // Prefer the tiered cache, then the untagged file stored for offline tracks.

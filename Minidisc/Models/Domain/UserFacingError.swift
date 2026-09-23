@@ -1,7 +1,7 @@
 import Foundation
 import SwiftSonic
 
-nonisolated enum UserFacingError: LocalizedError, Identifiable, Sendable, Codable {
+nonisolated enum UserFacingError: LocalizedError, Identifiable, Sendable, Codable, Equatable {
     case noNetwork
     case serverUnreachable
     case authenticationFailed
@@ -10,6 +10,7 @@ nonisolated enum UserFacingError: LocalizedError, Identifiable, Sendable, Codabl
     case downloadFailed
     case playbackFailed
     case syncFailed
+    case localMusic(LocalMusicError)
     case unexpected
 
     var id: String {
@@ -22,6 +23,7 @@ nonisolated enum UserFacingError: LocalizedError, Identifiable, Sendable, Codabl
         case .downloadFailed: "downloadFailed"
         case .playbackFailed: "playbackFailed"
         case .syncFailed: "syncFailed"
+        case .localMusic: "localMusic"
         case .unexpected: "unexpected"
         }
     }
@@ -36,6 +38,7 @@ nonisolated enum UserFacingError: LocalizedError, Identifiable, Sendable, Codabl
         case .downloadFailed: String(localized: "Download failed.")
         case .playbackFailed: String(localized: "Couldn't play this track.")
         case .syncFailed: String(localized: "Couldn't sync with your server.")
+        case .localMusic(let error): error.localizedDescription
         case .unexpected: String(localized: "Something went wrong.")
         }
     }
@@ -50,6 +53,7 @@ nonisolated enum UserFacingError: LocalizedError, Identifiable, Sendable, Codabl
         case .downloadFailed: String(localized: "Check your connection and storage, then try again.")
         case .playbackFailed: String(localized: "Try again or skip to another track.")
         case .syncFailed: String(localized: "Check your connection and try syncing again.")
+        case .localMusic: nil
         case .unexpected: nil
         }
     }
@@ -59,6 +63,7 @@ nonisolated enum UserFacingError: LocalizedError, Identifiable, Sendable, Codabl
     }
 
     static func from(_ error: any Error) -> UserFacingError {
+        if let error = error as? LocalMusicError { return .localMusic(error) }
         if let error = error as? UserFacingError { return error }
         if let error = error as? SwiftSonicError {
             if error.isAuthenticationFailure { return .authenticationFailed }

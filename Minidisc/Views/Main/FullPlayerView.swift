@@ -72,8 +72,13 @@ struct FullPlayerView: View {
                     await vm.updateColors(for: themeCoverId, colorExtractor: colorExtractor, container: container, reduceMotion: reduceMotion)
                 }
                 .task(id: lyricsLoadKey) {
+                    if playerState.currentTrack?.isLocalFile == true {
+                        showLyrics = false
+                        lyricsViewModel = nil
+                        return
+                    }
                     guard showLyrics,
-                          let track = playerState.currentTrack,
+                          let track = playerState.currentTrack, !track.isLocalFile,
                           let serverId = container?.serverState.activeServer?.id,
                           let lyricsService = container?.lyricsService,
                           let playerService = container?.playerService else {
@@ -311,10 +316,11 @@ struct FullPlayerView: View {
                       label: "Repeat") {
                 Task { await container?.playerService.setRepeatMode(playerState.repeatMode.next) }
             }
-            queuePill(systemImage: "infinity", isActive: playerState.isAutoExtendEnabled,
+            queuePill(systemImage: "infinity", isActive: playerState.isAutoExtendEnabled && playerState.currentTrack?.isLocalFile != true,
                       label: "Auto-extend with Smart Shuffle") {
                 Task { await container?.playerService.setAutoExtendEnabled(!playerState.isAutoExtendEnabled) }
             }
+            .disabled(playerState.currentTrack?.isLocalFile == true)
         }
     }
 
@@ -410,7 +416,7 @@ private struct TrackInfoSection: View {
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .disabled(!isOnline || playerState.currentTrack == nil)
+                    .disabled(!isOnline || playerState.currentTrack == nil || playerState.currentTrack?.isLocalFile == true)
                     .accessibilityLabel(isFavorite ? "Remove from Favorites" : "Add to Favorites")
                 }
 
@@ -423,19 +429,19 @@ private struct TrackInfoSection: View {
                                 } label: {
                                     Label("Share", systemImage: "square.and.arrow.up.fill")
                                 }
-                                .disabled(shareRequest != nil)
+                                .disabled(shareRequest != nil || playerState.currentTrack?.isLocalFile == true)
                             }
 
                             if isFavorite {
                                 Button("Undo", systemImage: "star.slash.fill") {
                                     toggleFavorite()
                                 }
-                                .disabled(!isOnline || playerState.currentTrack == nil)
+                                .disabled(!isOnline || playerState.currentTrack == nil || playerState.currentTrack?.isLocalFile == true)
                             } else {
                                 Button("Favorite", systemImage: "star.fill") {
                                     toggleFavorite()
                                 }
-                                .disabled(!isOnline || playerState.currentTrack == nil)
+                                .disabled(!isOnline || playerState.currentTrack == nil || playerState.currentTrack?.isLocalFile == true)
                             }
                         }
 
@@ -458,7 +464,7 @@ private struct TrackInfoSection: View {
                                 Text(artist)
                             }
                         }
-                        .disabled(playerState.currentTrack?.artist == nil || !isOnline)
+                        .disabled(playerState.currentTrack?.artist == nil || !isOnline || playerState.currentTrack?.isLocalFile == true)
                         Button("Get Info", systemImage: "info.circle") {
                             trackInformation = playerState.currentTrack
                         }
@@ -467,20 +473,20 @@ private struct TrackInfoSection: View {
                         Button("Save Queue as Playlist", systemImage: "text.badge.plus") {
                             playlistAddition.present(songs: playerState.queue, createsPlaylist: true)
                         }
-                        .disabled(!isOnline || playerState.queue.isEmpty)
+                        .disabled(!isOnline || playerState.queue.isEmpty || playerState.queue.contains(where: \.isLocalFile))
                         .accessibilityIdentifier("queue.savePlaylist")
                         Button("Add to Playlist...", systemImage: "music.note.list") {
                             if let track = playerState.currentTrack {
                                 playlistAddition.present(track)
                             }
                         }
-                        .disabled(!isOnline || playerState.currentTrack == nil)
+                        .disabled(!isOnline || playerState.currentTrack == nil || playerState.currentTrack?.isLocalFile == true)
                         Divider()
                         Button("Instant Mix", systemImage: instantMixSymbol) {
                             guard let track = playerState.currentTrack else { return }
                             startInstantMix(from: .song(id: track.id), using: container, startingWith: track)
                         }
-                        .disabled(!isOnline || playerState.currentTrack == nil)
+                        .disabled(!isOnline || playerState.currentTrack == nil || playerState.currentTrack?.isLocalFile == true)
                         Divider()
                     }
                     Button {
@@ -488,6 +494,7 @@ private struct TrackInfoSection: View {
                     } label: {
                         Label("Smart Shuffle", systemImage: "shuffle.circle")
                     }
+                    .disabled(container?.serverState.activeServer == nil)
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.title2.weight(.semibold))
@@ -924,6 +931,7 @@ private struct BottomToolbar: View {
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Lyrics")
+                .disabled(playerState.currentTrack?.isLocalFile == true)
             }
 
             AirPlayRouteButton(tintColor: secondaryContentColor)

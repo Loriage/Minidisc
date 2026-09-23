@@ -266,43 +266,45 @@ private struct SongActions: View {
 
     var body: some View {
         Group {
-            ControlGroup {
-                if song.isDownloaded {
-                    Button("Downloaded", systemImage: "arrow.down.circle.fill") { }
-                        .disabled(true)
-                } else if isDownloading {
-                    Button("Downloading…", systemImage: "arrow.down.circle.fill") { }
-                        .disabled(true)
-                } else {
-                    Button("Download", systemImage: "arrow.down.circle.fill") {
-                        onDownload?()
+            if !song.isLocalFile {
+                ControlGroup {
+                    if song.isDownloaded {
+                        Button("Downloaded", systemImage: "arrow.down.circle.fill") { }
+                            .disabled(true)
+                    } else if isDownloading {
+                        Button("Downloading…", systemImage: "arrow.down.circle.fill") { }
+                            .disabled(true)
+                    } else {
+                        Button("Download", systemImage: "arrow.down.circle.fill") {
+                            onDownload?()
+                        }
+                        .disabled(onDownload == nil)
                     }
-                    .disabled(onDownload == nil)
+
+                    Button("Share", systemImage: "square.and.arrow.up.fill", action: onShare)
+
+                    if isFavorite {
+                        Button("Undo", systemImage: "star.slash.fill") {
+                            toggleFavorite()
+                        }
+                        .disabled(!isOnline)
+                    } else {
+                        Button("Favorite", systemImage: "star.fill") {
+                            toggleFavorite()
+                        }
+                        .disabled(!isOnline)
+                    }
                 }
 
-                Button("Share", systemImage: "square.and.arrow.up.fill", action: onShare)
-
-                if isFavorite {
-                    Button("Undo", systemImage: "star.slash.fill") {
-                        toggleFavorite()
+                Section {
+                    Button {
+                        if let onAddToPlaylist { onAddToPlaylist(song) }
+                        else { playlistAddition?.present(song) }
+                    } label: {
+                        Label("Add to Playlist...", systemImage: "music.note.list")
                     }
-                    .disabled(!isOnline)
-                } else {
-                    Button("Favorite", systemImage: "star.fill") {
-                        toggleFavorite()
-                    }
-                    .disabled(!isOnline)
+                    .disabled(!isOnline || (onAddToPlaylist == nil && playlistAddition == nil))
                 }
-            }
-
-            Section {
-                Button {
-                    if let onAddToPlaylist { onAddToPlaylist(song) }
-                    else { playlistAddition?.present(song) }
-                } label: {
-                    Label("Add to Playlist...", systemImage: "music.note.list")
-                }
-                .disabled(!isOnline || (onAddToPlaylist == nil && playlistAddition == nil))
             }
 
             Section {
@@ -338,11 +340,13 @@ private struct SongActions: View {
                 }
             }
 
-            Section {
-                Button {
-                    startInstantMix(from: .song(id: song.id), using: container, startingWith: song)
-                } label: {
-                    Label("Instant Mix", systemImage: instantMixSymbol)
+            if !song.isLocalFile {
+                Section {
+                    Button {
+                        startInstantMix(from: .song(id: song.id), using: container, startingWith: song)
+                    } label: {
+                        Label("Instant Mix", systemImage: instantMixSymbol)
+                    }
                 }
             }
 

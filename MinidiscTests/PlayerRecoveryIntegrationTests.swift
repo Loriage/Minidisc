@@ -192,13 +192,16 @@ private struct RecoveryHarness {
     init(
         startupGrace: Duration = .milliseconds(600),
         audioStartupGrace: Duration = .milliseconds(800),
-        audioRetryDelay: Duration = .milliseconds(40)
+        audioRetryDelay: Duration = .milliseconds(40),
+        localMusicStore: LocalMusicStore? = nil,
+        configureServer: Bool = true
     ) throws {
         let container = try ModelContainer.minidisc(inMemory: true)
         let server = MockServerService()
         server.state.activeServer = ServerSnapshot(from: ServerConfig(
             displayName: "Test", baseURL: "https://playback.invalid", username: "test"
         ))
+        if !configureServer { server.state.activeServer = nil }
         let toast = ToastService()
         let download = DownloadService(serverService: server, modelContainer: container, toastService: toast)
         let cacheSettings = CacheSettings(defaults: defaults)
@@ -239,7 +242,8 @@ private struct RecoveryHarness {
             audioRecoveryTiming: .init(
                 retryDelay: audioRetryDelay, routeGrace: .seconds(2),
                 startupGrace: audioStartupGrace, pollInterval: .milliseconds(10)
-            )
+            ),
+            localMusicStore: localMusicStore
         )
     }
 
@@ -834,4 +838,31 @@ private actor PlaylistPreparationGate {
     var isWaiting: Bool { continuation != nil }
     func wait() async { await withCheckedContinuation { continuation = $0 } }
     func release() { continuation?.resume(); continuation = nil }
+}
+
+
+@Suite @MainActor
+struct LocalMusicPlaybackTests {
+    @Test func localQueuePlaysAndAdvancesWithoutAServer() async throws {
+        let root = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = root.appendingPathComponent("Music")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try LocalMusicFixture.wav(at: folder.appendingPathComponent("First.wav"))
+        try LocalMusicFixture.wav(at: folder.appendingPathComponent("Second.wav"))
+        let store = LocalMusicStore(directory: root.appendingPathComponent("Index"))
+        try await store.add([folder])
+        let songs = try await store.refresh().tracks.map(\.song)
+        let harness = try RecoveryHarness(localMusicStore: store, configureServer: false)
+        try await harness.player.play(tracks: songs, startIndex: 0)
+        #expect(harness.engine.sourceURL?.lastPathComponent == "First.wav")
+        #expect(harness.state.currentTrack?.isLocalFile == true)
+        try await harness.player.skipToNext()
+        #expect(harness.engine.sourceURL?.lastPathComponent == "Second.wav")
+        await harness.player.pause()
+        try FileManager.default.removeItem(at: folder.appendingPathComponent("Second.wav"))
+        await harness.player.resume()
+        #expect(harness.state.playbackState == .paused)
+        await harness.player.stop()
+    }
 }

@@ -1,6 +1,7 @@
 import Foundation
 
 nonisolated enum MediaSource: Sendable {
+    case localFile(LocalFileAccess)
     case downloaded(URL)
     case cached(URL)
     /// Remote stream of a finite-duration song. Custom headers must be injected
@@ -13,6 +14,8 @@ nonisolated enum MediaSource: Sendable {
 
     var url: URL {
         switch self {
+        case .localFile(let access):
+            return access.url
         case .downloaded(let url), .cached(let url):
             return url
         case .stream(let url, _), .liveStream(let url, _, _):
@@ -22,7 +25,7 @@ nonisolated enum MediaSource: Sendable {
 
     var customHeaders: [String: String] {
         switch self {
-        case .downloaded, .cached:
+        case .downloaded, .cached, .localFile:
             return [:]
         case .stream(_, let headers), .liveStream(_, let headers, _):
             return headers

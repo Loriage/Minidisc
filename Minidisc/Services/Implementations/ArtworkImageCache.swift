@@ -277,11 +277,23 @@ final class ArtworkImageCache {
         completedRevalidationCount
     }
 
+    var localArtworkProvider: (@Sendable (String) async -> Data?)?
+
     @discardableResult
     func load(coverArtId: String?, tier: ArtworkTier = .thumb) async -> PlatformImage? {
         guard !Task.isCancelled, let coverArtId else { return nil }
 
         let key = cacheKey(id: coverArtId, tier: tier)
+        if coverArtId.hasPrefix("local:") {
+            if let hit = cache[key] { touch(key); return hit }
+            guard let data = await localArtworkProvider?(coverArtId) else { return nil }
+            let image = await Task.detached(priority: .userInitiated) {
+                Self.thumbnailImage(from: data, maxDimension: tier.decodePixels)
+            }.value
+            guard let image, !Task.isCancelled else { return nil }
+            store(image: image, forKey: key)
+            return image
+        }
 
         if let hit = cache[key] {
             touch(key)

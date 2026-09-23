@@ -487,7 +487,7 @@ struct AlbumDetailView: View {
 
 // MARK: - Album presentation
 
-private struct AlbumDetailPalette {
+struct AlbumDetailPalette {
     let backgroundTopColor: Color
     let backgroundBottomColor: Color
     let contentColor: Color
@@ -576,7 +576,7 @@ private struct AlbumDetailPalette {
     }
 }
 
-private struct AlbumDetailPageBackground: View {
+struct AlbumDetailPageBackground: View {
     let palette: AlbumDetailPalette
 
     var body: some View {
@@ -589,7 +589,7 @@ private struct AlbumDetailPageBackground: View {
     }
 }
 
-private struct AlbumArtworkSection: View {
+struct AlbumArtworkSection: View {
     let coverArtId: String
     let coverImage: PlatformImage?
     let albumName: String
@@ -616,7 +616,7 @@ private struct AlbumArtworkSection: View {
     }
 }
 
-private struct AlbumMetadataSection: View {
+struct AlbumMetadataSection: View {
     let albumName: String
     let artistName: String?
     let artistId: String?

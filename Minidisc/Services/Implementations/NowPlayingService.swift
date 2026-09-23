@@ -131,7 +131,7 @@ actor NowPlayingService: NowPlayingServiceProtocol {
     // MARK: - Favourite
 
     private func toggleFavoriteForCurrentTrack() async {
-        guard let favoritesService, let songId = currentSong?.songId else { return }
+        guard let favoritesService, let songId = currentSong?.songId, !songId.hasPrefix("local:") else { return }
         let generation = contentGeneration
         let wasFavorite = await favoritesService.isFavorite(itemType: .song, itemId: songId)
         guard generation == contentGeneration, currentSong?.songId == songId else { return }
@@ -151,14 +151,15 @@ actor NowPlayingService: NowPlayingServiceProtocol {
     private func refreshLikeCommandState() async {
         let generation = contentGeneration
         let songId = currentSong?.songId
+        let canFavorite = songId != nil && songId?.hasPrefix("local:") != true
         let isFavorite: Bool
-        if let songId, let favoritesService {
+        if canFavorite, let songId, let favoritesService {
             isFavorite = await favoritesService.isFavorite(itemType: .song, itemId: songId)
         } else {
             isFavorite = false
         }
         guard generation == contentGeneration, songId == currentSong?.songId else { return }
-        await presenter.updateLikeCommand(songAvailable: songId != nil, isFavorite: isFavorite)
+        await presenter.updateLikeCommand(songAvailable: canFavorite, isFavorite: isFavorite)
     }
 
     // MARK: - Remote command availability

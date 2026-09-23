@@ -17,6 +17,7 @@ final class AppContainer {
     let keychainService: any KeychainServiceProtocol
     let serverService: any ServerServiceProtocol
     let libraryService: any LibraryServiceProtocol
+    let localMusic: LocalMusicLibrary
     let offlineLibrary: OfflineBrowsingLibrary
     let offlineBrowsingReader: OfflineBrowsingReader
     let offlineFavoritesStore: OfflineFavoritesStore
@@ -61,6 +62,10 @@ final class AppContainer {
         playbackDiagnostics: PlaybackDiagnostics = PlaybackDiagnostics(),
         userDefaults: UserDefaults = .standard
     ) throws {
+        let localStore = LocalMusicStore(directory: inMemory
+            ? URL.temporaryDirectory.appendingPathComponent("minidisc-local-\(UUID())")
+            : URL.applicationSupportDirectory.appendingPathComponent("minidisc-local-music"))
+        localMusic = LocalMusicLibrary(store: localStore)
         serverState = ServerState(defaults: userDefaults)
         let playbackPreferences = PlaybackPreferences(defaults: userDefaults)
         self.playbackPreferences = playbackPreferences
@@ -147,6 +152,7 @@ final class AppContainer {
         )
 
         artworkImageCache = ArtworkImageCache(downloadService: download, libraryService: library)
+        artworkImageCache.localArtworkProvider = { id in await localStore.artwork(id) }
         artworkImageCache.persistCoversEnabled = cacheSettings.cacheArtwork
         offlineFavoritesSync = OfflineFavoritesSync(
             store: favoritesStore, settings: cacheSettings, streamSettings: streamSettings,
@@ -199,7 +205,8 @@ final class AppContainer {
             statsService: stats,
             listenBrainzService: lb,
             playbackDiagnostics: playbackDiagnostics,
-            engine: audioEngine
+            engine: audioEngine,
+            localMusicStore: localStore
         )
         _player = player
         playerService = player

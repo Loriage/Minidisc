@@ -23,6 +23,9 @@ nonisolated struct DisplayableSong: Identifiable, Hashable, Sendable, Codable {
     let replayGainBaseGain: Double?
     /// OpenSubsonic: used as fallback when the selected mode's gain is absent.
     let replayGainFallbackGain: Double?
+    var localFile: LocalFileReference? = nil
+
+    var isLocalFile: Bool { localFile != nil }
 }
 
 extension DisplayableSong {

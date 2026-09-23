@@ -19,7 +19,7 @@ final class PlaylistAddition {
     }
 
     func present(songs: [DisplayableSong], createsPlaylist: Bool = false) {
-        guard !songs.isEmpty else { return }
+        guard !songs.isEmpty, !songs.contains(where: \.isLocalFile) else { return }
         request = PlaylistAdditionRequest(songs: songs, createsPlaylist: createsPlaylist)
     }
 

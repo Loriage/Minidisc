@@ -21,11 +21,6 @@ nonisolated protocol ArtistBrowsing: AnyObject, Sendable {
     func artists() async throws -> [ArtistIndex]
     func artist(id: String) async throws -> ArtistID3
 
-    /// Fetches every track from every album of the given artist.
-    /// Albums are ordered most-recent first (by year); albums without a year come last (alphabetical).
-    /// Uses a TaskGroup bounded to 5 concurrent album fetches — safe for home-server instances.
-    /// Individual album failures are logged and skipped (best-effort). Throws `MinidiscError.artistTracksUnavailable`
-    /// only when every album fetch fails.
     func fetchAllTracks(forArtistID artistID: String) async throws -> [DisplayableSong]
 }
 
@@ -101,7 +96,6 @@ nonisolated protocol AlbumRecommendationBrowsing: AnyObject, Sendable {
 }
 
 nonisolated protocol PlaybackQueueBuilding: AnyObject, Sendable {
-    /// Smart Shuffle is truly random online and limited to downloaded tracks offline.
     func smartShuffleQueue(targetSize: Int) async throws -> [DisplayableSong]
     func similarBackfillQueue(targetSize: Int, excludedIds: Set<String>) async throws -> [DisplayableSong]
     func instantMix(from seed: InstantMixSeed, count: Int) async throws -> [DisplayableSong]

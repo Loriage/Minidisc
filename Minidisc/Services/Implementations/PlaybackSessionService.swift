@@ -40,8 +40,6 @@ actor PlaybackSessionService {
         }
     }
 
-    /// Reject a late save from the library that was active before a configuration edit.
-    /// Legacy sessions acquire their first scope when restored on their original server.
     func loadRestoredSession(serverID: UUID?) -> RestoredSession? {
         guard let session = fetchSession() else { return nil }
         if let saved = session.serverId, saved != serverID,

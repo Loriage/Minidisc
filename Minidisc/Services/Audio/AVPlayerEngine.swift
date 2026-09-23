@@ -75,7 +75,6 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     private var nextPlaybackTokenRawValue: UInt64 = 0
     /// Overlap window for the pending transition (0 = gapless butt-splice).
     private var pendingOverlap: Double = 0
-    /// URL of an item the engine already promoted at a hand-off; the next `play` with it adopts.
     private var handedOffTrackID: String?
 
     /// PlayerService-facing volume (restore mute, user fades). Deck volumes = fadeLevel × ramp.

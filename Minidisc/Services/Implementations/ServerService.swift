@@ -437,7 +437,6 @@ actor ServerService: ServerServiceProtocol {
                 Logger.server.error("Navidrome compatibility update incomplete; will retry at next activation: \(error, privacy: .public)")
             }
         }
-        // A different activation can win while the read-only version probe is awaiting.
         guard version.revision == nextConnectionRevision else { return }
         activeServerSnapshot = server
         connectionVersion = version

@@ -6,8 +6,6 @@ nonisolated enum PinnedItemType: String, CaseIterable, Sendable {
     case playlist
 }
 
-/// Persists an item pinned to HomeView. Stores a metadata snapshot so the
-/// pinned grid renders immediately at launch without a network round-trip.
 @Model
 final class PinnedItem {
     @Attribute(.unique) var id: String

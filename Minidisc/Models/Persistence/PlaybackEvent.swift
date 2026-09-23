@@ -1,13 +1,6 @@
 import Foundation
 import SwiftData
 
-/// A single counted playback event for Wrapped statistics.
-///
-/// Recorded when a track ends naturally (wasCompleted=true) or is skipped
-/// after at least 30 seconds (wasCompleted depends on position/duration ratio).
-/// All metadata fields are snapshotted at recording time for resilience against
-/// server-side deletions. PersistentModel instances never cross actor boundaries —
-/// use PlaybackEventDTO for all inter-actor communication.
 @Model
 final class PlaybackEvent {
     #Index<PlaybackEvent>([\.timestamp], [\.serverId])

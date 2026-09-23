@@ -2,9 +2,6 @@ import Foundation
 import SwiftSonic
 import OSLog
 
-/// Single entry point for obtaining a playable URL for a given song.
-/// Resolution order: downloaded → cached → stream.
-/// PlayerService always calls this — it never contacts SwiftSonic directly.
 actor MediaResolver: MediaResolverProtocol {
     private let downloadService: any DownloadServiceProtocol
     private let audioStreamCache: any AudioStreamCacheProtocol

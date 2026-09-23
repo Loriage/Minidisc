@@ -1,20 +1,215 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "NSSiriUsageDescription" : {
+    "CFBundleDisplayName" : {
+      "comment" : "Bundle display name",
+      "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Allow Siri to search your Minidisc library and control music playback."
+            "value" : "Minidisc"
+          }
+        }
+      },
+      "shouldTranslate" : false
+    },
+    "CFBundleName" : {
+      "comment" : "Bundle name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc"
+          }
+        }
+      },
+      "shouldTranslate" : false
+    },
+    "NSCameraUsageDescription" : {
+      "comment" : "Privacy - Camera Usage Description",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc needs to access your camera to take pictures for playlist artworks"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Autorisez Siri à rechercher dans votre bibliothèque Minidisc et à contrôler la lecture musicale."
+            "value" : "Minidisc utilise l’appareil photo pour prendre des photos destinées aux pochettes des playlists."
           }
         },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc benötigt Zugriff auf deine Kamera, um Fotos für Playlist-Cover aufzunehmen."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Το Minidisc χρειάζεται πρόσβαση στην κάμερα για τη λήψη φωτογραφιών για τα εξώφυλλα των λιστών αναπαραγωγής."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc necesita acceder a la cámara para tomar fotos para las portadas de las playlists."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc richiede l’accesso alla fotocamera per scattare foto da usare come copertine delle playlist."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレイリストのカバー用の写真を撮影するため、Minidiscがカメラにアクセスします。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc 需要访问相机，以拍摄用作播放列表封面的照片。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc 需要存取相機，以拍攝用作播放清單封面的照片。"
+          }
+        }
+      }
+    },
+    "NSLocalNetworkUsageDescription" : {
+      "comment" : "Privacy - Local Network Usage Description",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc needs access to your local network to connect to your Navidrome or Subsonic server."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc utilise votre réseau local pour se connecter à votre serveur Navidrome ou Subsonic."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc benötigt Zugriff auf dein lokales Netzwerk, um eine Verbindung zu deinem Navidrome- oder Subsonic-Server herzustellen."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Το Minidisc χρειάζεται πρόσβαση στο τοπικό σας δίκτυο για να συνδεθεί στον διακομιστή Navidrome ή Subsonic."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc necesita acceder a tu red local para conectarse a tu servidor Navidrome o Subsonic."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc richiede l’accesso alla rete locale per connettersi al tuo server Navidrome o Subsonic."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "NavidromeまたはSubsonicサーバーに接続するため、Minidiscがローカルネットワークにアクセスします。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc 需要访问本地网络，以连接到你的 Navidrome 或 Subsonic 服务器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc 需要存取區域網路，以連接到你的 Navidrome 或 Subsonic 伺服器。"
+          }
+        }
+      }
+    },
+    "NSPhotoLibraryUsageDescription" : {
+      "comment" : "Privacy - Photo Library Usage Description",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc needs to access your library to upload pictures for playlists"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc utilise votre photothèque pour choisir des images pour vos playlists."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc benötigt Zugriff auf deine Fotomediathek, um Bilder für Playlists hochzuladen."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Το Minidisc χρειάζεται πρόσβαση στη βιβλιοθήκη φωτογραφιών για τη μεταφόρτωση εικόνων για τις λίστες αναπαραγωγής."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc necesita acceder a tu fototeca para subir imágenes para las playlists."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc richiede l’accesso alla libreria foto per caricare immagini per le playlist."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プレイリスト用の画像をアップロードするため、Minidiscが写真ライブラリにアクセスします。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc 需要访问照片图库，以便为播放列表上传图片。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc 需要存取照片圖庫，以便為播放清單上傳圖片。"
+          }
+        }
+      }
+    },
+    "NSSiriUsageDescription" : {
+      "comment" : "Privacy - Siri Usage Description",
+      "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
@@ -27,10 +222,22 @@
             "value" : "Επιτρέψτε στο Siri να κάνει αναζήτηση στη βιβλιοθήκη σας στο Minidisc και να ελέγχει την αναπαραγωγή μουσικής."
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow Siri to search your Minidisc library and control music playback."
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Permite que Siri busque en tu biblioteca de Minidisc y controle la reproducción de música."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorisez Siri à rechercher dans votre bibliothèque Minidisc et à contrôler la lecture musicale."
           }
         },
         "it" : {

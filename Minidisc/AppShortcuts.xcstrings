@@ -1,470 +1,559 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "Play ${music} in ${applicationName}" : {
+    "Next track in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
       "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Joue ${music} dans ${applicationName}"
-          }
-        },
         "de" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "Spiele ${music} in ${applicationName}"
+            "values" : [
+              "Nächster Titel in ${applicationName}"
+            ]
           }
         },
         "el" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "Παίξε ${music} στο ${applicationName}"
+            "values" : [
+              "Επόμενο κομμάτι στο ${applicationName}"
+            ]
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Next track in ${applicationName}"
+            ]
           }
         },
         "es" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "Reproduce ${music} en ${applicationName}"
+            "values" : [
+              "Siguiente canción en ${applicationName}"
+            ]
           }
         },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Riproduci ${music} su ${applicationName}"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "${applicationName}で${music}を再生"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用 ${applicationName} 播放 ${music}"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用 ${applicationName} 播放 ${music}"
-          }
-        }
-      }
-    },
-    "Play music in ${applicationName}" : {
-      "localizations" : {
         "fr" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "Joue de la musique dans ${applicationName}"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Spiele Musik in ${applicationName}"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Παίξε μουσική στο ${applicationName}"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reproduce música en ${applicationName}"
+            "values" : [
+              "Morceau suivant dans ${applicationName}"
+            ]
           }
         },
         "it" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "Riproduci musica su ${applicationName}"
+            "values" : [
+              "Brano successivo su ${applicationName}"
+            ]
           }
         },
         "ja" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "${applicationName}で音楽を再生"
+            "values" : [
+              "${applicationName}で次の曲"
+            ]
           }
         },
         "zh-Hans" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "用 ${applicationName} 播放音乐"
+            "values" : [
+              "${applicationName} 下一首"
+            ]
           }
         },
         "zh-Hant" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "用 ${applicationName} 播放音樂"
-          }
-        }
-      }
-    },
-    "Play ${mood} mood in ${applicationName}" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lance l’ambiance ${mood} dans ${applicationName}"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Spiele die Stimmung ${mood} in ${applicationName}"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Παίξε τη διάθεση ${mood} στο ${applicationName}"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reproduce el ambiente ${mood} en ${applicationName}"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Riproduci l’atmosfera ${mood} su ${applicationName}"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "${applicationName}で${mood}のムードを再生"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用 ${applicationName} 播放 ${mood} 心情歌单"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用 ${applicationName} 播放 ${mood} 心情播放清單"
-          }
-        }
-      }
-    },
-    "Play a mood in ${applicationName}" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lance une ambiance dans ${applicationName}"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Spiele eine Stimmung in ${applicationName}"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Παίξε μια διάθεση στο ${applicationName}"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reproduce un ambiente en ${applicationName}"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Riproduci un’atmosfera su ${applicationName}"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "${applicationName}でムードを再生"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用 ${applicationName} 播放心情歌单"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用 ${applicationName} 播放心情播放清單"
-          }
-        }
-      }
-    },
-    "Smart Shuffle in ${applicationName}" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lance Smart Shuffle dans ${applicationName}"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Starte Smart Shuffle in ${applicationName}"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ξεκίνα Smart Shuffle στο ${applicationName}"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Inicia Smart Shuffle en ${applicationName}"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Avvia Smart Shuffle su ${applicationName}"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "${applicationName}でスマートシャッフル"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用 ${applicationName} 智能随机播放"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用 ${applicationName} 智慧隨機播放"
-          }
-        }
-      }
-    },
-    "Resume playback in ${applicationName}" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reprends la lecture dans ${applicationName}"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Setze die Wiedergabe in ${applicationName} fort"
-          }
-        },
-        "el" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Συνέχισε την αναπαραγωγή στο ${applicationName}"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reanuda la reproducción en ${applicationName}"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Riprendi la riproduzione su ${applicationName}"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "${applicationName}で再生を再開"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用 ${applicationName} 继续播放"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用 ${applicationName} 繼續播放"
+            "values" : [
+              "${applicationName} 下一首"
+            ]
           }
         }
       }
     },
     "Pause playback in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
       "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mets la lecture en pause dans ${applicationName}"
-          }
-        },
         "de" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "Pausiere die Wiedergabe in ${applicationName}"
+            "values" : [
+              "Pausiere die Wiedergabe in ${applicationName}"
+            ]
           }
         },
         "el" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "Βάλε παύση στο ${applicationName}"
+            "values" : [
+              "Βάλε παύση στο ${applicationName}"
+            ]
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Pause playback in ${applicationName}"
+            ]
           }
         },
         "es" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "Pausa la reproducción en ${applicationName}"
+            "values" : [
+              "Pausa la reproducción en ${applicationName}"
+            ]
+          }
+        },
+        "fr" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Mets la lecture en pause dans ${applicationName}"
+            ]
           }
         },
         "it" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "Metti in pausa la riproduzione su ${applicationName}"
+            "values" : [
+              "Metti in pausa la riproduzione su ${applicationName}"
+            ]
           }
         },
         "ja" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "${applicationName}で再生を一時停止"
+            "values" : [
+              "${applicationName}で再生を一時停止"
+            ]
           }
         },
         "zh-Hans" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "暂停 ${applicationName} 的播放"
+            "values" : [
+              "暂停 ${applicationName} 的播放"
+            ]
           }
         },
         "zh-Hant" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "暫停 ${applicationName} 的播放"
+            "values" : [
+              "暫停 ${applicationName} 的播放"
+            ]
           }
         }
       }
     },
-    "Next track in ${applicationName}" : {
+    "Play ${mood} mood in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
       "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Morceau suivant dans ${applicationName}"
-          }
-        },
         "de" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "Nächster Titel in ${applicationName}"
+            "values" : [
+              "Spiele die Stimmung ${mood} in ${applicationName}",
+              "Spiele eine Stimmung in ${applicationName}"
+            ]
           }
         },
         "el" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "Επόμενο κομμάτι στο ${applicationName}"
+            "values" : [
+              "Παίξε τη διάθεση ${mood} στο ${applicationName}",
+              "Παίξε μια διάθεση στο ${applicationName}"
+            ]
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Play ${mood} mood in ${applicationName}",
+              "Play a mood in ${applicationName}"
+            ]
           }
         },
         "es" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "Siguiente canción en ${applicationName}"
+            "values" : [
+              "Reproduce el ambiente ${mood} en ${applicationName}",
+              "Reproduce un ambiente en ${applicationName}"
+            ]
+          }
+        },
+        "fr" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Lance l’ambiance ${mood} dans ${applicationName}",
+              "Lance une ambiance dans ${applicationName}"
+            ]
           }
         },
         "it" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "Brano successivo su ${applicationName}"
+            "values" : [
+              "Riproduci l’atmosfera ${mood} su ${applicationName}",
+              "Riproduci un’atmosfera su ${applicationName}"
+            ]
           }
         },
         "ja" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "${applicationName}で次の曲"
+            "values" : [
+              "${applicationName}で${mood}のムードを再生",
+              "${applicationName}でムードを再生"
+            ]
           }
         },
         "zh-Hans" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "${applicationName} 下一首"
+            "values" : [
+              "用 ${applicationName} 播放 ${mood} 心情歌单",
+              "用 ${applicationName} 播放心情歌单"
+            ]
           }
         },
         "zh-Hant" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "${applicationName} 下一首"
+            "values" : [
+              "用 ${applicationName} 播放 ${mood} 心情播放清單",
+              "用 ${applicationName} 播放心情播放清單"
+            ]
+          }
+        }
+      }
+    },
+    "Play ${music} in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "de" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Spiele ${music} in ${applicationName}",
+              "Spiele Musik in ${applicationName}"
+            ]
+          }
+        },
+        "el" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Παίξε ${music} στο ${applicationName}",
+              "Παίξε μουσική στο ${applicationName}"
+            ]
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Play ${music} in ${applicationName}",
+              "Play music in ${applicationName}"
+            ]
+          }
+        },
+        "es" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Reproduce ${music} en ${applicationName}",
+              "Reproduce música en ${applicationName}"
+            ]
+          }
+        },
+        "fr" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Joue ${music} dans ${applicationName}",
+              "Joue de la musique dans ${applicationName}"
+            ]
+          }
+        },
+        "it" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Riproduci ${music} su ${applicationName}",
+              "Riproduci musica su ${applicationName}"
+            ]
+          }
+        },
+        "ja" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${applicationName}で${music}を再生",
+              "${applicationName}で音楽を再生"
+            ]
+          }
+        },
+        "zh-Hans" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "用 ${applicationName} 播放 ${music}",
+              "用 ${applicationName} 播放音乐"
+            ]
+          }
+        },
+        "zh-Hant" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "用 ${applicationName} 播放 ${music}",
+              "用 ${applicationName} 播放音樂"
+            ]
           }
         }
       }
     },
     "Previous track in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
       "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Morceau précédent dans ${applicationName}"
-          }
-        },
         "de" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "Vorheriger Titel in ${applicationName}"
+            "values" : [
+              "Vorheriger Titel in ${applicationName}"
+            ]
           }
         },
         "el" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "Προηγούμενο κομμάτι στο ${applicationName}"
+            "values" : [
+              "Προηγούμενο κομμάτι στο ${applicationName}"
+            ]
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Previous track in ${applicationName}"
+            ]
           }
         },
         "es" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "Canción anterior en ${applicationName}"
+            "values" : [
+              "Canción anterior en ${applicationName}"
+            ]
+          }
+        },
+        "fr" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Morceau précédent dans ${applicationName}"
+            ]
           }
         },
         "it" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "Brano precedente su ${applicationName}"
+            "values" : [
+              "Brano precedente su ${applicationName}"
+            ]
           }
         },
         "ja" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "${applicationName}で前の曲"
+            "values" : [
+              "${applicationName}で前の曲"
+            ]
           }
         },
         "zh-Hans" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "${applicationName} 上一首"
+            "values" : [
+              "${applicationName} 上一首"
+            ]
           }
         },
         "zh-Hant" : {
-          "stringUnit" : {
+          "stringSet" : {
             "state" : "translated",
-            "value" : "${applicationName} 上一首"
+            "values" : [
+              "${applicationName} 上一首"
+            ]
+          }
+        }
+      }
+    },
+    "Resume playback in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "de" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Setze die Wiedergabe in ${applicationName} fort"
+            ]
+          }
+        },
+        "el" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Συνέχισε την αναπαραγωγή στο ${applicationName}"
+            ]
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Resume playback in ${applicationName}"
+            ]
+          }
+        },
+        "es" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Reanuda la reproducción en ${applicationName}"
+            ]
+          }
+        },
+        "fr" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Reprends la lecture dans ${applicationName}"
+            ]
+          }
+        },
+        "it" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Riprendi la riproduzione su ${applicationName}"
+            ]
+          }
+        },
+        "ja" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${applicationName}で再生を再開"
+            ]
+          }
+        },
+        "zh-Hans" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "用 ${applicationName} 继续播放"
+            ]
+          }
+        },
+        "zh-Hant" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "用 ${applicationName} 繼續播放"
+            ]
+          }
+        }
+      }
+    },
+    "Smart Shuffle in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "de" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Starte Smart Shuffle in ${applicationName}"
+            ]
+          }
+        },
+        "el" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Ξεκίνα Smart Shuffle στο ${applicationName}"
+            ]
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Smart Shuffle in ${applicationName}"
+            ]
+          }
+        },
+        "es" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Inicia Smart Shuffle en ${applicationName}"
+            ]
+          }
+        },
+        "fr" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Lance Smart Shuffle dans ${applicationName}"
+            ]
+          }
+        },
+        "it" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "Avvia Smart Shuffle su ${applicationName}"
+            ]
+          }
+        },
+        "ja" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "${applicationName}でスマートシャッフル"
+            ]
+          }
+        },
+        "zh-Hans" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "用 ${applicationName} 智能随机播放"
+            ]
+          }
+        },
+        "zh-Hant" : {
+          "stringSet" : {
+            "state" : "translated",
+            "values" : [
+              "用 ${applicationName} 智慧隨機播放"
+            ]
           }
         }
       }

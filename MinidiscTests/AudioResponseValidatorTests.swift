@@ -69,8 +69,6 @@ struct AudioResponseValidatorTests {
         }
     }
 
-    // MARK: - Subsonic error-as-200 envelopes
-
     @Test("XML error envelope is rejected by the body sniff")
     func xmlEnvelopeRejected() throws {
         try expectRejection(bytes: Array(#"<?xml version="1.0"?><subsonic-response status="failed"/>"#.utf8), check: "body-sniff")
@@ -89,8 +87,6 @@ struct AudioResponseValidatorTests {
         try expectRejection(bytes: Array("\r\n\t {\"subsonic-response\":{}}".utf8), check: "body-sniff")
     }
 
-    // MARK: - Valid audio signatures
-
     @Test("common audio signatures are accepted without declared length or type")
     func audioSignaturesAccepted() throws {
         for magic in [Self.id3Header, Self.mp3FrameSync, Self.flacMagic, Self.oggMagic] {
@@ -104,8 +100,6 @@ struct AudioResponseValidatorTests {
         try expectAccepted(bytes: Self.mp3FrameSync, mimeType: "application/octet-stream")
         try expectAccepted(bytes: Self.flacMagic, mimeType: "audio/flac")
     }
-
-    // MARK: - Size checks
 
     @Test("empty body is rejected")
     func emptyBodyRejected() throws {
@@ -125,8 +119,6 @@ struct AudioResponseValidatorTests {
         try expectAccepted(bytes: Self.oggMagic, expectedLength: 0)
         try expectAccepted(bytes: Self.oggMagic, expectedLength: -1)
     }
-
-    // MARK: - Declared content type
 
     @Test("clearly non-audio declared types are rejected")
     func nonAudioMimeTypeRejected() throws {

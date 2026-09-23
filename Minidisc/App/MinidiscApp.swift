@@ -238,8 +238,6 @@ struct MinidiscApp: App {
         return newContainer
     }
 
-    // MARK: - Cover art garbage collection
-
     @MainActor
     private static func runCoverArtGarbageCollection(
         modelContainer: ModelContainer,

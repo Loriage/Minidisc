@@ -3,9 +3,6 @@ import ImageIO
 import OSLog
 import UIKit
 
-// MARK: - ArtworkTier
-
-/// Decode resolution and cache-key suffix for each artwork tier.
 nonisolated enum ArtworkTier: String, Sendable {
     case thumb
     case hero
@@ -17,8 +14,6 @@ nonisolated enum ArtworkTier: String, Sendable {
         }
     }
 }
-
-// MARK: - CoverFetchGate
 
 /// Limits concurrent server cover fetches so they cannot saturate the TCP connection pool
 /// shared with the active audio stream. Uses a continuation-based semaphore so callers
@@ -108,8 +103,6 @@ private extension CoverFetchGate {
     }
 }
 
-// MARK: - ArtworkImageCache
-
 /// Two-tier LRU cover cache resolved from RAM, disk, then the server.
 /// Legacy untagged files are skipped because decoding them can starve audio.
 @MainActor
@@ -165,8 +158,6 @@ final class ArtworkImageCache {
     private let fetchGate = CoverFetchGate(limit: 4)
     private let decodeGate = CoverFetchGate(limit: 3)
 
-    // MARK: - Revalidation
-    /// Per-cover `Last-Modified` + last-checked, so a cached cover is re-verified on a slow cadence.
     private let revalidationStore: CoverRevalidationStore
     /// Shares one fetch and decode per tiered cache key.
     private var inFlight: [String: InFlightLoad] = [:]
@@ -243,8 +234,6 @@ final class ArtworkImageCache {
         self.dataLoader = dataLoader
         self.imageDecoder = imageDecoder
     }
-
-    // MARK: - Public API
 
     /// Returns the cached image for the given tier synchronously, or nil if not yet loaded.
     /// Does not trigger a fetch — call load(coverArtId:tier:) for that.
@@ -771,8 +760,6 @@ final class ArtworkImageCache {
         revalidationStore.removeAll()
         revalidationDeferred.removeAll()
     }
-
-    // MARK: - Private
 
     private func acquireDiskAccess(
         for coverArtId: String,

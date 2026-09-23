@@ -78,8 +78,6 @@ struct LidarrReleaseDetailView: View {
         }
     }
 
-    // MARK: - Header
-
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
             HStack(alignment: .top, spacing: MinidiscSpacing.m) {
@@ -138,8 +136,6 @@ struct LidarrReleaseDetailView: View {
         }
     }
 
-    // MARK: - Rejection
-
     private var rejectionBanner: some View {
         VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
             Label("Release Rejected", systemImage: "exclamationmark.triangle.fill")
@@ -156,8 +152,6 @@ struct LidarrReleaseDetailView: View {
         .padding(MinidiscSpacing.m)
         .background(Color.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard))
     }
-
-    // MARK: - Actions
 
     private var actionButtons: some View {
         HStack(spacing: MinidiscSpacing.m) {
@@ -187,8 +181,6 @@ struct LidarrReleaseDetailView: View {
         .buttonStyle(.bordered)
         .tint(.minidiscAccent)
     }
-
-    // MARK: - Information
 
     private var infoSection: some View {
         VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
@@ -256,8 +248,6 @@ struct LidarrReleaseDetailView: View {
         }
     }
 }
-
-// MARK: - Album picker
 
 private struct LidarrAlbumPickerSheet: View {
     let artistId: Int

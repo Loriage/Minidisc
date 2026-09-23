@@ -22,8 +22,6 @@ struct DownloadedView: View {
     }
 }
 
-// MARK: - Content
-
 private struct DownloadedContent: View {
     @Environment(\.appContainer) private var container
     let serverId: UUID

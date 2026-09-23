@@ -1133,7 +1133,6 @@ actor PlayerService: PlayerServiceProtocol {
         let requestGeneration = queueBuildGeneration
         cancelPendingInstantMix()
 
-        // `??` cannot host an async right-hand side (autoclosures are not concurrency-aware).
         let resolved: DisplayableSong?
         if let seedTrack {
             resolved = seedTrack
@@ -1836,7 +1835,6 @@ actor PlayerService: PlayerServiceProtocol {
     }
 
     func seek(to position: TimeInterval) async {
-        // Invalid seek values are ignored, never converted into a jump to zero.
         let stateDuration = await MainActor.run { state.duration }
         let engineDuration = engine.duration
         guard let target = Self.clampedSeekTarget(
@@ -2434,7 +2432,6 @@ actor PlayerService: PlayerServiceProtocol {
         // explicitly starts playback, or kept if user hasn't tapped play yet.
         pendingRestoreInfo = (seekTime: position, pause: true)
 
-        // Apply gain after committing the restored source and pending seek without suspension.
         let config = await MainActor.run { replayGainSettings.config }
         guard isCurrentPlaybackIntent(
             playbackGeneration: generation,
@@ -3988,7 +3985,6 @@ actor PlayerService: PlayerServiceProtocol {
             throw CacheDownloadError(statusCode: code)
         }
 
-        // Reject error envelopes and incomplete audio before committing cache files.
         try AudioResponseValidator.validate(fileAt: tempURL, response: response, songId: songId, logger: Logger.cache)
 
         let ext = streamURL.pathExtension
@@ -4693,8 +4689,6 @@ extension PlayerService {
         }
     }
 }
-
-// MARK: - AudioEngineBridge
 
 /// Bridges the neutral `AudioEngineDelegate` callbacks (on the engine's callback thread) onto the
 /// `PlayerService` actor. The concrete engine already maps its own

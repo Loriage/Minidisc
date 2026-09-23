@@ -3,8 +3,6 @@ import Foundation
 import SwiftSonic
 @testable import Minidisc
 
-// MARK: - Integration mock infrastructure
-
 @MainActor
 private final class RSITransport: ListenBrainzTransport {
     private var queue: [(Data, HTTPURLResponse)] = []
@@ -90,8 +88,6 @@ private func makeLBComponents(serviceTransport: any ListenBrainzTransport, provi
     let provider = ListenBrainzRecommendationProvider(client: providerClient, service: service, libraryService: RSILibraryNullStub())
     return (provider, service)
 }
-
-// MARK: - Integration tests
 
 @Suite("RecommendationService — integration with LB + Subsonic providers")
 struct RecommendationServiceIntegrationTests {

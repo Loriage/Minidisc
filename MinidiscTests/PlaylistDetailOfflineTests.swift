@@ -4,14 +4,8 @@ import SwiftData
 import SwiftSonic
 @testable import Minidisc
 
-// MARK: - Stubs
-
-/// Every endpoint throws — PlaylistDetailViewModel's offline paths must never
-/// reach the server; loadFromAPI's failure is the trigger under test.
 @MainActor
 private final class PDLibraryStub: PlaylistBrowsing {
-    /// When set, `playlist(id:)` returns this instead of throwing — used to drive the
-    /// empty-but-successful (200, no entries) path that the catch block can't catch.
     var playlistResult: PlaylistWithSongs?
     var failure: SwiftSonicError?
     @MainActor
@@ -96,8 +90,6 @@ private final class PDPlaylistStub: PlaylistServiceProtocol {
     func deletePlaylist(id: String, purgeDownloads: Bool) async throws { throw URLError(.unknown) }
 }
 
-// MARK: - Tests
-
 @Suite("PlaylistDetailViewModel — offline local fallback")
 @MainActor
 struct PlaylistDetailOfflineTests {
@@ -181,8 +173,6 @@ struct PlaylistDetailOfflineTests {
         #expect(vm.error == nil)
         #expect(vm.isOffline == true)
     }
-
-    // MARK: - Empty-success (WARP / Cloudflare edge) — the case the throw-only stubs missed
 
     @Test("empty-success playlist response with a downloaded copy loads local, not Empty")
     func emptySuccessFallsBackToLocal() async {

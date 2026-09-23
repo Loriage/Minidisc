@@ -47,8 +47,6 @@ struct ServerFormView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    // MARK: - Error / warning helpers
-
     @ViewBuilder
     private var httpWarning: some View {
         if viewModel.isHTTP {
@@ -98,8 +96,6 @@ struct ServerFormView: View {
     }
 
 }
-
-// MARK: - CustomHeaderRowView
 
 struct CustomHeaderRowView: View {
     @Binding var key: String

@@ -21,8 +21,6 @@ nonisolated enum MoodDeletionOutcome: Sendable, Equatable {
     case cancelled
 }
 
-// MARK: - Results
-
 nonisolated enum MoodSyncOutcome: Sendable, Equatable {
     case disabled
     case inProgress
@@ -41,8 +39,6 @@ nonisolated enum MoodSkipReason: Error, Sendable, Equatable {
     /// `sample` carries a few of the ids so the mismatch is visible in the log.
     case serverStoredNothing(sent: Int, sample: [String])
 }
-
-// MARK: - MoodPlaylistService
 
 /// Refreshes moods independently and sequentially to limit similarity-query load.
 /// Failed moods retain their cadence marker for retry; prepare warms AudioMuse before searching.
@@ -233,7 +229,6 @@ actor MoodPlaylistService {
 
     private func checkCanContinue(automatic: Bool) throws {
         try Task.checkCancellation()
-        // Do not start another server mutation after automatic generation has been switched off.
         if automatic && !preferences.automaticGenerationEnabled { throw CancellationError() }
     }
 

@@ -474,7 +474,6 @@ actor DownloadService: DownloadServiceProtocol {
             throw MinidiscError.downloadFailed(songId: song.id, underlying: HTTPError(statusCode: code))
         }
 
-        // Reject error envelopes and incomplete payloads before storing a permanent download.
         do {
             try AudioResponseValidator.validate(fileAt: tempURL, response: response, songId: song.id, logger: Logger.download)
         } catch {
@@ -875,8 +874,6 @@ actor DownloadService: DownloadServiceProtocol {
 
         try await offlineRemovalCoordinator.removeAll()
     }
-
-    // MARK: - Helpers
 
     private func checkDownloadCancellation() throws {
         try Task.checkCancellation()

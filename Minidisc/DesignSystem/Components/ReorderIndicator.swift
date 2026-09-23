@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// The host owns reordering and haptics; isActive only changes the grip appearance.
 struct ReorderIndicator: View {
     var isActive: Bool = false
 

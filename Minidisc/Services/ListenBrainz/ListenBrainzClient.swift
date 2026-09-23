@@ -12,8 +12,6 @@ actor ListenBrainzClient {
         self.transport = transport
     }
 
-    // MARK: - Token validation
-
     /// Invalid tokens (401 or valid:false) return isValid = false without throwing. Never log tokens.
     func validateToken(_ token: String, rootURL: URL) async throws -> ListenBrainzValidation {
         guard var components = URLComponents(url: rootURL, resolvingAgainstBaseURL: false) else {
@@ -27,7 +25,6 @@ actor ListenBrainzClient {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        // Token is secret — value is set but never logged.
         request.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
 
         let (data, response): (Data, HTTPURLResponse)
@@ -60,8 +57,6 @@ actor ListenBrainzClient {
             throw ListenBrainzError.httpError(statusCode: response.statusCode)
         }
     }
-
-    // MARK: - Username validation
 
     /// Validates username format locally, then checks the JSON listen-count endpoint.
     /// The bare user route returns HTML and cannot validate API access.
@@ -114,16 +109,6 @@ actor ListenBrainzClient {
         }
     }
 
-    // MARK: - Fresh releases
-
-    /// Returns personalized fresh releases for the given user.
-    ///
-    /// - Parameters:
-    ///   - daysWindow: Date window (in days) relative to today.
-    ///   - includePast: Include releases from the past `daysWindow` days (default `true`).
-    ///   - includeFuture: Include upcoming releases within `daysWindow` days (default `false`).
-    ///
-    /// Username is never logged.
     func freshReleases(
         forUser username: String,
         daysWindow: Int = 90,
@@ -186,8 +171,6 @@ actor ListenBrainzClient {
         }
     }
 
-    // MARK: - Similar artists
-
     /// Uses ListenBrainz’s internal artist-page endpoint, not the versioned REST API.
     /// Returns up to 18 artists by similarity; 404 yields an empty list.
     func similarArtists(mbid: String) async throws -> [LBSimilarArtistDTO] {
@@ -234,8 +217,6 @@ actor ListenBrainzClient {
             throw ListenBrainzError.decoding(error)
         }
     }
-
-    // MARK: - Submit listens
 
     /// Submits a playing_now notification. Does not include a listened_at timestamp.
     func submitPlayingNow(track: LBTrackMetadata, rootURL: URL, token: String) async throws {
@@ -327,8 +308,6 @@ actor ListenBrainzClient {
             throw ListenBrainzError.httpError(statusCode: response.statusCode)
         }
     }
-
-    // MARK: - Helpers
 
     private static func isValidUsernameFormat(_ username: String) -> Bool {
         guard (1...40).contains(username.count) else { return false }

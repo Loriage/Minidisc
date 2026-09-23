@@ -3,7 +3,7 @@ import SwiftData
 
 @Model
 final class SearchHistoryEntry {
-    @Attribute(.unique) var entryId: String  // composite: "\(serverId)_\(itemId)"
+    @Attribute(.unique) var entryId: String
     var itemId: String
     var itemType: String        // "album" | "artist"
     var displayName: String

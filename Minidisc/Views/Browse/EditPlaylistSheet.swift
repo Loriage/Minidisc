@@ -219,8 +219,6 @@ struct EditPlaylistSheet: View {
         )
     }
 
-    // MARK: - State
-
     private var hasPhoto: Bool {
         return pendingImage != nil
     }
@@ -245,8 +243,6 @@ struct EditPlaylistSheet: View {
             selectedGradient = spec.shape
         }
     }
-
-    // MARK: - Commit / cover / delete
 
     private func commit() async {
         guard let c = container else { return }

@@ -104,8 +104,6 @@ struct LocalArtistDataTests {
     }
 }
 
-// MARK: - ViewModel fallback
-
 @MainActor
 private final class ARLibraryStub: ArtistBrowsing, StarredBrowsing, ArtistRecommendationBrowsing {
     var artistResult: ArtistID3?

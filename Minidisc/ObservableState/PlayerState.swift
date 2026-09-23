@@ -2,7 +2,6 @@ import Foundation
 import Observation
 import SwiftSonic
 
-/// UI playback state, updated by PlayerService on MainActor.
 @Observable
 @MainActor
 final class PlayerState {
@@ -93,8 +92,6 @@ final class PlayerState {
             self.waitingMessageTask = nil
         }
     }
-
-    // MARK: - Derived UI state
 
     var queueIcon: (symbolName: String, isActiveMode: Bool) {
         if repeatMode == .one    { return ("repeat.1", true) }

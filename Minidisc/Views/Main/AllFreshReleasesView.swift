@@ -34,8 +34,6 @@ struct AllFreshReleasesView: View {
         .task { await vm.loadReleases() }
     }
 
-    // MARK: - Scroll content
-
     @ViewBuilder
     private var scrollContent: some View {
         List {
@@ -65,8 +63,6 @@ struct AllFreshReleasesView: View {
         .listStyle(.plain)
         .refreshable { await vm.loadReleases() }
     }
-
-    // MARK: - iOS row
 
     private struct FreshReleaseRow: View {
         let release: AlbumRecommendation

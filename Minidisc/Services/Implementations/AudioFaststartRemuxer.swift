@@ -104,8 +104,6 @@ nonisolated struct AudioFaststartRemuxer: Sendable {
         return .remuxed
     }
 
-    // MARK: - Box-layout logic
-
     nonisolated static func fileSize(atPath path: String) -> UInt64 {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: path) else { return 0 }
         return (attributes[.size] as? NSNumber)?.uint64Value ?? 0

@@ -1,7 +1,5 @@
 import SwiftUI
 
-// MARK: - Spacing scale (4pt grid)
-
 enum MinidiscSpacing {
     static let xs: CGFloat    = 4
     static let s: CGFloat     = 8
@@ -17,26 +15,20 @@ enum MinidiscSpacing {
     static let miniPlayerBottomMargin: CGFloat = 80
 }
 
-// MARK: - Corner radius scale
-
 enum MinidiscCornerRadius {
     static let xs: CGFloat       = 4
     static let s: CGFloat        = 6
     static let standard: CGFloat = 8    // all cover arts, most cards
     static let large: CGFloat     = 12   // full-player cover art, sheets
     static let hero: CGFloat      = 20   // Wrapped stat hero, year card
-    static let pill: CGFloat      = 999  // capsule buttons
+    static let pill: CGFloat      = 999
 }
-
-// MARK: - Shadow presets
 
 enum MinidiscShadow {
     static let coverRadius: CGFloat  = 8
     static let coverY: CGFloat       = 4
     static let coverOpacity: Double  = 0.15
 }
-
-// MARK: - View modifier: content width
 
 struct ContentWidthModifier: ViewModifier {
     @ViewBuilder
@@ -57,8 +49,6 @@ extension View {
         scrollEdgeEffectHidden(true, for: .top)
     }
 }
-
-// MARK: - View modifier: cover art style
 
 struct MinidiscCoverModifier: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme

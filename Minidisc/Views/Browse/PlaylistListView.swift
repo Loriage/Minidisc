@@ -130,8 +130,6 @@ struct PlaylistListView: View {
     }
 }
 
-// MARK: - Online playlist row
-
 private struct OnlinePlaylistRow: View {
     let playlist: Playlist
     var namespace: Namespace.ID? = nil
@@ -186,8 +184,6 @@ private struct OnlinePlaylistRow: View {
             Task {
                 guard let container else { return }
                 do {
-                    // The service deletes server-side first and rolls its own cache back on failure, so it is
-                    // safe to refresh the (server-fresh) list only AFTER a confirmed success.
                     try await container.playlistService.deletePlaylist(id: playlist.id, purgeDownloads: purgeDownloads)
                     onActionCompleted?()
                     container.toastService.showConfirmation("Playlist deleted")
@@ -199,8 +195,6 @@ private struct OnlinePlaylistRow: View {
         }
     }
 }
-
-// MARK: - Derived "Recently Added" row
 
 /// Derived playlist: there is no server entity for context-menu mutations.
 private struct RecentlyAddedPlaylistRow: View {
@@ -227,8 +221,6 @@ private struct RecentlyAddedPlaylistRow: View {
     }
 }
 
-// MARK: - Derived "best of" row
-
 /// Derived playlist: there is no server entity for context-menu mutations.
 private struct BestOfPlaylistRow: View {
     let bestOf: ArtistBestOf
@@ -251,5 +243,3 @@ private struct BestOfPlaylistRow: View {
         .padding(.vertical, MinidiscSpacing.xs)
     }
 }
-
-// MARK: - Offline Playlists

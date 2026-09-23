@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Minidisc
 
-// MARK: - Mock provider
-
 private struct AFRMockProvider: RecommendationProvider {
     let releases: [AlbumRecommendation]
     let shouldThrow: Bool
@@ -18,8 +16,6 @@ private struct AFRMockProvider: RecommendationProvider {
         return Array(releases.prefix(limit))
     }
 }
-
-// MARK: - Helpers
 
 @MainActor
 private func makeVM(releases: [AlbumRecommendation] = [], shouldThrow: Bool = false) -> AllFreshReleasesViewModel {
@@ -36,8 +32,6 @@ private func makeRelease(id: String, date: Date?) -> AlbumRecommendation {
 private func date(year: Int, month: Int, day: Int) -> Date {
     Calendar.current.date(from: DateComponents(year: year, month: month, day: day)) ?? Date()
 }
-
-// MARK: - Tests
 
 @Suite("AllFreshReleasesViewModel — grouping")
 @MainActor

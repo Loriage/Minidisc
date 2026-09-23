@@ -45,8 +45,6 @@ struct LidarrSettingsView: View {
         }
     }
 
-    // MARK: - Sections
-
     private var aboutSection: some View {
         Section {
             Text("Lidarr manages your music collection and downloads new releases for you. Connect it to check its status from Minidisc.")
@@ -148,14 +146,10 @@ struct LidarrSettingsView: View {
         }
     }
 
-    // MARK: - Helpers
-
     private var canConnect: Bool {
         !urlInput.trimmingCharacters(in: .whitespaces).isEmpty
             && !apiKeyInput.trimmingCharacters(in: .whitespaces).isEmpty
     }
-
-    // MARK: - Actions
 
     private func testAndSave() async {
         guard let settings else { return }

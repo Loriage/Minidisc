@@ -25,8 +25,6 @@ struct OnboardingStepView<Content: View>: View {
         }
     }
 
-    // MARK: - Header
-
     private var headerView: some View {
         VStack(spacing: MinidiscSpacing.m) {
             ZStack {
@@ -58,8 +56,6 @@ struct OnboardingStepView<Content: View>: View {
         .padding(.bottom, MinidiscSpacing.l)
     }
 
-    // MARK: - Progress dots
-
     private var progressDots: some View {
         HStack(spacing: MinidiscSpacing.s) {
             ForEach(0..<totalSteps, id: \.self) { i in
@@ -70,8 +66,6 @@ struct OnboardingStepView<Content: View>: View {
             }
         }
     }
-
-    // MARK: - Bottom actions
 
     private var bottomActions: some View {
         VStack(spacing: MinidiscSpacing.m) {

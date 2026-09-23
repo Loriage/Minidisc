@@ -15,8 +15,6 @@ actor FavoritesService: FavoritesServiceProtocol {
         self.modelContainer = modelContainer
     }
 
-    // MARK: - Query
-
     @MainActor
     func isFavorite(itemType: FavoriteType, itemId: String) -> Bool {
         guard let serverId = serverState.activeServer?.id else { return false }
@@ -27,8 +25,6 @@ actor FavoritesService: FavoritesServiceProtocol {
         descriptor.fetchLimit = 1
         return (try? modelContainer.mainContext.fetchCount(descriptor)) ?? 0 > 0
     }
-
-    // MARK: - Star
 
     func star(itemType: FavoriteType, itemId: String) async throws {
         guard let serverId = await MainActor.run(body: { serverState.activeServer?.id }) else { throw MinidiscError.serverNotConfigured }
@@ -50,8 +46,6 @@ actor FavoritesService: FavoritesServiceProtocol {
             throw error
         }
     }
-
-    // MARK: - Unstar
 
     func unstar(itemType: FavoriteType, itemId: String) async throws {
         guard let serverId = await MainActor.run(body: { serverState.activeServer?.id }) else { throw MinidiscError.serverNotConfigured }
@@ -81,8 +75,6 @@ actor FavoritesService: FavoritesServiceProtocol {
             throw error
         }
     }
-
-    // MARK: - Sync
 
     func syncFromServer() async throws {
         guard let serverId = await MainActor.run(body: { serverState.activeServer?.id }) else { return }

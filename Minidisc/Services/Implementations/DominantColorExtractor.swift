@@ -124,7 +124,6 @@ final class DominantColorExtractor {
         return color
     }
 
-    /// Extracts packed RGB off MainActor with a local Core Image context.
     nonisolated static func packedAverageColor(from image: PlatformImage) -> Int? {
         guard let cgImage = image.cgImage else { return nil }
 
@@ -171,8 +170,6 @@ final class DominantColorExtractor {
         bottomStripCache.removeAll()
         UserDefaults.standard.removeObject(forKey: Self.userDefaultsKey)
     }
-
-    // MARK: - Private
 
     static func unpack(_ packed: Int) -> Color {
         Color(

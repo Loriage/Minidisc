@@ -1,7 +1,5 @@
 import Foundation
 
-// MARK: - Player navigation helpers
-
 func postNavigateToAlbum(track: DisplayableSong) {
     guard let albumId = track.albumId else { return }
     NotificationCenter.default.post(

@@ -270,7 +270,6 @@ struct AudioSystemResetTests {
         engine.play(trackID: "third", url: url, headers: [:])
         #expect(factory.players[1].currentItem === third)
         #expect(factory.players.count == 2)
-        // A previous-track command replaces the item without leaving the queued song behind.
         engine.play(trackID: "first", url: url, headers: [:])
         #expect(factory.players[1].items().count == 1)
         #expect(factory.players[1].currentItem !== third)

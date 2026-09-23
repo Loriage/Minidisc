@@ -4,7 +4,6 @@ import SwiftUI
 /// filling nearly the whole face. Fill with `FillStyle(eoFill: true)` so whatever sits behind — the
 /// spinning disc — shows through the window.
 nonisolated struct MinidiscCartridgeIcon: Shape {
-    /// Window centre and radius, exposed so callers can line the disc up with the opening.
     static func windowCenter(in rect: CGRect) -> CGPoint {
         CGPoint(x: rect.midX, y: rect.midY)
     }

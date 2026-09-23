@@ -134,7 +134,6 @@ actor ServerService: ServerServiceProtocol {
 
         try? await offlineFavorites?.removeServer(id)
 
-        // Best-effort: an orphaned Keychain entry is harmless if this fails.
         try? await keychain.delete(forKey: credKey)
 
         // The catalogue index is a discardable cache. A purge failure must not undo
@@ -413,8 +412,6 @@ actor ServerService: ServerServiceProtocol {
         }
         Logger.server.info("AudioMuse endpoint \(resolvedURL == nil ? "cleared" : "set", privacy: .public) for server \(serverId.uuidString, privacy: .public)")
     }
-
-    // MARK: - Private
 
     private func publishConnectionChange(
         server: ServerSnapshot,

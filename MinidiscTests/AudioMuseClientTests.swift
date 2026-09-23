@@ -153,8 +153,6 @@ struct AudioMuseClientTests {
         _ = try await makeClient(token: "secret").search(query: "calm", limit: 5)
     }
 
-    // MARK: - Provider policy
-
     @Test("tracks with unusable ids are recovered by name")
     func internalIdsAreRecoveredByName() async throws {
         StubProtocol.reset()

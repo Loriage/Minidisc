@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import Minidisc
 
-// MARK: - shouldSchedulePrefetch
-
 @Suite("PlayerService.shouldSchedulePrefetch")
 struct ShouldSchedulePrefetchTests {
 
@@ -115,8 +113,6 @@ struct EffectiveCrossfadeOverlapTests {
         ) == 5)
     }
 }
-
-// MARK: - isAlbumSequencePair
 
 @Suite("PlayerService.isAlbumSequencePair")
 struct IsAlbumSequencePairTests {

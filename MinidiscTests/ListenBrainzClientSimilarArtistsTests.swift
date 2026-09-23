@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Minidisc
 
-// MARK: - Fixtures
-
 private let validSimilarArtistsJSON = Data("""
 {
   "similarArtists": {
@@ -25,8 +23,6 @@ private let malformedEntryJSON = Data("""
   }
 }
 """.utf8)
-
-// MARK: - Transports
 
 @MainActor
 private final class CLCountingTransport: ListenBrainzTransport {
@@ -51,8 +47,6 @@ private final class CLCountingTransport: ListenBrainzTransport {
         return queue.removeFirst()
     }
 }
-
-// MARK: - Tests
 
 @Suite("ListenBrainzClient — similarArtists")
 struct ListenBrainzClientSimilarArtistsTests {

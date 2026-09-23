@@ -131,7 +131,6 @@ nonisolated protocol AudioEngine: AnyObject, Sendable {
     /// True when idle and ready to start a source (the cold-restore path checks this).
     var isReady: Bool { get }
 
-    /// Applies a ReplayGain loudness adjustment in dB for the current track (0 = no change).
     func applyReplayGain(dB: Float)
 
     /// Prepares the next `play` target. A zero crossfade uses native sequential playback;

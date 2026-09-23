@@ -3,8 +3,6 @@ import CryptoKit
 import OSLog
 import UIKit
 
-// MARK: - Fetcher protocol (testability seam)
-
 nonisolated protocol ExternalArtworkFetcher: Sendable {
     func fetchData(from url: URL) async throws -> Data
 }
@@ -28,8 +26,6 @@ struct URLSessionExternalFetcher: ExternalArtworkFetcher {
         return data
     }
 }
-
-// MARK: - Cache actor
 
 actor ExternalArtworkCache {
     /// Serializes disk reads/writes with the full GC scan so GC cannot delete a file while an
@@ -69,13 +65,9 @@ actor ExternalArtworkCache {
         let capRemovedCount: Int
     }
 
-    // MARK: - Configuration
-
     private let ttl: TimeInterval
     private let maxSizeBytes: Int64
     private let maxMemoryEntries: Int
-
-    // MARK: - Storage
 
     private let cacheDirectory: URL
     private let fetcher: any ExternalArtworkFetcher
@@ -91,8 +83,6 @@ actor ExternalArtworkCache {
     /// Incremented when memory is explicitly cleared so older pipelines cannot repopulate it.
     private var memoryGeneration: UInt64 = 0
     private var completedPipelineCount = 0
-
-    // MARK: - Init
 
     init(
         cacheDirectory: URL? = nil,
@@ -115,8 +105,6 @@ actor ExternalArtworkCache {
         self.maxSizeBytes = maxSizeBytes
         self.maxMemoryEntries = maxMemoryEntries
     }
-
-    // MARK: - Public API
 
     func image(for url: URL) async -> PlatformImage? {
         guard !Task.isCancelled else { return nil }
@@ -349,8 +337,6 @@ actor ExternalArtworkCache {
             capRemovedCount: capRemovedCount
         )
     }
-
-    // MARK: - Private helpers
 
     private func diskURL(for url: URL) -> URL {
         cacheDirectory.appendingPathComponent(sha256(url.absoluteString) + ".jpg")

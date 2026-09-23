@@ -10,8 +10,6 @@ extension View {
         }
     }
 
-    /// Marks this view as the matched transition source for a zoom navigation (iOS 18+).
-    /// No-op when either parameter is nil.
     @ViewBuilder
     func minidiscMatchedTransitionSource(id: String?, in namespace: Namespace.ID?) -> some View {
         if let id, let namespace {

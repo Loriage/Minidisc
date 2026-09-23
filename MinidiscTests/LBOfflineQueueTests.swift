@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Minidisc
 
-// MARK: - Test helpers
-
 /// Transport whose responses are consumed in declaration order.
 /// Remaining calls after the list is exhausted fall back to `fallbackStatus`.
 @MainActor
@@ -62,8 +60,6 @@ private func configuredService(
     return service
 }
 
-// MARK: - PendingListen — Codable round-trip
-
 @Suite("PendingListen — Codable round-trip")
 struct PendingListenCodableTests {
 
@@ -95,8 +91,6 @@ struct PendingListenCodableTests {
         #expect(decoded == original)
     }
 }
-
-// MARK: - Queue file persistence
 
 @Suite("Queue file persistence")
 struct QueueFileTests {
@@ -150,8 +144,6 @@ struct QueueFileTests {
         #expect(count == 0)
     }
 }
-
-// MARK: - Queue enqueue behaviour
 
 @Suite("Queue enqueue behaviour")
 struct QueueEnqueueTests {
@@ -212,8 +204,6 @@ struct QueueEnqueueTests {
         #expect(count == 0)
     }
 }
-
-// MARK: - Queue flush behaviour
 
 @Suite("Queue flush behaviour")
 struct QueueFlushTests {
@@ -321,8 +311,6 @@ struct QueueFlushTests {
         #expect(reqCount == 2)  // validateToken + failed submitListen
     }
 }
-
-// MARK: - clearScrobblingToken clears queue
 
 @Suite("clearScrobblingToken clears queue")
 struct ClearTokenQueueTests {

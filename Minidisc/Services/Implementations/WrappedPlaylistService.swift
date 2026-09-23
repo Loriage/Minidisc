@@ -2,8 +2,6 @@ import Foundation
 import SwiftSonic
 import OSLog
 
-// MARK: - PlaylistSyncClient
-
 nonisolated protocol PlaylistSyncClient: Sendable {
     func getPlaylists(username: String?) async throws -> [Playlist]
     func createPlaylist(name: String?, playlistId: String?, songIds: [String]) async throws -> PlaylistWithSongs
@@ -11,16 +9,12 @@ nonisolated protocol PlaylistSyncClient: Sendable {
 
 extension SwiftSonicClient: PlaylistSyncClient {}
 
-// MARK: - WrappedYearlyPlaylist
-
 nonisolated struct WrappedYearlyPlaylist: Sendable, Identifiable {
     let id: String
     let year: Int
     let name: String
     let coverArtId: String?
 }
-
-// MARK: - SyncResult
 
 nonisolated enum SyncResult: Sendable, Equatable {
     case upToDate
@@ -30,9 +24,6 @@ nonisolated enum SyncResult: Sendable, Equatable {
     case cancelled
 }
 
-// MARK: - WrappedPlaylistService
-
-/// Refreshes the annual top-100 playlist monthly using createPlaylist replacement.
 actor WrappedPlaylistService {
     nonisolated static let wrappedPlaylistNamePrefix = "Minidisc Wrapped "
 
@@ -62,8 +53,6 @@ actor WrappedPlaylistService {
         self.serverService = nil
         self.makeClient = clientFactory
     }
-
-    // MARK: - Public API
 
     /// Replaces the annual "Minidisc Wrapped <year>" playlist with the top 100
     /// tracks listened to so far this year. Idempotent within a calendar month:
@@ -219,8 +208,6 @@ actor WrappedPlaylistService {
         }
     }
 
-    // MARK: - Replace playlist tracks
-
     private func replacePlaylistTracks(
         playlistId: String,
         trackIds: [String],
@@ -229,8 +216,6 @@ actor WrappedPlaylistService {
         _ = try await client.createPlaylist(name: nil, playlistId: playlistId, songIds: trackIds)
         Logger.wrapped.debug("[WRAPPED-SYNC] replaced playlist=\(playlistId, privacy: .public) with \(trackIds.count, privacy: .public) tracks")
     }
-
-    // MARK: - Cover art upload
 
     private func uploadWrappedCover(year: Int, playlistId: String) async throws {
         try Task.checkCancellation()
@@ -288,8 +273,6 @@ actor WrappedPlaylistService {
         preferences.clearLastUpdatedMonth(serverId: serverId)
         Logger.wrapped.info("[WRAPPED] \(year, privacy: .public) playlist \(cached, privacy: .public) gone from server — cleared markers so it rebuilds next launch")
     }
-
-    // MARK: - Get-or-create annual playlist
 
     private func getOrCreatePlaylist(for year: Int, serverId: String, client: any PlaylistSyncClient) async throws -> String {
         try Task.checkCancellation()

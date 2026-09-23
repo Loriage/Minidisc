@@ -10,8 +10,6 @@ final class DiscoverViewModel {
     private let calendar: Calendar
     private let now: @Sendable () -> Date
 
-    // MARK: - State
-
     private(set) var recentlyPlayed: [AlbumID3] = []
     private(set) var mostPlayed: [AlbumID3] = []
     private(set) var stations: [ArtistStation] = []
@@ -34,8 +32,6 @@ final class DiscoverViewModel {
         self.now = now
     }
 
-    // MARK: - Derived state
-
     var isInitialLoading: Bool {
         isLoading && recentlyPlayed.isEmpty && mostPlayed.isEmpty
     }
@@ -43,8 +39,6 @@ final class DiscoverViewModel {
     var isErrorState: Bool {
         loadError != nil && recentlyPlayed.isEmpty && mostPlayed.isEmpty
     }
-
-    // MARK: - Loading
 
     func load(forceRefresh: Bool = false) async {
         if !forceRefresh, !stations.isEmpty {

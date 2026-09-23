@@ -118,8 +118,6 @@ actor PlaybackSessionService {
     }
 }
 
-// MARK: - SessionPayload
-
 nonisolated struct SessionPayload: Sendable {
     let currentIndex: Int
     let currentPosition: TimeInterval
@@ -128,8 +126,6 @@ nonisolated struct SessionPayload: Sendable {
     let repeatMode: RepeatMode
     var serverId: UUID? = nil
 }
-
-// MARK: - RestoredSession
 
 nonisolated struct RestoredSession: Sendable {
     let queue: [DisplayableSong]

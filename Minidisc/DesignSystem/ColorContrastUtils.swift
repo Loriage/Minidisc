@@ -20,7 +20,6 @@ extension MinidiscColors {
         let darkPasses  = cDark  >= contrastThreshold
         if lightPasses != darkPasses { return lightPasses ? accentFgLight : accentFgDark }
         if !lightPasses { return accentFgDark }
-        // Both pass: pick whichever has higher contrast.
         return lBg > 0.179 ? accentFgDark : accentFgLight
     }
 
@@ -34,15 +33,12 @@ extension MinidiscColors {
         return lBg <= 0.179                 // both pass -> light control only on a genuinely dark cover
     }
 
-    /// Pairs the control surface with a contrasting glyph color derived from the artwork.
     static func heroButtonVariant(on dominantColor: Color) -> (background: Color, foreground: Color) {
         if prefersLightControl(on: dominantColor) {
             return (background: .white, foreground: dominantColor)
         }
         return (background: accentForeground(on: dominantColor), foreground: .white)
     }
-
-    // MARK: - WCAG 2.1 luminance
 
     private static func sRGBLuminance(of color: Color) -> Double? {
         guard let (r, g, b) = sRGBComponents(of: color) else { return nil }
@@ -58,8 +54,6 @@ extension MinidiscColors {
     private static func linearize(_ c: Double) -> Double {
         c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
     }
-
-    // MARK: - Platform bridge
 
     private static func sRGBComponents(of color: Color) -> (Double, Double, Double)? {
         let ui = UIColor(color)

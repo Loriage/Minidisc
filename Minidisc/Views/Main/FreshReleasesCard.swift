@@ -131,8 +131,6 @@ private struct FreshReleasesSeeAllCell: View {
     }
 }
 
-// MARK: - Cell
-
 struct FreshReleaseAlbumCell: View {
     let release: AlbumRecommendation
     var zoomSourceId: String? = nil

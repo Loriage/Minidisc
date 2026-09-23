@@ -119,8 +119,6 @@ final class EditServerViewModel {
         customHeaders.removeAll { $0.id == id }
     }
 
-    // MARK: - Private
-
     var redactedDescription: String {
         "EditServerViewModel(username: \(username), password: [REDACTED], customHeaders: [REDACTED])"
     }

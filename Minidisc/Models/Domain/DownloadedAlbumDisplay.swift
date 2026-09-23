@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 nonisolated struct DownloadedAlbumDisplay: Identifiable, Sendable, Hashable {
-    let id: String              // == albumId
+    let id: String
     let albumId: String
     let serverId: UUID
     let name: String

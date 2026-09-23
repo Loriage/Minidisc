@@ -3,7 +3,6 @@ import SwiftData
 import SwiftSonic
 import OSLog
 
-/// Creates a private ModelContext for each lyrics persistence operation.
 actor LyricsService {
     private let serverService: any ServerServiceProtocol
     private let modelContainer: ModelContainer
@@ -18,8 +17,6 @@ actor LyricsService {
         self.modelContainer = modelContainer
         self.lrclibClient = lrclibClient
     }
-
-    // MARK: - Fetch
 
     /// Returns lyrics from the configured source. Cache entries remain provider-specific so changing
     /// the picker never leaks a response from a provider the user disabled.
@@ -46,8 +43,6 @@ actor LyricsService {
             return try await fetchLyrics(for: track, serverId: serverId, provider: .lrclib)
         }
     }
-
-    // MARK: - Language Selection
 
     /// Picks the best StructuredLyrics set for the given locale and optional user preference.
     ///
@@ -86,8 +81,6 @@ actor LyricsService {
 
         return entries.first(where: { $0.synced }) ?? entries.first
     }
-
-    // MARK: - Private cache
 
     private func fetchLyrics(
         for track: DisplayableSong,

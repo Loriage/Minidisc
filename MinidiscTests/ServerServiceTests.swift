@@ -3,8 +3,6 @@ import Foundation
 import SwiftData
 @testable import Minidisc
 
-// MARK: - Mock
-
 @MainActor
 final class MockKeychain: KeychainServiceProtocol {
     private var storage: [String: Data] = [:]
@@ -42,8 +40,6 @@ final class MockAudioStreamCache: AudioStreamCacheProtocol {
     func clearAllForServer(_ serverId: UUID) async {}
 }
 
-// MARK: - Suite
-
 @Suite("ServerService")
 @MainActor
 struct ServerServiceTests {
@@ -57,8 +53,6 @@ struct ServerServiceTests {
         let service = ServerService(state: state, keychain: keychain, modelContainer: container, audioStreamCache: MockAudioStreamCache())
         return (service, state)
     }
-
-    // MARK: addServer
 
     @Test func addServer_firstServer_becomesActive() async throws {
         let (service, state) = try makeService()
@@ -115,8 +109,6 @@ struct ServerServiceTests {
         #expect(state.activeServer == nil)
     }
 
-    // MARK: removeServer
-
     @Test func removeServer_removesFromStateAndClearsActive() async throws {
         let (service, state) = try makeService()
 
@@ -139,8 +131,6 @@ struct ServerServiceTests {
             try await service.removeServer(id: UUID())
         }
     }
-
-    // MARK: setActiveServer
 
     @Test func setActiveServer_switchesActiveServer() async throws {
         let (service, state) = try makeService()
@@ -168,8 +158,6 @@ struct ServerServiceTests {
             try await service.setActiveServer(id: UUID())
         }
     }
-
-    // MARK: credential updates
 
     @Test func credentialUpdates_preserveAudioMuseToken() async throws {
         let (service, state) = try makeService()
@@ -296,8 +284,6 @@ struct ServerServiceTests {
         #expect(restored.customHeaders == original.customHeaders)
         #expect(restored.audioMuseToken == original.audioMuseToken)
     }
-
-    // MARK: loadPersistedState
 
     @Test func loadPersistedState_restoresServersAndActiveServer() async throws {
         let keychain = MockKeychain()

@@ -19,7 +19,6 @@ struct SearchHistoryRowData: Identifiable, Equatable {
     }
 }
 
-/// Equatable skips row updates when a refreshed query yields unchanged values.
 struct SearchHistoryEntryRow: View, Equatable {
     let data: SearchHistoryRowData
 

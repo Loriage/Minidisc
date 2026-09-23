@@ -4,8 +4,6 @@ import SwiftData
 import SwiftSonic
 @testable import Minidisc
 
-// MARK: - Minimal mock for LyricsService construction
-
 @MainActor
 final class MockLyricsServerService: ServerServiceProtocol {
     let state: ServerState = ServerState()
@@ -38,8 +36,6 @@ actor RecordingLRCLIBFetcher: LRCLIBLyricsFetching {
         return record
     }
 }
-
-// MARK: - Helpers
 
 @MainActor
 private func makeService(
@@ -103,8 +99,6 @@ private func sampleList() -> LyricsList {
         StructuredLyrics(lang: "fr", synced: false, line: [Line(value: "Bonjour")])
     ])
 }
-
-// MARK: - selectBestLanguage
 
 @Suite("LyricsService — selectBestLanguage")
 @MainActor
@@ -170,8 +164,6 @@ struct LyricsSelectBestLanguageTests {
     }
 }
 
-// MARK: - Cache hit
-
 @Suite("LyricsService — cache")
 @MainActor
 struct LyricsCacheTests {
@@ -197,8 +189,6 @@ struct LyricsCacheTests {
         #expect(result == list)
     }
 }
-
-// MARK: - Source routing
 
 @Suite("LyricsService — source routing")
 @MainActor

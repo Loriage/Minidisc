@@ -1,31 +1,25 @@
 import SwiftUI
 
-// MARK: - Minidisc Design Tokens
-
 public enum MinidiscColors {
     
-    // MARK: — Accent
     public static let accent = Color("MinidiscAccent")
 
     public static let accentBackground = Color("MinidiscAccentBackground")
 
     public static let accentForeground = Color("MinidiscAccentForeground")
 
-    // MARK: — Backgrounds
     public static let backgroundPrimary = Color("MinidiscBackgroundPrimary")
 
     public static let backgroundSecondary = Color("MinidiscBackgroundSecondary")
 
     public static let backgroundTertiary = Color("MinidiscBackgroundTertiary")
 
-    // MARK: — Text
     public static let textPrimary = Color("MinidiscTextPrimary")
 
     public static let textSecondary = Color("MinidiscTextSecondary")
 
     public static let textTertiary = Color("MinidiscTextTertiary")
 
-    // MARK: — Structure
     public static let separator = Color("MinidiscSeparator")
 
     public static let border = Color("MinidiscBorder")
@@ -45,7 +39,6 @@ public enum MinidiscColors {
     }
 }
 
-// MARK: - Color(hex:) helper
 extension Color {
     init(hex: String) {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)

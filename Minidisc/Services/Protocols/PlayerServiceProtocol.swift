@@ -2,7 +2,6 @@ import Foundation
 import SwiftSonic
 
 protocol PlayerServiceProtocol: AnyObject, Sendable {
-    /// MainActor playback state shared by views and system Now Playing.
     var state: PlayerState { get }
 
     func play(tracks: [DisplayableSong], startIndex: Int) async throws

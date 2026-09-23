@@ -10,7 +10,6 @@ struct LidarrLibraryView: View {
     @State private var errorMessage: String?
     @State private var client: LidarrClient?
     @State private var showSearch = false
-    // Keep Lidarr’s sort preference separate from the music-server library.
     @AppStorage("minidisc.lidarrArtistSort") private var artistSort: ArtistSort = .name
     @AppStorage("minidisc.lidarrLibraryGrid") private var gridLayout = true
 
@@ -155,8 +154,6 @@ struct LidarrLibraryView: View {
                 }
             }
             .safeAreaInset(edge: .trailing, spacing: 0) {
-                // Only meaningful while the order is alphabetical — under Album Count the letters
-                // are scattered through the list and jumping to one lands somewhere arbitrary.
                 let letters = artistSort == .name
                     ? artists.availableAlphabetLetters(keyPath: \.artistName)
                     : []
@@ -222,8 +219,6 @@ struct LidarrLibraryView: View {
     }
 }
 
-// MARK: - Artist cell
-
 private struct LidarrArtistCell: View {
     let artist: LidarrArtist
     let client: LidarrClient
@@ -259,8 +254,6 @@ private struct LidarrArtistCell: View {
         }
     }
 }
-
-// MARK: - Artist row
 
 private struct LidarrArtistRow: View {
     let artist: LidarrArtist
@@ -299,8 +292,6 @@ private struct LidarrArtistRow: View {
         .contentShape(Rectangle())
     }
 }
-
-// MARK: - Sorting
 
 private extension ArtistSort {
     /// `ArtistSort.sorted` is typed to SwiftSonic's `ArtistID3`; Lidarr has its own model, so the same

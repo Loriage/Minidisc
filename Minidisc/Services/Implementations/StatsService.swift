@@ -10,8 +10,6 @@ actor StatsService {
         self.modelContainer = modelContainer
     }
 
-    // MARK: - Public API
-
     func recordPlayback(_ event: PlaybackEventDTO, trigger: String = "") async {
         let context = ModelContext(modelContainer)
         let model = PlaybackEvent(
@@ -188,8 +186,6 @@ actor StatsService {
             )
         }
     }
-
-    // MARK: - Private aggregation
 
     private func aggregate(
         events: [PlaybackEvent],

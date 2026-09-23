@@ -27,8 +27,6 @@ struct CoverArtView: View {
     }
 }
 
-// MARK: - Content
-
 private struct CoverArtViewContent: View {
     let id: String
     let size: Int?

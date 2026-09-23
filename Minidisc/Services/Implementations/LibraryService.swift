@@ -333,7 +333,6 @@ actor LibraryService: LibraryServiceProtocol {
     }
 
     private func onlineSmartShuffle(targetSize: Int) async throws -> [DisplayableSong] {
-        // Rediscovery uses server-random songs without recency weighting.
         let songs = try await client().getRandomSongs(size: targetSize)
         Logger.library.debug("Smart shuffle online: \(songs.count) random tracks (target \(targetSize))")
         return songs.map { DisplayableSong(from: $0) }
@@ -801,7 +800,6 @@ actor LibraryService: LibraryServiceProtocol {
         return diversified.prefix(count).map { DisplayableSong(from: $0) }
     }
 
-    // Bound Instant Mix fan-out to limit server load.
     nonisolated private static let instantMixFanOutArtists = 8
     nonisolated private static let instantMixFanOutCount = 25
     nonisolated private static let instantMixMaxPerArtist = 4

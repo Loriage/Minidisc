@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Minidisc
 
-// MARK: - Mock transport
-
 private struct MockTransport: ListenBrainzTransport {
     let handler: @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)
 
@@ -18,8 +16,6 @@ private struct FailingTransport: ListenBrainzTransport {
     }
 }
 
-// MARK: - Helpers
-
 private func makeClient(_ handler: @escaping @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)) -> ListenBrainzClient {
     ListenBrainzClient(transport: MockTransport(handler: handler))
 }
@@ -32,8 +28,6 @@ private nonisolated func response(status: Int, headers: [String: String]? = nil)
         headerFields: headers
     )!
 }
-
-// MARK: - validateUsername tests
 
 @Suite("ListenBrainzClient — validateUsername")
 struct ListenBrainzClientTests {
@@ -168,8 +162,6 @@ struct ListenBrainzClientTests {
             Issue.record("Expected .invalidUsername, got \(type(of: error))")
         }
     }
-
-    // MARK: - Canary: error descriptions must never expose username
 
     @Test("canary: error descriptions do not leak the username")
     func errorDescriptionsClean() {

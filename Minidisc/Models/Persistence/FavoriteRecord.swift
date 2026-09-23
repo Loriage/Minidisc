@@ -11,7 +11,7 @@ nonisolated enum FavoriteType: String, CaseIterable, Sendable {
 /// and updated optimistically on star/unstar actions.
 @Model
 final class FavoriteRecord {
-    @Attribute(.unique) var id: String  // "{serverId}:{type}:{itemId}"
+    @Attribute(.unique) var id: String
     var itemType: String
     var itemId: String
     var starredDate: Date

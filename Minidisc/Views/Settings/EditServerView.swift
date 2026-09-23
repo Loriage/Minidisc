@@ -30,8 +30,6 @@ struct EditServerView: View {
         }
     }
 
-    // MARK: - Toolbar (iOS only)
-
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         if viewModel.hasUnsavedChanges {
@@ -43,8 +41,6 @@ struct EditServerView: View {
             }
         }
     }
-
-    // MARK: - Form
 
     private var form: some View {
         Form {
@@ -186,8 +182,6 @@ struct EditServerView: View {
     }
 
 }
-
-// MARK: - Navigation destination wrapper
 
 /// Owns the ViewModel lifetime so it is created exactly once per navigation push.
 struct EditServerDestinationView: View {

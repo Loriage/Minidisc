@@ -140,7 +140,6 @@ nonisolated protocol LibraryServiceProtocol:
 }
 
 extension RecentlyAddedTrackBrowsing where Self: RecentlyAddedAlbumBrowsing, Self: AlbumBrowsing {
-    /// Composes newest albums and their tracks because Subsonic has no track-recency endpoint.
     func recentlyAddedTracks(albumLimit: Int, trackLimit: Int) async throws -> [Song] {
         let albums = try await recentlyAddedAlbums(size: albumLimit)
         guard !albums.isEmpty else { return [] }

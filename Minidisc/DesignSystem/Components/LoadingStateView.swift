@@ -20,8 +20,6 @@ struct LoadingStateView: View {
     }
 }
 
-// MARK: - Skeleton components
-
 struct SkeletonAlbumCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
@@ -68,8 +66,6 @@ struct SkeletonSongRow: View {
         .shimmer()
     }
 }
-
-// MARK: - Shimmer modifier
 
 private struct ShimmerModifier: ViewModifier {
     @State private var phase: CGFloat = -1

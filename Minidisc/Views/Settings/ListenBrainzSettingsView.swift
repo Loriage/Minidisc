@@ -33,8 +33,6 @@ struct ListenBrainzSettingsView: View {
         }
     }
 
-    // MARK: - About
-
     private func aboutSection() -> some View {
         Section {
             Text("ListenBrainz is an open-source music scrobbling and recommendation service by the MetaBrainz Foundation. Minidisc can submit your listening history and surface personalized fresh releases and similar artists.")
@@ -50,8 +48,6 @@ struct ListenBrainzSettingsView: View {
             Text("About ListenBrainz")
         }
     }
-
-    // MARK: - Recommendations connection
 
     @ViewBuilder
     private func connectionSection(vm: ListenBrainzSettingsViewModel) -> some View {
@@ -200,8 +196,6 @@ struct ListenBrainzSettingsView: View {
         }
     }
 
-    // MARK: - Scrobbling
-
     private func scrobblingToggleSection(vm: ListenBrainzSettingsViewModel) -> some View {
         Section {
             Toggle(
@@ -296,8 +290,6 @@ struct ListenBrainzSettingsView: View {
             Text("Your token will be removed and scrobbling disabled. You can reconnect anytime.")
         }
     }
-
-    // MARK: - Status badge
 
     private func statusBadge(for status: ValidationStatus) -> some View {
         HStack(spacing: 4) {

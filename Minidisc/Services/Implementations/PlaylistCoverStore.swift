@@ -2,7 +2,6 @@ import Foundation
 import SwiftData
 import OSLog
 
-/// Per-device cover choices keyed by playlist and server, accessed on MainActor.
 @MainActor
 struct PlaylistCoverStore {
     private let modelContainer: ModelContainer

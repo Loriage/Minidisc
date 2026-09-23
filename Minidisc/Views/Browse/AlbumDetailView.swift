@@ -3,11 +3,9 @@ import SwiftSonic
 import SwiftData
 import OSLog
 
-// MARK: - Mode
-
 enum AlbumDetailMode: Sendable {
-    case full           // show all album songs (default — online catalog browsing)
-    case downloadedOnly // show only downloaded tracks (Downloads/Offline contexts for purely-partial albums)
+    case full
+    case downloadedOnly
 }
 
 private struct AlbumRecommendationRequest: Equatable {
@@ -927,8 +925,6 @@ private nonisolated enum AlbumDownloadControlState: Equatable {
     }
 }
 
-// MARK: - Live download indicator rows
-
 struct AlbumSongRows: View {
     let songs: [DisplayableSong]
     let showArtists: Bool
@@ -991,8 +987,6 @@ struct AlbumSongRows: View {
         }
     }
 }
-
-// MARK: - Release information
 
 private struct AlbumReleaseInformationSection: View {
     let releaseDate: ItemDate?
@@ -1092,8 +1086,6 @@ private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
-// MARK: - More by artist
-
 /// A supplementary shelf, loaded independently so a slow artist lookup never delays the album or its tracks.
 private struct AlbumMoreByArtistSection: View {
     let artistId: String
@@ -1162,8 +1154,6 @@ private struct AlbumMoreByArtistSection: View {
     }
 }
 
-// MARK: - You might also like
-
 /// Album-level recommendations derived from Navidrome's similar-song graph.
 /// Loading is independent from the primary album so an unavailable recommendation provider never delays playback.
 private struct AlbumYouMightAlsoLikeSection: View {
@@ -1192,8 +1182,6 @@ private struct AlbumYouMightAlsoLikeSection: View {
         }
     }
 }
-
-// MARK: - Theme colour sheet
 
 struct ThemeColorSheet: View {
     @Binding var color: Color

@@ -51,8 +51,6 @@ struct WrappedClosingSlide: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Stat card
-
     private func statCard(value: String, label: String) -> some View {
         VStack(spacing: MinidiscSpacing.xs) {
             Text(value)

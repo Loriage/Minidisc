@@ -92,8 +92,6 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Sections
-
     private func serverSection() -> some View {
         Section {
             if let server = container?.serverState.activeServer,
@@ -159,8 +157,6 @@ struct SettingsView: View {
         }
     }
 }
-
-// MARK: - Storage sub-page
 
 struct StorageSettingsView: View {
     let vm: DownloadsViewModel
@@ -724,8 +720,6 @@ private struct LibraryIndexStorageSection: View {
     }
 }
 
-// MARK: - Settings sub-pages
-
 private struct PlaybackSettingsView: View {
     @Environment(\.appContainer) private var container
 
@@ -836,8 +830,6 @@ private struct IntegrationsSettingsView: View {
         .navigationBarTitleDisplayModeInline()
     }
 }
-
-// MARK: - Application
 
 private struct ApplicationSettingsView: View {
     @Environment(\.appContainer) private var container

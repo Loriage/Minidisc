@@ -39,8 +39,6 @@ struct LidarrArtistDetailView: View {
         .task { await loadAlbums() }
     }
 
-    // MARK: - Menu
-
     private var optionsMenu: some View {
         Menu {
             Button {
@@ -73,8 +71,6 @@ struct LidarrArtistDetailView: View {
         }
         .tint(.primary)
     }
-
-    // MARK: - Header
 
     private var header: some View {
         HStack(alignment: .top, spacing: MinidiscSpacing.m) {
@@ -184,8 +180,6 @@ struct LidarrArtistDetailView: View {
         }
     }
 
-    // MARK: - Actions
-
     private func loadAlbums() async {
         errorMessage = nil
         do {
@@ -244,8 +238,6 @@ struct LidarrArtistDetailView: View {
         }
     }
 }
-
-// MARK: - Album row
 
 private struct LidarrAlbumRow: View {
     let album: LidarrAlbum

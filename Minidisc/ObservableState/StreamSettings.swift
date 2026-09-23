@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 
-/// Selects server transcoding quality separately for Wi-Fi and cellular connections.
 @Observable
 @MainActor
 final class StreamSettings {

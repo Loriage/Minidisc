@@ -43,8 +43,6 @@ struct CopyableCodeLabel: View {
     }
 }
 
-// MARK: - Preview
-
 #Preview("CopyableCodeLabel") {
     CopyableCodeLabel(code: "E-DNS")
         .padding()

@@ -107,7 +107,6 @@ struct SongsListView: View {
             .listStyle(.plain)
             .refreshable { await refresh(vm) }
             .safeAreaInset(edge: .trailing, spacing: 0) {
-                // The A–Z jump bar only makes sense when sorted by title.
                 if songSort == .title && songs.count >= 20 {
                     AlphabetJumpBar(
                         availableLetters: songs.availableAlphabetLetters(keyPath: \.title),

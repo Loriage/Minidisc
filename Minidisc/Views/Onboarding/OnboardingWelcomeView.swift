@@ -111,8 +111,6 @@ struct OnboardingWelcomeView: View {
     }
 }
 
-// MARK: - Animated Minidisc Hero
-
 private struct AnimatedMinidiscHero: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var discAngle: Double = 0

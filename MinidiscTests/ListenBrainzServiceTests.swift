@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Minidisc
 
-// MARK: - Flexible mock transport
-
 @MainActor
 private final class FlexibleTransport: ListenBrainzTransport {
     private var queue: [(Data, HTTPURLResponse)] = []
@@ -25,8 +23,6 @@ private final class FlexibleTransport: ListenBrainzTransport {
     }
 }
 
-// MARK: - Mock keychain (LB-specific to avoid collision with ServerServiceTests.MockKeychain)
-
 @MainActor
 private final class LBMockKeychain: KeychainServiceProtocol {
     private var storage: [String: Data] = [:]
@@ -45,8 +41,6 @@ private final class LBMockKeychain: KeychainServiceProtocol {
     }
 }
 
-// MARK: - Helpers
-
 private let keychainKey = "listenbrainz-username"
 private let defaultsKey = "app.minidisc.listenbrainz.isEnabled"
 
@@ -61,8 +55,6 @@ private func makeComponents(transport: any ListenBrainzTransport) -> (ListenBrai
     )
     return (service, keychain, defaultsSuiteName)
 }
-
-// MARK: - enable() tests
 
 @Suite("ListenBrainzService — enable")
 struct ListenBrainzServiceEnableTests {
@@ -115,8 +107,6 @@ struct ListenBrainzServiceEnableTests {
     }
 }
 
-// MARK: - disable() tests
-
 @Suite("ListenBrainzService — disable")
 struct ListenBrainzServiceDisableTests {
 
@@ -136,8 +126,6 @@ struct ListenBrainzServiceDisableTests {
         #expect(stored == "keepme")
     }
 }
-
-// MARK: - clearCredentials() tests
 
 @Suite("ListenBrainzService — clearCredentials")
 struct ListenBrainzServiceClearTests {
@@ -161,8 +149,6 @@ struct ListenBrainzServiceClearTests {
         #expect(!UserDefaults(suiteName: defaultsSuiteName)!.bool(forKey: defaultsKey))
     }
 }
-
-// MARK: - revalidate() tests
 
 @Suite("ListenBrainzService — revalidate")
 struct ListenBrainzServiceRevalidateTests {
@@ -210,8 +196,6 @@ struct ListenBrainzServiceRevalidateTests {
         }
     }
 }
-
-// MARK: - Canary: username must never leak
 
 @Suite("ListenBrainzService — canary secrets")
 struct ListenBrainzServiceCanaryTests {

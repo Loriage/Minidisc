@@ -12,8 +12,6 @@ actor RadioService: RadioServiceProtocol {
         self.serverService = serverService
     }
 
-    // MARK: - Client
-
     private func client() async throws -> SwiftSonicClient {
         let activeVersion = await serverService.activeConnectionVersion()
         if let cached = cachedClient,
@@ -28,8 +26,6 @@ actor RadioService: RadioServiceProtocol {
         stationsCache = nil
         return fresh
     }
-
-    // MARK: - Read
 
     func listStations(forceRefresh: Bool = false) async throws -> [InternetRadioStation] {
         let client = try await client()

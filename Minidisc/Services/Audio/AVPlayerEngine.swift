@@ -290,7 +290,6 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         cancelOverlap()
         clearPreloadedDeck()
         if standbyPlayer.status == .failed {
-            // Recreate a failed idle deck only when an actual crossfade needs it.
             timeControlObservers.forEach { $0.invalidate() }
             timeControlObservers.removeAll()
             queueItemObservers.forEach { $0.invalidate() }
@@ -949,8 +948,6 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         if let item = currentItem {
             attachItemObservers(item)
         }
-        // The promoted deck carries on playing: either it was started here, or it has been audible
-        // since the crossfade began. Either way the new item starts its own end-detection cycle.
         didSignalEnd = false
         shouldBePlaying = true
         if startPlaying {

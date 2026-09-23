@@ -216,7 +216,6 @@ struct SearchView: View {
         }
     }
 
-    // MARK: - Local (downloads) results
     // Keep this Query below the navigation owner so updates cannot recreate destinations.
 
     private struct LocalSearchResultsSection: View {
@@ -363,8 +362,6 @@ struct SearchView: View {
         }
     }
 
-    // MARK: - Search history list
-
     private struct SearchHistoryListView: View {
         let serverId: String
         @Binding var path: NavigationPath
@@ -462,8 +459,6 @@ struct SearchView: View {
             }
         }
     }
-
-    // MARK: - History recording wrapper
 
     private struct HistoryRecordingView<Content: View>: View {
         let action: () async -> Void

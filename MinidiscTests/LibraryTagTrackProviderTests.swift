@@ -7,7 +7,6 @@ actor TagLibraryStub: LibrarySearching, MoodTrackSourcing {
     private var _genreQueries: [String] = []
     private var _randomCalls = 0
 
-    /// Songs returned per genre. Absent genres return empty, like a real server.
     var songsPerGenre: [String: [Song]] = [:]
     var randomPool: [Song] = []
     var searchResults: [Song] = []
@@ -40,7 +39,6 @@ actor TagLibraryStub: LibrarySearching, MoodTrackSourcing {
     }
 }
 
-/// Song is Decodable-only, so fixtures are built from JSON.
 func song(id: String, title: String = "T", artist: String? = nil, genre: String? = nil, bpm: Int? = nil, moods: [String] = []) throws -> Song {
     var fields: [String] = [#""id":"\#(id)""#, #""title":"\#(title)""#, #""isDir":false"#]
     if let artist { fields.append(#""artist":"\#(artist)""#) }

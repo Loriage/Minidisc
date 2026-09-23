@@ -404,7 +404,6 @@ struct ArtistDetailView: View {
                 }
                 .padding(MinidiscSpacing.m)
                 .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: MinidiscCornerRadius.large, style: .continuous))
-                // Include transparent gaps in the card’s hit area.
                 .contentShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.large, style: .continuous))
                 .padding(.horizontal, MinidiscSpacing.l)
             }
@@ -421,9 +420,6 @@ struct ArtistDetailView: View {
         }
     }
 
-    // MARK: - Liked songs
-
-    /// Applies live local star changes to the fetched artist snapshot.
     private func likedSongs(_ vm: ArtistDetailViewModel) -> [DisplayableSong] {
         ArtistBestOf.filteredByLocalStars(container?.visibleSongs(vm.likedSongs) ?? [], starredSongIds: Set(songFavorites.filter { $0.serverId == container?.serverState.activeServer?.id }.map(\.itemId)))
     }
@@ -557,8 +553,6 @@ struct ArtistDetailView: View {
     }
 
 }
-
-// MARK: - Artist content shelves
 
 private enum ArtistDetailMetrics {
     static let topSongArtwork: CGFloat = 44
@@ -866,8 +860,6 @@ private struct SimilarArtistsCollectionView: View {
         }
     }
 }
-
-// MARK: - Out-of-library artist sheet
 
 struct OutOfLibraryArtistSheet: View {
     let artist: SimilarArtistRecommendation

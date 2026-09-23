@@ -358,8 +358,6 @@ extension ModelContainer {
     }
 }
 
-// MARK: - Cover art cache invalidation
-
 extension AppContainer {
     private static let coverArtCacheVersionKey = "minidisc.coverArtCacheVersion"
     private static let currentCoverArtCacheVersion = 5
@@ -382,12 +380,9 @@ extension AppContainer {
     }
 }
 
-// MARK: - Legacy cover art sweep
-
 extension AppContainer {
     private static let artworkLegacySweepKey = "minidisc.artworkLegacySweep_v2"
 
-    /// Removes legacy artwork files without @thumb or @hero suffixes.
     @discardableResult
     static func sweepLegacyCoverArtFiles() -> Task<Void, Never>? {
         guard !UserDefaults.standard.bool(forKey: artworkLegacySweepKey) else { return nil }
@@ -419,8 +414,6 @@ extension AppContainer {
         }
     }
 }
-
-// MARK: - Audio extension migration
 
 extension AppContainer {
     private static let audioExtMigrationKey = "minidisc.audioExtMigration_v1"
@@ -527,7 +520,6 @@ extension AppContainer {
             }
         }
 
-        // Persist the fileSize updates; only mark done on a clean pass so failures are retried.
         var saveOK = true
         do {
             try ctx.save()
@@ -562,8 +554,6 @@ extension AppContainer {
         }
     }
 }
-
-// MARK: - SwiftUI environment key
 
 private struct AppContainerKey: EnvironmentKey {
     static let defaultValue: AppContainer? = nil

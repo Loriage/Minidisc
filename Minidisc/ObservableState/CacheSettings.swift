@@ -4,7 +4,6 @@ import Observation
 @Observable
 @MainActor
 final class CacheSettings {
-    // MARK: - Storage (observation ignored)
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var _capacityMegabytes: Int
@@ -12,8 +11,6 @@ final class CacheSettings {
     @ObservationIgnored private var _cacheOverCellular: Bool
     @ObservationIgnored private var _cacheArtwork: Bool
     @ObservationIgnored private var _keepFavoritesOffline: Bool
-
-    // MARK: - Visible properties (manual observation hooks)
 
     var capacityMegabytes: Int {
         get {
@@ -84,8 +81,6 @@ final class CacheSettings {
         }
     }
 
-    // MARK: - Defaults & keys
-
     static let defaultCapacityMegabytes = 512
     static let minCapacityMegabytes = 128
     static let maxCapacityMegabytes = 2_048
@@ -100,8 +95,6 @@ final class CacheSettings {
     private static let cacheOverCellularKey = "minidisc.cache.cellular"
     private static let keepFavoritesOfflineKey = "minidisc.cache.favoritesOffline"
     private static let cacheArtworkKey = "minidisc.cache.artwork"
-
-    // MARK: - Init
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults

@@ -44,8 +44,6 @@ struct AudioMuseSettingsView: View {
         }
     }
 
-    // MARK: - Sections
-
     private var aboutSection: some View {
         Section {
             Text("AudioMuse-AI analyses how your music actually sounds, which lets Minidisc build a playlist for a mood rather than for a tag.")
@@ -134,8 +132,6 @@ struct AudioMuseSettingsView: View {
             Text("Future mood playlists will use your library tags. Automatic updates follow your Application settings.")
         }
     }
-
-    // MARK: - Actions
 
     private func testAndSave() async {
         guard let container, let server = activeServer else { return }

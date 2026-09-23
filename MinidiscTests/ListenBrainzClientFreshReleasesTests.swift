@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Minidisc
 
-// MARK: - Fixtures
-
 private let twoReleasesJSON = Data("""
 {
   "payload": {
@@ -36,8 +34,6 @@ private let emptyReleasesJSON = Data("""
 { "payload": { "releases": [] } }
 """.utf8)
 
-// MARK: - Mock transport
-
 @MainActor
 private final class FRTransport: ListenBrainzTransport {
     private var queue: [(Data, HTTPURLResponse)] = []
@@ -61,8 +57,6 @@ private final class FRTransport: ListenBrainzTransport {
 private func makeClient(transport: FRTransport) -> ListenBrainzClient {
     ListenBrainzClient(transport: transport)
 }
-
-// MARK: - Happy path
 
 @Suite("ListenBrainzClient — freshReleases")
 struct ListenBrainzClientFreshReleasesTests {
@@ -106,8 +100,6 @@ struct ListenBrainzClientFreshReleasesTests {
         let releases = try await client.freshReleases(forUser: "testuser")
         #expect(releases.count == 2)
     }
-
-    // MARK: - HTTP error mapping
 
     @Test("404 response throws userNotFound")
     func notFoundThrows() async throws {
@@ -216,8 +208,6 @@ struct ListenBrainzClientFreshReleasesTests {
             Issue.record("Expected .network, got \(String(describing: caught))")
         }
     }
-
-    // MARK: - Canary
 
     @Test("canary: error descriptions never expose the username")
     func canaryUsernameNotInErrors() async throws {

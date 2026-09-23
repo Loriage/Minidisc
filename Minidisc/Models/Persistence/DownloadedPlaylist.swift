@@ -15,7 +15,6 @@ final class DownloadedPlaylist {
     var coverArtId: String?
     /// Relative path (from Documents/app.minidisc/) to the cached cover art file.
     var localCoverArtPath: String?
-    /// Ordered list of song IDs in this playlist, used for offline playback reconstruction.
     var songIds: [String] = []
 
     var isComplete: Bool { tracksCount == totalTracksCount }

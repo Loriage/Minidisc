@@ -62,8 +62,6 @@ struct AlphabetJumpBar: View {
     }
 }
 
-// MARK: - Helpers
-
 /// Folds diacritics into A–Z. Non-ASCII letters, digits and punctuation map to #
 /// because the jump bar has no separate anchors for them.
 func alphabetFirstLetter(of name: String) -> String {

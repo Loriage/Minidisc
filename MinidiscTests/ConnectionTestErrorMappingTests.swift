@@ -4,8 +4,6 @@ import SwiftData
 import SwiftSonic
 @testable import Minidisc
 
-// MARK: - Stub transport
-
 struct StubHTTPTransport: HTTPTransport, Sendable {
     enum Outcome: Sendable {
         case response(data: Data, statusCode: Int)
@@ -27,8 +25,6 @@ struct StubHTTPTransport: HTTPTransport, Sendable {
     }
 }
 
-// MARK: - JSON helpers
-
 private func subsonicErrorJSON(code: Int, message: String) -> Data {
     Data("""
     {"subsonic-response":{"status":"failed","version":"1.16.1","error":{"code":\(code),"message":"\(message)"}}}
@@ -38,8 +34,6 @@ private func subsonicErrorJSON(code: Int, message: String) -> Data {
 private func nonSubsonicJSON() -> Data {
     Data("{\"error\":\"not found\"}".utf8)
 }
-
-// MARK: - Suite
 
 @Suite("ConnectionTestError mapping — ServerService.mapToConnectionTestError")
 @MainActor
@@ -68,8 +62,6 @@ struct ConnectionTestErrorMappingTests {
         )
     }
 
-    // MARK: .network — DNS failure
-
     @Test func network_cannotFindHost_mapsToDNSFailure() async throws {
         let service = try makeService()
         let result = await service.mapToConnectionTestError(SwiftSonicError.network(URLError(.cannotFindHost)))
@@ -82,15 +74,11 @@ struct ConnectionTestErrorMappingTests {
         #expect(result == .dnsFailure)
     }
 
-    // MARK: .network — timeout
-
     @Test func network_timedOut_mapsToTimeout() async throws {
         let service = try makeService()
         let result = await service.mapToConnectionTestError(SwiftSonicError.network(URLError(.timedOut)))
         #expect(result == .timeout)
     }
-
-    // MARK: .network — ATS
 
     @Test func network_atsBlocked_mapsToAtsBlocked() async throws {
         let service = try makeService()
@@ -99,8 +87,6 @@ struct ConnectionTestErrorMappingTests {
         )
         #expect(result == .atsBlocked)
     }
-
-    // MARK: .network — certificate
 
     @Test func network_certificateUntrusted_mapsToCertificate() async throws {
         let service = try makeService()
@@ -118,8 +104,6 @@ struct ConnectionTestErrorMappingTests {
         #expect(result == .certificate)
     }
 
-    // MARK: .network — cannotConnect (default bucket)
-
     @Test func network_cannotConnectToHost_mapsToCannotConnect() async throws {
         let service = try makeService()
         let result = await service.mapToConnectionTestError(
@@ -135,8 +119,6 @@ struct ConnectionTestErrorMappingTests {
         )
         #expect(result == .cannotConnect)
     }
-
-    // MARK: .httpError
 
     @Test func httpError_401_mapsToUnauthorized() async throws {
         let service = try makeService()
@@ -170,8 +152,6 @@ struct ConnectionTestErrorMappingTests {
         #expect(result == .httpError(statusCode: 500))
     }
 
-    // MARK: .decoding → notSubsonicServer (via stub transport)
-
     @Test func decoding_mapsToNotSubsonicServer() async throws {
         let service = try makeService()
         let client = makeClient(transport: StubHTTPTransport(outcome: .response(data: nonSubsonicJSON(), statusCode: 200)))
@@ -186,8 +166,6 @@ struct ConnectionTestErrorMappingTests {
         #expect(error == .notSubsonicServer)
     }
 
-    // MARK: .rateLimited
-
     @Test func rateLimited_mapsToHttpError429() async throws {
         let service = try makeService()
         let result = await service.mapToConnectionTestError(
@@ -196,15 +174,11 @@ struct ConnectionTestErrorMappingTests {
         #expect(result == .httpError(statusCode: 429))
     }
 
-    // MARK: .invalidConfiguration
-
     @Test func invalidConfiguration_mapsToInvalidConfiguration() async throws {
         let service = try makeService()
         let result = await service.mapToConnectionTestError(SwiftSonicError.invalidConfiguration("bad URL"))
         #expect(result == .invalidConfiguration)
     }
-
-    // MARK: .insecureRedirect
 
     @Test func insecureRedirect_mapsToInsecureRedirect() async throws {
         let service = try makeService()
@@ -263,8 +237,6 @@ struct ConnectionTestErrorMappingTests {
         }
         #expect(error == .subsonicError(code: .notFound, message: "Not found"))
     }
-
-    // MARK: Non-SwiftSonicError
 
     @Test func nonSwiftSonicError_mapsToUnknown() async throws {
         let service = try makeService()

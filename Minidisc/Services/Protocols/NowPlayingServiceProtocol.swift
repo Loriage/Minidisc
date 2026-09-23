@@ -1,6 +1,5 @@
 import Foundation
 
-/// Owns system Now Playing metadata and remote commands.
 protocol NowPlayingServiceProtocol: AnyObject, Sendable {
     func start() async
 

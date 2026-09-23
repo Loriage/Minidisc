@@ -268,7 +268,6 @@ struct FullPlayerView: View {
     private func flowingQueueContent(_ playerState: PlayerState) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: MinidiscSpacing.m) {
-                // Invisible endpoint for the cover's matched-geometry transition.
                 Color.clear
                     .frame(width: 56, height: 56)
                     .matchedGeometryEffect(id: "playerArtwork", in: artworkNamespace ?? morphNS, isSource: true)
@@ -690,8 +689,6 @@ private struct TrackInfoSection: View {
     }
 }
 
-// MARK: - Scrubber
-
 private struct ScrubberView: View {
     let playerState: PlayerState
     let playerService: (any PlayerServiceProtocol)?
@@ -847,8 +844,6 @@ struct ProgressSlider: View {
     }
 }
 
-// MARK: - Playback controls
-
 private struct PlaybackControlsView: View {
     @Environment(\.appContainer) private var container
     let playerState: PlayerState
@@ -906,8 +901,6 @@ private struct PlaybackControlsView: View {
         }
     }
 }
-
-// MARK: - Bottom toolbar
 
 private struct BottomToolbar: View {
     @Binding var showLyrics: Bool
@@ -985,8 +978,6 @@ private struct AirPlayRouteButton: UIViewRepresentable {
         uiView.tintColor = UIColor(tintColor)
     }
 }
-
-// MARK: - Volume
 
 private struct VolumeSection: View {
     let contentColor: Color

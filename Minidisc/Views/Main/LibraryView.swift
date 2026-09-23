@@ -232,8 +232,6 @@ struct LibraryView: View {
         }
     }
 
-    // MARK: - Library section
-
     private var librarySection: some View {
         let local = container?.offlineLibrary.snapshot ?? OfflineBrowsingSnapshot()
         return VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
@@ -340,8 +338,6 @@ struct LibraryView: View {
     }
 }
 
-// MARK: - HomePinnedCard
-
 private struct HomePinnedCard: View {
     let item: PinnedItem
     let namespace: Namespace.ID
@@ -442,8 +438,6 @@ private struct HomePinnedCard: View {
     }
 }
 
-// MARK: - HomeLibraryRowLabel
-
 private struct HomeLibraryRowLabel: View {
     let title: LocalizedStringKey
     let systemImage: String
@@ -474,8 +468,6 @@ private struct HomeLibraryRowLabel: View {
         .contentShape(Rectangle())
     }
 }
-
-// MARK: - HomeDownloadedItemCard
 
 private struct HomeDownloadedItemCard: View {
     let item: DownloadedItem
@@ -546,8 +538,6 @@ private struct HomeDownloadedItemCard: View {
     }
 }
 
-// MARK: - DownloadedItem
-
 private nonisolated struct DownloadedItem: Identifiable, Sendable {
     nonisolated enum ItemType: Sendable {
         case album
@@ -561,8 +551,6 @@ private nonisolated struct DownloadedItem: Identifiable, Sendable {
     let coverArtId: String?
     let downloadedAt: Date
 }
-
-// MARK: - HomeAlbumCell
 
 private struct HomeAlbumCell: View {
     let album: AlbumID3

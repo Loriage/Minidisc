@@ -1,9 +1,6 @@
 import SwiftUI
 
 nonisolated enum WrappedYearPalette {
-    /// Returns 3 deterministic colors derived from the given year, cycling every 8 years.
-    /// Used as source palette for mesh gradient backgrounds in Wrapped hero, year card,
-    /// and cover generation.
     static func colors(for year: Int) -> [Color] {
         switch year % 8 {
         case 0: // 2024 — warm sunset
@@ -62,8 +59,6 @@ nonisolated enum WrappedYearPalette {
             ]
         }
     }
-
-    // MARK: - Medal colors
 
     static let medalGold   = Color(red: 1.0,  green: 0.84, blue: 0.0)
     static let medalSilver = Color(red: 0.75, green: 0.75, blue: 0.75)

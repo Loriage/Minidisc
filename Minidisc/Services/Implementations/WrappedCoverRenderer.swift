@@ -15,8 +15,6 @@ enum WrappedCoverRenderer {
     }
 }
 
-// MARK: - WrappedCoverImage
-
 private struct WrappedCoverImage: View {
     let year: Int
 

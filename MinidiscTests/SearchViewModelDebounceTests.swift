@@ -3,9 +3,6 @@ import Foundation
 import SwiftSonic
 @testable import Minidisc
 
-// MARK: - Counting stub
-
-// MainActor test double matching the view model’s isolation.
 @MainActor
 private final class SearchLibraryStub: LibrarySearching {
     enum Behavior {
@@ -29,8 +26,6 @@ private final class SearchLibraryStub: LibrarySearching {
     }
 
 }
-
-// MARK: - Tests
 
 @Suite("SearchViewModel — debounce & cancellation")
 @MainActor

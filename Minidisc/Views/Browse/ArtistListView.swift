@@ -124,8 +124,6 @@ struct ArtistListView: View {
     }
 }
 
-// MARK: - Offline Browse
-
 nonisolated struct OfflineAlbumSummary: Sendable, Identifiable, Hashable {
     let albumId: String
     let albumName: String

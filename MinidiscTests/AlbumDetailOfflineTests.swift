@@ -3,14 +3,8 @@ import Foundation
 import SwiftSonic
 @testable import Minidisc
 
-// MARK: - Stubs
-
-/// Every endpoint throws — AlbumDetailViewModel's offline paths must never
-/// reach the server; loadFromAPI's failure is the trigger under test.
 @MainActor
 private final class ADLibraryStub: AlbumBrowsing {
-    /// When set, `album(id:)` returns this instead of throwing — used to drive the
-    /// empty-but-successful (200, no songs) path that the catch block can't catch.
     var albumResult: AlbumID3?
     @MainActor
     func album(id: String) async throws -> AlbumID3 {
@@ -50,8 +44,6 @@ private final class ADDownloadStub: DownloadServiceProtocol {
     func remove(playlistId: String, serverId: UUID) async throws { throw URLError(.unknown) }
     func removeAll() async throws { throw URLError(.unknown) }
 }
-
-// MARK: - Tests
 
 @Suite("AlbumDetailViewModel — offline local fallback")
 @MainActor
@@ -144,8 +136,6 @@ struct AlbumDetailOfflineTests {
         #expect(vm.error == nil)
         #expect(vm.isOffline == true)
     }
-
-    // MARK: - Empty-success (WARP / Cloudflare edge) — the case the throw-only stubs missed
 
     @Test("empty-success album response with a downloaded copy loads local, not empty")
     func emptySuccessAlbumFallsBackToLocal() async throws {

@@ -16,8 +16,6 @@ final class PinService: PinServiceProtocol {
         self.modelContext = ctx
     }
 
-    // MARK: - Query
-
     func isPinned(itemType: PinnedItemType, itemId: String) -> Bool {
         guard let serverId = serverState.activeServer?.id else { return false }
         let compositeId = ServerItemIdentity.key(serverID: serverId, type: itemType.rawValue, itemID: itemId)
@@ -37,8 +35,6 @@ final class PinService: PinServiceProtocol {
         let descriptor = FetchDescriptor<PinnedItem>(predicate: #Predicate { $0.serverId == serverId })
         return (try? modelContext.fetchCount(descriptor)) ?? 0
     }
-
-    // MARK: - Pin
 
     func pin(
         itemType: PinnedItemType,
@@ -73,8 +69,6 @@ final class PinService: PinServiceProtocol {
         Logger.pin.info("Pinned \(itemType.rawValue, privacy: .public) \(itemId, privacy: .public) at position \(count, privacy: .public)")
     }
 
-    // MARK: - Unpin
-
     func unpin(itemType: PinnedItemType, itemId: String) {
         guard let serverId = serverState.activeServer?.id else { return }
         let compositeId = ServerItemIdentity.key(serverID: serverId, type: itemType.rawValue, itemID: itemId)
@@ -99,8 +93,6 @@ final class PinService: PinServiceProtocol {
         Logger.pin.info("Unpinned \(itemType.rawValue, privacy: .public) \(itemId, privacy: .public)")
     }
 
-    // MARK: - Update
-
     func updateCoverArtId(itemType: PinnedItemType, itemId: String, newCoverArtId: String?) {
         guard let serverId = serverState.activeServer?.id else { return }
         let compositeId = ServerItemIdentity.key(serverID: serverId, type: itemType.rawValue, itemID: itemId)
@@ -113,8 +105,6 @@ final class PinService: PinServiceProtocol {
         try? modelContext.save()
         Logger.pin.debug("Updated coverArtId for \(itemType.rawValue, privacy: .public) \(itemId, privacy: .public) → \(newCoverArtId ?? "<nil>", privacy: .public)")
     }
-
-    // MARK: - Reorder
 
     func reorder(items: [PinnedItem]) {
         guard let serverId = serverState.activeServer?.id else { return }

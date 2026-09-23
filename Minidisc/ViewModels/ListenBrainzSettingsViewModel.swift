@@ -12,15 +12,11 @@ nonisolated enum ScrobblingConnectionState: Equatable, Sendable {
 @MainActor
 final class ListenBrainzSettingsViewModel {
 
-    // MARK: - Recommendations state
-
     var snapshot: ListenBrainzSnapshot = ListenBrainzSnapshot(isEnabled: false, username: nil, validationStatus: .unknown)
     var usernameInput: String = ""
     var isProcessing: Bool = false
     var userFacingError: String?
     var usernameInputValidationError: String?
-
-    // MARK: - Scrobbling state
 
     var scrobblingSnapshot: ScrobblingSnapshot = ScrobblingSnapshot(
         isEnabled: false,
@@ -39,8 +35,6 @@ final class ListenBrainzSettingsViewModel {
     init(service: ListenBrainzService) {
         self.service = service
     }
-
-    // MARK: - Recommendations actions
 
     func refreshSnapshot() async {
         snapshot = await service.currentSnapshot()
@@ -104,8 +98,6 @@ final class ListenBrainzSettingsViewModel {
         await service.clearCredentials()
         snapshot = await service.currentSnapshot()
     }
-
-    // MARK: - Scrobbling actions
 
     func refreshScrobblingSnapshot() async {
         let snap = await service.scrobblingSnapshot()
@@ -179,8 +171,6 @@ final class ListenBrainzSettingsViewModel {
         isScrobblingToggleOn = false
     }
 
-    // MARK: - Error mapping (recommendations)
-
     private func userFacingMessage(for error: ListenBrainzError) -> String {
         switch error {
         case .invalidUsername:
@@ -202,8 +192,6 @@ final class ListenBrainzSettingsViewModel {
             return "Couldn't parse response from ListenBrainz."
         }
     }
-
-    // MARK: - Error mapping (scrobbling)
 
     private func userFacingScrobblingMessage(for error: ListenBrainzError) -> String {
         switch error {

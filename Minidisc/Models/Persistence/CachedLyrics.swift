@@ -3,7 +3,7 @@ import SwiftData
 
 @Model
 final class CachedLyrics {
-    @Attribute(.unique) var compositeKey: String  // "{serverId}:{provider}:{songId}"
+    @Attribute(.unique) var compositeKey: String
     var songId: String
     var serverId: UUID
     var jsonPayload: Data  // serialized LyricsList — see LyricsEncoding.swift for Encodable conformance

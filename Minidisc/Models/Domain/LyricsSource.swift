@@ -16,7 +16,6 @@ nonisolated enum LyricsSource: String, CaseIterable, Identifiable, Sendable, Cod
     }
 }
 
-/// Concrete provider that produced a cached lyrics response.
 nonisolated enum LyricsProvider: String, Sendable {
     case navidrome
     case lrclib

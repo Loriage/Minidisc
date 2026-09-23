@@ -429,8 +429,6 @@ struct PlaylistDetailView: View {
         .minidiscZoomTransition(sourceID: zoomSourceId, in: zoomNamespace)
     }
 
-    // MARK: - Toolbar
-
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         if isEditing {
@@ -577,8 +575,6 @@ struct PlaylistDetailView: View {
         if downloaded == total { return .fullyDownloaded }
         return .partiallyDownloaded(downloaded: downloaded, total: total)
     }
-
-    // MARK: - In-place edit header (iOS in-place editor; reuses the validated carousel + fields)
 
     private var editHeader: some View {
         VStack(spacing: MinidiscSpacing.xl) {
@@ -737,8 +733,6 @@ struct PlaylistDetailView: View {
         }
     }
 
-    // MARK: - Editable track list
-
     @ViewBuilder
     private var editableSongRows: some View {
         ForEach(editSongs) { entry in
@@ -801,8 +795,6 @@ struct PlaylistDetailView: View {
             imageToCrop = CroppableImage(image: image)
         }
     }
-
-    // MARK: - Header
 
     private func playlistHeader(vm: PlaylistDetailViewModel?) -> some View {
         VStack(spacing: 0) {
@@ -888,15 +880,11 @@ struct PlaylistDetailView: View {
 
 }
 
-// MARK: - Download state
-
 private nonisolated enum PlaylistDownloadState {
     case notDownloaded
     case partiallyDownloaded(downloaded: Int, total: Int)
     case fullyDownloaded
 }
-
-// MARK: - Download progress sub-view
 
 private struct PlaylistDownloadProgressView: View {
     let songs: [DisplayableSong]
@@ -940,8 +928,6 @@ private struct PlaylistDownloadProgressView: View {
         .frame(minHeight: 44)
     }
 }
-
-// MARK: - Live download indicator rows
 
 struct PlaylistSongRows: View {
     let entries: [PlaylistEntry]

@@ -137,6 +137,7 @@ actor PlayerService: PlayerServiceProtocol {
     private var audioSystemRecoveryTask: Task<Void, Never>?
     private var audioSystemRecoveryGeneration: UInt64 = 0
     private var lastKnownAudioOutputs: [AudioRouteOutputSnapshot] = []
+    private var isAirPlayActive = false
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
     private var mediaServicesResetObserver: NSObjectProtocol?
@@ -1536,6 +1537,7 @@ actor PlayerService: PlayerServiceProtocol {
 
     func pause() async {
         playbackDiagnostics.record(.command(.pause))
+        playbackDiagnostics.record(.pauseRequested(origin: PlaybackCommandOrigin.current, recoveringAudio: audioSystemRecovery != nil))
         queueBuildGeneration &+= 1
         transportIntentGeneration &+= 1
         cancelAudioSystemRecovery()
@@ -3309,6 +3311,7 @@ actor PlayerService: PlayerServiceProtocol {
     }
 
     private func checkPrefetchThreshold() async {
+        updateAirPlayPlaybackMode(outputs: currentAudioRouteOutputs())
         guard !prefetchScheduled else { return }
         // Read only tick scalars here; copying a large queue every 500 ms is unnecessary.
         let (currentIndex, duration, position, hasNextTrack, repeatMode) = await MainActor.run {
@@ -3375,7 +3378,7 @@ actor PlayerService: PlayerServiceProtocol {
         guard repeatMode != .one else { return }
 
         let isPair = await isNextAlbumSequencePair(songId: songId)
-        let overlap = Self.effectiveCrossfadeOverlap(
+        let overlap = isAirPlayActive ? 0 : Self.effectiveCrossfadeOverlap(
             duration: crossfadeConfig.duration,
             disableForGapless: crossfadeConfig.disableForGapless,
             isGaplessPair: isPair
@@ -3385,7 +3388,6 @@ actor PlayerService: PlayerServiceProtocol {
             Logger.player.warning("[CROSSFADE] unable to resolve next track '\(songId, privacy: .public)' for preload")
             return
         }
-        let trim = await gaplessTrim(nextSongId: songId, serverId: serverId, isPair: isPair, overlap: overlap)
         guard await isPrefetchContextValid(
             songId: songId,
             serverId: serverId,
@@ -3413,15 +3415,14 @@ actor PlayerService: PlayerServiceProtocol {
             generation: generation,
             prefetchGeneration: prefetchGeneration
         ) else { return }
-        engine.setTrackEndTrim(trim.leadOut)
         engine.preloadNext(
             trackID: songId,
             url: source.url,
             headers: source.customHeaders,
             crossfadeDuration: overlap,
-            leadInTrim: trim.leadIn,
             replayGainDB: replayGainDB
         )
+        playbackDiagnostics.record(.audioSession(.transitionPrepared(crossfade: overlap > 0)))
         preparedNextPlayback = PreparedNextPlayback(
             trackID: songId,
             serverID: serverId,
@@ -3431,7 +3432,7 @@ actor PlayerService: PlayerServiceProtocol {
             expectedCurrentIndex: expectedCurrentIndex
         )
         Logger.player.info(
-            "[CROSSFADE] preloaded next='\(songId, privacy: .public)' configured=\(self.crossfadeConfig.duration, format: .fixed(precision: 1))s gaplessPair=\(isPair, privacy: .public) overlap=\(overlap, format: .fixed(precision: 1))s replayGain=\(replayGainDB, format: .fixed(precision: 2))dB trimIn=\(trim.leadIn, format: .fixed(precision: 3))s trimOut=\(trim.leadOut, format: .fixed(precision: 3))s"
+            "[CROSSFADE] preloaded next='\(songId, privacy: .public)' configured=\(self.crossfadeConfig.duration, format: .fixed(precision: 1))s gaplessPair=\(isPair, privacy: .public) overlap=\(overlap, format: .fixed(precision: 1))s replayGain=\(replayGainDB, format: .fixed(precision: 2))dB"
         )
     }
 
@@ -3444,32 +3445,15 @@ actor PlayerService: PlayerServiceProtocol {
         guard generation == playbackGeneration,
               prefetchGeneration == self.prefetchGeneration,
               !Task.isCancelled else { return false }
-        return await MainActor.run {
+        let valid = await MainActor.run {
             let nextIndex = state.currentIndex + 1
             return state.queue.indices.contains(nextIndex)
                 && (state.queue[nextIndex].isLocalFile || serverService.state.activeServer?.id == serverId)
                 && state.queue[nextIndex].id == songId
                 && state.currentTrack != nil
         }
-    }
-
-    /// Trim only downloaded adjacent album tracks for gapless playback; crossfades need the full tail.
-    private func gaplessTrim(
-        nextSongId: String,
-        serverId: UUID?,
-        isPair: Bool,
-        overlap: Double
-    ) async -> GaplessTrim {
-        guard isPair, overlap == 0, let serverId,
-              let nextURL = await downloadService.downloadedURL(forSongId: nextSongId, serverId: serverId),
-              let currentId = await MainActor.run(body: { state.currentTrack?.id }),
-              let currentURL = await downloadService.downloadedURL(forSongId: currentId, serverId: serverId)
-        else { return .none }
-
-        async let incoming = GaplessTrimAnalyzer.measure(url: nextURL)
-        async let outgoing = GaplessTrimAnalyzer.measure(url: currentURL)
-        let (headTrim, tailTrim) = await (incoming, outgoing)
-        return GaplessTrim(leadIn: headTrim.leadIn, leadOut: tailTrim.leadOut)
+        return valid && generation == playbackGeneration
+            && prefetchGeneration == self.prefetchGeneration && !Task.isCancelled
     }
 
     private func isNextAlbumSequencePair(songId: String) async -> Bool {
@@ -3590,6 +3574,7 @@ actor PlayerService: PlayerServiceProtocol {
 
     func handleEndOfTrack(_ engineTransition: AudioEngineTrackEnd) async {
         let playbackToken = engineTransition.endedPlaybackToken
+        playbackDiagnostics.record(.trackBoundary(ended: playbackToken, promoted: engineTransition.promotedPlayback?.playbackToken))
         guard isCurrentEngineEvent(playbackToken) else {
             Logger.player.debug("[END-OF-TRACK] ignored stale engine callback")
             return
@@ -4108,8 +4093,9 @@ actor PlayerService: PlayerServiceProtocol {
 extension PlayerService {
     private func activateAudioSession() throws {
         try audioSession.activate()
+        let outputs = currentAudioRouteOutputs()
+        updateAirPlayPlaybackMode(outputs: outputs)
         if audioSystemRecovery == nil {
-            let outputs = currentAudioRouteOutputs()
             if !outputs.isEmpty { lastKnownAudioOutputs = outputs }
         }
     }
@@ -4500,6 +4486,7 @@ extension PlayerService {
         previousRouteOutputs: [AudioRouteOutputSnapshot]
     ) async {
         let currentOutputs = currentAudioRouteOutputs()
+        updateAirPlayPlaybackMode(outputs: currentOutputs)
         let previousTypes = previousRouteOutputs.map(\.portType)
         let currentTypes = currentOutputs.map(\.portType)
         playbackDiagnostics.record(
@@ -4551,6 +4538,16 @@ extension PlayerService {
         default:
             break
         }
+    }
+
+    private func updateAirPlayPlaybackMode(outputs: [AudioRouteOutputSnapshot]) {
+        guard !outputs.isEmpty else { return }
+        let active = outputs.contains { $0.portType == .airPlay }
+        guard active != isAirPlayActive else { return }
+        isAirPlayActive = active
+        invalidateStandbyPreload(reason: "audio-route-transition-mode")
+        engine.setAirPlayActive(active)
+        playbackDiagnostics.record(.audioSession(.transitionModeChanged(airPlay: active)))
     }
 
     private func currentAudioRouteOutputs() -> [AudioRouteOutputSnapshot] {

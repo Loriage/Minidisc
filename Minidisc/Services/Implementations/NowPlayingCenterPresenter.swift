@@ -34,7 +34,9 @@ final class NowPlayingCenterPresenter {
         register(center.pauseCommand) { [weak playerService] _ in
             Logger.nowPlaying.info("[AUDIO-INTENT] pause origin=remote-command")
             Task(priority: .userInitiated) {
-                await playerService?.pause()
+                await PlaybackCommandOrigin.$current.withValue(.remotePause) {
+                    await playerService?.pause()
+                }
             }
             return .success
         }
@@ -42,7 +44,9 @@ final class NowPlayingCenterPresenter {
         register(center.togglePlayPauseCommand) { [weak playerService] _ in
             Logger.nowPlaying.info("[AUDIO-INTENT] toggle origin=remote-command")
             Task(priority: .userInitiated) {
-                await playerService?.togglePlayPause()
+                await PlaybackCommandOrigin.$current.withValue(.remoteToggle) {
+                    await playerService?.togglePlayPause()
+                }
             }
             return .success
         }

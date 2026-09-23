@@ -30,7 +30,7 @@ nonisolated final class SystemAudioSessionController: AudioSessionControlling {
             let session = AVAudioSession.sharedInstance()
             if !configured {
                 // Playback already supports A2DP and AirPlay. HFP options belong to recording.
-                try session.setCategory(.playback)
+                try session.setCategory(.playback, mode: .default, policy: .longFormAudio)
                 configured = true
             }
             try session.setActive(true)

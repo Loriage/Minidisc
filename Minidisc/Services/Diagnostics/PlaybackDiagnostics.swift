@@ -2,6 +2,14 @@ import CryptoKit
 import Foundation
 import Synchronization
 
+nonisolated enum PlaybackCommandOrigin: String, Sendable {
+    case application
+    case remotePause = "remote-pause"
+    case remoteToggle = "remote-toggle"
+
+    @TaskLocal static var current: PlaybackCommandOrigin = .application
+}
+
 /// A bounded, process-local timeline for playback support reports.
 ///
 /// Events accept only redacted domain values: song metadata, raw URLs, credentials, headers and
@@ -114,6 +122,8 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         case systemPauseArmed(requiresPersonalRoute: Bool)
         case systemResumeAttempted
         case mediaServicesReset
+        case transitionModeChanged(airPlay: Bool)
+        case transitionPrepared(crossfade: Bool)
         case recoveryAttemptStarted(number: Int)
         case recoveryActivationFailed(code: Int)
         case recoveryWaitingForRoute
@@ -200,6 +210,8 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         case connectionRemoved
         case networkPathChanged(NetworkPath)
         case command(PlaybackCommand)
+        case pauseRequested(origin: PlaybackCommandOrigin, recoveringAudio: Bool)
+        case trackBoundary(ended: AudioEnginePlaybackToken, promoted: AudioEnginePlaybackToken?)
         case sourcePrepared(SourceKind)
         case cache(CacheEvent)
         case playbackStateChanged(PlaybackStatus)
@@ -331,6 +343,10 @@ nonisolated final class PlaybackDiagnostics: Sendable {
             "network path-changed \(describe(path))"
         case .command(let command):
             "playback command=\(describe(command))"
+        case .pauseRequested(let origin, let recoveringAudio):
+            "playback pause-origin=\(origin.rawValue) audio-recovery=\(recoveringAudio)"
+        case .trackBoundary(let ended, let promoted):
+            "playback track-ended item=\(ended.rawValue) promoted-item=\(promoted.map { String($0.rawValue) } ?? "none")"
         case .sourcePrepared(let source):
             "playback source=\(source.rawValue)"
         case .cache(let event):
@@ -422,6 +438,10 @@ nonisolated final class PlaybackDiagnostics: Sendable {
             "system-resume-attempted"
         case .mediaServicesReset:
             "media-services-reset players-recreated=true"
+        case .transitionModeChanged(let airPlay):
+            "airplay=\(airPlay) crossfade-policy=\(airPlay ? "disabled" : "per-transition")"
+        case .transitionPrepared(let crossfade):
+            "transition-prepared=\(crossfade ? "crossfade" : "native-queue")"
         case .recoveryAttemptStarted(let number):
             "audio-recovery attempt-started number=\(number)"
         case .recoveryActivationFailed(let code):

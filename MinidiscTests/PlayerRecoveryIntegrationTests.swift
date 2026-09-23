@@ -12,6 +12,8 @@ private nonisolated final class RecoveryTestEngine: AudioEngine, Sendable {
         var plays = 0
         var stops = 0
         var resets = 0
+        var airPlayActive = false
+        var cancelledPreloads = 0
         var poisoned = false
         var active = false
         var volume: Float = 1
@@ -76,10 +78,12 @@ private nonisolated final class RecoveryTestEngine: AudioEngine, Sendable {
     var isSeekable: Bool { true }
     var isReady: Bool { storage.withLock { !$0.active } }
     func applyReplayGain(dB: Float) {}
-    func cancelPreload() {}
-    func setTrackEndTrim(_ seconds: Double) {}
+    var airPlayActive: Bool { storage.withLock { $0.airPlayActive } }
+    var cancelledPreloads: Int { storage.withLock { $0.cancelledPreloads } }
+    func setAirPlayActive(_ active: Bool) { storage.withLock { $0.airPlayActive = active } }
+    func cancelPreload() { storage.withLock { $0.cancelledPreloads += 1 } }
     func setTrackDuration(_ seconds: Double) {}
-    func preloadNext(trackID: String, url: URL, headers: [String: String], crossfadeDuration: Double, leadInTrim: Double, replayGainDB: Float) {}
+    func preloadNext(trackID: String, url: URL, headers: [String: String], crossfadeDuration: Double, replayGainDB: Float) {}
 }
 
 private nonisolated final class RecoveryTestAudioSession: AudioSessionControlling {
@@ -278,7 +282,8 @@ private struct RecoveryHarness {
 struct PlayerRecoveryIntegrationTests {
     @Test(arguments: [false, true])
     func stalledStreamUsesNewlyCompletedCacheWithoutServerProbe(offline: Bool) async throws {
-        let h = try RecoveryHarness(startupGrace: .milliseconds(100))
+        // Keep startup recovery out of the fixture setup; this test triggers a later stall.
+        let h = try RecoveryHarness(startupGrace: .seconds(3))
         try await h.play()
         try await h.waitUntil { h.report.contains("engine state=buffering") }
         _ = await h.engine.seek(to: 37)
@@ -357,6 +362,30 @@ struct PlayerRecoveryIntegrationTests {
         await h.player.handleEngineState(.playing, playbackToken: h.engine.token)
         #expect(h.engine.progress >= 37)
         #expect(h.engine.volume > 0)
+        await h.player.stop()
+    }
+
+    @Test func airPlayRouteUsesSinglePlayerTransitionsAndRestoresLocalMode() async throws {
+        let h = try RecoveryHarness()
+        h.audioSession.outputs = [.init(uid: "airplay-test", portType: .airPlay)]
+        try await h.play(["a", "b"])
+        #expect(h.engine.airPlayActive)
+        #expect(h.report.contains("airplay=true crossfade-policy=disabled"))
+        await h.player.handleEndOfTrack(.init(endedPlaybackToken: h.engine.token, endedPosition: 120, promotedPlayback: nil))
+        #expect(h.state.currentTrack?.id == "b")
+        #expect(h.state.wantsPlayback)
+        #expect(h.engine.airPlayActive)
+
+        h.audioSession.outputs = [RecoveryTestAudioSession.headphones]
+        await h.player.handleRouteChange(.routeConfigurationChange)
+        #expect(!h.engine.airPlayActive)
+        #expect(h.report.contains("airplay=false crossfade-policy=per-transition"))
+        let cancelled = h.engine.cancelledPreloads
+        h.audioSession.outputs = [.init(uid: "airplay-test", portType: .airPlay)]
+        await h.player.handleRouteChange(.unknown)
+        #expect(h.engine.airPlayActive)
+        #expect(h.engine.cancelledPreloads > cancelled)
+        #expect(h.state.currentTrack?.id == "b")
         await h.player.stop()
     }
 
@@ -457,10 +486,13 @@ struct PlayerRecoveryIntegrationTests {
         let h = try RecoveryHarness(audioRetryDelay: .milliseconds(200))
         try await h.play()
         await h.player.handleMediaServicesReset()
-        await h.player.pause()
+        await PlaybackCommandOrigin.$current.withValue(.remotePause) {
+            await h.player.pause()
+        }
         try await Task.sleep(for: .milliseconds(300))
         #expect(h.engine.playCount == 1)
         #expect(h.state.playbackState == .paused)
+        #expect(h.report.contains("pause-origin=remote-pause audio-recovery=true"))
         await h.player.stop()
     }
 

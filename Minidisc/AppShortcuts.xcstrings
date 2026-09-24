@@ -2,7 +2,6 @@
   "sourceLanguage" : "en",
   "strings" : {
     "Next track in ${applicationName}" : {
-      "extractionState" : "extracted_with_value",
       "localizations" : {
         "de" : {
           "stringSet" : {
@@ -79,7 +78,6 @@
       }
     },
     "Pause playback in ${applicationName}" : {
-      "extractionState" : "extracted_with_value",
       "localizations" : {
         "de" : {
           "stringSet" : {
@@ -156,7 +154,6 @@
       }
     },
     "Play ${mood} mood in ${applicationName}" : {
-      "extractionState" : "extracted_with_value",
       "localizations" : {
         "de" : {
           "stringSet" : {
@@ -242,7 +239,6 @@
       }
     },
     "Play ${music} in ${applicationName}" : {
-      "extractionState" : "extracted_with_value",
       "localizations" : {
         "de" : {
           "stringSet" : {
@@ -328,7 +324,6 @@
       }
     },
     "Previous track in ${applicationName}" : {
-      "extractionState" : "extracted_with_value",
       "localizations" : {
         "de" : {
           "stringSet" : {
@@ -405,7 +400,6 @@
       }
     },
     "Resume playback in ${applicationName}" : {
-      "extractionState" : "extracted_with_value",
       "localizations" : {
         "de" : {
           "stringSet" : {
@@ -482,7 +476,6 @@
       }
     },
     "Smart Shuffle in ${applicationName}" : {
-      "extractionState" : "extracted_with_value",
       "localizations" : {
         "de" : {
           "stringSet" : {

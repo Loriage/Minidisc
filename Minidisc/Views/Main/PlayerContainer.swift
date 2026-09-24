@@ -21,7 +21,7 @@ final class PlayerContainerConfiguration {
     @ObservationIgnored var transitionArtwork: PlayerArtworkSnapshot?
 
     func animation(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? nil : .interpolatingSpring(duration: 0.3, bounce: 0, initialVelocity: 0)
+        reduceMotion ? nil : .easeOut(duration: 0.3)
     }
 
     func present(artwork: PlayerArtworkSnapshot?) {
@@ -204,12 +204,13 @@ private struct PlayerContainerPosition: ViewModifier {
             .clipShape(shape)
             .glassEffect(expanded ? .identity : .regular, in: shape)
             .visualEffect { content, proxy in
-            let globalRect = proxy.frame(in: .global)
-            return content
-                .offset(y: dragOffset)
-                .offset(x: expanded ? 0 : minimisedRect.minX - globalRect.minX,
-                        y: expanded ? 0 : minimisedRect.minY - globalRect.minY)
-        }
+                let globalRect = proxy.frame(in: .global)
+                // Animate directly from the dragged position to the accessory; separate
+                // offsets can send the surface back upward as the drag resets to zero.
+                return content
+                    .offset(x: expanded ? 0 : minimisedRect.minX - globalRect.minX,
+                            y: expanded ? dragOffset : minimisedRect.minY - globalRect.minY)
+            }
     }
 }
 

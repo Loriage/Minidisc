@@ -3,7 +3,6 @@
   "strings" : {
     "CFBundleDisplayName" : {
       "comment" : "Bundle display name",
-      "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -16,7 +15,6 @@
     },
     "CFBundleName" : {
       "comment" : "Bundle name",
-      "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -29,20 +27,7 @@
     },
     "NSCameraUsageDescription" : {
       "comment" : "Privacy - Camera Usage Description",
-      "extractionState" : "extracted_with_value",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Minidisc needs to access your camera to take pictures for playlist artworks"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Minidisc utilise l’appareil photo pour prendre des photos destinées aux pochettes des playlists."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
@@ -55,10 +40,22 @@
             "value" : "Το Minidisc χρειάζεται πρόσβαση στην κάμερα για τη λήψη φωτογραφιών για τα εξώφυλλα των λιστών αναπαραγωγής."
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc needs to access your camera to take pictures for playlist artworks"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Minidisc necesita acceder a la cámara para tomar fotos para las portadas de las playlists."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc utilise l’appareil photo pour prendre des photos destinées aux pochettes des playlists."
           }
         },
         "it" : {
@@ -89,20 +86,7 @@
     },
     "NSLocalNetworkUsageDescription" : {
       "comment" : "Privacy - Local Network Usage Description",
-      "extractionState" : "extracted_with_value",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Minidisc needs access to your local network to connect to your Navidrome or Subsonic server."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Minidisc utilise votre réseau local pour se connecter à votre serveur Navidrome ou Subsonic."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
@@ -115,10 +99,22 @@
             "value" : "Το Minidisc χρειάζεται πρόσβαση στο τοπικό σας δίκτυο για να συνδεθεί στον διακομιστή Navidrome ή Subsonic."
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc needs access to your local network to connect to your Navidrome or Subsonic server."
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Minidisc necesita acceder a tu red local para conectarse a tu servidor Navidrome o Subsonic."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc utilise votre réseau local pour se connecter à votre serveur Navidrome ou Subsonic."
           }
         },
         "it" : {
@@ -149,20 +145,7 @@
     },
     "NSPhotoLibraryUsageDescription" : {
       "comment" : "Privacy - Photo Library Usage Description",
-      "extractionState" : "extracted_with_value",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Minidisc needs to access your library to upload pictures for playlists"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Minidisc utilise votre photothèque pour choisir des images pour vos playlists."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
@@ -175,10 +158,22 @@
             "value" : "Το Minidisc χρειάζεται πρόσβαση στη βιβλιοθήκη φωτογραφιών για τη μεταφόρτωση εικόνων για τις λίστες αναπαραγωγής."
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc needs to access your library to upload pictures for playlists"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Minidisc necesita acceder a tu fototeca para subir imágenes para las playlists."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minidisc utilise votre photothèque pour choisir des images pour vos playlists."
           }
         },
         "it" : {

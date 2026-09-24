@@ -340,6 +340,7 @@ actor PlayerService: PlayerServiceProtocol {
             playbackGeneration: playbackGeneration,
             transportIntentGeneration: transportIntentGeneration
         )
+        playbackDiagnostics.record(.activeItem(token, source: currentSource.map(diagnosticSourceKind)))
         activeEngineState = nil
         activeEngineStartedAt = .now
     }
@@ -730,6 +731,7 @@ actor PlayerService: PlayerServiceProtocol {
             transportIntentGeneration: transportGeneration
         ) else { return }
         if !song.isLocalFile {
+            playbackDiagnostics.record(.nowPlayingRequested(playbackToken))
             subsonicPlayingNowTask = Task { [libraryService] in
                 await libraryService.scrobble(songId: songId, submission: false)
             }
@@ -3575,30 +3577,41 @@ actor PlayerService: PlayerServiceProtocol {
         let playbackToken = engineTransition.endedPlaybackToken
         playbackDiagnostics.record(.trackBoundary(ended: playbackToken, promoted: engineTransition.promotedPlayback?.playbackToken))
         guard isCurrentEngineEvent(playbackToken) else {
+            playbackDiagnostics.record(.boundaryIgnored(playbackToken, .stale))
             Logger.player.debug("[END-OF-TRACK] ignored stale engine callback")
             return
         }
         let isQueuePlayback = await MainActor.run { !state.isLiveStream }
-        guard isCurrentEngineEvent(playbackToken) else { return }
+        guard isCurrentEngineEvent(playbackToken) else {
+            playbackDiagnostics.record(.boundaryIgnored(playbackToken, .stale))
+            return
+        }
         guard isQueuePlayback else {
+            playbackDiagnostics.record(.boundaryIgnored(playbackToken, .liveStream))
             Logger.player.debug("[END-OF-TRACK] ignored — live stream mode")
             return
         }
         guard !isRestoringSession else {
+            playbackDiagnostics.record(.boundaryIgnored(playbackToken, .restoring))
             Logger.player.warning("[END-OF-TRACK] suppressed — session restore in progress")
             return
         }
         guard endOfTrackEventsInProgress.insert(playbackToken).inserted else {
+            playbackDiagnostics.record(.boundaryIgnored(playbackToken, .duplicate))
             Logger.player.warning("[END-OF-TRACK] already handling — skipping duplicate")
             return
         }
         defer { endOfTrackEventsInProgress.remove(playbackToken) }
         let transition = await queueTransitionSnapshot()
-        guard isCurrentEngineEvent(playbackToken) else { return }
+        guard isCurrentEngineEvent(playbackToken) else {
+            playbackDiagnostics.record(.boundaryIgnored(playbackToken, .stale))
+            return
+        }
         let plan = PlaybackTransitionPlanner.plan(
             for: .trackEnded,
             snapshot: transition.planner
         )
+        playbackDiagnostics.record(.boundaryPlan(playbackToken, transition.planner, plan))
         do {
             try await executeTransitionPlan(
                 plan,
@@ -3606,6 +3619,7 @@ actor PlayerService: PlayerServiceProtocol {
                 engineTransition: engineTransition
             )
         } catch {
+            playbackDiagnostics.record(.boundaryFailed(playbackToken, AudioEngineFailure(error: error)))
             Logger.player.error("[TRANSITION] handleEndOfTrack failed: \(error, privacy: .public)")
         }
     }

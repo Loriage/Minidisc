@@ -186,7 +186,7 @@ final class AppContainer {
         let lb = ListenBrainzService(client: lbClient, keychain: keychain)
         listenBrainzService = lb
 
-        let audioEngine: AudioEngine = AVPlayerEngine()
+        let audioEngine: AudioEngine = AVPlayerEngine(diagnostics: playbackDiagnostics)
         let player = PlayerService(
             state: playerState,
             mediaResolver: resolver,

@@ -1,9 +1,50 @@
+import AVFoundation
 import Foundation
 import Testing
 @testable import Minidisc
 
 @Suite("Playback diagnostics")
 struct PlaybackDiagnosticsTests {
+    @Test func bufferedDurationDoesNotCountDataBeyondAGap() {
+        func range(_ start: Double, _ duration: Double) -> CMTimeRange {
+            CMTimeRange(start: CMTime(seconds: start, preferredTimescale: 600),
+                        duration: CMTime(seconds: duration, preferredTimescale: 600))
+        }
+        let ranges = [range(20, 10), range(8, 4), range(0, 10), range(12, 3)]
+        #expect(AudioEngineDiagnosticSnapshot.bufferedSeconds(aheadOf: 5, ranges: ranges) == 10)
+        #expect(AudioEngineDiagnosticSnapshot.bufferedSeconds(aheadOf: 17, ranges: ranges) == 0)
+        #expect(AudioEngineDiagnosticSnapshot.bufferedSeconds(aheadOf: 22, ranges: ranges) == 8)
+        #expect(AudioEngineDiagnosticSnapshot.bufferedSeconds(aheadOf: .nan, ranges: ranges) == 0)
+    }
+
+    @Test func engineSnapshotExcludesAssetURLsAndUnknownWaitingReasons() {
+        let secret = "PRIVATE_TOKEN_AND_SONG"
+        let item = AVPlayerItem(url: URL(string: "https://secret.example/\(secret)?token=\(secret)")!)
+        let snapshot = AudioEngineDiagnosticSnapshot(
+            trigger: .stalled, token: .init(rawValue: 42), role: .queued,
+            player: AVQueuePlayer(), item: item, intendedPlayback: true,
+            airPlay: true, replayGainTap: false
+        )
+        let diagnostics = PlaybackDiagnostics()
+        diagnostics.record(.engineSnapshot(snapshot))
+        diagnostics.record(.activeItem(.init(rawValue: 42), source: .remoteStream))
+        diagnostics.record(.nowPlayingRequested(.init(rawValue: 42)))
+        let report = diagnostics.makeReport(context: .init(
+            appVersion: "test", appBuild: "0", operatingSystem: "test", playbackStatus: .loading,
+            isPlaybackAvailable: true, networkPath: nil, connectionVersion: nil
+        ))
+        #expect(report.contains("trigger=stalled item=42 role=queued"))
+        #expect(report.contains("airplay=true"))
+        #expect(report.contains("duration=unknown"))
+        #expect(report.contains("access={unavailable}"))
+        #expect(report.contains("active-item=42 source=remoteStream"))
+        #expect(report.contains("now-playing-requested item=42"))
+        #expect(!report.contains(secret))
+        #expect(!report.contains("secret.example"))
+        #expect(AudioEngineDiagnosticSnapshot.WaitingReason(.init(rawValue: secret)) == .other)
+        #expect(AudioEngineDiagnosticSnapshot.WaitingReason(.toMinimizeStalls) == .minimizeStalls)
+    }
+
     @Test func engineFailureKeepsCodesWithoutErrorPayloads() {
         let secret = "PRIVATE_TOKEN_AND_SONG"
         let error = NSError(domain: "AVFoundationErrorDomain", code: -11800, userInfo: [

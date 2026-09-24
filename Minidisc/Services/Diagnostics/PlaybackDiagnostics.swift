@@ -98,6 +98,10 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         case retryBudgetExhausted(pathGeneration: UInt64)
     }
 
+    enum BoundaryDecision: String, Sendable {
+        case stale, liveStream, restoring, duplicate
+    }
+
     enum AudioOutputKind: String, Sendable, Hashable, Comparable {
         case airPlay
         case bluetoothA2DP
@@ -212,10 +216,16 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         case command(PlaybackCommand)
         case pauseRequested(origin: PlaybackCommandOrigin, recoveringAudio: Bool)
         case trackBoundary(ended: AudioEnginePlaybackToken, promoted: AudioEnginePlaybackToken?)
+        case boundaryIgnored(AudioEnginePlaybackToken, BoundaryDecision)
+        case boundaryPlan(AudioEnginePlaybackToken, PlaybackTransitionPlanner.Snapshot, PlaybackTransitionPlanner.Plan)
+        case boundaryFailed(AudioEnginePlaybackToken, AudioEngineFailure)
         case sourcePrepared(SourceKind)
         case cache(CacheEvent)
         case playbackStateChanged(PlaybackStatus)
         case engineStateChanged(EngineStatus)
+        case engineSnapshot(AudioEngineDiagnosticSnapshot)
+        case activeItem(AudioEnginePlaybackToken, source: SourceKind?)
+        case nowPlayingRequested(AudioEnginePlaybackToken)
         case engineFailure(AudioEngineFailure, playbackToken: AudioEnginePlaybackToken)
         case mediaAvailabilityChecked(MediaAvailability, playbackGeneration: UInt64)
         case unavailableTrackSkipped(hasNext: Bool)
@@ -241,7 +251,7 @@ nonisolated final class PlaybackDiagnostics: Sendable {
     private let capacity: Int
     private let state: Mutex<State>
 
-    init(capacity: Int = 200) {
+    init(capacity: Int = 600) {
         precondition(capacity > 0)
         self.capacity = capacity
         state = Mutex(State(startedAt: Date(), entries: []))
@@ -299,6 +309,7 @@ nonisolated final class PlaybackDiagnostics: Sendable {
             "Network: \(context.networkPath.map(Self.describe) ?? "unavailable")",
             "Connection: \(context.connectionVersion?.description ?? "none")",
             "Privacy: song metadata, full URLs, credentials, header names/values and route names are excluded.",
+            "Engine samples: every 15s while playback is requested, plus lifecycle events. Positions show the media clock, not confirmed sound at the receiver. Access statistics may be unavailable for some sources.",
             experience,
             continuity,
             "",
@@ -347,6 +358,12 @@ nonisolated final class PlaybackDiagnostics: Sendable {
             "playback pause-origin=\(origin.rawValue) audio-recovery=\(recoveringAudio)"
         case .trackBoundary(let ended, let promoted):
             "playback track-ended item=\(ended.rawValue) promoted-item=\(promoted.map { String($0.rawValue) } ?? "none")"
+        case .boundaryIgnored(let token, let decision):
+            "playback track-end-ignored item=\(token.rawValue) reason=\(decision.rawValue)"
+        case .boundaryPlan(let token, let snapshot, let plan):
+            "playback track-end-plan item=\(token.rawValue) queue-count=\(snapshot.queueCount) index=\(snapshot.currentIndex) action=\(describe(plan))"
+        case .boundaryFailed(let token, let failure):
+            "playback track-end-failed item=\(token.rawValue) codes=\(failure.diagnosticDescription)"
         case .sourcePrepared(let source):
             "playback source=\(source.rawValue)"
         case .cache(let event):
@@ -355,6 +372,12 @@ nonisolated final class PlaybackDiagnostics: Sendable {
             "playback state=\(status.rawValue)"
         case .engineStateChanged(let status):
             "engine state=\(status.rawValue)"
+        case .engineSnapshot(let snapshot):
+            snapshot.description
+        case .activeItem(let token, let source):
+            "playback active-item=\(token.rawValue) source=\(source?.rawValue ?? "unknown")"
+        case .nowPlayingRequested(let token):
+            "server now-playing-requested item=\(token.rawValue) progress-confirmation=not-required"
         case .engineFailure(let failure, let token):
             "engine failure item=\(token.rawValue) codes=\(failure.diagnosticDescription)"
         case .mediaAvailabilityChecked(let availability, let generation):
@@ -387,6 +410,17 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         case .skippedCellular: "skipped-cellular"
         case .cancelled: "cancelled"
         case .failed(let code): "failed error-code=\(code)"
+        }
+    }
+
+    private static func describe(_ plan: PlaybackTransitionPlanner.Plan) -> String {
+        switch plan {
+        case .playQueueItem(let index, _): "play-index-\(index)"
+        case .restartCurrent: "restart-current"
+        case .repeatCurrent: "repeat-current"
+        case .stopAtEnd: "stop-at-end"
+        case .restartQueue: "restart-queue"
+        case .resumeCurrent: "resume-current"
         }
     }
 

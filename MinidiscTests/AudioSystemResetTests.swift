@@ -58,6 +58,36 @@ struct AudioSystemResetTests {
         #expect(!AudioEngineFailure(error: nil).isMediaServicesReset)
     }
 
+    @Test func diagnosticsFollowQueuedItemsAndIgnoreRetiredItemNotifications() throws {
+        let factory = ResetTestPlayerFactory()
+        let diagnostics = PlaybackDiagnostics()
+        let engine = AVPlayerEngine(diagnostics: diagnostics, playerFactory: factory.makePlayer)
+        let url = try silentWave()
+        defer { engine.stop(); try? FileManager.default.removeItem(at: url) }
+        engine.setAirPlayActive(true)
+        let first = engine.play(trackID: "PRIVATE_FIRST", url: url, headers: [:])
+        let oldItem = try #require(factory.players[0].currentItem)
+        engine.preloadNext(trackID: "PRIVATE_NEXT", url: url, headers: [:], crossfadeDuration: 0, replayGainDB: 0)
+        let queuedItem = try #require(factory.players[0].items().last)
+        NotificationCenter.default.post(name: AVPlayerItem.playbackStalledNotification, object: queuedItem)
+        engine.resetAfterMediaServicesReset()
+        let second = engine.play(trackID: "PRIVATE_SECOND", url: url, headers: [:])
+        NotificationCenter.default.post(name: AVPlayerItem.playbackStalledNotification, object: oldItem)
+        NotificationCenter.default.post(name: AVPlayerItem.playbackStalledNotification, object: factory.players[2].currentItem)
+
+        let report = diagnostics.makeReport(context: .init(
+            appVersion: "test", appBuild: "0", operatingSystem: "test", playbackStatus: .loading,
+            isPlaybackAvailable: true, networkPath: nil, connectionVersion: nil
+        ))
+        #expect(report.contains("trigger=preload item=\(first.rawValue + 1) role=queued"))
+        #expect(report.contains("trigger=stalled item=\(first.rawValue + 1) role=queued"))
+        #expect(report.contains("trigger=reset item=\(first.rawValue)"))
+        #expect(!report.contains("trigger=stalled item=\(first.rawValue) role=active"))
+        #expect(report.contains("trigger=stalled item=\(second.rawValue) role=active"))
+        #expect(!report.contains("PRIVATE_"))
+        #expect(!report.contains(url.absoluteString))
+    }
+
     @Test func resetReplacesBothPhysicalPlayersAndDiscardsTheirItems() throws {
         let factory = ResetTestPlayerFactory()
         let engine = AVPlayerEngine(playerFactory: factory.makePlayer)

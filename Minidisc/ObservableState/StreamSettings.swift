@@ -34,7 +34,7 @@ final class StreamSettings {
     var currentQuality: StreamQuality { isCellular ? cellularQuality : wifiQuality }
 
     static let defaultWifiQuality: StreamQuality = .original
-    static let defaultCellularQuality: StreamQuality = .mp3_192
+    static let defaultCellularQuality: StreamQuality = .original
 
     private static let wifiKey = "minidisc.stream.wifiQuality"
     private static let cellularKey = "minidisc.stream.cellularQuality"

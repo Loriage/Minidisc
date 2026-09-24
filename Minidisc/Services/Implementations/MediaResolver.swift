@@ -8,6 +8,8 @@ actor MediaResolver: MediaResolverProtocol {
     private let serverService: any ServerServiceProtocol
     private let serverState: ServerState
     private let streamSettings: StreamSettings
+    private let diagnostics: PlaybackDiagnostics?
+    private var nextProbeID: UInt64 = 0
     private let songLookup: @Sendable (ServerConnection, String) async throws -> Void
 
     init(
@@ -16,6 +18,7 @@ actor MediaResolver: MediaResolverProtocol {
         serverService: any ServerServiceProtocol,
         serverState: ServerState,
         streamSettings: StreamSettings,
+        diagnostics: PlaybackDiagnostics? = nil,
         songLookup: @escaping @Sendable (ServerConnection, String) async throws -> Void = { connection, id in
             // PlayerService owns retries. A diagnostic lookup must not introduce its own
             // retry loop in front of each stream rebuild.
@@ -27,6 +30,7 @@ actor MediaResolver: MediaResolverProtocol {
         self.serverService = serverService
         self.serverState = serverState
         self.streamSettings = streamSettings
+        self.diagnostics = diagnostics
         self.songLookup = songLookup
     }
 
@@ -39,13 +43,23 @@ actor MediaResolver: MediaResolverProtocol {
               let connection = try? await serverService.activeConnection(),
               connection.version.serverID == serverId else { return .unknown }
 
+        nextProbeID &+= 1
+        let probeID = nextProbeID
+        let started = ProcessInfo.processInfo.systemUptime
+        diagnostics?.record(.serverProbeStarted(request: probeID))
         let result: MediaAvailability
+        var failure: PlaybackDiagnosticFailure?
         do {
             try await songLookup(connection, songId)
             result = .available
         } catch {
             result = Self.availability(after: error)
+            failure = PlaybackDiagnosticFailure(error)
         }
+        diagnostics?.record(.serverProbeCompleted(
+            request: probeID, seconds: ProcessInfo.processInfo.systemUptime - started,
+            availability: result, failure: failure
+        ))
         guard !Task.isCancelled,
               await serverService.activeConnectionVersion() == connection.version else { return .unknown }
         return result
@@ -91,12 +105,13 @@ actor MediaResolver: MediaResolverProtocol {
         guard connection.version.serverID == serverId else { throw CancellationError() }
         let client = connection.makeSwiftSonicClient()
         let quality = await MainActor.run { streamSettings.currentQuality }
-        // Request an estimated stream length for transcoded audio so AVPlayer can track duration.
+        // An estimated HTTP length can cut a transcode short or leave AVPlayer waiting for
+        // bytes that do not exist. The library supplies the track duration independently.
         guard let streamURL = client.streamURL(
             id: songId,
             maxBitRate: quality.subsonicMaxBitRate,
             format: quality.subsonicFormat,
-            estimateContentLength: true
+            estimateContentLength: false
         ) else {
             throw MinidiscError.mediaNotFound(songId: songId)
         }

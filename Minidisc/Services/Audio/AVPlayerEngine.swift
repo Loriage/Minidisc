@@ -39,7 +39,8 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
 
     private let diagnostics: PlaybackDiagnostics?
     private var diagnosticObservers: [NSObjectProtocol] = []
-    private var nextDiagnosticSampleAt: TimeInterval = 0
+    private var lastDiagnosticSampleAt: TimeInterval = 0
+    private var currentSourceHeaderCount = 0
 
     private let playerFactory: @Sendable () -> AVQueuePlayer
     private var deckA: AVQueuePlayer
@@ -248,6 +249,12 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         } else {
             return
         }
+        let sourceAsset = role == .active ? currentAsset : preloadedAsset
+        if [.play, .preload, .promoted].contains(trigger), let asset = sourceAsset as? AVURLAsset {
+            diagnostics.record(.sourceRequest(token, PlaybackRequestDiagnostics(
+                url: asset.url, headerCount: role == .active ? currentSourceHeaderCount : preloadedSourceHeaders.count
+            )))
+        }
         diagnostics.record(.engineSnapshot(AudioEngineDiagnosticSnapshot(
             trigger: trigger, token: token, role: role, player: player, item: item,
             intendedPlayback: shouldBePlaying, airPlay: airPlayActive, replayGainTap: context.tapInstalled
@@ -255,10 +262,11 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     }
 
     private func sampleDiagnosticsIfNeeded() {
-        guard diagnostics != nil else { return }
+        guard diagnostics != nil, shouldBePlaying else { return }
         let now = ProcessInfo.processInfo.systemUptime
-        guard now >= nextDiagnosticSampleAt else { return }
-        nextDiagnosticSampleAt = now + 15
+        let interval: TimeInterval = activePlayer.timeControlStatus == .playing ? 15 : 5
+        guard now - lastDiagnosticSampleAt >= interval else { return }
+        lastDiagnosticSampleAt = now
         recordDiagnostic(.sample)
         if let preloadedItem { recordDiagnostic(.sample, item: preloadedItem) }
     }
@@ -324,6 +332,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         currentTrackID = trackID
         let playbackToken = makePlaybackToken()
         currentPlaybackToken = playbackToken
+        currentSourceHeaderCount = headers.count
         activePlayer.replaceCurrentItem(with: item)
         applyDeckVolumes()
         beginPlaying()
@@ -491,6 +500,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         currentAsset = preloadedAsset
         currentTrackID = preloadedTrackID
         currentPlaybackToken = preloadedPlaybackToken
+        currentSourceHeaderCount = preloadedSourceHeaders.count
         preloadedInActiveQueue = false
         clearPreloadedDeck()
         metadataDuration = 0
@@ -1008,6 +1018,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         currentAsset = preloadedAsset
         currentTrackID = preloadedTrackID
         currentPlaybackToken = preloadedPlaybackToken
+        currentSourceHeaderCount = preloadedSourceHeaders.count
         preloadedItem = nil
         preloadedAsset = nil
         preloadedTrackID = nil
@@ -1067,6 +1078,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         currentAsset = nil
         currentTrackID = nil
         currentPlaybackToken = nil
+        currentSourceHeaderCount = 0
         preloadedItem = nil
         preloadedAsset = nil
         preloadedTrackID = nil
@@ -1087,7 +1099,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
 
     /// Clears only the standby role. Caller holds `lock`.
     private func clearPreloadedDeck() {
-        if let preloadedItem { recordDiagnostic(.preloadCleared, item: preloadedItem) }
+        if let preloadedItem, preloadedItem !== currentItem { recordDiagnostic(.preloadCleared, item: preloadedItem) }
         activePlayer.actionAtItemEnd = .pause
         if preloadedInActiveQueue, let item = preloadedItem, item !== activePlayer.currentItem {
             activePlayer.remove(item)

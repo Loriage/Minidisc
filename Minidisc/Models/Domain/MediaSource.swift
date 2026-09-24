@@ -4,6 +4,7 @@ nonisolated enum MediaSource: Sendable {
     case localFile(LocalFileAccess)
     case downloaded(URL)
     case cached(URL)
+    case seekBuffer(TranscodedSeekFile)
     /// Remote stream of a finite-duration song. Custom headers must be injected
     /// into every request to reach Cloudflare-protected (or other reverse-proxy) hosts.
     case stream(URL, customHeaders: [String: String])
@@ -16,6 +17,8 @@ nonisolated enum MediaSource: Sendable {
         switch self {
         case .localFile(let access):
             return access.url
+        case .seekBuffer(let file):
+            return file.url
         case .downloaded(let url), .cached(let url):
             return url
         case .stream(let url, _), .liveStream(let url, _, _):
@@ -25,7 +28,7 @@ nonisolated enum MediaSource: Sendable {
 
     var customHeaders: [String: String] {
         switch self {
-        case .downloaded, .cached, .localFile:
+        case .downloaded, .cached, .localFile, .seekBuffer:
             return [:]
         case .stream(_, let headers), .liveStream(_, let headers, _):
             return headers
@@ -35,5 +38,11 @@ nonisolated enum MediaSource: Sendable {
     var isLiveStream: Bool {
         if case .liveStream = self { return true }
         return false
+    }
+
+    var needsCompleteFileForSeeking: Bool {
+        guard case .stream(let url, _) = self else { return false }
+        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        return query.contains { $0.name == "format" && $0.value == "mp3" }
     }
 }

@@ -22,3 +22,25 @@ struct PlayerCacheRequestTests {
         #expect(request.allowsCellularAccess == cellular)
     }
 }
+
+
+@Suite("Transcoded seek sources")
+struct TranscodedSeekSourceTests {
+    @Test func onlyFiniteMP3StreamsNeedACompleteSeekFile() {
+        let url = URL(string: "https://music.example/stream?format=mp3&maxBitRate=192")!
+        #expect(MediaSource.stream(url, customHeaders: [:]).needsCompleteFileForSeeking)
+        #expect(!MediaSource.liveStream(url, customHeaders: [:], stationId: "radio").needsCompleteFileForSeeking)
+        #expect(!MediaSource.stream(URL(string: "https://music.example/stream?format=raw")!, customHeaders: [:]).needsCompleteFileForSeeking)
+        #expect(!MediaSource.cached(URL(fileURLWithPath: "/tmp/track.mp3")).needsCompleteFileForSeeking)
+    }
+
+    @Test func temporaryFileIsDeletedWhenItsPlaybackSourceIsReleased() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data([1, 2, 3]).write(to: url)
+        var source: MediaSource? = .seekBuffer(TranscodedSeekFile(url: url))
+        #expect(source?.url == url)
+        #expect(FileManager.default.fileExists(atPath: url.path))
+        source = nil
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+}

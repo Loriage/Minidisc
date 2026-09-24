@@ -48,6 +48,11 @@ nonisolated struct AudioEngineDiagnosticSnapshot: Sendable, Equatable {
     let likelyToKeepUp: Bool
     let automaticWaiting: Bool
     let preferredBuffer: Double?
+    let preferredPeakBitrate: Double?
+    let volume: Float
+    let muted: Bool
+    let loadedRangeCount: Int
+    let seekableRangeCount: Int
     let replayGainTap: Bool
     let playerFailure: AudioEngineFailure
     let itemFailure: AudioEngineFailure
@@ -102,6 +107,11 @@ nonisolated struct AudioEngineDiagnosticSnapshot: Sendable, Equatable {
         likelyToKeepUp = item.isPlaybackLikelyToKeepUp
         automaticWaiting = player.automaticallyWaitsToMinimizeStalling
         preferredBuffer = Self.valid(item.preferredForwardBufferDuration)
+        preferredPeakBitrate = Self.valid(item.preferredPeakBitRate)
+        volume = player.volume
+        muted = player.isMuted
+        loadedRangeCount = item.loadedTimeRanges.count
+        seekableRangeCount = item.seekableTimeRanges.count
         self.replayGainTap = replayGainTap
         playerFailure = AudioEngineFailure(error: player.error)
         itemFailure = AudioEngineFailure(error: item.error, logCode: item.errorLog()?.events.last.map {
@@ -146,6 +156,15 @@ nonisolated struct AudioEngineDiagnosticSnapshot: Sendable, Equatable {
         case 2: "playing"
         default: "other"
         }
-        return "engine-detail trigger=\(trigger.rawValue) item=\(token.rawValue) role=\(role.rawValue) current=\(isPlayerCurrentItem) intent-play=\(intendedPlayback) player=\(Self.status(playerStatus)) item-status=\(Self.status(itemStatus)) control=\(control) wait=\(waiting.rawValue) rate=\(rate) position=\(Self.number(position)) duration=\(Self.number(duration)) buffered-ahead=\(Self.number(bufferedAhead)) empty=\(bufferEmpty) full=\(bufferFull) keep-up=\(likelyToKeepUp) queue=\(queueCount) advance-at-end=\(advanceAtEnd) airplay=\(airPlay) external=\(externalPlayback) auto-wait=\(automaticWaiting) preferred-buffer=\(Self.number(preferredBuffer)) gain-tap=\(replayGainTap) player-errors=\(playerFailure.diagnosticDescription) item-errors=\(itemFailure.diagnosticDescription) access={\(access?.description ?? "unavailable")}"
+        return [
+            "engine-detail trigger=\(trigger.rawValue) item=\(token.rawValue) role=\(role.rawValue)",
+            "Transport: current=\(isPlayerCurrentItem) intent-play=\(intendedPlayback) control=\(control) wait=\(waiting.rawValue) rate=\(rate)",
+            "Media: player=\(Self.status(playerStatus)) item-status=\(Self.status(itemStatus)) position=\(Self.number(position)) duration=\(Self.number(duration)) seekable-ranges=\(seekableRangeCount)",
+            "Buffer: buffered-ahead=\(Self.number(bufferedAhead))s empty=\(bufferEmpty) full=\(bufferFull) keep-up=\(likelyToKeepUp) loaded-ranges=\(loadedRangeCount)",
+            "Policy: queue=\(queueCount) advance-at-end=\(advanceAtEnd) auto-wait=\(automaticWaiting) preferred-buffer=\(Self.number(preferredBuffer))s peak-bps=\(Self.number(preferredPeakBitrate))",
+            "Output: airplay=\(airPlay) external=\(externalPlayback) volume=\(volume) muted=\(muted) gain-tap=\(replayGainTap)",
+            "Errors: player-errors=\(playerFailure.diagnosticDescription) item-errors=\(itemFailure.diagnosticDescription) meaning=\(playerFailure.diagnosticMeaning)/\(itemFailure.diagnosticMeaning)",
+            "Transfer (latest AVFoundation access event): access={\(access?.description ?? "unavailable")}"
+        ].joined(separator: "\n    ")
     }
 }

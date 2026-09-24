@@ -82,4 +82,31 @@ struct MediaAvailabilityTests {
         #expect(await resolver.availability(songId: "deleted", serverId: snapshot.id) == .missing)
         #expect(await resolver.availability(songId: "deleted", serverId: UUID()) == .unknown)
     }
+    @Test(arguments: [StreamQuality.original, .mp3_192, .mp3_320])
+    func streamPreservesQualityWithoutInventingHTTPContentLength(quality: StreamQuality) async throws {
+        let container = try ModelContainer.minidisc(inMemory: true)
+        let server = MockServerService()
+        server.state.isOnline = true
+        let snapshot = ServerSnapshot(from: ServerConfig(displayName: "Test", baseURL: "https://example.invalid", username: "test"))
+        server.connection = try ServerConnection(
+            version: .init(serverID: snapshot.id, revision: 1), server: snapshot,
+            credentials: .init(password: "test", customHeaders: ["X-Fixture": "secret"])
+        )
+        let settings = StreamSettings(defaults: UserDefaults(suiteName: "stream-seek.\(UUID())")!)
+        settings.cellularQuality = quality
+        settings.networkPathDidChange(isCellular: true)
+        let resolver = MediaResolver(
+            downloadService: DownloadService(serverService: server, modelContainer: container, toastService: ToastService()),
+            audioStreamCache: MockAudioStreamCache(), serverService: server, serverState: server.state,
+            streamSettings: settings
+        )
+        let source = try await resolver.resolve(songId: "a+id", serverId: snapshot.id)
+        let query = URLComponents(url: source.url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        #expect(query.first { $0.name == "estimateContentLength" }?.value == "false")
+        #expect(query.first { $0.name == "format" }?.value == quality.subsonicFormat)
+        #expect(query.first { $0.name == "maxBitRate" }?.value == quality.subsonicMaxBitRate.map(String.init))
+        #expect(query.first { $0.name == "id" }?.value == "a+id")
+        #expect(source.customHeaders["X-Fixture"] == "secret")
+    }
+
 }

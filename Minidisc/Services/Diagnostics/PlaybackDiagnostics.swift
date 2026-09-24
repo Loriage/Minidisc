@@ -47,6 +47,7 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         case localFile
         case download
         case cache
+        case seekBuffer
         case remoteStream
         case liveStream
     }
@@ -205,6 +206,14 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         let isPlaybackAvailable: Bool
         let networkPath: NetworkPath?
         let connectionVersion: ServerConnection.Version?
+        var settings: PlaybackDiagnosticSettings? = nil
+        var queueCount: Int? = nil
+        var queueIndex: Int? = nil
+        var position: Double? = nil
+        var duration: Double? = nil
+        var waitingReason: PlaybackWaitingReason? = nil
+        var lowPowerMode: Bool? = nil
+        var thermalState: ProcessInfo.ThermalState? = nil
     }
 
     enum Event: Sendable, Equatable {
@@ -226,6 +235,14 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         case engineSnapshot(AudioEngineDiagnosticSnapshot)
         case activeItem(AudioEnginePlaybackToken, source: SourceKind?)
         case nowPlayingRequested(AudioEnginePlaybackToken)
+        case sourceRequest(AudioEnginePlaybackToken, PlaybackRequestDiagnostics)
+        case seekRequested(item: AudioEnginePlaybackToken?, target: Double, position: Double)
+        case seekCompleted(item: AudioEnginePlaybackToken?, target: Double, position: Double, succeeded: Bool, stale: Bool)
+        case seekBuffer(started: Bool, seconds: Double)
+        case serverProbeStarted(request: UInt64)
+        case serverProbeCompleted(request: UInt64, seconds: Double, availability: MediaAvailability, failure: PlaybackDiagnosticFailure?)
+        case recoveryScheduled(item: AudioEnginePlaybackToken?, path: UInt64, delay: Double, baseline: Double, requireStall: Bool)
+        case operationFailed(item: AudioEnginePlaybackToken?, failure: PlaybackDiagnosticFailure)
         case engineFailure(AudioEngineFailure, playbackToken: AudioEnginePlaybackToken)
         case mediaAvailabilityChecked(MediaAvailability, playbackGeneration: UInt64)
         case unavailableTrackSkipped(hasNext: Bool)
@@ -234,13 +251,20 @@ nonisolated final class PlaybackDiagnostics: Sendable {
     }
 
     private struct Entry: Sendable {
+        let sequence: Int
         let elapsed: TimeInterval
+        var lastElapsed: TimeInterval
+        var repetitions: Int = 1
         let event: Event
     }
 
     private struct State: Sendable {
-        let startedAt: Date
+        let startedUptime: TimeInterval
         var entries: [Entry]
+        var received = 0
+        var evicted = 0
+        var incidents: [Entry] = []
+        var lastActiveSnapshot: Entry?
         var experience = PlaybackExperienceMetrics()
         var homeReadyTimes: [TimeInterval] = []
         var homeCacheLoads = 0
@@ -254,25 +278,54 @@ nonisolated final class PlaybackDiagnostics: Sendable {
     init(capacity: Int = 600) {
         precondition(capacity > 0)
         self.capacity = capacity
-        state = Mutex(State(startedAt: Date(), entries: []))
+        state = Mutex(State(startedUptime: ProcessInfo.processInfo.systemUptime, entries: []))
     }
 
     func record(_ event: Event) {
-        let now = Date()
+        let now = ProcessInfo.processInfo.systemUptime
         state.withLock { state in
-            state.experience.observe(event, elapsed: max(0, now.timeIntervalSince(state.startedAt)))
-            state.entries.append(
-                Entry(elapsed: max(0, now.timeIntervalSince(state.startedAt)), event: event)
-            )
+            let elapsed = max(0, now - state.startedUptime)
+            state.experience.observe(event, elapsed: elapsed)
+            state.received += 1
+            let entry = Entry(sequence: state.received, elapsed: elapsed, lastElapsed: elapsed, event: event)
+            switch event {
+            case .engineSnapshot(let snapshot) where snapshot.role == .active:
+                state.lastActiveSnapshot = entry
+            case .command(.stop), .command(.play), .command(.playRadio), .connectionRemoved:
+                state.lastActiveSnapshot = nil
+            case .activeItem(let token, _):
+                if let observation = state.lastActiveSnapshot,
+                   case .engineSnapshot(let snapshot) = observation.event, snapshot.token != token {
+                    state.lastActiveSnapshot = nil
+                }
+            default: break
+            }
+            if Self.severity(event) != "INFO" {
+                if let last = state.incidents.last, last.event == event {
+                    state.incidents[state.incidents.count - 1].repetitions += 1
+                    state.incidents[state.incidents.count - 1].lastElapsed = elapsed
+                } else {
+                    state.incidents.append(entry)
+                }
+                if state.incidents.count > 20 { state.incidents.removeFirst() }
+            }
+            if let last = state.entries.last, last.event == event {
+                state.entries[state.entries.count - 1].repetitions += 1
+                state.entries[state.entries.count - 1].lastElapsed = elapsed
+            } else {
+                state.entries.append(entry)
+            }
             if state.entries.count > capacity {
-                state.entries.removeFirst(state.entries.count - capacity)
+                let removed = state.entries.count - capacity
+                state.evicted += state.entries.prefix(removed).reduce(0) { $0 + $1.repetitions }
+                state.entries.removeFirst(removed)
             }
         }
     }
 
     func recordProgress(_ position: TimeInterval) {
         state.withLock { state in
-            state.experience.observeProgress(position, elapsed: max(0, Date().timeIntervalSince(state.startedAt)))
+            state.experience.observeProgress(position, elapsed: max(0, ProcessInfo.processInfo.systemUptime - state.startedUptime))
         }
     }
 
@@ -293,37 +346,119 @@ nonisolated final class PlaybackDiagnostics: Sendable {
     }
 
     func makeReport(context: ReportContext) -> String {
-        let entries = state.withLock { $0.entries }
-        let experience = state.withLock { $0.experience.report }
-        let continuity = state.withLock { value in
-            let times = value.homeReadyTimes.sorted()
-            let median = times.isEmpty ? "unavailable" : String(format: "%.3fs", times[(times.count - 1) / 2])
-            return "Continuity (this launch): home-data-ready samples=\(times.count) p50=\(median) cache-loads=\(value.homeCacheLoads); download-attempts completed=\(value.completedDownloads) failed=\(value.failedDownloads). Home timing excludes rendering."
+        let value = state.withLock { $0 }
+        let now = max(0, ProcessInfo.processInfo.systemUptime - value.startedUptime)
+        let times = value.homeReadyTimes.sorted()
+        let median = times.isEmpty ? "unavailable" : String(format: "%.3fs", times[(times.count - 1) / 2])
+        let waiting = switch context.waitingReason {
+        case .loading: "loading"
+        case .buffering: "buffering"
+        case .reconnecting: "reconnecting"
+        case nil: "none"
+        }
+        let thermal = switch context.thermalState {
+        case .nominal: "nominal"
+        case .fair: "fair"
+        case .serious: "serious"
+        case .critical: "critical"
+        default: "unknown"
         }
         var lines = [
-            "Minidisc Playback Diagnostics",
+            "Minidisc Playback Diagnostics — report v2",
             "Generated: \(Date().formatted(.iso8601))",
+            "",
+            "=== CURRENT CONTEXT ===",
             "App: \(context.appVersion) (\(context.appBuild))",
             "OS: \(context.operatingSystem)",
-            "Playback: \(context.playbackStatus.rawValue), available=\(context.isPlaybackAvailable)",
+            "Device: low-power=\(context.lowPowerMode.map(String.init) ?? "unknown") thermal=\(thermal)",
+            "Playback: \(context.playbackStatus.rawValue), available=\(context.isPlaybackAvailable), visible-wait=\(waiting)",
+            "Queue: count=\(context.queueCount.map(String.init) ?? "unknown") index=\(context.queueIndex.map(String.init) ?? "unknown") (zero-based)",
+            "Position: \(Self.seconds(context.position)) / \(Self.seconds(context.duration)) seconds",
             "Network: \(context.networkPath.map(Self.describe) ?? "unavailable")",
             "Connection: \(context.connectionVersion?.description ?? "none")",
-            "Privacy: song metadata, full URLs, credentials, header names/values and route names are excluded.",
-            "Engine samples: every 15s while playback is requested, plus lifecycle events. Positions show the media clock, not confirmed sound at the receiver. Access statistics may be unavailable for some sources.",
-            experience,
-            continuity,
             "",
-            "Timeline (oldest to newest):"
+            "=== SETTINGS AT EXPORT ===",
+            context.settings?.description ?? "unavailable",
+            "Settings may have changed since the incident; SOURCE events describe each actual request.",
+            "",
+            "=== LAST ACTIVE ENGINE OBSERVATION ==="
         ]
-
-        if entries.isEmpty {
-            lines.append("(no events recorded)")
+        if let observation = value.lastActiveSnapshot {
+            lines.append("Observed \(Self.seconds(now - observation.elapsed)) seconds before export; this is a recorded snapshot, not a fresh probe.")
+            lines.append(Self.describe(observation.event))
+            if case .engineSnapshot(let snapshot) = observation.event,
+               let request = value.entries.last(where: {
+                   if case .sourceRequest(let token, _) = $0.event { return token == snapshot.token }
+                   return false
+               }) {
+                lines.append(Self.describe(request.event))
+            }
         } else {
-            lines.append(contentsOf: entries.map { entry in
-                String(format: "+%.3fs %@", entry.elapsed, Self.describe(entry.event))
-            })
+            lines.append("No active engine observation available for the latest playback request.")
         }
+        lines += ["", "=== RECENT INCIDENTS (up to 20, retained separately) ==="]
+        lines += value.incidents.isEmpty ? ["No warning/error events recorded."] : value.incidents.map(Self.describeEntry)
+        lines += [
+            "", "=== SESSION METRICS ===",
+            value.experience.report,
+            "Continuity (this launch): home-data-ready samples=\(times.count) p50=\(median) cache-loads=\(value.homeCacheLoads); download-attempts completed=\(value.completedDownloads) failed=\(value.failedDownloads). Home timing excludes rendering.",
+            "", "=== HOW TO READ ===",
+            "Times are monotonic seconds since this diagnostic session began. Item numbers identify individual engine loads, not songs. Probe numbers identify getSong metadata requests, not audio transfers.",
+            "Now Playing is a client announcement, not confirmation of sound. Media-clock progress does not prove that the AirPlay receiver produced sound.",
+            "Requested format is not the decoded format. serverDefault means no format override; it does not guarantee an untranscoded response.",
+            "Access counters belong to the latest AVFoundation access-log event, not the entire session. Unavailable counters are not zero. A zero preferred buffer/peak bitrate lets AVFoundation choose.",
+            "Samples are recorded every 5s while waiting/paused with play intent, otherwise every 15s. Lifecycle events are recorded immediately. Consecutive identical events are grouped.",
+            "Privacy: song metadata, full URLs, credentials, header names/values, response bodies and route names are excluded.",
+            "", "=== TIMELINE (oldest to newest) ===",
+            "Retention: received=\(value.received) rows=\(value.entries.count)/\(capacity) evicted-events=\(value.evicted)"
+        ]
+        lines += value.entries.isEmpty ? ["(no events recorded)"] : value.entries.map(Self.describeEntry)
         return lines.joined(separator: "\n")
+    }
+
+    private static func seconds(_ value: Double?) -> String {
+        guard let value, value.isFinite else { return "unknown" }
+        return String(format: "%.2f", value)
+    }
+
+    private static func describeEntry(_ entry: Entry) -> String {
+        let repetitions = entry.repetitions > 1
+            ? " [repeated \(entry.repetitions)x; last +\(seconds(entry.lastElapsed))s]" : ""
+        return String(format: "#%04d +%09.3fs [%@] [%@] %@%@", entry.sequence, entry.elapsed,
+                      severity(entry.event), category(entry.event), describe(entry.event), repetitions)
+    }
+
+    private static func severity(_ event: Event) -> String {
+        switch event {
+        case .engineFailure, .boundaryFailed, .operationFailed, .application(.launchFailed),
+             .playbackStateChanged(.error), .engineStateChanged(.error), .networkRecovery(.retryBudgetExhausted), .audioSession(.recoveryExhausted):
+            "ERROR"
+        case .engineSnapshot(let snapshot):
+            snapshot.trigger == .errorLog || snapshot.trigger == .failedToEnd ? "ERROR"
+                : (snapshot.trigger == .stalled || snapshot.trigger == .watchdogEnd ? "WARN" : "INFO")
+        case .serverProbeCompleted(_, _, _, let failure): failure == nil ? "INFO" : "WARN"
+        case .seekCompleted(_, _, _, let succeeded, let stale): succeeded || stale ? "INFO" : "WARN"
+        case .cache(.failed), .networkRecovery(.sourceRefreshFailed), .networkRecovery(.progressStalled),
+             .audioSession(.mediaServicesReset), .audioSession(.recoveryActivationFailed), .audioSession(.interruptionBegan): "WARN"
+        default: "INFO"
+        }
+    }
+
+    private static func category(_ event: Event) -> String {
+        switch event {
+        case .engineSnapshot, .engineFailure, .engineStateChanged: "ENGINE"
+        case .sourceRequest, .sourcePrepared, .activeItem: "SOURCE"
+        case .seekRequested, .seekCompleted, .seekBuffer: "SEEK"
+        case .serverProbeStarted, .serverProbeCompleted, .nowPlayingRequested: "SERVER"
+        case .networkRecovery, .recoveryScheduled: "RECOVERY"
+        case .networkPathChanged, .connectionChanged, .connectionRemoved: "NETWORK"
+        case .audioSession: "AUDIO"
+        case .cache: "CACHE"
+        case .trackBoundary, .boundaryIgnored, .boundaryPlan, .boundaryFailed: "QUEUE"
+        case .musicIntent: "SIRI"
+        case .application: "APP"
+        default: "PLAYBACK"
+        }
     }
 
     private static func describe(_ event: Event) -> String {
@@ -363,7 +498,7 @@ nonisolated final class PlaybackDiagnostics: Sendable {
         case .boundaryPlan(let token, let snapshot, let plan):
             "playback track-end-plan item=\(token.rawValue) queue-count=\(snapshot.queueCount) index=\(snapshot.currentIndex) action=\(describe(plan))"
         case .boundaryFailed(let token, let failure):
-            "playback track-end-failed item=\(token.rawValue) codes=\(failure.diagnosticDescription)"
+            "playback track-end-failed item=\(token.rawValue) codes=\(failure.diagnosticDescription) meaning=\(failure.diagnosticMeaning)"
         case .sourcePrepared(let source):
             "playback source=\(source.rawValue)"
         case .cache(let event):
@@ -378,8 +513,24 @@ nonisolated final class PlaybackDiagnostics: Sendable {
             "playback active-item=\(token.rawValue) source=\(source?.rawValue ?? "unknown")"
         case .nowPlayingRequested(let token):
             "server now-playing-requested item=\(token.rawValue) progress-confirmation=not-required"
+        case .sourceRequest(let token, let request):
+            "request item=\(token.rawValue) \(request.description)"
+        case .seekRequested(let token, let target, let position):
+            "seek-requested item=\(token.map { String($0.rawValue) } ?? "none") target=\(seconds(target))s before=\(seconds(position))s"
+        case .seekCompleted(let token, let target, let position, let succeeded, let stale):
+            "seek-completed item=\(token.map { String($0.rawValue) } ?? "none") target=\(seconds(target))s landed=\(seconds(position))s success=\(succeeded) stale=\(stale)"
+        case .seekBuffer(let started, let duration):
+            "transcode-seek-buffer \(started ? "started" : "ready") elapsed=\(seconds(duration))s"
+        case .serverProbeStarted(let request):
+            "getSong request=\(request) started (metadata only)"
+        case .serverProbeCompleted(let request, let duration, let availability, let failure):
+            "getSong request=\(request) completed elapsed=\(seconds(duration))s availability=\(availability.rawValue) result=\(failure?.description ?? "success")"
+        case .recoveryScheduled(let token, let path, let delay, let baseline, let requireStall):
+            "probe-scheduled item=\(token.map { String($0.rawValue) } ?? "none") path=\(path) delay=\(seconds(delay))s baseline=\(seconds(baseline))s require-stall=\(requireStall)"
+        case .operationFailed(let token, let failure):
+            "operation-failed item=\(token.map { String($0.rawValue) } ?? "none") \(failure.description)"
         case .engineFailure(let failure, let token):
-            "engine failure item=\(token.rawValue) codes=\(failure.diagnosticDescription)"
+            "engine failure item=\(token.rawValue) codes=\(failure.diagnosticDescription) meaning=\(failure.diagnosticMeaning)"
         case .mediaAvailabilityChecked(let availability, let generation):
             "playback media-availability=\(availability.rawValue) generation=\(generation)"
         case .unavailableTrackSkipped(let hasNext):

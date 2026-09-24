@@ -178,7 +178,8 @@ final class AppContainer {
             audioStreamCache: cache,
             serverService: server,
             serverState: serverState,
-            streamSettings: streamSettings
+            streamSettings: streamSettings,
+            diagnostics: playbackDiagnostics
         )
         mediaResolver = resolver
 
@@ -292,7 +293,17 @@ final class AppContainer {
                 playbackStatus: PlaybackDiagnostics.PlaybackStatus(playerState.playbackState),
                 isPlaybackAvailable: playerState.isPlaybackAvailable,
                 networkPath: PlaybackDiagnostics.NetworkPath(serverState.networkPathEvent),
-                connectionVersion: serverState.activeConnectionVersion
+                connectionVersion: serverState.activeConnectionVersion,
+                settings: PlaybackDiagnosticSettings(
+                    wifiQuality: streamSettings.wifiQuality, cellularQuality: streamSettings.cellularQuality,
+                    selectedQuality: streamSettings.currentQuality, offlineMode: serverState.isOfflineModeEnabled,
+                    cacheFormat: cacheSettings.cacheFormat, cacheOverCellular: cacheSettings.cacheOverCellular,
+                    cacheCapacityMB: cacheSettings.capacityMegabytes, offlineFavorites: cacheSettings.keepFavoritesOffline,
+                    crossfade: crossfadeSettings.config, replayGain: replayGainSettings.config
+                ),
+                queueCount: playerState.queue.count, queueIndex: playerState.currentIndex,
+                position: playerState.position, duration: playerState.duration, waitingReason: playerState.waitingReason,
+                lowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled, thermalState: ProcessInfo.processInfo.thermalState
             )
         )
     }

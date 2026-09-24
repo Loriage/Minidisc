@@ -129,6 +129,16 @@ actor PlayerService: PlayerServiceProtocol {
     private var progressTask: Task<Void, Never>?
     private var pendingRestoreInfo: (seekTime: Double, pause: Bool)?
     private var currentSource: MediaSource?
+    private let seekFileLoader: @Sendable (MediaSource) async throws -> MediaSource
+    private struct SeekPreparation {
+        let task: Task<MediaSource, Error>
+        let playbackGeneration: UInt64
+        let transportGeneration: UInt64
+        let token: AudioEnginePlaybackToken?
+        let started: TimeInterval
+    }
+    private var seekPreparation: SeekPreparation?
+    private var preparingSeek: UInt64?
     private var liveStreamStallTask: Task<Void, Never>?
 
     private let audioSession: any AudioSessionControlling
@@ -260,8 +270,10 @@ actor PlayerService: PlayerServiceProtocol {
         networkRecoveryTiming: PlaybackNetworkRecoveryTiming = PlaybackNetworkRecoveryTiming(),
         audioSession: any AudioSessionControlling = SystemAudioSessionController(),
         audioRecoveryTiming: PlaybackAudioRecoveryTiming = PlaybackAudioRecoveryTiming(),
-        localMusicStore: LocalMusicStore? = nil
+        localMusicStore: LocalMusicStore? = nil,
+        seekFileLoader: @escaping @Sendable (MediaSource) async throws -> MediaSource = { try await TranscodedSeekFile.prepare($0) }
     ) {
+        self.seekFileLoader = seekFileLoader
         self.localMusicStore = localMusicStore
         self.state = state
         self.mediaResolver = mediaResolver
@@ -412,6 +424,7 @@ actor PlayerService: PlayerServiceProtocol {
         case .localFile: .localFile
         case .downloaded: .download
         case .cached: .cache
+        case .seekBuffer: .seekBuffer
         case .stream: .remoteStream
         case .liveStream: .liveStream
         }
@@ -454,6 +467,7 @@ actor PlayerService: PlayerServiceProtocol {
         stoppedAtEndOfQueue = false
         playbackGeneration &+= 1
         transportIntentGeneration &+= 1
+        cancelSeekPreparation()
         cancelAudioSystemRecovery()
         let generation = playbackGeneration
         let transportGeneration = transportIntentGeneration
@@ -843,6 +857,7 @@ actor PlayerService: PlayerServiceProtocol {
         queueBuildGeneration &+= 1
         playbackGeneration &+= 1
         transportIntentGeneration &+= 1
+        cancelSeekPreparation()
         cancelAudioSystemRecovery()
         let generation = playbackGeneration
         let transportGeneration = transportIntentGeneration
@@ -1541,6 +1556,7 @@ actor PlayerService: PlayerServiceProtocol {
         playbackDiagnostics.record(.pauseRequested(origin: PlaybackCommandOrigin.current, recoveringAudio: audioSystemRecovery != nil))
         queueBuildGeneration &+= 1
         transportIntentGeneration &+= 1
+        cancelSeekPreparation()
         cancelAudioSystemRecovery()
         let transportGeneration = transportIntentGeneration
         cancelNetworkRecoveryProbe()
@@ -1574,6 +1590,7 @@ actor PlayerService: PlayerServiceProtocol {
         playbackDiagnostics.record(.command(.resume))
         queueBuildGeneration &+= 1
         transportIntentGeneration &+= 1
+        cancelSeekPreparation()
         cancelAudioSystemRecovery()
         let transportGeneration = transportIntentGeneration
         cancelNetworkRecoveryProbe()
@@ -1756,6 +1773,7 @@ actor PlayerService: PlayerServiceProtocol {
         queueBuildGeneration &+= 1
         playbackGeneration &+= 1
         transportIntentGeneration &+= 1
+        cancelSeekPreparation()
         cancelAudioSystemRecovery()
         let generation = playbackGeneration
         let transportGeneration = transportIntentGeneration
@@ -1837,6 +1855,10 @@ actor PlayerService: PlayerServiceProtocol {
     }
 
     func seek(to position: TimeInterval) async {
+        let initialGeneration = playbackGeneration
+        let initialTransport = transportIntentGeneration
+        await waitForTransitionCommit()
+        guard initialGeneration == playbackGeneration, initialTransport == transportIntentGeneration else { return }
         let stateDuration = await MainActor.run { state.duration }
         let engineDuration = engine.duration
         guard let target = Self.clampedSeekTarget(
@@ -1851,8 +1873,10 @@ actor PlayerService: PlayerServiceProtocol {
             Logger.player.debug("seek ignored — live stream mode")
             return
         }
+        guard initialGeneration == playbackGeneration, initialTransport == transportIntentGeneration else { return }
         seekGeneration &+= 1
         if audioSystemRecovery != nil {
+            cancelSeekPreparation()
             audioSystemRecovery?.position = target
             invalidateAudioRecoveryPlayback()
             await MainActor.run { state.position = target }
@@ -1866,11 +1890,22 @@ actor PlayerService: PlayerServiceProtocol {
         Logger.player.info(
             "[SEEK] request target=\(target, format: .fixed(precision: 3))s before=\(before, format: .fixed(precision: 3))s stateDuration=\(stateDuration, format: .fixed(precision: 3))s engineDuration=\(engineDuration, format: .fixed(precision: 3))s seekable=\(wasSeekable, privacy: .public)"
         )
+        let requestToken = activeEnginePlayback?.token
+        playbackDiagnostics.record(.seekRequested(item: requestToken, target: target, position: before))
+        if let source = currentSource, source.needsCompleteFileForSeeking {
+            await seekInCompletedTranscode(source, to: target, seekID: requestedSeekGeneration)
+            return
+        }
+        cancelSeekPreparation()
         // Finalize the current segment and start a fresh one so that only
         // audio actually heard after the seek point is counted in played time.
         playbackProgressTracker.breakContinuity()
         let succeeded = await engine.seek(to: target)
         let landed = engine.progress
+        playbackDiagnostics.record(.seekCompleted(
+            item: requestToken, target: target, position: landed, succeeded: succeeded,
+            stale: requestedSeekGeneration != seekGeneration || requestedPlaybackGeneration != playbackGeneration
+        ))
         guard requestedSeekGeneration == seekGeneration,
               requestedPlaybackGeneration == playbackGeneration else {
             Logger.player.debug("[SEEK] discarded stale completion for target=\(target, format: .fixed(precision: 3))s")
@@ -1890,6 +1925,110 @@ actor PlayerService: PlayerServiceProtocol {
         Logger.player.info(
             "[SEEK] completed target=\(target, format: .fixed(precision: 3))s landed=\(confirmedPosition, format: .fixed(precision: 3))s"
         )
+        await pushPositionSnapshot()
+    }
+
+    private func cancelSeekPreparation() {
+        seekPreparation?.task.cancel()
+        seekPreparation = nil
+        preparingSeek = nil
+    }
+
+    private func seekInCompletedTranscode(_ source: MediaSource, to target: Double, seekID: UInt64) async {
+        let generation = playbackGeneration
+        let transport = transportIntentGeneration
+        let originalToken = activeEnginePlayback?.token
+        preparingSeek = seekID
+        cancelNetworkRecoveryProbe()
+        cancelNetworkRecoveryValidation()
+        defer {
+            if preparingSeek == seekID {
+                preparingSeek = nil
+                seekPreparation = nil
+            }
+        }
+        let snapshot = await MainActor.run {
+            (track: state.currentTrack, playing: state.wantsPlayback, volume: playbackPreferences.restoredVolume)
+        }
+        guard seekID == seekGeneration, generation == playbackGeneration,
+              transport == transportIntentGeneration, let track = snapshot.track else { return }
+        let preparation: SeekPreparation
+        if let existing = seekPreparation,
+           existing.playbackGeneration == generation, existing.transportGeneration == transport,
+           existing.token == originalToken, !existing.task.isCancelled {
+            preparation = existing
+            Logger.player.info("[SEEK] reusing pending transcode preparation target=\(target, format: .fixed(precision: 3))s")
+        } else {
+            seekPreparation?.task.cancel()
+            let loader = seekFileLoader
+            preparation = SeekPreparation(
+                task: Task { try await loader(source) },
+                playbackGeneration: generation, transportGeneration: transport,
+                token: originalToken, started: ProcessInfo.processInfo.systemUptime
+            )
+            seekPreparation = preparation
+            playbackDiagnostics.record(.seekBuffer(started: true, seconds: 0))
+        }
+        let task = preparation.task
+        let completed: MediaSource
+        do {
+            completed = try await task.value
+        } catch {
+            guard seekID == seekGeneration, generation == playbackGeneration,
+                  transport == transportIntentGeneration else { return }
+            playbackDiagnostics.record(.operationFailed(item: originalToken, failure: PlaybackDiagnosticFailure(error)))
+            playbackDiagnostics.record(.seekCompleted(item: originalToken, target: target, position: engine.progress, succeeded: false, stale: false))
+            preparingSeek = nil
+            seekPreparation = nil
+            await MainActor.run { toastService.showError(MinidiscError.playbackPositionUnavailable.localizedDescription) }
+            if activeEngineState != .playing, let token = activeEnginePlayback?.token {
+                await armRecoveryForUnexpectedEngineStall(playbackToken: token)
+            }
+            return
+        }
+        guard !task.isCancelled, seekID == seekGeneration, generation == playbackGeneration,
+              transport == transportIntentGeneration, activeEnginePlayback?.token == originalToken else { return }
+        playbackDiagnostics.record(.seekBuffer(started: false, seconds: ProcessInfo.processInfo.systemUptime - preparation.started))
+        await waitForTransitionCommit()
+        guard seekID == seekGeneration, generation == playbackGeneration,
+              transport == transportIntentGeneration, activeEnginePlayback?.token == originalToken else { return }
+        beginTransitionCommit()
+        var ownsCommit = true
+        defer { if ownsCommit { endTransitionCommit() } }
+        playbackProgressTracker.breakContinuity()
+        cancelPendingPrefetch()
+        engine.cancelPreload()
+        pendingRestoreInfo = nil
+        engine.volume = 0
+        isMutedForRestore = true
+        currentSource = completed
+        networkReloadRequiredTrackID = nil
+        let token = engine.play(trackID: track.id, url: completed.url, headers: completed.customHeaders)
+        engine.pause()
+        registerActiveEnginePlayback(token, playbackGeneration: generation, transportIntentGeneration: transport)
+        engine.setTrackDuration(track.duration)
+        let succeeded = await engine.seek(to: target)
+        let landed = engine.progress
+        let stale = seekID != seekGeneration || generation != playbackGeneration || transport != transportIntentGeneration
+        playbackDiagnostics.record(.seekCompleted(item: token, target: target, position: landed, succeeded: succeeded, stale: stale))
+        // Pause/skip may arrive while AVPlayer seeks. Never resume over that newer intent.
+        guard activeEnginePlayback?.token == token else { return }
+        engine.volume = snapshot.volume
+        isMutedForRestore = false
+        guard !stale else { return }
+        guard succeeded, landed.isFinite, abs(landed - target) < 2 else {
+            endTransitionCommit()
+            ownsCommit = false
+            _ = await finishFailedPlayback(error: .playbackPositionUnavailable,
+                expectedPlaybackGeneration: generation, expectedTransportGeneration: transport)
+            return
+        }
+        playbackProgressTracker.setBaseline(landed)
+        if snapshot.playing { engine.resume() }
+        await MainActor.run {
+            state.position = landed
+            state.waitingReason = nil
+        }
         await pushPositionSnapshot()
     }
 
@@ -2319,6 +2458,7 @@ actor PlayerService: PlayerServiceProtocol {
         queueBuildGeneration &+= 1
         playbackGeneration &+= 1
         transportIntentGeneration &+= 1
+        cancelSeekPreparation()
         cancelAudioSystemRecovery()
         let generation = playbackGeneration
         let transportGeneration = transportIntentGeneration
@@ -2740,7 +2880,7 @@ actor PlayerService: PlayerServiceProtocol {
         // Keep one deadline per stalled item. KVO emits several paused/buffering callbacks
         // during a load: they must neither shorten the startup grace nor cancel a rebuild
         // already suspended in the resolver. Budget exhaustion is decided AFTER the wait.
-        guard audioSystemRecovery == nil, networkRecoveryTask == nil else { return }
+        guard audioSystemRecovery == nil, preparingSeek == nil, networkRecoveryTask == nil else { return }
         let pathGeneration = latestNetworkPathEvent.generation
         let requestGeneration = networkRecoveryTaskGeneration
         let expectedPlaybackGeneration = playbackGeneration
@@ -2749,6 +2889,12 @@ actor PlayerService: PlayerServiceProtocol {
         let remainingStartupGrace = activeEnginePlayback == nil ? Duration.zero
             : networkRecoveryTiming.startupGrace - activeEngineStartedAt.duration(to: .now)
         let probeDelay = max(delay, remainingStartupGrace)
+        let delayComponents = probeDelay.components
+        playbackDiagnostics.record(.recoveryScheduled(
+            item: activeEnginePlayback?.token, path: pathGeneration,
+            delay: Double(delayComponents.seconds) + Double(delayComponents.attoseconds) / 1e18,
+            baseline: baselineProgress, requireStall: requireStall
+        ))
 
         networkRecoveryTask = Task { [weak self] in
             do {
@@ -2913,6 +3059,9 @@ actor PlayerService: PlayerServiceProtocol {
                   requestGeneration == networkRecoveryTaskGeneration,
                   expectedPlaybackGeneration == playbackGeneration,
                   expectedTransportGeneration == transportIntentGeneration else { return }
+            playbackDiagnostics.record(.operationFailed(
+                item: activeEnginePlayback?.token, failure: PlaybackDiagnosticFailure(error)
+            ))
             playbackDiagnostics.record(
                 .networkRecovery(
                     .sourceRefreshFailed(number: attempt, pathGeneration: pathGeneration)
@@ -3037,6 +3186,7 @@ actor PlayerService: PlayerServiceProtocol {
         restorePauseTask?.cancel()
         restorePauseTask = nil
         pendingRestoreInfo = nil
+        playbackDiagnostics.record(.operationFailed(item: activeEnginePlayback?.token, failure: PlaybackDiagnosticFailure(error)))
         engine.stop()
         activeEnginePlayback = nil
         activeEngineState = nil

@@ -697,6 +697,7 @@ private struct ScrubberView: View {
 
     @State private var isDragging = false
     @State private var isSeeking = false
+    @State private var seekRequestID: UInt64 = 0
     @State private var displayPosition: TimeInterval = 0
 
     private var effectiveDuration: TimeInterval {
@@ -718,11 +719,13 @@ private struct ScrubberView: View {
                 total: effectiveDuration,
                 onEditingChanged: { editing in
                     isDragging = editing
+                    seekRequestID &+= 1
                     if !editing {
                         isSeeking = true
+                        let requestID = seekRequestID
                         let target = displayPosition
                         Task {
-                            defer { isSeeking = false }
+                            defer { if requestID == seekRequestID { isSeeking = false } }
                             await playerService?.seek(to: target)
                         }
                     }

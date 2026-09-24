@@ -10,6 +10,7 @@ private nonisolated final class RecoveryTestEngine: AudioEngine, Sendable {
     private struct Storage {
         var delegate: AudioEngineDelegate?
         var plays = 0
+        var resumes = 0
         var stops = 0
         var resets = 0
         var airPlayActive = false
@@ -48,7 +49,8 @@ private nonisolated final class RecoveryTestEngine: AudioEngine, Sendable {
     }
     func startAdvancing() { storage.withLock { if !$0.poisoned { $0.playingSince = Date() } } }
     func pause() { storage.withLock { $0.playingSince = nil } }
-    func resume() {}
+    func resume() { storage.withLock { $0.resumes += 1 } }
+    var resumeCount: Int { storage.withLock { $0.resumes } }
     func stop() { storage.withLock { $0.stops += 1; $0.active = false; $0.playingSince = nil } }
     func resetAfterMediaServicesReset() {
         storage.withLock {
@@ -117,6 +119,8 @@ private nonisolated final class RecoveryTestAudioSession: AudioSessionControllin
 
 private actor RecoveryTestResolver: MediaResolverProtocol {
     var usesDownloadedSource = false
+    var transcoded = false
+    func useTranscode() { transcoded = true }
     var usesCachedSource = false
     func useCachedSource() { usesCachedSource = true }
     func localSource(songId: String, serverId: UUID) async -> MediaSource? {
@@ -147,7 +151,7 @@ private actor RecoveryTestResolver: MediaResolverProtocol {
             await withCheckedContinuation { pendingResolution = $0 }
         }
         if let local = await localSource(songId: songId, serverId: serverId) { return local }
-        return .stream(URL(string: "https://playback.invalid/stream")!, customHeaders: [:])
+        return .stream(URL(string: transcoded ? "https://playback.invalid/stream?format=mp3&maxBitRate=192" : "https://playback.invalid/stream")!, customHeaders: [:])
     }
     func resolveRadio(_ station: InternetRadioStation) async throws -> MediaSource { throw MinidiscError.notImplemented }
     func availability(songId: String, serverId: UUID) async -> MediaAvailability {
@@ -198,7 +202,8 @@ private struct RecoveryHarness {
         audioStartupGrace: Duration = .milliseconds(800),
         audioRetryDelay: Duration = .milliseconds(40),
         localMusicStore: LocalMusicStore? = nil,
-        configureServer: Bool = true
+        configureServer: Bool = true,
+        seekFileLoader: @escaping @Sendable (MediaSource) async throws -> MediaSource = { try await TranscodedSeekFile.prepare($0) }
     ) throws {
         let container = try ModelContainer.minidisc(inMemory: true)
         let server = MockServerService()
@@ -247,7 +252,8 @@ private struct RecoveryHarness {
                 retryDelay: audioRetryDelay, routeGrace: .seconds(2),
                 startupGrace: audioStartupGrace, pollInterval: .milliseconds(10)
             ),
-            localMusicStore: localMusicStore
+            localMusicStore: localMusicStore,
+            seekFileLoader: seekFileLoader
         )
     }
 
@@ -757,7 +763,8 @@ struct PlayerRecoveryIntegrationTests {
         try await h.play()
         try await h.waitUntil { if case .error = h.state.playbackState { true } else { false } }
         #expect(h.engine.playCount == 4)
-        #expect(h.report.components(separatedBy: "retry-budget-exhausted").count == 2)
+        let timeline = try #require(h.report.components(separatedBy: "=== TIMELINE").last)
+        #expect(timeline.components(separatedBy: "retry-budget-exhausted").count == 2)
         let oldToken = h.engine.token
         try await h.player.skipToNext()
         await h.player.handleEngineError(.init(error: URLError(.timedOut)), playbackToken: oldToken)
@@ -896,5 +903,203 @@ struct LocalMusicPlaybackTests {
         await harness.player.resume()
         #expect(harness.state.playbackState == .paused)
         await harness.player.stop()
+    }
+}
+
+private actor SeekFileLoaderProbe {
+    var received: [MediaSource] = []
+    private var pending: [CheckedContinuation<MediaSource, Error>] = []
+    func load(_ source: MediaSource) async throws -> MediaSource {
+        received.append(source)
+        return try await withCheckedThrowingContinuation { pending.append($0) }
+    }
+    func complete() {
+        pending.removeFirst().resume(returning: .seekBuffer(TranscodedSeekFile(
+            url: URL(fileURLWithPath: "/tmp/minidisc-seek-fixture-\(UUID()).mp3")
+        )))
+    }
+    func fail() { pending.removeFirst().resume(throwing: URLError(.timedOut)) }
+}
+
+@Suite("Transcoded seek integration", .serialized)
+@MainActor
+struct TranscodedSeekIntegrationTests {
+    @Test func preparesSameQualityThenSeeksWithoutChangingQueue() async throws {
+        let probe = SeekFileLoaderProbe()
+        let h = try RecoveryHarness(startupGrace: .seconds(30), seekFileLoader: { try await probe.load($0) })
+        await h.resolver.useTranscode()
+        try await h.play()
+        let seek = Task { await h.player.seek(to: 80) }
+        try await h.waitUntil { await probe.received.count == 1 }
+        let source = try #require(await probe.received.first)
+        #expect(source.url.query?.contains("maxBitRate=192") == true)
+        #expect(h.engine.playCount == 1)
+        let resumesBeforeCompletion = h.engine.resumeCount
+        await probe.complete()
+        await seek.value
+        #expect(h.engine.playCount == 2)
+        #expect(h.engine.sourceURL?.isFileURL == true)
+        #expect(h.engine.progress == 80)
+        #expect(h.state.position == 80)
+        #expect(h.state.currentIndex == 0)
+        #expect(h.state.queue.count == 2)
+        #expect(h.engine.resumeCount == resumesBeforeCompletion + 1)
+        #expect(h.report.contains("landed=80.00s success=true stale=false"))
+        await h.player.seek(to: 20)
+        #expect(await probe.received.count == 1)
+        #expect(h.engine.playCount == 2)
+        #expect(h.engine.progress == 20)
+        await h.player.stop()
+    }
+
+    @Test func pauseDuringPreparationDoesNotReplaceOrResume() async throws {
+        let probe = SeekFileLoaderProbe()
+        let h = try RecoveryHarness(startupGrace: .seconds(30), seekFileLoader: { try await probe.load($0) })
+        await h.resolver.useTranscode()
+        try await h.play()
+        let seek = Task { await h.player.seek(to: 80) }
+        try await h.waitUntil { await probe.received.count == 1 }
+        await h.player.pause()
+        let resumesBeforeCompletion = h.engine.resumeCount
+        await probe.complete()
+        await seek.value
+        #expect(h.engine.playCount == 1)
+        #expect(h.engine.resumeCount == resumesBeforeCompletion)
+        #expect(h.state.playbackState == .paused)
+        await h.player.stop()
+    }
+
+    @Test func newerTrackWinsOverCompletedPreparation() async throws {
+        let probe = SeekFileLoaderProbe()
+        let h = try RecoveryHarness(startupGrace: .seconds(30), seekFileLoader: { try await probe.load($0) })
+        await h.resolver.useTranscode()
+        try await h.play()
+        let seek = Task { await h.player.seek(to: 80) }
+        try await h.waitUntil { await probe.received.count == 1 }
+        try await h.player.skipToNext()
+        let playCount = h.engine.playCount
+        await probe.complete()
+        await seek.value
+        #expect(h.engine.playCount == playCount)
+        #expect(h.state.currentIndex == 1)
+        #expect(h.engine.sourceURL?.isFileURL == false)
+        await h.player.stop()
+    }
+
+    @Test func failedPreparationKeepsExistingAudioAndReportsFailure() async throws {
+        let probe = SeekFileLoaderProbe()
+        let h = try RecoveryHarness(startupGrace: .seconds(30), seekFileLoader: { try await probe.load($0) })
+        await h.resolver.useTranscode()
+        try await h.play()
+        _ = await h.engine.seek(to: 25)
+        let seek = Task { await h.player.seek(to: 80) }
+        try await h.waitUntil { await probe.received.count == 1 }
+        await probe.fail()
+        await seek.value
+        #expect(h.engine.playCount == 1)
+        #expect(h.engine.progress == 25)
+        #expect(h.report.contains("success=false stale=false"))
+        await h.player.stop()
+    }
+
+    @Test func mostRecentSeekWinsDuringPreparation() async throws {
+        let probe = SeekFileLoaderProbe()
+        let h = try RecoveryHarness(startupGrace: .seconds(30), seekFileLoader: { try await probe.load($0) })
+        await h.resolver.useTranscode()
+        try await h.play()
+        let first = Task { await h.player.seek(to: 80) }
+        try await h.waitUntil { await probe.received.count == 1 }
+        let second = Task { await h.player.seek(to: 40) }
+        try await h.waitUntil { h.report.contains("target=40.00s") }
+        #expect(await probe.received.count == 1)
+        await probe.complete()
+        await first.value
+        await second.value
+        #expect(await probe.received.count == 1)
+        #expect(h.engine.playCount == 2)
+        #expect(h.engine.progress == 40)
+        await h.player.stop()
+    }
+
+    @Test func pauseCancelsSharedPreparationWithoutResumingEitherSeek() async throws {
+        let probe = SeekFileLoaderProbe()
+        let h = try RecoveryHarness(startupGrace: .seconds(30), seekFileLoader: { try await probe.load($0) })
+        await h.resolver.useTranscode()
+        try await h.play()
+        let first = Task { await h.player.seek(to: 80) }
+        try await h.waitUntil { await probe.received.count == 1 }
+        let second = Task { await h.player.seek(to: 40) }
+        try await h.waitUntil { h.report.contains("target=40.00s") }
+        await h.player.pause()
+        let resumes = h.engine.resumeCount
+        await probe.complete()
+        await first.value
+        await second.value
+        #expect(await probe.received.count == 1)
+        #expect(h.engine.playCount == 1)
+        #expect(h.engine.resumeCount == resumes)
+        #expect(h.state.playbackState == .paused)
+        await h.player.stop()
+    }
+
+    @Test func sharedPreparationFailureAllowsANewAttempt() async throws {
+        let probe = SeekFileLoaderProbe()
+        let h = try RecoveryHarness(startupGrace: .seconds(30), seekFileLoader: { try await probe.load($0) })
+        await h.resolver.useTranscode()
+        try await h.play()
+        let first = Task { await h.player.seek(to: 80) }
+        try await h.waitUntil { await probe.received.count == 1 }
+        let second = Task { await h.player.seek(to: 40) }
+        try await h.waitUntil { h.report.contains("target=40.00s") }
+        await probe.fail()
+        await first.value
+        await second.value
+        #expect(await probe.received.count == 1)
+        #expect(h.engine.playCount == 1)
+        let retry = Task { await h.player.seek(to: 60) }
+        try await h.waitUntil { await probe.received.count == 2 }
+        await probe.complete()
+        await retry.value
+        #expect(h.engine.playCount == 2)
+        #expect(h.engine.progress == 60)
+        await h.player.stop()
+    }
+
+    @Test func failedLocalSeekStopsBeforeMakingWrongPositionAudible() async throws {
+        let probe = SeekFileLoaderProbe()
+        let h = try RecoveryHarness(startupGrace: .seconds(30), seekFileLoader: { try await probe.load($0) })
+        await h.resolver.useTranscode()
+        try await h.play()
+        let seek = Task { await h.player.seek(to: 80) }
+        try await h.waitUntil { await probe.received.count == 1 }
+        h.engine.failNextSeek()
+        let resumesBeforeCompletion = h.engine.resumeCount
+        await probe.complete()
+        try await h.waitUntil { if case .error = h.state.playbackState { return true }; return false }
+        await seek.value
+        #expect(h.engine.resumeCount == resumesBeforeCompletion)
+        #expect(h.engine.stopCount > 0)
+        await h.player.stop()
+    }
+
+    @Test func originalUsesNativeSeekAndPausedTranscodeStaysPaused() async throws {
+        let probe = SeekFileLoaderProbe()
+        let h = try RecoveryHarness(startupGrace: .seconds(30), seekFileLoader: { try await probe.load($0) })
+        try await h.play()
+        await h.player.seek(to: 30)
+        #expect(await probe.received.isEmpty)
+        #expect(h.engine.progress == 30)
+        await h.resolver.useTranscode()
+        try await h.play()
+        await h.player.pause()
+        let resumesBeforeCompletion = h.engine.resumeCount
+        let seek = Task { await h.player.seek(to: 80) }
+        try await h.waitUntil { await probe.received.count == 1 }
+        await probe.complete()
+        await seek.value
+        #expect(h.engine.progress == 80)
+        #expect(h.engine.resumeCount == resumesBeforeCompletion)
+        #expect(h.state.playbackState == .paused)
+        await h.player.stop()
     }
 }

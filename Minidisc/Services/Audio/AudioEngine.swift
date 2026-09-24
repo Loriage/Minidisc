@@ -68,6 +68,40 @@ nonisolated struct AudioEngineFailure: Sendable, Equatable {
         }
     }
 
+    var diagnosticMeaning: String {
+        let labels = codes.compactMap { code -> String? in
+            switch code.domain {
+            case .avFoundation:
+                switch AVError.Code(rawValue: code.value) {
+                case .mediaServicesWereReset: return "media-services-reset"
+                case .failedToLoadMediaData: return "media-data-load-failed"
+                case .fileFormatNotRecognized: return "unrecognized-file-format"
+                case .decoderNotFound: return "decoder-not-found"
+                case .decodeFailed: return "decode-failed"
+                default: return nil
+                }
+            case .url:
+                switch URLError.Code(rawValue: code.value) {
+                case .timedOut: return "request-timeout"
+                case .notConnectedToInternet: return "no-internet-connection"
+                case .networkConnectionLost: return "connection-lost"
+                case .cannotFindHost, .dnsLookupFailed: return "host-resolution-failed"
+                case .cannotConnectToHost: return "host-connection-failed"
+                case .dataNotAllowed: return "cellular-data-not-allowed"
+                case .internationalRoamingOff: return "roaming-disabled"
+                case .secureConnectionFailed: return "tls-connection-failed"
+                case .serverCertificateUntrusted, .serverCertificateHasBadDate,
+                     .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid: return "certificate-validation-failed"
+                case .badServerResponse: return "invalid-server-response"
+                case .cancelled: return "request-cancelled"
+                default: return nil
+                }
+            default: return nil
+            }
+        }
+        return labels.isEmpty ? "unspecified" : labels.joined(separator: "+")
+    }
+
     var diagnosticDescription: String {
         codes.isEmpty ? "unknown" : codes.map { "\($0.domain.rawValue):\($0.value)" }.joined(separator: ",")
     }

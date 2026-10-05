@@ -39,6 +39,24 @@ private nonisolated final class ResetTestPlayerFactory: Sendable {
 }
 
 @MainActor
+@Suite("Audio session configuration after suspension", .serialized)
+struct AudioSessionConfigurationTests {
+    @Test func activationRepairsConfigurationChangedOutsideTheController() throws {
+        let session = AVAudioSession.sharedInstance()
+        let controller = SystemAudioSessionController()
+        defer { controller.deactivate() }
+        try controller.activate()
+        try session.setCategory(.ambient, mode: .default, policy: .default)
+        #expect(session.category == .ambient)
+        // No invalidateConfiguration call: the app's cached flag still says configured.
+        try controller.activate()
+        #expect(session.category == .playback)
+        #expect(session.mode == .default)
+        #expect(session.routeSharingPolicy == .longFormAudio)
+    }
+}
+
+@MainActor
 @Suite("Audio system reset", .serialized)
 struct AudioSystemResetTests {
     @Test func classifiesMediaServicesResetWithoutConfusingNetworkErrors() {
@@ -245,6 +263,80 @@ struct AudioSystemResetTests {
         #expect(events.transitions.last?.promotedPlayback == nil)
         #expect(factory.players[0].currentItem === nextItem)
         #expect(engine.progress > 0.8)
+    }
+
+    @Test(arguments: [false, true])
+    func pausedQueuedItemResumesOnAdoptionButNotAfterExplicitPause(userPaused: Bool) async throws {
+        let factory = ResetTestPlayerFactory()
+        let diagnostics = PlaybackDiagnostics()
+        let engine = AVPlayerEngine(diagnostics: diagnostics, playerFactory: factory.makePlayer)
+        let events = QueueTransitionRecorder()
+        engine.delegate = events
+        let url = try silentWave()
+        defer { engine.stop(); try? FileManager.default.removeItem(at: url) }
+        engine.setAirPlayActive(true)
+        let firstToken = engine.play(trackID: "first", url: url, headers: [:])
+        let active = factory.players[0]
+        if userPaused { engine.pause() } else { active.pause() }
+        engine.preloadNext(trackID: "next", url: url, headers: [:], crossfadeDuration: 0, replayGainDB: 0)
+        let next = try #require(active.items().last)
+        active.advanceToNextItem()
+        let deadline = ContinuousClock.now + .seconds(6)
+        while events.transitions.isEmpty, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let transition = try #require(events.transitions.first)
+        #expect(transition.endedPlaybackToken == firstToken)
+        let promoted = try #require(transition.promotedPlayback)
+        #expect(active.currentItem === next)
+
+        if userPaused {
+            try await Task.sleep(for: .milliseconds(200))
+            #expect(active.rate == 0)
+            #expect(active.timeControlStatus == .paused)
+        } else {
+            // This is the adoption call made by PlayerService after receiving the boundary.
+            let adopted = engine.play(trackID: "next", url: url, headers: [:])
+            #expect(adopted == promoted.playbackToken)
+            while engine.progress < 0.1, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            #expect(engine.progress >= 0.1)
+            #expect(active.timeControlStatus == .playing)
+            #expect(active.currentItem === next)
+        }
+        #expect(events.transitions.count == 1)
+        #expect(factory.players[1].currentItem == nil)
+    }
+
+    @Test func stuckNativeQueueIsCapturedWithoutChangingPlayback() async throws {
+        let factory = ResetTestPlayerFactory()
+        let diagnostics = PlaybackDiagnostics()
+        let engine = AVPlayerEngine(diagnostics: diagnostics, playerFactory: factory.makePlayer)
+        let url = try silentWave()
+        defer { engine.stop(); try? FileManager.default.removeItem(at: url) }
+        engine.setAirPlayActive(true)
+        engine.play(trackID: "first", url: url, headers: [:])
+        engine.setTrackDuration(1)
+        engine.preloadNext(trackID: "next", url: url, headers: [:], crossfadeDuration: 0, replayGainDB: 0)
+        let active = factory.players[0]
+        let first = try #require(active.currentItem)
+        // Force a failed native hand-off. This simulates a condition, not an actual AirPlay receiver.
+        active.actionAtItemEnd = .pause
+        func report() -> String {
+            diagnostics.makeReport(context: .init(appVersion: "test", appBuild: "0", operatingSystem: "test",
+                playbackStatus: .playing, isPlaybackAvailable: true, networkPath: nil, connectionVersion: nil))
+        }
+        let deadline = ContinuousClock.now + .seconds(8)
+        while !report().contains("finding=queue-handoff-delayed"), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        #expect(report().contains("finding=queue-handoff-delayed"))
+        #expect(report().contains("transition=waitingForNativeAdvance"))
+        #expect(report().contains("AUTOMATIC INCIDENT CAPTURES"))
+        #expect(active.currentItem === first)
+        #expect(active.items().count == 2)
+        #expect(active.rate == 0)
     }
 
     @Test func airPlayCancellationAndRouteChangesRemoveOnlyUpcomingItems() throws {

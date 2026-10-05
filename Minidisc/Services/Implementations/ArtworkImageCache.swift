@@ -738,6 +738,20 @@ final class ArtworkImageCache {
         Logger.artworkCache.debug("ArtworkImageCache: invalidated \(coverArtId, privacy: .public) (RAM + disk)")
     }
 
+    func clearStreamingCache(using downloads: any DownloadServiceProtocol) async {
+        let pendingWrites = diskAccessOwners
+        clearCache()
+        clearRevalidationMetadata()
+        // Drain writes that passed their old generation check before the clear.
+        for id in pendingWrites {
+            _ = await acquireDiskAccess(for: id, respectsCancellation: false)
+            releaseDiskAccess(for: id)
+        }
+        await downloads.clearStreamingCovers()
+        let key = "coverArtUploadVersion"
+        UserDefaults.standard.set(UserDefaults.standard.integer(forKey: key) + 1, forKey: key)
+    }
+
     func clearCache() {
         cacheEpoch &+= 1
         let loads = inFlight.values

@@ -91,7 +91,8 @@ private func makeViewModel(
         source: .navidrome,
         lyricsService: service,
         playerService: playerService,
-        playerState: playerState
+        playerState: playerState,
+        resumeDelay: .milliseconds(1)
     )
     return (vm, playerService)
 }
@@ -232,16 +233,12 @@ struct LyricsViewModelScrollTests {
         #expect(vm.isUserScrolling == true)
     }
 
-    @Test func isUserScrolling_resetAfter5Seconds() async throws {
+    @Test func isUserScrolling_resetsWhenResumeTaskFinishes() async throws {
         let (vm, _) = try makeViewModel()
         vm.userStartedScrolling()
         #expect(vm.isUserScrolling == true)
 
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(10))
-        while vm.isUserScrolling, clock.now < deadline {
-            try await Task.sleep(for: .milliseconds(100))
-        }
+        await vm.resumeTask?.value
         #expect(vm.isUserScrolling == false)
     }
 }

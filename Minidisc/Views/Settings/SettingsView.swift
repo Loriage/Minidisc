@@ -445,9 +445,7 @@ struct StorageSettingsView: View {
 
     private func clearArtwork() async {
         guard let container else { return }
-        await container.downloadService.clearAllCovers()
-        artworkImageCache.clearCache()
-        artworkImageCache.clearRevalidationMetadata()
+        await artworkImageCache.clearStreamingCache(using: container.downloadService)
         await refreshUsage()
     }
 }

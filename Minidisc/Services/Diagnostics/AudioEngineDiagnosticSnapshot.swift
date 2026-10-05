@@ -57,6 +57,12 @@ nonisolated struct AudioEngineDiagnosticSnapshot: Sendable, Equatable {
     let playerFailure: AudioEngineFailure
     let itemFailure: AudioEngineFailure
     let access: Access?
+    let libraryDuration: Double?
+    let nextToken: AudioEnginePlaybackToken?
+    let endSignalled: Bool
+    let loadedRanges: [String]
+    let seekableRanges: [String]
+    let errorEventCodes: [AudioEngineFailure.Code]
 
     struct Access: Sendable, Equatable {
         let bytes: Int64
@@ -84,10 +90,20 @@ nonisolated struct AudioEngineDiagnosticSnapshot: Sendable, Equatable {
 
     init(trigger: Trigger, token: AudioEnginePlaybackToken, role: Role,
          player: AVQueuePlayer, item: AVPlayerItem, intendedPlayback: Bool,
-         airPlay: Bool, replayGainTap: Bool) {
+         airPlay: Bool, replayGainTap: Bool, libraryDuration: Double? = nil,
+         nextToken: AudioEnginePlaybackToken? = nil, endSignalled: Bool = false) {
         self.trigger = trigger
         self.token = token
         self.role = role
+        self.libraryDuration = libraryDuration.flatMap(Self.valid)
+        self.nextToken = nextToken
+        self.endSignalled = endSignalled
+        func ranges(_ values: [NSValue]) -> [String] {
+            values.prefix(6).map { "\(Self.number(Self.valid($0.timeRangeValue.start.seconds)))..\(Self.number(Self.valid(CMTimeRangeGetEnd($0.timeRangeValue).seconds)))" }
+        }
+        loadedRanges = ranges(item.loadedTimeRanges)
+        seekableRanges = ranges(item.seekableTimeRanges)
+        errorEventCodes = item.errorLog()?.events.suffix(5).map { .init(domain: $0.errorDomain, value: $0.errorStatusCode) } ?? []
         playerStatus = player.status.rawValue
         itemStatus = item.status.rawValue
         timeControl = player.timeControlStatus.rawValue
@@ -160,10 +176,13 @@ nonisolated struct AudioEngineDiagnosticSnapshot: Sendable, Equatable {
             "engine-detail trigger=\(trigger.rawValue) item=\(token.rawValue) role=\(role.rawValue)",
             "Transport: current=\(isPlayerCurrentItem) intent-play=\(intendedPlayback) control=\(control) wait=\(waiting.rawValue) rate=\(rate)",
             "Media: player=\(Self.status(playerStatus)) item-status=\(Self.status(itemStatus)) position=\(Self.number(position)) duration=\(Self.number(duration)) seekable-ranges=\(seekableRangeCount)",
+            "Boundary: metadata-duration=\(Self.number(libraryDuration)) next-item=\(nextToken.map { String($0.rawValue) } ?? "none") end-signalled=\(endSignalled)",
+            "Ranges (up to 6): loaded=[\(loadedRanges.joined(separator: ","))] seekable=[\(seekableRanges.joined(separator: ","))] seconds",
             "Buffer: buffered-ahead=\(Self.number(bufferedAhead))s empty=\(bufferEmpty) full=\(bufferFull) keep-up=\(likelyToKeepUp) loaded-ranges=\(loadedRangeCount)",
             "Policy: queue=\(queueCount) advance-at-end=\(advanceAtEnd) auto-wait=\(automaticWaiting) preferred-buffer=\(Self.number(preferredBuffer))s peak-bps=\(Self.number(preferredPeakBitrate))",
             "Output: airplay=\(airPlay) external=\(externalPlayback) volume=\(volume) muted=\(muted) gain-tap=\(replayGainTap)",
             "Errors: player-errors=\(playerFailure.diagnosticDescription) item-errors=\(itemFailure.diagnosticDescription) meaning=\(playerFailure.diagnosticMeaning)/\(itemFailure.diagnosticMeaning)",
+            "Recent error-log codes: \(errorEventCodes.map { "\($0.domain.rawValue):\($0.value)" }.joined(separator: ","))",
             "Transfer (latest AVFoundation access event): access={\(access?.description ?? "unavailable")}"
         ].joined(separator: "\n    ")
     }

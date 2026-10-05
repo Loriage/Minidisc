@@ -22,6 +22,7 @@ private nonisolated final class RecoveryTestEngine: AudioEngine, Sendable {
         var position: Double = 0
         var failNextSeek = false
         var sourceURL: URL?
+        var duration: Double = 120
     }
     private let storage = Mutex(Storage())
     var delegate: AudioEngineDelegate? {
@@ -48,6 +49,12 @@ private nonisolated final class RecoveryTestEngine: AudioEngine, Sendable {
         return token
     }
     func startAdvancing() { storage.withLock { if !$0.poisoned { $0.playingSince = Date() } } }
+    func stallAtCurrentPosition() {
+        storage.withLock {
+            $0.position += $0.playingSince.map { Date().timeIntervalSince($0) } ?? 0
+            $0.playingSince = nil
+        }
+    }
     func pause() { storage.withLock { $0.playingSince = nil } }
     func resume() { storage.withLock { $0.resumes += 1 } }
     var resumeCount: Int { storage.withLock { $0.resumes } }
@@ -76,13 +83,21 @@ private nonisolated final class RecoveryTestEngine: AudioEngine, Sendable {
     var progress: Double {
         storage.withLock { $0.position + ($0.playingSince.map { Date().timeIntervalSince($0) } ?? 0) }
     }
-    var duration: Double { 120 }
+    var duration: Double {
+        get { storage.withLock { $0.duration } }
+        set { storage.withLock { $0.duration = newValue } }
+    }
     var isSeekable: Bool { true }
     var isReady: Bool { storage.withLock { !$0.active } }
     func applyReplayGain(dB: Float) {}
     var airPlayActive: Bool { storage.withLock { $0.airPlayActive } }
     var cancelledPreloads: Int { storage.withLock { $0.cancelledPreloads } }
-    func setAirPlayActive(_ active: Bool) { storage.withLock { $0.airPlayActive = active } }
+    func setAirPlayActive(_ active: Bool) {
+        storage.withLock {
+            if $0.airPlayActive != active { $0.cancelledPreloads += 1 }
+            $0.airPlayActive = active
+        }
+    }
     func cancelPreload() { storage.withLock { $0.cancelledPreloads += 1 } }
     func setTrackDuration(_ seconds: Double) {}
     func preloadNext(trackID: String, url: URL, headers: [String: String], crossfadeDuration: Double, replayGainDB: Float) {}
@@ -118,12 +133,15 @@ private nonisolated final class RecoveryTestAudioSession: AudioSessionControllin
 }
 
 private actor RecoveryTestResolver: MediaResolverProtocol {
+    private var playbackFileURL: URL?
+    func usePlaybackFile(_ url: URL) { playbackFileURL = url }
     var usesDownloadedSource = false
     var transcoded = false
     func useTranscode() { transcoded = true }
     var usesCachedSource = false
     func useCachedSource() { usesCachedSource = true }
     func localSource(songId: String, serverId: UUID) async -> MediaSource? {
+        if let playbackFileURL { return .downloaded(playbackFileURL) }
         if usesDownloadedSource { return .downloaded(URL(fileURLWithPath: "/tmp/recovery-test-audio.m4a")) }
         if usesCachedSource { return .cached(URL(fileURLWithPath: "/tmp/recovery-test-cache.m4a")) }
         return nil
@@ -196,13 +214,18 @@ private struct RecoveryHarness {
     let resolver = RecoveryTestResolver()
     let diagnostics = PlaybackDiagnostics(capacity: 500)
     let defaults = UserDefaults(suiteName: "playback-recovery.\(UUID())")!
+    let replayGainSettings: ReplayGainSettings
+    let crossfadeSettings: CrossfadeSettings
 
     init(
         startupGrace: Duration = .milliseconds(600),
+        stallGrace: Duration = .milliseconds(100),
         audioStartupGrace: Duration = .milliseconds(800),
         audioRetryDelay: Duration = .milliseconds(40),
         localMusicStore: LocalMusicStore? = nil,
         configureServer: Bool = true,
+        engineOverride: (any AudioEngine)? = nil,
+        crossfadeDuration: Double = 0,
         seekFileLoader: @escaping @Sendable (MediaSource) async throws -> MediaSource = { try await TranscodedSeekFile.prepare($0) }
     ) throws {
         let container = try ModelContainer.minidisc(inMemory: true)
@@ -216,6 +239,9 @@ private struct RecoveryHarness {
         let cacheSettings = CacheSettings(defaults: defaults)
         cacheSettings.cacheFormat = .flacOriginal // The stub server cannot create background cache URLs.
         let crossfade = CrossfadeSettings(defaults: defaults)
+        crossfade.duration = crossfadeDuration
+        crossfadeSettings = crossfade
+        replayGainSettings = ReplayGainSettings(defaults: defaults)
         player = PlayerService(
             state: state,
             mediaResolver: resolver,
@@ -231,7 +257,7 @@ private struct RecoveryHarness {
             downloadService: download,
             cacheSettings: cacheSettings,
             playbackPreferences: PlaybackPreferences(defaults: defaults),
-            replayGainSettings: ReplayGainSettings(defaults: defaults),
+            replayGainSettings: replayGainSettings,
             crossfadeSettings: crossfade,
             initialCrossfadeConfig: crossfade.config,
             toastService: toast,
@@ -242,9 +268,9 @@ private struct RecoveryHarness {
                 queueFileURL: FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID()).json")
             ),
             playbackDiagnostics: diagnostics,
-            engine: engine,
+            engine: engineOverride ?? engine,
             networkRecoveryTiming: .init(
-                startupGrace: startupGrace, stallGrace: .milliseconds(100),
+                startupGrace: startupGrace, stallGrace: stallGrace,
                 retryDelay: .milliseconds(40), validationDelay: .milliseconds(200)
             ),
             audioSession: audioSession,
@@ -283,9 +309,347 @@ private struct RecoveryHarness {
     }
 }
 
+@Suite("Playback continuity during buffering", .serialized)
+@MainActor
+struct PlaybackContinuityIntegrationTests {
+    @Test(arguments: [false, true])
+    func bufferingWhileAudioAdvancesDoesNotRebuildAndStillDetectsALaterStall(cached: Bool) async throws {
+        let h = try RecoveryHarness(startupGrace: .milliseconds(400), stallGrace: .milliseconds(250))
+        try await h.play(["a"])
+        try await h.waitUntil { h.report.contains("engine state=buffering") }
+        h.engine.startAdvancing()
+        await h.player.handleEngineState(.playing, playbackToken: h.engine.token)
+        try await h.waitUntil { h.report.contains("progress-validated") }
+        if cached { await h.resolver.useCachedSource() }
+        let position = h.engine.progress
+        await h.player.handleEngineState(.buffering, playbackToken: h.engine.token)
+        try await Task.sleep(for: .milliseconds(750))
+        #expect(h.engine.playCount == 1)
+        #expect(h.engine.progress > position + 0.5)
+        #expect(await h.resolver.availabilityCalls == 0)
+        // No new state callback: the continuing observation must catch the actual stall.
+        h.engine.stallAtCurrentPosition()
+        let stalledPosition = h.engine.progress
+        try await h.waitUntil { h.engine.playCount == 2 }
+        await h.player.handleEngineState(.playing, playbackToken: h.engine.token)
+        #expect(h.engine.progress >= stalledPosition)
+        await h.player.stop()
+    }
+
+    @Test func recoveryRechecksProgressAfterResolvingTheReplacement() async throws {
+        let h = try RecoveryHarness(startupGrace: .milliseconds(400))
+        try await h.play(["a"])
+        try await h.waitUntil { h.report.contains("engine state=buffering") }
+        _ = await h.engine.seek(to: 37)
+        h.state.position = 37
+        await h.resolver.blockResolution(of: "a")
+        try await h.waitUntil { await h.resolver.isResolvingBlockedTrack }
+        // The original decoder recovers while the resolver is suspended.
+        h.engine.startAdvancing()
+        try await Task.sleep(for: .milliseconds(250))
+        await h.player.handleEngineState(.playing, playbackToken: h.engine.token)
+        await h.resolver.releaseResolution()
+        try await h.waitUntil { h.report.contains("progress-validated") || h.engine.playCount > 1 }
+        #expect(h.engine.playCount == 1)
+        #expect(h.engine.progress > 37.2)
+        await h.player.stop()
+    }
+
+    @Test func requiredRebuildUsesTheLatestClockInsteadOfAnEarlierSnapshot() async throws {
+        let h = try RecoveryHarness(startupGrace: .milliseconds(400))
+        try await h.play(["a"])
+        try await h.waitUntil { h.report.contains("engine state=buffering") }
+        _ = await h.engine.seek(to: 37)
+        h.state.position = 37
+        await h.resolver.blockResolution(of: "a")
+        try await h.waitUntil { await h.resolver.isResolvingBlockedTrack }
+        // A final few frames render during resolution, below the sustained-progress threshold.
+        _ = await h.engine.seek(to: 37.05)
+        await h.resolver.releaseResolution()
+        try await h.waitUntil { h.engine.playCount == 2 }
+        await h.player.handleEngineState(.playing, playbackToken: h.engine.token)
+        #expect(h.engine.progress == 37.05)
+        await h.player.stop()
+    }
+}
+
+@Suite("Preload continuity across environment and settings changes", .serialized)
+@MainActor
+struct PreloadContinuityIntegrationTests {
+    @Test(arguments: [false, true])
+    func enginesWithoutNativeReconnectionInvalidateOnlyRemotePreparation(local: Bool) async throws {
+        let h = try RecoveryHarness(startupGrace: .seconds(30))
+        if local { await h.resolver.useDownloadedSource() }
+        try await h.play(["a", "b"])
+        h.engine.duration = 10
+        h.engine.startAdvancing()
+        await h.player.handleEngineState(.playing, playbackToken: h.engine.token)
+        try await h.waitUntil { h.report.contains("transition-prepared=native-queue") }
+        let cancellations = h.engine.cancelledPreloads
+        await h.player.handleNetworkPathChanged(NetworkPathEvent(
+            generation: 1,
+            descriptor: NetworkPathDescriptor(
+                isOnline: false, isExpensive: false, isConstrained: false,
+                supportsDNS: false, supportsIPv4: false, supportsIPv6: false,
+                interfaces: [], gateways: []
+            )
+        ))
+        #expect(h.engine.cancelledPreloads == cancellations + (local ? 0 : 1))
+        #expect(h.engine.playCount == 1)
+        await h.player.stop()
+    }
+
+    @Test(arguments: ["network-remote", "network-local", "replayGain", "crossfade", "airPlay"])
+    func preparedNativeQueueKeepsItsReader(change: String) async throws {
+        let factory = StreamingDriverFactory()
+        let engine = AudioStreamingEngine(driverFactory: { factory.make() })
+        let h = try RecoveryHarness(startupGrace: .seconds(30), engineOverride: engine)
+        defer { engine.stop() }
+        if change == "network-local" { await h.resolver.useDownloadedSource() }
+        try await h.play(["a", "b"])
+        let reader = try #require(factory.drivers.first)
+        reader.setPosition(2, progresses: true)
+        try await h.waitUntil { reader.queuedCount == 1 }
+        let position = engine.progress
+
+        switch change {
+        case "network-remote", "network-local":
+            await h.player.handleNetworkPathChanged(NetworkPathEvent(
+                generation: 1,
+                descriptor: NetworkPathDescriptor(
+                    isOnline: true, isExpensive: true, isConstrained: false,
+                    supportsDNS: true, supportsIPv4: true, supportsIPv6: true,
+                    interfaces: [.cellular], gateways: []
+                )
+            ))
+        case "replayGain":
+            let settings = h.replayGainSettings
+            settings.enabled = true
+            settings.preAmp = 3
+            settings.preventClipping = false
+            await h.player.replayGainSettingsDidChange()
+        case "crossfade":
+            // Changing a duration must not throw away an already-decoded sequential entry.
+            h.crossfadeSettings.duration = 2
+            await h.player.crossfadeSettingsDidChange()
+        default:
+            h.audioSession.outputs = [.init(uid: "airplay-test", portType: .airPlay)]
+            await h.player.handleRouteChange(.unknown)
+            h.audioSession.outputs = [RecoveryTestAudioSession.headphones]
+            await h.player.handleRouteChange(.unknown)
+        }
+
+        #expect(factory.drivers.count == 1)
+        #expect(!reader.wasStopped)
+        #expect(reader.requestedSeek == nil)
+        #expect(engine.progress >= position)
+        reader.finish(startingNext: true)
+        try await h.waitUntil { h.state.currentTrack?.id == "b" }
+        #expect(factory.drivers.count == 1)
+        #expect(h.state.currentIndex == 1)
+        await h.player.stop()
+    }
+
+    @Test(arguments: [0.65, 1.0, 1.1])
+    func coldResumeRestoresAlsoTheFirstSecond(position: Double) async throws {
+        let h = try RecoveryHarness(startupGrace: .seconds(30))
+        await h.resolver.useDownloadedSource()
+        try await h.play(["a"])
+        _ = await h.engine.seek(to: position)
+        h.state.position = position
+        h.engine.stop()
+        await h.player.resume()
+        #expect(h.engine.volume == 0)
+        await h.player.handleEngineState(.playing, playbackToken: h.engine.token)
+        #expect(h.engine.progress == position)
+        #expect(h.engine.volume > 0)
+        await h.player.stop()
+    }
+}
+
+@Suite("Playback resume after an unended interruption", .serialized)
+@MainActor
+struct InterruptedSessionResumeTests {
+    @Test func realStreamingDecoderResumesAndRecoversWithoutAnInterruptionEndEvent() async throws {
+        try AVAudioSession.sharedInstance().setCategory(.playback)
+        try AVAudioSession.sharedInstance().setActive(true)
+        let url = try #require(Bundle(for: RecoveryAudioFixtureBundle.self).url(
+            forResource: "stream-aac.m4a", withExtension: nil
+        ))
+        let engine = AudioStreamingEngine()
+        engine.volume = 0
+        let h = try RecoveryHarness(audioStartupGrace: .seconds(3), engineOverride: engine)
+        defer { engine.stop() }
+        await h.resolver.usePlaybackFile(url)
+        try await h.play(["a"])
+        try await h.waitUntil { h.state.position > 0.5 }
+        await h.player.handleAudioSessionInterruption(.began(routeDisconnected: true))
+        await h.player.resume()
+        #expect(h.report.contains("interruption-superseded-by-playback"))
+        let checkpoint = engine.progress
+        await h.player.handleMediaServicesReset()
+        try await h.waitUntil { h.report.contains("audio-recovery progress-validated") }
+        #expect(h.state.currentTrack?.id == "a")
+        #expect(engine.progress > checkpoint)
+        #expect(h.state.waitingReason == nil)
+        #expect(!h.report.contains("audio-recovery exhausted"))
+        await h.player.stop()
+    }
+
+    @Test(arguments: [false, true])
+    func explicitResumeAllowsRecoveryAfterALaterMediaServicesReset(resetWhilePaused: Bool) async throws {
+        let h = try RecoveryHarness(startupGrace: .seconds(30))
+        try await h.play(["a", "b"])
+        _ = await h.engine.seek(to: 37)
+        h.state.position = 37
+        h.audioSession.outputs = [RecoveryTestAudioSession.speaker]
+        await h.player.handleAudioSessionInterruption(.began(routeDisconnected: true))
+        // As in the report: no interruption-ended event, but explicit Play succeeds.
+        await h.player.resume()
+        h.engine.startAdvancing()
+        await h.player.handleEngineState(.playing, playbackToken: h.engine.token)
+        await h.player.pause()
+        if resetWhilePaused {
+            let playsBeforeReset = h.engine.playCount
+            await h.player.handleMediaServicesReset()
+            #expect(h.engine.playCount == playsBeforeReset)
+            #expect(h.state.playbackState == .paused)
+        }
+        await h.player.resume()
+        let plays = h.engine.playCount
+        h.engine.poisonMediaServices()
+        await h.player.handleMediaServicesReset()
+        // A delayed end of the old interruption must not pause this newer recovery.
+        await h.player.handleAudioSessionInterruption(.ended(shouldResume: false))
+        try await h.waitUntil { h.engine.playCount == plays + 1 }
+        try await confirmRecovery(h)
+        #expect(h.state.currentTrack?.id == "a")
+        #expect(h.state.currentIndex == 0)
+        #expect(h.engine.progress >= 37)
+        #expect(h.state.waitingReason == nil)
+        #expect(await h.resolver.availabilityCalls == 0)
+        await h.player.stop()
+    }
+
+    @Test func newQueueCanSupersedeAnUnendedInterruption() async throws {
+        let h = try RecoveryHarness(startupGrace: .seconds(30))
+        try await h.play(["a"])
+        await h.player.handleAudioSessionInterruption(.began(routeDisconnected: true))
+        try await h.play(["b", "c"])
+        await h.player.handleMediaServicesReset()
+        try await h.waitUntil { h.engine.playCount == 3 }
+        try await confirmRecovery(h)
+        #expect(h.state.currentTrack?.id == "b")
+        await h.player.stop()
+    }
+
+    @Test func failedActivationKeepsTheInterruptionUntilTheSystemEndsIt() async throws {
+        let h = try RecoveryHarness(startupGrace: .seconds(30))
+        try await h.play(["a"])
+        await h.player.handleAudioSessionInterruption(.began(routeDisconnected: false))
+        h.audioSession.failNextActivations(1)
+        await h.player.resume()
+        let activations = h.audioSession.activations
+        let plays = h.engine.playCount
+        await h.player.handleMediaServicesReset()
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(h.audioSession.activations == activations)
+        #expect(h.engine.playCount == plays)
+        await h.player.handleAudioSessionInterruption(.ended(shouldResume: true))
+        try await h.waitUntil { h.engine.playCount == plays + 1 }
+        try await confirmRecovery(h)
+        await h.player.stop()
+    }
+
+    @Test func activationRetryCannotSupersedeANewerInterruption() async throws {
+        let h = try RecoveryHarness(startupGrace: .seconds(30))
+        try await h.play(["a"])
+        await h.player.handleAudioSessionInterruption(.began(routeDisconnected: true))
+        h.audioSession.failNextActivations(1)
+        await h.player.resume()
+        let activations = h.audioSession.activations
+        await h.player.handleAudioSessionInterruption(.began(routeDisconnected: false))
+        // The queued 500-ms activation retry belongs to the older Play request.
+        try await Task.sleep(for: .milliseconds(650))
+        #expect(h.audioSession.activations == activations)
+        await h.player.handleMediaServicesReset()
+        let plays = h.engine.playCount
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(h.engine.playCount == plays)
+        await h.player.handleAudioSessionInterruption(.ended(shouldResume: true))
+        try await h.waitUntil { h.engine.playCount == plays + 1 }
+        try await confirmRecovery(h)
+        await h.player.stop()
+    }
+
+    private func confirmRecovery(_ h: RecoveryHarness) async throws {
+        try await h.waitUntil {
+            let attempt = h.report.components(separatedBy: "audio-recovery attempt-started").last ?? ""
+            return attempt.contains("engine state=paused") && attempt.contains("engine state=buffering")
+        }
+        h.engine.startAdvancing()
+        await h.player.handleEngineState(.playing, playbackToken: h.engine.token)
+        try await h.waitUntil { h.report.contains("audio-recovery progress-validated") }
+    }
+}
+
 @Suite("Player recovery integration", .serialized)
 @MainActor
 struct PlayerRecoveryIntegrationTests {
+    @Test(arguments: [false, true])
+    func queuedHandoffResumesAfterTransportPause(pauseBeforePromotion: Bool) async throws {
+        let players = Mutex<[AVQueuePlayer]>([])
+        let engine = AVPlayerEngine(playerFactory: {
+            let player = AVQueuePlayer()
+            players.withLock { $0.append(player) }
+            return player
+        })
+        let h = try RecoveryHarness(engineOverride: engine)
+        // AirPlay policy is simulated; the media pipeline runs locally, without a receiver.
+        h.audioSession.outputs = [.init(uid: "airplay-test", portType: .airPlay)]
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID()).caf")
+        defer { engine.stop(); try? FileManager.default.removeItem(at: url) }
+        do {
+            let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 8_000, channels: 1))
+            let file = try AVAudioFile(forWriting: url, settings: format.settings)
+            let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 80_000))
+            buffer.frameLength = buffer.frameCapacity
+            let samples = try #require(buffer.floatChannelData?[0])
+            samples.initialize(repeating: 0, count: Int(buffer.frameLength))
+            try file.write(from: buffer)
+        }
+        await h.resolver.usePlaybackFile(url)
+        try await h.play(["a", "b", "c"])
+        let active = try #require(players.withLock { $0.first })
+        try await h.waitUntil { active.timeControlStatus == .playing && engine.progress > 0.1 }
+
+        for (index, trackID) in [(1, "b"), (2, "c")] {
+            let previous = try #require(active.currentItem)
+            engine.preloadNext(trackID: trackID, url: url, headers: [:], crossfadeDuration: 0, replayGainDB: 0)
+            let next = try #require(active.items().last)
+            #expect(next !== previous)
+
+            // Inject a transport pause, not a user pause, on either side of the native hand-off.
+            if pauseBeforePromotion { active.pause() }
+            active.advanceToNextItem()
+            if !pauseBeforePromotion { active.pause() }
+
+            try await h.waitUntil {
+                h.state.currentIndex == index && active.currentItem === next
+                    && active.timeControlStatus == .playing && engine.progress > 0.1
+            }
+            #expect(h.state.currentTrack?.id == trackID)
+            #expect(h.state.wantsPlayback)
+            #expect(active.items().count == 1)
+            #expect(players.withLock { $0.count } == 2)
+            #expect(players.withLock { $0[1].currentItem } == nil)
+        }
+        #expect(!h.report.contains("item-rebuilt"))
+        #expect(!h.report.contains("track-end-ignored"))
+        #expect(h.report.components(separatedBy: "playback track-ended ").count - 1 == 2)
+        await h.player.stop()
+    }
+
     @Test(arguments: [false, true])
     func stalledStreamUsesNewlyCompletedCacheWithoutServerProbe(offline: Bool) async throws {
         // Keep startup recovery out of the fixture setup; this test triggers a later stall.
@@ -1100,6 +1464,150 @@ struct TranscodedSeekIntegrationTests {
         #expect(h.engine.progress == 80)
         #expect(h.engine.resumeCount == resumesBeforeCompletion)
         #expect(h.state.playbackState == .paused)
+        await h.player.stop()
+    }
+}
+
+
+@Suite("AudioStreaming playback presentation", .serialized)
+@MainActor
+struct AudioStreamingPresentationIntegrationTests {
+    @Test func networkChangePreservesTheRealDecodedQueue() async throws {
+        try AVAudioSession.sharedInstance().setCategory(.playback)
+        try AVAudioSession.sharedInstance().setActive(true)
+        let url = try #require(Bundle(for: RecoveryAudioFixtureBundle.self).url(
+            forResource: "stream-aac.m4a", withExtension: nil
+        ))
+        let readers = Mutex(0)
+        let engine = AudioStreamingEngine(driverFactory: {
+            readers.withLock { $0 += 1 }
+            return AudioStreamingDriver()
+        })
+        engine.volume = 0
+        let h = try RecoveryHarness(engineOverride: engine)
+        defer { engine.stop() }
+        await h.resolver.usePlaybackFile(url)
+        try await h.play(["a", "b"])
+        try await h.waitUntil {
+            h.state.position > 1 && h.report.contains("transition-prepared=native-queue")
+        }
+        let position = engine.progress
+        await h.player.handleNetworkPathChanged(NetworkPathEvent(
+            generation: 1,
+            descriptor: NetworkPathDescriptor(
+                isOnline: true, isExpensive: true, isConstrained: false,
+                supportsDNS: true, supportsIPv4: true, supportsIPv6: true,
+                interfaces: [.cellular], gateways: []
+            )
+        ))
+        #expect(readers.withLock { $0 } == 1)
+        #expect(engine.progress >= position)
+        try await h.waitUntil { h.state.currentTrack?.id == "b" && h.state.position > 0.2 }
+        #expect(readers.withLock { $0 } == 1)
+        #expect(h.state.waitingReason == nil)
+        #expect(abs(h.state.duration - 6) < 0.15)
+        await h.player.stop()
+    }
+
+    @Test func manualNextAfterRepeatedSeeksKeepsTheQueueAndClockTogether() async throws {
+        try AVAudioSession.sharedInstance().setCategory(.playback)
+        try AVAudioSession.sharedInstance().setActive(true)
+        let url = try #require(Bundle(for: RecoveryAudioFixtureBundle.self).url(
+            forResource: "stream-aac.m4a", withExtension: nil
+        ))
+        let engine = AudioStreamingEngine()
+        engine.volume = 0
+        let h = try RecoveryHarness(engineOverride: engine)
+        defer { engine.stop() }
+        await h.resolver.usePlaybackFile(url)
+        try await h.play(["a", "b", "c"])
+        try await h.waitUntil { h.state.position > 1 }
+        for target in [4.5, 1.0, 4.0] { await h.player.seek(to: target) }
+        try await Task.sleep(for: .milliseconds(700))
+        try await h.player.skipToNext()
+        try await h.waitUntil { h.state.currentTrack?.id == "b" && h.state.position > 0.1 }
+        #expect(h.state.currentIndex == 1)
+        #expect(h.state.position < 1.5)
+        #expect(abs(h.state.duration - 6) < 0.15)
+        // Both b and c must have been queued before exercising Pause/seek/Resume on b.
+        try await h.waitUntil {
+            h.report.components(separatedBy: "transition-prepared=native-queue").count >= 3
+        }
+        try await h.waitUntil { h.state.waitingReason == nil }
+        await h.player.pause()
+        await h.player.seek(to: 0)
+        #expect(h.state.playbackState == .paused)
+        #expect(h.state.position < 0.5)
+        await h.player.resume()
+        // Leave room in the six-second wait for EOF and the next 500-ms UI progress tick.
+        try await h.waitUntil { h.state.position > 1 }
+        try await h.waitUntil { h.state.currentTrack?.id == "c" && h.state.position > 0.2 }
+        #expect(h.state.currentIndex == 2)
+        #expect(h.state.queue.map(\.id) == ["a", "b", "c"])
+        #expect(h.state.position < 1.5)
+        #expect(h.state.waitingReason == nil)
+        await h.player.stop()
+    }
+
+    @Test(arguments: [0.0, 1.0])
+    func playingPreloadedTrackClearsLoading(crossfadeDuration: Double) async throws {
+        try AVAudioSession.sharedInstance().setCategory(.playback)
+        try AVAudioSession.sharedInstance().setActive(true)
+        let url = try #require(Bundle(for: RecoveryAudioFixtureBundle.self).url(
+            forResource: "stream-aac.m4a", withExtension: nil
+        ))
+        let engine = AudioStreamingEngine()
+        engine.volume = 0
+        let h = try RecoveryHarness(engineOverride: engine, crossfadeDuration: crossfadeDuration)
+        defer { engine.stop() }
+        await h.resolver.usePlaybackFile(url)
+        try await h.play(["a", "b"])
+        try await h.waitUntil { h.state.position > 1 }
+        #expect(h.state.waitingReason == nil)
+        try await h.waitUntil { h.state.currentTrack?.id == "b" && h.state.position > 0.2 }
+        // Wait past the presentation debounce: a lingering loading reason must not become visible.
+        try await Task.sleep(for: .milliseconds(850))
+        #expect(h.state.playbackState == .playing)
+        #expect(h.state.position > 0.5)
+        #expect(h.state.waitingReason == nil)
+        #expect(h.state.playbackStatusMessage == nil)
+        await h.player.stop()
+    }
+}
+
+private final class RecoveryAudioFixtureBundle: NSObject {}
+
+@Suite("Playback duration follows the decoded source", .serialized)
+@MainActor
+struct PlaybackDurationIntegrationTests {
+    @Test(arguments: [117.25, 122.4, 120.25])
+    func refinesCatalogDurationInBothDirections(measuredDuration: Double) async throws {
+        let h = try RecoveryHarness()
+        try await h.play(["a"])
+        h.engine.startAdvancing()
+        await h.player.handleEngineState(.playing, playbackToken: h.engine.token)
+        h.engine.duration = measuredDuration
+        try await h.waitUntil { abs(h.state.duration - measuredDuration) < 0.001 }
+        #expect(h.state.currentTrack?.duration == 120)
+        #expect(h.state.position < measuredDuration)
+        await h.player.stop()
+    }
+
+    @Test func canCorrectAnEarlierOverestimateWithoutLosingTheDurationDuringBuffering() async throws {
+        let h = try RecoveryHarness()
+        try await h.play(["a"])
+        h.engine.startAdvancing()
+        await h.player.handleEngineState(.playing, playbackToken: h.engine.token)
+        h.engine.duration = 122.5
+        try await h.waitUntil { h.state.duration == 122.5 }
+        h.engine.duration = 119.75
+        try await h.waitUntil { h.state.duration == 119.75 }
+        h.engine.duration = 0
+        try await Task.sleep(for: .milliseconds(600))
+        #expect(h.state.duration == 119.75)
+        h.engine.duration = .nan
+        try await Task.sleep(for: .milliseconds(600))
+        #expect(h.state.duration == 119.75)
         await h.player.stop()
     }
 }

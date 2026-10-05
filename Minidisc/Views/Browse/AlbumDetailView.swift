@@ -69,6 +69,7 @@ struct AlbumDetailView: View {
     @State private var viewModel: AlbumDetailViewModel?
     @State private var dominantColor: Color = .clear
     @State private var showDeleteAlert = false
+    @State private var isDismissing = false
     @State private var showThemeColorSheet = false
     @State private var recommendedAlbums: [AlbumID3] = []
     @Query private var albumFavoriteMatches: [FavoriteRecord]
@@ -236,8 +237,7 @@ struct AlbumDetailView: View {
 
                 if isLoadingSkeleton {
                     AlbumTrackSkeletonRows()
-                } else if let vm = viewModel {
-                    let serverId = container?.serverState.activeServer?.id ?? UUID()
+                } else if let vm = viewModel, let serverId = container?.serverState.activeServer?.id {
                     if songs.isEmpty {
                         if mode == .downloadedOnly {
                             EmptyStateView(
@@ -336,9 +336,12 @@ struct AlbumDetailView: View {
         .navigationBarTitleDisplayModeInline()
         .navigationBarBackButtonHidden(true)
         .enableSwipeBack()
+        .onAppear { isDismissing = false }
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button("Back", systemImage: "chevron.left") {
+                    guard !isDismissing else { return }
+                    isDismissing = true
                     dismiss()
                 }
                 .tint(palette.contentColor)

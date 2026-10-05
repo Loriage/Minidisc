@@ -20,7 +20,8 @@ final class LyricsViewModel {
 
     private var lyricsList: LyricsList?
     private var trackingTask: Task<Void, Never>?
-    private var resumeTask: Task<Void, Never>?
+    private(set) var resumeTask: Task<Void, Never>?
+    private let resumeDelay: Duration
     private var isShown = false
 
     nonisolated enum State: Equatable {
@@ -37,7 +38,8 @@ final class LyricsViewModel {
         source: LyricsSource,
         lyricsService: LyricsService,
         playerService: any PlayerServiceProtocol,
-        playerState: PlayerState
+        playerState: PlayerState,
+        resumeDelay: Duration = .seconds(3)
     ) {
         self.track = track
         self.serverId = serverId
@@ -45,6 +47,7 @@ final class LyricsViewModel {
         self.lyricsService = lyricsService
         self.playerService = playerService
         self.playerState = playerState
+        self.resumeDelay = resumeDelay
     }
 
     isolated deinit {
@@ -106,8 +109,8 @@ final class LyricsViewModel {
     func userStartedScrolling() {
         isUserScrolling = true
         resumeTask?.cancel()
-        resumeTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(3))
+        resumeTask = Task { [weak self, resumeDelay] in
+            try? await Task.sleep(for: resumeDelay)
             guard !Task.isCancelled else { return }
             self?.isUserScrolling = false
         }

@@ -137,7 +137,9 @@ private final class ARDownloadStub: DownloadServiceProtocol {
     func removeCover(forId coverArtId: String) async {}
     func garbageCollectOrphanedCovers(referencedIds: Set<String>) async -> Int { 0 }
     func coverCacheStats() async -> (count: Int, bytes: Int64) { (0, 0) }
-    func clearAllCovers() async {}
+    func clearStreamingCovers() async {}
+    func healMissingDownloadedCovers(serverID: UUID, allowsCellular: Bool,
+                                     shouldContinue: @escaping @Sendable () async -> Bool) async -> Int { 0 }
     func backfillPlaylistSongIds(playlistId: String, serverId: UUID, orderedSongIds: [String]) async {}
     func download(song: Song, serverId: UUID) async throws { throw URLError(.unknown) }
     func download(album: AlbumID3, serverId: UUID) async throws { throw URLError(.unknown) }

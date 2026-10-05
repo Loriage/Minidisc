@@ -154,12 +154,14 @@ nonisolated protocol AudioEngine: AnyObject, Sendable {
     /// Disposes invalid system audio objects. Preserves volume and monotonically increasing
     /// playback tokens, but leaves playback stopped until the caller starts a fresh item.
     func resetAfterMediaServicesReset()
-    /// Repositions the active deck and returns only after AVPlayer has completed (or rejected) the seek.
+    /// Repositions the active deck and returns only after the engine confirms (or rejects) the seek.
     /// `false` also covers a deck transition that made the request stale while it was in flight.
     func seek(to seconds: Double) async -> Bool
 
     var volume: Float { get set }
     var progress: Double { get }
+    /// Source duration when available, with metadata as a fallback. Parsing may refine it
+    /// in either direction; consumers must not keep only the largest observed duration.
     var duration: Double { get }
     var isSeekable: Bool { get }
     /// True when idle and ready to start a source (the cold-restore path checks this).
@@ -182,10 +184,22 @@ nonisolated protocol AudioEngine: AnyObject, Sendable {
     /// Removes upcoming audio, whether queued or prepared on a crossfade deck.
     func cancelPreload()
 
+    /// Whether buffered entries can survive a path change using the engine's own reconnect logic.
+    var preservesPreloadOnNetworkChange: Bool { get }
+
+    /// Whether setAirPlayActive adapts the prepared transition without discarding its source.
+    var preservesPreloadOnAirPlayChange: Bool { get }
+
     /// AirPlay always uses sequential playback, even when a crossfade is requested.
+    /// Engines that cannot preserve the preparation must cancel it here.
     func setAirPlayActive(_ active: Bool)
 
-    /// The authoritative length of the current track from library metadata, for engines whose own
-    /// duration estimate drifts (transcoded/VBR streams) and would mistime transitions.
+    /// Supplies the initial library duration and later refinements for transition planning.
+    /// Engines may replace the initial fallback once the source duration is known.
     func setTrackDuration(_ seconds: Double)
+}
+
+extension AudioEngine {
+    nonisolated var preservesPreloadOnNetworkChange: Bool { false }
+    nonisolated var preservesPreloadOnAirPlayChange: Bool { false }
 }

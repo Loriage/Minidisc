@@ -104,6 +104,9 @@ struct MediaAvailabilityTests {
         let query = URLComponents(url: source.url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         #expect(query.first { $0.name == "estimateContentLength" }?.value == "false")
         #expect(query.first { $0.name == "format" }?.value == quality.subsonicFormat)
+        if quality == .original {
+            #expect(query.first { $0.name == "format" }?.value == "raw")
+        }
         #expect(query.first { $0.name == "maxBitRate" }?.value == quality.subsonicMaxBitRate.map(String.init))
         #expect(query.first { $0.name == "id" }?.value == "a+id")
         #expect(source.customHeaders["X-Fixture"] == "secret")

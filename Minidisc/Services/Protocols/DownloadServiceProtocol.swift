@@ -61,8 +61,10 @@ protocol DownloadServiceProtocol: AnyObject, Sendable {
 
     func coverCacheStats() async -> (count: Int, bytes: Int64)
 
-    /// Deletes every persisted cover. Downloaded audio is untouched; covers re-download on demand.
-    func clearAllCovers() async
+    /// Clears regenerable size variants, preserving covers owned by offline downloads.
+    func clearStreamingCovers() async
+    func healMissingDownloadedCovers(serverID: UUID, allowsCellular: Bool,
+                                     shouldContinue: @escaping @Sendable () async -> Bool) async -> Int
 
     func localAlbumData(albumId: String, serverId: UUID) async -> LocalAlbumData?
     func localPlaylistData(playlistId: String, serverId: UUID) async -> LocalPlaylistData?

@@ -111,6 +111,14 @@ struct MinidiscApp: App {
                 }
         }
         .onChange(of: scenePhase) { _, newPhase in
+            let diagnosticPhase: PlaybackDiagnostics.ApplicationEvent.Phase = switch newPhase {
+            case .active: .active
+            case .inactive: .inactive
+            case .background: .background
+            @unknown default: .unknown
+            }
+            playbackDiagnostics.record(.application(.lifecycle(diagnosticPhase)))
+            activeContainer?.recordPlaybackDiagnosticContext()
             if newPhase == .active {
                 activeContainer?.offlineFavoritesSync.revision += 1
                 activeContainer?.offlineLibrary.revision += 1
@@ -200,10 +208,9 @@ struct MinidiscApp: App {
             playerService: newContainer.playerService
         )
         await newContainer.nowPlayingService.start()
-        AppContainer.invalidateCoverArtCacheIfNeeded(artworkCache: newContainer.artworkImageCache)
-        if let sweepTask = AppContainer.sweepLegacyCoverArtFiles() {
-            newContainer.retainLifecycleTask(sweepTask)
-        }
+        await AppContainer.invalidateCoverArtCacheIfNeeded(
+            artworkCache: newContainer.artworkImageCache, downloads: newContainer.downloadService
+        )
         let modelContainer = newContainer.modelContainer
         let audioStreamCache = newContainer.audioStreamCache
         newContainer.retainLifecycleTask(Task { [modelContainer, audioStreamCache] in
@@ -217,11 +224,36 @@ struct MinidiscApp: App {
         })
         await newContainer.playerService.restoreSession()
         let downloadService = newContainer.downloadService
-        newContainer.retainLifecycleTask(Task { [modelContainer, downloadService] in
+        newContainer.retainLifecycleTask(Task { [weak newContainer, modelContainer, downloadService] in
             await runCoverArtGarbageCollection(
                 modelContainer: modelContainer,
                 downloadService: downloadService
             )
+            guard let newContainer else { return }
+            // Network defaults are optimistic until the first observed path. Never start a
+            // repair on those defaults, or before orphan collection has finished.
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(10))
+            while !newContainer.serverState.hasObservedNetworkPath, clock.now < deadline {
+                do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
+            }
+            let serverState = newContainer.serverState
+            let settings = newContainer.cacheSettings
+            guard let serverID = serverState.activeServer?.id else { return }
+            let repaired = await downloadService.healMissingDownloadedCovers(
+                serverID: serverID, allowsCellular: settings.cacheOverCellular
+            ) {
+                await MainActor.run {
+                    serverState.hasObservedNetworkPath && serverState.isOnline
+                        && serverState.activeServer?.id == serverID
+                        && !serverState.networkPathEvent.descriptor.isConstrained
+                        && (!serverState.isExpensive || settings.cacheOverCellular)
+                }
+            }
+            if repaired > 0 {
+                let key = "coverArtUploadVersion"
+                UserDefaults.standard.set(UserDefaults.standard.integer(forKey: key) + 1, forKey: key)
+            }
         })
         await MinidiscApp.backgroundSyncCoordinator.configure(
             wrappedService: newContainer.wrappedPlaylistService,

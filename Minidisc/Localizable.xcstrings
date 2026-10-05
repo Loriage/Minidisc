@@ -6260,6 +6260,9 @@
         }
       }
     },
+    "AudioStreaming" : {
+
+    },
     "Aurora" : {
       "extractionState" : "manual",
       "localizations" : {

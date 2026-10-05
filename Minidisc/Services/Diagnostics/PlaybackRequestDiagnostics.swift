@@ -35,7 +35,7 @@ nonisolated struct PlaybackRequestDiagnostics: Sendable, Equatable {
 
 /// Response bodies, endpoint strings and server error messages are intentionally discarded.
 nonisolated struct PlaybackDiagnosticFailure: Sendable, Equatable {
-    enum Kind: String, Sendable { case http, subsonic, network, decoding, configuration, redirectBlocked, timeout, offline, mediaUnavailable, audioUnavailable, seekFailed, other }
+    enum Kind: String, Sendable { case http, subsonic, network, decoding, configuration, redirectBlocked, timeout, offline, mediaUnavailable, audioUnavailable, seekFailed, cancelled, other }
     let kind: Kind
     let status: Int?
     let codes: AudioEngineFailure
@@ -74,6 +74,9 @@ nonisolated struct PlaybackDiagnosticFailure: Sendable, Equatable {
             }
         } else if (underlying as NSError).domain == NSURLErrorDomain {
             kind = .network
+        }
+        if underlying is CancellationError || ((underlying as NSError).domain == NSURLErrorDomain && (underlying as NSError).code == URLError.cancelled.rawValue) {
+            kind = .cancelled
         }
         self.kind = kind
         self.status = status

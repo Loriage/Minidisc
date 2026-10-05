@@ -81,6 +81,7 @@ struct PlaylistDetailView: View {
     @State private var localCoverId: String?
     @State private var showThemeColorSheet = false
     @State private var sortOrder: PlaylistSortOrder = .playlistOrder
+    @State private var isDismissing = false
     @State private var showDeleteAlert = false
     @State private var showAddMusic = false
 
@@ -241,8 +242,7 @@ struct PlaylistDetailView: View {
                     )
                     .listRowSeparator(.hidden)
                     .listRowBackground(bodyColor)
-                } else {
-                    let serverId = container?.serverState.activeServer?.id ?? UUID()
+                } else if let serverId = container?.serverState.activeServer?.id {
                     // Rows are displayed in the sorted order, the view model removes by stored position.
                     let removeTracks: ((IndexSet) -> Void)? = (vm.isOffline || vm.isMutatingTracks) ? nil : { indices in
                         guard indices.allSatisfy({ entries.indices.contains($0) }) else { return }
@@ -427,6 +427,7 @@ struct PlaylistDetailView: View {
             await loadCoverAppearance()
         }
         .minidiscZoomTransition(sourceID: zoomSourceId, in: zoomNamespace)
+        .onAppear { isDismissing = false }
     }
 
     @ToolbarContentBuilder
@@ -462,7 +463,7 @@ struct PlaylistDetailView: View {
         } else {
             ToolbarItem(placement: .navigation) {
                 Button("Back", systemImage: "chevron.left") {
-                    dismiss()
+                    dismissOnce()
                 }
                 .tint(.primary)
             }
@@ -769,12 +770,18 @@ struct PlaylistDetailView: View {
         selectedSongIds.removeAll()
     }
 
+    private func dismissOnce() {
+        guard !isDismissing else { return }
+        isDismissing = true
+        dismiss()
+    }
+
     private func deletePlaylistInPlace(purgeDownloads: Bool) async {
         guard let c = container else { return }
         do {
             try await c.playlistService.deletePlaylist(id: playlistId, purgeDownloads: purgeDownloads)
             postPlaylistDeleted()
-            dismiss()
+            dismissOnce()
         } catch {
             Logger.playlist.error("PlaylistDetailView: in-place delete failed: \(error, privacy: .public)")
             c.toastService.showError("Failed to delete playlist")
@@ -834,8 +841,8 @@ struct PlaylistDetailView: View {
                     onDownload: { performDownloadAction() }
                 )
 
-                if let vm, vm.isDownloadingPlaylist {
-                    let serverId = container?.serverState.activeServer?.id ?? UUID()
+                if let vm, vm.isDownloadingPlaylist,
+                   let serverId = container?.serverState.activeServer?.id {
                     PlaylistDownloadProgressView(
                         songs: vm.songs,
                         total: vm.songs.count,

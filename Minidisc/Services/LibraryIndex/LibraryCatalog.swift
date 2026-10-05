@@ -384,10 +384,13 @@ actor LibraryCatalog {
     func recordPlaylistMutation(
         summary: Playlist?,
         detail: PlaylistWithSongs?,
-        deletedID: String? = nil
+        deletedID: String? = nil,
+        serverID capturedServerID: UUID? = nil
     ) async {
         do {
-            let serverID = try await source.activeServerID()
+            let serverID: UUID
+            if let capturedServerID { serverID = capturedServerID }
+            else { serverID = try await source.activeServerID() }
             if let summary {
                 try await store.cachePlaylistSummary(summary, serverID: serverID)
             }

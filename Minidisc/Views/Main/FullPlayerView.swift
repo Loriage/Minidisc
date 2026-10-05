@@ -268,7 +268,6 @@ struct FullPlayerView: View {
     private func flowingQueueContent(_ playerState: PlayerState) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: MinidiscSpacing.m) {
-                // Invisible endpoint for the cover's matched-geometry transition.
                 Color.clear
                     .frame(width: 56, height: 56)
                     .matchedGeometryEffect(id: "playerArtwork", in: artworkNamespace ?? morphNS, isSource: true)
@@ -391,11 +390,11 @@ private struct TrackInfoSection: View {
         self.secondaryContentColor = secondaryContentColor
         self.compact = compact
         self.trackSwipe = trackSwipe
-        let cid = "song:\(playerState.currentTrack?.id ?? "")"
-        _favoriteMatches = Query(filter: #Predicate<FavoriteRecord> { $0.id == cid })
+        let cid = playerState.currentTrack?.id ?? ""
+        _favoriteMatches = Query(filter: #Predicate<FavoriteRecord> { $0.itemType == "song" && $0.itemId == cid })
     }
 
-    private var isFavorite: Bool { !favoriteMatches.isEmpty }
+    private var isFavorite: Bool { favoriteMatches.contains { $0.serverId == container?.serverState.activeServer?.id } }
     private var isOnline: Bool { container?.serverState.isOnline == true }
 
     var body: some View {
@@ -690,8 +689,6 @@ private struct TrackInfoSection: View {
     }
 }
 
-// MARK: - Scrubber
-
 private struct ScrubberView: View {
     let playerState: PlayerState
     let playerService: (any PlayerServiceProtocol)?
@@ -700,6 +697,7 @@ private struct ScrubberView: View {
 
     @State private var isDragging = false
     @State private var isSeeking = false
+    @State private var seekRequestID: UInt64 = 0
     @State private var displayPosition: TimeInterval = 0
 
     private var effectiveDuration: TimeInterval {
@@ -721,11 +719,13 @@ private struct ScrubberView: View {
                 total: effectiveDuration,
                 onEditingChanged: { editing in
                     isDragging = editing
+                    seekRequestID &+= 1
                     if !editing {
                         isSeeking = true
+                        let requestID = seekRequestID
                         let target = displayPosition
                         Task {
-                            defer { isSeeking = false }
+                            defer { if requestID == seekRequestID { isSeeking = false } }
                             await playerService?.seek(to: target)
                         }
                     }
@@ -847,8 +847,6 @@ struct ProgressSlider: View {
     }
 }
 
-// MARK: - Playback controls
-
 private struct PlaybackControlsView: View {
     @Environment(\.appContainer) private var container
     let playerState: PlayerState
@@ -906,8 +904,6 @@ private struct PlaybackControlsView: View {
         }
     }
 }
-
-// MARK: - Bottom toolbar
 
 private struct BottomToolbar: View {
     @Binding var showLyrics: Bool
@@ -985,8 +981,6 @@ private struct AirPlayRouteButton: UIViewRepresentable {
         uiView.tintColor = UIColor(tintColor)
     }
 }
-
-// MARK: - Volume
 
 private struct VolumeSection: View {
     let contentColor: Color

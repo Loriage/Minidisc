@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		8785D13D3012A3A500208269 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 8785D13C3012A3A500208269 /* AppIcon.icon */; };
+		A57100013000000000000001 /* AudioStreaming in Frameworks */ = {isa = PBXBuildFile; productRef = A57100013000000000000002 /* AudioStreaming */; };
 		DBA4A77D2F9BE3C8008BC5A9 /* SwiftSonic in Frameworks */ = {isa = PBXBuildFile; productRef = DBA4A77C2F9BE3C8008BC5A9 /* SwiftSonic */; };
 /* End PBXBuildFile section */
 
@@ -72,6 +73,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				DBA4A77D2F9BE3C8008BC5A9 /* SwiftSonic in Frameworks */,
+				A57100013000000000000001 /* AudioStreaming in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -134,6 +136,7 @@
 			name = Minidisc;
 			packageProductDependencies = (
 				DBA4A77C2F9BE3C8008BC5A9 /* SwiftSonic */,
+				A57100013000000000000002 /* AudioStreaming */,
 			);
 			productName = Minidisc;
 			productReference = DBA4A7512F9BBFCB008BC5A9 /* Minidisc.app */;
@@ -227,6 +230,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				DBA4A77B2F9BE3C8008BC5A9 /* XCRemoteSwiftPackageReference "swiftsonic" */,
+				A57100013000000000000003 /* XCRemoteSwiftPackageReference "AudioStreaming" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = DBA4A7522F9BBFCB008BC5A9 /* Products */;
@@ -432,11 +436,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Minidisc/Minidisc.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 27;
+				CURRENT_PROJECT_VERSION = 35;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = VZFD28P342;
-				CODE_SIGN_ENTITLEMENTS = Minidisc/Minidisc.entitlements;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Minidisc/Info.plist;
@@ -446,18 +450,22 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Minidisc needs to access your camera to take pictures for playlist artworks";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Minidisc needs access to your local network to connect to your Navidrome or Subsonic server.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Minidisc needs to access your library to upload pictures for playlists";
+				INFOPLIST_KEY_NSSiriUsageDescription = "Allow Siri to search your Minidisc library and control music playback.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				MARKETING_VERSION = 26.9.5;
+				MARKETING_VERSION = 26.10.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nohitdev.minidisc;
 				PRODUCT_NAME = Minidisc;
 				SDKROOT = iphoneos;
@@ -482,11 +490,11 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Minidisc/Minidisc.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 27;
+				CURRENT_PROJECT_VERSION = 35;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = VZFD28P342;
-				CODE_SIGN_ENTITLEMENTS = Minidisc/Minidisc.entitlements;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Minidisc/Info.plist;
@@ -496,18 +504,22 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Minidisc needs to access your camera to take pictures for playlist artworks";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Minidisc needs access to your local network to connect to your Navidrome or Subsonic server.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Minidisc needs to access your library to upload pictures for playlists";
+				INFOPLIST_KEY_NSSiriUsageDescription = "Allow Siri to search your Minidisc library and control music playback.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				MARKETING_VERSION = 26.9.5;
+				MARKETING_VERSION = 26.10.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nohitdev.minidisc;
 				PRODUCT_NAME = Minidisc;
 				SDKROOT = iphoneos;
@@ -677,6 +689,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		A57100013000000000000003 /* XCRemoteSwiftPackageReference "AudioStreaming" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/dimitris-c/AudioStreaming";
+			requirement = {
+				kind = exactVersion;
+				version = 1.4.5;
+			};
+		};
 		DBA4A77B2F9BE3C8008BC5A9 /* XCRemoteSwiftPackageReference "swiftsonic" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/MathieuDubart/swiftsonic";
@@ -688,6 +708,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		A57100013000000000000002 /* AudioStreaming */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A57100013000000000000003 /* XCRemoteSwiftPackageReference "AudioStreaming" */;
+			productName = AudioStreaming;
+		};
 		DBA4A77C2F9BE3C8008BC5A9 /* SwiftSonic */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = DBA4A77B2F9BE3C8008BC5A9 /* XCRemoteSwiftPackageReference "swiftsonic" */;

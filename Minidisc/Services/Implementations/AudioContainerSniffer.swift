@@ -13,7 +13,6 @@ nonisolated enum AudioContainer: String, Sendable, CaseIterable {
     /// Bytes needed to recognise every container below (`FORM`/`RIFF` need the type at offset 8).
     static let magicPrefixLength = 12
 
-    /// Identifies a known container from its byte prefix, or returns nil.
     static func sniff(magic bytes: [UInt8]) -> AudioContainer? {
         func matches(_ ascii: String, at offset: Int) -> Bool {
             let pattern = Array(ascii.utf8)

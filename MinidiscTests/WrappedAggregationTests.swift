@@ -3,8 +3,6 @@ import Foundation
 import SwiftData
 @testable import Minidisc
 
-// MARK: - Helpers
-
 /// UTC calendar for deterministic timezone-insensitive tests.
 private let utcCalendar: Calendar = {
     var cal = Calendar(identifier: .gregorian)
@@ -52,8 +50,6 @@ private func makeDTO(
         serverId: serverId
     )
 }
-
-// MARK: - Suite
 
 @Suite("WrappedAggregation")
 struct WrappedAggregationTests {
@@ -315,12 +311,9 @@ struct WrappedAggregationTests {
         #expect(result == false)
     }
 
-    // MARK: - Duration cap (wall-clock inflation fix)
-
     @Test func inflatedDuration_cappedAtTrackDuration() async throws {
         let service = try makeService()
         let ts = utcDate(year: 2026, month: 3, day: 10)
-        // Simulate a 3-min track where pause time inflated durationListened to 1 hour.
         await service.recordPlayback(makeDTO(timestamp: ts, durationListened: 3600, trackDuration: 180))
         let data = await service.wrappedData(for: .month(year: 2026, month: 3), serverId: "srv", calendar: utcCalendar)
         #expect(data.totalSecondsListened == 180)

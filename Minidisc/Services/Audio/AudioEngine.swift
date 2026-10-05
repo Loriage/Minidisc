@@ -68,6 +68,40 @@ nonisolated struct AudioEngineFailure: Sendable, Equatable {
         }
     }
 
+    var diagnosticMeaning: String {
+        let labels = codes.compactMap { code -> String? in
+            switch code.domain {
+            case .avFoundation:
+                switch AVError.Code(rawValue: code.value) {
+                case .mediaServicesWereReset: return "media-services-reset"
+                case .failedToLoadMediaData: return "media-data-load-failed"
+                case .fileFormatNotRecognized: return "unrecognized-file-format"
+                case .decoderNotFound: return "decoder-not-found"
+                case .decodeFailed: return "decode-failed"
+                default: return nil
+                }
+            case .url:
+                switch URLError.Code(rawValue: code.value) {
+                case .timedOut: return "request-timeout"
+                case .notConnectedToInternet: return "no-internet-connection"
+                case .networkConnectionLost: return "connection-lost"
+                case .cannotFindHost, .dnsLookupFailed: return "host-resolution-failed"
+                case .cannotConnectToHost: return "host-connection-failed"
+                case .dataNotAllowed: return "cellular-data-not-allowed"
+                case .internationalRoamingOff: return "roaming-disabled"
+                case .secureConnectionFailed: return "tls-connection-failed"
+                case .serverCertificateUntrusted, .serverCertificateHasBadDate,
+                     .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid: return "certificate-validation-failed"
+                case .badServerResponse: return "invalid-server-response"
+                case .cancelled: return "request-cancelled"
+                default: return nil
+                }
+            default: return nil
+            }
+        }
+        return labels.isEmpty ? "unspecified" : labels.joined(separator: "+")
+    }
+
     var diagnosticDescription: String {
         codes.isEmpty ? "unknown" : codes.map { "\($0.domain.rawValue):\($0.value)" }.joined(separator: ",")
     }
@@ -120,43 +154,52 @@ nonisolated protocol AudioEngine: AnyObject, Sendable {
     /// Disposes invalid system audio objects. Preserves volume and monotonically increasing
     /// playback tokens, but leaves playback stopped until the caller starts a fresh item.
     func resetAfterMediaServicesReset()
-    /// Repositions the active deck and returns only after AVPlayer has completed (or rejected) the seek.
+    /// Repositions the active deck and returns only after the engine confirms (or rejects) the seek.
     /// `false` also covers a deck transition that made the request stale while it was in flight.
     func seek(to seconds: Double) async -> Bool
 
     var volume: Float { get set }
     var progress: Double { get }
+    /// Source duration when available, with metadata as a fallback. Parsing may refine it
+    /// in either direction; consumers must not keep only the largest observed duration.
     var duration: Double { get }
     var isSeekable: Bool { get }
     /// True when idle and ready to start a source (the cold-restore path checks this).
     var isReady: Bool { get }
 
-    /// Applies a ReplayGain loudness adjustment in dB for the current track (0 = no change).
     func applyReplayGain(dB: Float)
 
-    /// Hints that `url` will very likely be the next `play` target, so the engine can pre-buffer it
-    /// for a seamless hand-off. `crossfadeDuration` == 0 asks for a gapless butt-splice; > 0 asks the
-    /// engine to blend the two tracks over that window. A later `play` with the same stable track ID
+    /// Prepares the next `play` target. A zero crossfade uses native sequential playback;
+    /// a positive duration requests an overlap on routes that support it.
+    /// A later `play` with the same stable track ID
     /// adopts the pre-buffered source; any other ID discards it.
-    /// `leadInTrim` skips that many seconds of silence at the start of the preloaded track, so a
-    /// gapless pair butts together instead of playing the encoder's padding.
     func preloadNext(
         trackID: String,
         url: URL,
         headers: [String: String],
         crossfadeDuration: Double,
-        leadInTrim: Double,
         replayGainDB: Float
     )
 
-    /// Drops a pending standby deck without touching the active track.
+    /// Removes upcoming audio, whether queued or prepared on a crossfade deck.
     func cancelPreload()
 
-    /// Ends the CURRENT track `seconds` early, cutting its trailing silence. 0 restores the full
-    /// length. Only meaningful ahead of a gapless hand-off; a crossfade wants the real tail.
-    func setTrackEndTrim(_ seconds: Double)
+    /// Whether buffered entries can survive a path change using the engine's own reconnect logic.
+    var preservesPreloadOnNetworkChange: Bool { get }
 
-    /// The authoritative length of the current track from library metadata, for engines whose own
-    /// duration estimate drifts (transcoded/VBR streams) and would mistime transitions.
+    /// Whether setAirPlayActive adapts the prepared transition without discarding its source.
+    var preservesPreloadOnAirPlayChange: Bool { get }
+
+    /// AirPlay always uses sequential playback, even when a crossfade is requested.
+    /// Engines that cannot preserve the preparation must cancel it here.
+    func setAirPlayActive(_ active: Bool)
+
+    /// Supplies the initial library duration and later refinements for transition planning.
+    /// Engines may replace the initial fallback once the source duration is known.
     func setTrackDuration(_ seconds: Double)
+}
+
+extension AudioEngine {
+    nonisolated var preservesPreloadOnNetworkChange: Bool { false }
+    nonisolated var preservesPreloadOnAirPlayChange: Bool { false }
 }

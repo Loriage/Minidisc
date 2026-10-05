@@ -47,8 +47,6 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Feed
-
     @ViewBuilder
     private func content(_ vm: HomeFeedViewModel) -> some View {
         let picks = container?.visiblePlaylists(vm.topPicks) ?? []
@@ -154,8 +152,6 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Destination resolver
-
     @ViewBuilder
     private func resolve(_ destination: HomeDestination) -> some View {
         switch destination {
@@ -207,8 +203,6 @@ struct HomeView: View {
         }
     }
 }
-
-// MARK: - Top pick card (large, Apple-Music style)
 
 private struct TopPickCard: View {
     let playlist: Playlist

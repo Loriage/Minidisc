@@ -123,8 +123,6 @@ struct LidarrArtistSearchView: View {
     }
 }
 
-// MARK: - Result cell
-
 private struct LidarrArtistResultCell: View {
     let artist: LidarrArtistLookup
 

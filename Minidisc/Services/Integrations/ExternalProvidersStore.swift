@@ -1,7 +1,6 @@
 import Foundation
 import OSLog
 
-/// Synchronous MainActor store for external providers, encoded as JSON in UserDefaults.
 final class ExternalProvidersStore {
     private static let defaultsKey = "app.minidisc.integrations.external-providers"
     private let defaults: UserDefaults

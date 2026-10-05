@@ -1,7 +1,5 @@
 import SwiftUI
 
-// MARK: - Toast view
-
 struct ToastView: View {
     let toast: ToastService.Toast
 
@@ -55,8 +53,6 @@ struct ToastView: View {
         }
     }
 }
-
-// MARK: - Overlay modifier
 
 struct ToastOverlay: ViewModifier {
     var reservesMiniPlayerSpace = true

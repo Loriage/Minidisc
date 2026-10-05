@@ -66,8 +66,6 @@ struct WrappedStoryPlayerView: View {
         )
     }
 
-    // MARK: - Overlay (progress bar + close button)
-
     private var overlayControls: some View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: MinidiscSpacing.s) {
@@ -93,8 +91,6 @@ struct WrappedStoryPlayerView: View {
             Spacer()
         }
     }
-
-    // MARK: - Gesture layer
 
     private var gestureLayer: some View {
         GeometryReader { proxy in
@@ -140,8 +136,6 @@ struct WrappedStoryPlayerView: View {
         }
         .ignoresSafeArea()
     }
-
-    // MARK: - Slide content
 
     @ViewBuilder
     private func slideContent(for kind: WrappedStorySlideKind) -> some View {
@@ -200,8 +194,6 @@ struct WrappedStoryPlayerView: View {
         }
     }
 
-    // MARK: - Navigation
-
     private func goForward() {
         HapticFeedback.light.trigger()
         if currentIndex < slides.count - 1 {
@@ -225,8 +217,6 @@ struct WrappedStoryPlayerView: View {
         Logger.wrappedStory.debug("[STORY] ← slide \(currentIndex, privacy: .public)/\(slides.count, privacy: .public)")
     }
 
-    // MARK: - Timer
-
     private func startTimer() {
         timerTask?.cancel()
         timerTask = Task {
@@ -239,8 +229,6 @@ struct WrappedStoryPlayerView: View {
             }
         }
     }
-
-    // MARK: - Share (iOS only)
 
     private func closingShareOverlay(data: WrappedData) -> some View {
         VStack {

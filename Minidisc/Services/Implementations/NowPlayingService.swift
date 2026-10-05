@@ -25,8 +25,6 @@ actor NowPlayingService: NowPlayingServiceProtocol {
         favoritesService = service
     }
 
-    // MARK: - Lifecycle
-
     func start() async {
         guard !commandsRegistered, let playerService else { return }
         commandsRegistered = true
@@ -44,8 +42,6 @@ actor NowPlayingService: NowPlayingServiceProtocol {
         guard generation == contentGeneration else { return }
         await refreshLikeCommandState()
     }
-
-    // MARK: - Update
 
     func update(with snapshot: NowPlayingSnapshot) async {
         if snapshot.isLiveStream {
@@ -110,8 +106,6 @@ actor NowPlayingService: NowPlayingServiceProtocol {
         }
     }
 
-    // MARK: - Periodic position push
-
     func pushPosition(
         elapsed: TimeInterval,
         rate: Float,
@@ -127,8 +121,6 @@ actor NowPlayingService: NowPlayingServiceProtocol {
             generation: generation
         )
     }
-
-    // MARK: - Favourite
 
     private func toggleFavoriteForCurrentTrack() async {
         guard let favoritesService, let songId = currentSong?.songId, !songId.hasPrefix("local:") else { return }
@@ -161,8 +153,6 @@ actor NowPlayingService: NowPlayingServiceProtocol {
         guard generation == contentGeneration, songId == currentSong?.songId else { return }
         await presenter.updateLikeCommand(songAvailable: canFavorite, isFavorite: isFavorite)
     }
-
-    // MARK: - Remote command availability
 
     private func updateRemoteCommandsAvailability(isLiveStream: Bool) async {
         await presenter.updateCommandAvailability(isLiveStream: isLiveStream)

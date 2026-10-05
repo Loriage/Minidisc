@@ -17,10 +17,10 @@ nonisolated enum StreamQuality: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Subsonic `format` query param. `nil` = no override (server serves the original file).
+    /// `raw` explicitly bypasses the server's per-player transcoding defaults.
     var subsonicFormat: String? {
         switch self {
-        case .original: return nil
+        case .original: return "raw"
         case .mp3_320, .mp3_192: return "mp3"
         }
     }

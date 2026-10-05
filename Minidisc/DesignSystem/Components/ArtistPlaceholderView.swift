@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Circle placeholder for an artist with no available photo.
-/// Uses a deterministic HSB gradient derived from the artist name, with the artist's initials centred on top.
 struct ArtistPlaceholderView: View {
     let name: String
     let size: CGFloat

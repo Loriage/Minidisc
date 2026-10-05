@@ -1,7 +1,5 @@
 import Foundation
 
-// MARK: - YearMonth
-
 nonisolated struct YearMonth: Comparable, Hashable, Sendable, CustomStringConvertible {
     let year: Int
     let month: Int
@@ -33,9 +31,6 @@ nonisolated struct YearMonth: Comparable, Hashable, Sendable, CustomStringConver
     }
 }
 
-// MARK: - WrappedPreferences
-
-/// Server-scoped Wrapped preferences under minidisc.wrapped.
 nonisolated final class WrappedPreferences: Sendable {
     private let userDefaults: LockedUserDefaults
 
@@ -55,8 +50,6 @@ nonisolated final class WrappedPreferences: Sendable {
         "minidisc.wrapped.lastYear.\(serverId)"
     }
 
-    // MARK: - Last updated month
-
     func lastUpdatedMonth(serverId: String) -> YearMonth? {
         guard let raw = userDefaults.string(forKey: Self.lastMonthKey(serverId)) else { return nil }
         return YearMonth(string: raw)
@@ -70,8 +63,6 @@ nonisolated final class WrappedPreferences: Sendable {
         userDefaults.removeObject(forKey: Self.lastMonthKey(serverId))
     }
 
-    // MARK: - Annual playlist ID cache
-
     func playlistId(year: Int, serverId: String) -> String? {
         userDefaults.string(forKey: Self.playlistIdKey(year, serverId))
     }
@@ -84,8 +75,6 @@ nonisolated final class WrappedPreferences: Sendable {
     func clearPlaylistId(year: Int, serverId: String) {
         userDefaults.removeObject(forKey: Self.playlistIdKey(year, serverId))
     }
-
-    // MARK: - Last known year marker
 
     func lastWrappedYear(serverId: String) -> Int? {
         let v = userDefaults.integer(forKey: Self.lastYearKey(serverId))

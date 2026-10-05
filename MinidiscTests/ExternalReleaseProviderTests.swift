@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Minidisc
 
-// MARK: - Validation tests
-
 @Suite("ExternalReleaseProvider — validate(urlTemplate:)")
 struct ExternalReleaseProviderValidationTests {
 
@@ -76,8 +74,6 @@ struct ExternalReleaseProviderNameValidationTests {
         #expect(ExternalReleaseProvider.validate(name: String(repeating: "a", count: 51)) == false)
     }
 }
-
-// MARK: - buildURL tests
 
 @Suite("ExternalReleaseProvider — buildURL")
 struct ExternalReleaseProviderBuildURLTests {

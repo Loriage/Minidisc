@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 import SwiftSonic
 import OSLog
 
@@ -97,17 +98,15 @@ struct SongsListView: View {
                         .listRowBackground(Color.clear)
                 }
                 playShuffleHeader(songs)
-                ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
-                    SongRow(song: song, index: index + 1, showCoverArt: true, isFavorite: isFavorite(song))
-                        .contentShape(Rectangle())
-                        .onTapGesture { play(songs, at: index) }
-                        .id(song.id)
+                if let serverID = container?.serverState.activeServer?.id {
+                    SongListFavoriteRows(songs: songs, serverID: serverID) { index in
+                        play(songs, at: index)
+                    }
                 }
             }
             .listStyle(.plain)
             .refreshable { await refresh(vm) }
             .safeAreaInset(edge: .trailing, spacing: 0) {
-                // The A–Z jump bar only makes sense when sorted by title.
                 if songSort == .title && songs.count >= 20 {
                     AlphabetJumpBar(
                         availableLetters: songs.availableAlphabetLetters(keyPath: \.title),
@@ -164,10 +163,6 @@ struct SongsListView: View {
         .padding(.vertical, 4)
     }
 
-    private func isFavorite(_ song: DisplayableSong) -> Bool {
-        container?.favoritesService.isFavorite(itemType: .song, itemId: song.id) == true
-    }
-
     private func play(_ songs: [DisplayableSong], at index: Int) {
         Task {
             do {
@@ -191,5 +186,31 @@ struct SongsListView: View {
         }
         if container?.serverState.isOnline == true { await viewModel.load(sort: songSort) }
         else { await container?.offlineLibrary.refresh() }
+    }
+}
+
+/// One server-scoped fetch for the list; no synchronous store access in row builders.
+private struct SongListFavoriteRows: View {
+    let songs: [DisplayableSong]
+    let onPlay: (Int) -> Void
+    @Query private var favorites: [FavoriteRecord]
+
+    init(songs: [DisplayableSong], serverID: UUID, onPlay: @escaping (Int) -> Void) {
+        self.songs = songs
+        self.onPlay = onPlay
+        _favorites = Query(filter: #Predicate<FavoriteRecord> {
+            $0.serverId == serverID && $0.itemType == "song"
+        })
+    }
+
+    var body: some View {
+        let favoriteIDs = Set(favorites.map(\.itemId))
+        ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
+            SongRow(song: song, index: index + 1, showCoverArt: true,
+                    isFavorite: favoriteIDs.contains(song.id))
+                .contentShape(Rectangle())
+                .onTapGesture { onPlay(index) }
+                .id(song.id)
+        }
     }
 }

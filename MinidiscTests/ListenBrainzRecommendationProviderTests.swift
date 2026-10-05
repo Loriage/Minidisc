@@ -3,8 +3,6 @@ import Foundation
 import SwiftSonic
 @testable import Minidisc
 
-// MARK: - Shared mock infrastructure
-
 @MainActor
 private final class PRCountingTransport: ListenBrainzTransport {
     private(set) var callCount = 0
@@ -27,7 +25,6 @@ private final class PRCountingTransport: ListenBrainzTransport {
     }
 }
 
-// Separate transport for the service client used by `enable()` calls.
 @MainActor
 private final class PRServiceTransport: ListenBrainzTransport {
     private var queue: [(Data, HTTPURLResponse)] = []
@@ -97,8 +94,6 @@ private final class PRLibraryConfigurableStub: ArtistRecommendationBrowsing {
     func findArtist(byName name: String) async -> ArtistID3? { artistsByName[name] }
     func topSongs(artist: String, count: Int) async throws -> [DisplayableSong] { [] }
 }
-
-// MARK: - Fixtures
 
 private let singleReleaseJSON = Data("""
 {
@@ -177,8 +172,6 @@ private let noMbidJSON = Data("""
 }
 """.utf8)
 
-// MARK: - Helpers
-
 private func makeService(serviceTransport: any ListenBrainzTransport) -> ListenBrainzService {
     let client = ListenBrainzClient(transport: serviceTransport)
     let keychain = PRKeychain()
@@ -200,8 +193,6 @@ private func makeProvider(
         cacheTTL: cacheTTL
     )
 }
-
-// MARK: - Early-exit tests
 
 @Suite("ListenBrainzRecommendationProvider — early exit")
 struct LBProviderEarlyExitTests {
@@ -228,8 +219,6 @@ struct LBProviderEarlyExitTests {
         #expect(results.isEmpty)
     }
 }
-
-// MARK: - Happy path
 
 @Suite("ListenBrainzRecommendationProvider — happy path")
 struct LBProviderHappyPathTests {
@@ -318,8 +307,6 @@ struct LBProviderHappyPathTests {
     }
 }
 
-// MARK: - Cache
-
 @Suite("ListenBrainzRecommendationProvider — cache")
 struct LBProviderCacheTests {
 
@@ -381,8 +368,6 @@ struct LBProviderCacheTests {
     }
 }
 
-// MARK: - Error handling
-
 @Suite("ListenBrainzRecommendationProvider — error handling")
 struct LBProviderErrorTests {
 
@@ -423,8 +408,6 @@ struct LBProviderErrorTests {
     }
 
 }
-
-// MARK: - Mapping
 
 @Suite("ListenBrainzRecommendationProvider — mapping")
 struct LBProviderMappingTests {
@@ -511,8 +494,6 @@ struct LBProviderMappingTests {
     }
 }
 
-// MARK: - Window isolation
-
 @Suite("LBProviderWindowTests")
 struct LBProviderWindowTests {
 
@@ -551,8 +532,6 @@ struct LBProviderWindowTests {
         #expect(providerTransport.callCount == 1)
     }
 }
-
-// MARK: - Similar artists
 
 private let twoSimilarArtistsJSON = Data("""
 {

@@ -93,8 +93,6 @@ struct DiscoverView: View {
         }
     }
 
-    // MARK: - Moods
-
     @ViewBuilder
     private var moodsSection: some View {
         if !visibleMoods.isEmpty {
@@ -144,8 +142,6 @@ struct DiscoverView: View {
               container?.serverState.activeServer?.id.uuidString == serverId else { return }
         availableMoods = found
     }
-
-    // MARK: - Sections
 
     @ViewBuilder
     private func freshReleasesSection(vm: DiscoverViewModel) -> some View {

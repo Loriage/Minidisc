@@ -18,8 +18,6 @@ struct FreshReleaseDetailSheetTests {
         ExternalReleaseProvider(name: "Beatport", urlTemplate: "https://www.beatport.com/search?q=%s")
     ]
 
-    // MARK: - Empty providers fallback
-
     @Test("empty providers + mbid → ListenBrainz fallback URL is well-formed")
     func emptyProvidersWithMBIDFallback() {
         let id = releaseWithMBID.id!
@@ -37,8 +35,6 @@ struct FreshReleaseDetailSheetTests {
         }
         #expect(lbURL == nil)
     }
-
-    // MARK: - Custom providers
 
     @Test("two providers configured → both produce non-nil search URLs")
     func twoProvidersProduceNonNilURLs() {

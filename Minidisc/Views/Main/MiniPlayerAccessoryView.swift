@@ -15,7 +15,6 @@ struct MiniPlayerAccessoryView: View {
     private let swipeThreshold: CGFloat = 100
     private let velocityThreshold: CGFloat = 200
 
-    // Inherit the accessory’s system color scheme so text follows glass contrast changes.
     private var typoColor: Color { .primary }
     private var typoSecondaryColor: Color { .secondary }
 

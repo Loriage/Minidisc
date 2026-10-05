@@ -1,7 +1,5 @@
 import SwiftUI
 
-// MARK: - ViewModel
-
 @Observable
 @MainActor
 final class ExternalProvidersSettingsViewModel {
@@ -27,8 +25,6 @@ final class ExternalProvidersSettingsViewModel {
         providers = store.load()
     }
 }
-
-// MARK: - View
 
 struct ExternalProvidersSettingsView: View {
     @Environment(\.appContainer) private var container

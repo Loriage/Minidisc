@@ -1,8 +1,6 @@
 import SwiftUI
 import OSLog
 
-// MARK: - Context menu preview views
-
 struct CollectionContextPreview: View {
     let coverImage: PlatformImage?
     let displayName: String
@@ -99,8 +97,6 @@ struct SongContextPreview: View {
     }
 }
 
-// MARK: - Song context menu
-
 struct SongContextMenuModifier: ViewModifier {
     let song: DisplayableSong
     let coverImage: PlatformImage?
@@ -168,8 +164,6 @@ struct SongContextMenuModifier: ViewModifier {
         }
     }
 }
-
-// MARK: - Collection context menu (albums and playlists)
 
 /// Pass no songs to hide playback actions. Playlists cannot be starred through Subsonic.
 struct CollectionContextMenuModifier: ViewModifier {
@@ -331,8 +325,6 @@ struct CollectionContextMenuModifier: ViewModifier {
     }
 }
 
-// MARK: - Lazy collection context menu (albums without pre-loaded songs)
-
 struct LazyCollectionContextMenuModifier: ViewModifier {
     let itemType: PinnedItemType
     let itemId: String
@@ -493,8 +485,6 @@ struct LazyCollectionContextMenuModifier: ViewModifier {
             }
     }
 }
-
-// MARK: - View extensions
 
 extension View {
     func songContextMenu(song: DisplayableSong, coverImage: PlatformImage? = nil) -> some View {

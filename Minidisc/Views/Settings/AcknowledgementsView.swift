@@ -10,6 +10,20 @@ struct AcknowledgementsView: View {
             }
 
             Section("Open Source") {
+                NavigationLink {
+                    ScrollView {
+                        Text(verbatim: audioLicenses)
+                            .font(.footnote)
+                            .textSelection(.enabled)
+                            .padding()
+                    }
+                    .navigationTitle("AudioStreaming")
+                    .navigationBarTitleDisplayMode(.inline)
+                } label: {
+                    LabeledContent("AudioStreaming") {
+                        Text("MIT License")
+                    }
+                }
                 Button {
                     ExternalLinkOpener.open(MinidiscURLs.swiftSonic)
                 } label: {
@@ -48,5 +62,11 @@ struct AcknowledgementsView: View {
         .formStyle(.grouped)
         .navigationTitle("Acknowledgements")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var audioLicenses: String {
+        guard let url = Bundle.main.url(forResource: "AudioStreaming-Licenses", withExtension: "txt"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else { return "" }
+        return text
     }
 }

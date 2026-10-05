@@ -76,8 +76,6 @@ struct WrappedStatHero: View {
     }
 }
 
-// MARK: - Animated counter sub-view
-
 private struct AnimatedHeroText: View, Animatable {
     var seconds: Double
 

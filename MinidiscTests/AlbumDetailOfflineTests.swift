@@ -3,14 +3,8 @@ import Foundation
 import SwiftSonic
 @testable import Minidisc
 
-// MARK: - Stubs
-
-/// Every endpoint throws — AlbumDetailViewModel's offline paths must never
-/// reach the server; loadFromAPI's failure is the trigger under test.
 @MainActor
 private final class ADLibraryStub: AlbumBrowsing {
-    /// When set, `album(id:)` returns this instead of throwing — used to drive the
-    /// empty-but-successful (200, no songs) path that the catch block can't catch.
     var albumResult: AlbumID3?
     @MainActor
     func album(id: String) async throws -> AlbumID3 {
@@ -34,7 +28,9 @@ private final class ADDownloadStub: DownloadServiceProtocol {
     func removeCover(forId coverArtId: String) async {}
     func garbageCollectOrphanedCovers(referencedIds: Set<String>) async -> Int { 0 }
     func coverCacheStats() async -> (count: Int, bytes: Int64) { (0, 0) }
-    func clearAllCovers() async {}
+    func clearStreamingCovers() async {}
+    func healMissingDownloadedCovers(serverID: UUID, allowsCellular: Bool,
+                                     shouldContinue: @escaping @Sendable () async -> Bool) async -> Int { 0 }
     func localPlaylistData(playlistId: String, serverId: UUID) async -> LocalPlaylistData? { nil }
     func localArtistData(artistId: String, artistName: String?, serverId: UUID) async -> LocalArtistData? { nil }
     func backfillPlaylistSongIds(playlistId: String, serverId: UUID, orderedSongIds: [String]) async {}
@@ -50,8 +46,6 @@ private final class ADDownloadStub: DownloadServiceProtocol {
     func remove(playlistId: String, serverId: UUID) async throws { throw URLError(.unknown) }
     func removeAll() async throws { throw URLError(.unknown) }
 }
-
-// MARK: - Tests
 
 @Suite("AlbumDetailViewModel — offline local fallback")
 @MainActor
@@ -144,8 +138,6 @@ struct AlbumDetailOfflineTests {
         #expect(vm.error == nil)
         #expect(vm.isOffline == true)
     }
-
-    // MARK: - Empty-success (WARP / Cloudflare edge) — the case the throw-only stubs missed
 
     @Test("empty-success album response with a downloaded copy loads local, not empty")
     func emptySuccessAlbumFallsBackToLocal() async throws {

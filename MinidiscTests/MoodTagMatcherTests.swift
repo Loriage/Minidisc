@@ -5,8 +5,6 @@ import Foundation
 @Suite("Mood playlists — tag-based fallback scoring")
 struct MoodTagMatcherTests {
 
-    // MARK: - Absence of signal
-
     @Test("a track with no tags at all scores nil, not zero")
     func noTagsMeansNoOpinion() {
         // Tracks without usable tags must be excluded, not treated as zero-score candidates.
@@ -25,8 +23,6 @@ struct MoodTagMatcherTests {
         #expect(MoodTagMatcher.score(polka, for: .night) == 0)
     }
 
-    // MARK: - Weighting
-
     @Test("a MOOD tag counts for more than a genre")
     func moodTagOutweighsGenre() {
         let byMood = SongTagFeatures(moods: ["Relaxed"])
@@ -43,8 +39,6 @@ struct MoodTagMatcherTests {
         let onlyGenre = SongTagFeatures(genres: ["Dance"])
         #expect(MoodTagMatcher.score(everything, for: .energetic)! > MoodTagMatcher.score(onlyGenre, for: .energetic)!)
     }
-
-    // MARK: - Matching behaviour
 
     @Test("MOOD tags match on substrings, since they are free text")
     func moodTagsMatchLoosely() {
@@ -76,8 +70,6 @@ struct MoodTagMatcherTests {
         #expect(MoodTagMatcher.score(fast, for: .energetic)! > MoodTagMatcher.score(fast, for: .night)!)
         #expect(MoodTagMatcher.score(slow, for: .night)! > MoodTagMatcher.score(slow, for: .energetic)!)
     }
-
-    // MARK: - Ranking
 
     @Test("ranking drops tracks that matched nothing")
     func rankingDropsZeroScores() {

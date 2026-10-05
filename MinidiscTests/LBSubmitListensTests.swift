@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Minidisc
 
-// MARK: - Helpers
-
 @MainActor
 final class RecordingTransport: ListenBrainzTransport {
     private(set) var requests: [URLRequest] = []
@@ -59,8 +57,6 @@ private let defaultRoot = URL(string: "https://api.listenbrainz.org")!
 private let validTokenBody = Data(#"{"valid":true,"user_name":"alice"}"#.utf8)
 private let validTokenWithoutUsernameBody = Data(#"{"valid":true}"#.utf8)
 
-// MARK: - LBTrackMetadata field mapping
-
 @Suite("LBTrackMetadata — field mapping")
 struct LBTrackMetadataTests {
 
@@ -87,8 +83,6 @@ struct LBTrackMetadataTests {
         #expect(meta.releaseName == nil)
     }
 }
-
-// MARK: - submitPlayingNow request shape
 
 @Suite("ListenBrainzClient — submitPlayingNow")
 struct LBSubmitPlayingNowTests {
@@ -147,8 +141,6 @@ struct LBSubmitPlayingNowTests {
     }
 }
 
-// MARK: - submitListen request shape
-
 @Suite("ListenBrainzClient — submitListen")
 struct LBSubmitListenTests {
 
@@ -195,8 +187,6 @@ struct LBSubmitListenTests {
         #expect(meta?["release_name"] == nil)
     }
 }
-
-// MARK: - Gating: nothing submitted when disabled or no token
 
 @Suite("ListenBrainzService — submission gating")
 struct LBSubmissionGatingTests {

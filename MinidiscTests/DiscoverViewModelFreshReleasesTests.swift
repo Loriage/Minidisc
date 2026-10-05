@@ -3,8 +3,6 @@ import Foundation
 import SwiftSonic
 @testable import Minidisc
 
-// MARK: - Mock provider
-
 private struct DVMockProvider: RecommendationProvider {
     let releases: [AlbumRecommendation]
     let shouldThrow: Bool
@@ -22,8 +20,6 @@ private struct DVMockProvider: RecommendationProvider {
     func similarArtists(toArtistID: String, limit: Int) async throws -> [SimilarArtistRecommendation] { [] }
 }
 
-// MARK: - Capturing provider (records params for assertion)
-
 @MainActor
 private final class DVCapturingProvider: RecommendationProvider {
     private(set) var capturedLimit: Int?
@@ -35,8 +31,6 @@ private final class DVCapturingProvider: RecommendationProvider {
         return []
     }
 }
-
-// MARK: - Library stub (never called in fresh releases tests)
 
 @MainActor
 private final class DVLibraryStub: ListeningHistoryBrowsing {
@@ -53,8 +47,6 @@ private func dvCalendar() -> Calendar {
 private func dvDate(year: Int, month: Int, day: Int) -> Date {
     dvCalendar().date(from: DateComponents(year: year, month: month, day: day)) ?? .distantPast
 }
-
-// MARK: - Tests
 
 @Suite("DiscoverViewModel — fresh releases")
 @MainActor

@@ -99,8 +99,6 @@ final class OnboardingViewModel {
         customHeaders.removeAll { $0.id == id }
     }
 
-    // MARK: - Private
-
     var redactedDescription: String {
         "OnboardingViewModel(username: \(username), password: [REDACTED], customHeaders: [REDACTED])"
     }

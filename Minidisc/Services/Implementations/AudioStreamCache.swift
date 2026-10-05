@@ -32,15 +32,11 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
         }
     }
 
-    // MARK: - Configuration
-
     func setMaxBytes(_ value: Int64) async {
         defer { Task { @MainActor in postOfflineLibraryChanged() } }
         maxBytes = max(Self.minMaxBytes, min(Self.maxMaxBytes, value))
         await evictToFitBudget()
     }
-
-    // MARK: - Lookup
 
     func availableSongIDs(serverID: UUID) throws -> Set<String> {
         let entries = try modelContext.fetch(FetchDescriptor<CachedTrack>(predicate: #Predicate { $0.serverId == serverID }))
@@ -77,8 +73,6 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
         }
         return url
     }
-
-    // MARK: - Storage
 
     func store(fileAt sourceURL: URL, forSongId songId: String, serverId: UUID, mimeType: String) async throws -> URL {
         defer { Task { @MainActor in postOfflineLibraryChanged() } }
@@ -156,8 +150,6 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
         default:                                  return "bin"
         }
     }
-
-    // MARK: - Eviction
 
     private func evictToFitBudget(protecting protectedID: UUID? = nil) async {
         let descriptor = FetchDescriptor<CachedTrack>(sortBy: [SortDescriptor(\.cachedAt, order: .forward)])
@@ -260,8 +252,6 @@ actor AudioStreamCache: AudioStreamCacheProtocol {
         }
         Logger.cache.info("Cleared cache for server \(serverId.uuidString)")
     }
-
-    // MARK: - Reporting
 
     var usedBytes: Int64 {
         get async {

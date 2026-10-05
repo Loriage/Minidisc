@@ -3,8 +3,6 @@ import Foundation
 import SwiftSonic
 @testable import Minidisc
 
-// MARK: - Stubs
-
 private final class ProviderStub: MoodTrackProvider, @unchecked Sendable {
     enum Outcome { case tracks(Int), empty, failure }
 
@@ -107,8 +105,6 @@ private final class PlaylistStub: MoodPlaylistClient, @unchecked Sendable {
     }
 }
 
-// MARK: - Harness
-
 private nonisolated final class CoverStub: @unchecked Sendable {
     private let lock = NSLock()
     private var _applied: [(spec: PlaylistGradientSpec, playlistId: String)] = []
@@ -154,8 +150,6 @@ private var utc: Calendar {
     return c
 }
 
-// MARK: - Cycle
-
 @Suite("Mood playlists — weekly cycle")
 struct MoodCycleTests {
 
@@ -180,8 +174,6 @@ struct MoodCycleTests {
         #expect(utc.component(.minute, from: start) == 0)
     }
 }
-
-// MARK: - Sync
 
 @Suite("Mood playlists — weekly sync")
 struct MoodPlaylistServiceTests {
@@ -520,8 +512,6 @@ struct MoodPlaylistServiceTests {
         #expect(await h.service.lastSource(serverId: h.serverId) == .tags)
     }
 
-    // MARK: - Covers
-
     @Test("each playlist gets its generated cover on first build")
     func coversAreAppliedOnce() async {
         let h = Harness()
@@ -551,8 +541,6 @@ struct MoodPlaylistServiceTests {
 
         #expect(h.covers.applied.count == 4)
     }
-
-    // MARK: - Forced rebuild
 
     @Test("a forced rebuild rewrites every playlist even mid-week")
     func rebuildIgnoresTheCadence() async {

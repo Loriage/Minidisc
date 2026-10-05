@@ -3,8 +3,6 @@ import Foundation
 import SwiftSonic
 @testable import Minidisc
 
-// MARK: - Stub
-
 /// Serves a canned newest-album list and per-album track lists. Albums missing from `tracksPerAlbum`
 /// throw, standing in for one the server can't open.
 private actor RALibraryStub:
@@ -57,8 +55,6 @@ private func newest(_ ids: [String]) -> [AlbumID3] {
     ids.map { AlbumID3(id: $0, name: $0, songCount: 0, duration: 0, coverArt: "cover-\($0)") }
 }
 
-// MARK: - Assembly
-
 @Suite("Recently Added — track assembly")
 struct RecentlyAddedAssemblyTests {
 
@@ -97,8 +93,6 @@ struct RecentlyAddedAssemblyTests {
         #expect(RecentlyAdded.tracks(from: collected, limit: 0).isEmpty)
     }
 }
-
-// MARK: - Service composition
 
 @Suite("Recently Added — library composition")
 struct RecentlyAddedLibraryTests {

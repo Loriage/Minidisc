@@ -9,13 +9,10 @@ nonisolated struct CrossfadeConfig: Sendable {
 @Observable
 @MainActor
 final class CrossfadeSettings {
-    // MARK: - Storage (observation ignored)
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var _duration: Double
     @ObservationIgnored private var _disableForGapless: Bool
-
-    // MARK: - Visible properties (manual observation hooks)
 
     var duration: Double {
         get {
@@ -44,8 +41,6 @@ final class CrossfadeSettings {
         }
     }
 
-    // MARK: - Defaults, bounds & keys
-
     static let defaultDuration: Double = 0
     static let minDuration: Double = 0
     static let maxDuration: Double = 12
@@ -53,13 +48,9 @@ final class CrossfadeSettings {
     private static let durationKey = "minidisc.crossfade.duration"
     private static let disableForGaplessKey = "minidisc.crossfade.disableForGapless"
 
-    // MARK: - Derived
-
     var config: CrossfadeConfig {
         CrossfadeConfig(duration: _duration, disableForGapless: _disableForGapless)
     }
-
-    // MARK: - Init
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults

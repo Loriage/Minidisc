@@ -1,7 +1,5 @@
 import Foundation
 
-// MARK: - WrappedPeriod
-
 nonisolated enum WrappedPeriod: Sendable, Hashable, Codable {
     case month(year: Int, month: Int)
     case year(Int)
@@ -88,8 +86,6 @@ nonisolated enum WrappedPeriod: Sendable, Hashable, Codable {
     }
 }
 
-// MARK: - Entry types
-
 nonisolated struct TopTrackEntry: Sendable, Identifiable, Codable {
     let rank: Int
     let trackId: String
@@ -124,8 +120,6 @@ nonisolated struct TopArtistEntry: Sendable, Identifiable, Codable {
 
     var id: String { artistId }
 }
-
-// MARK: - WrappedData
 
 nonisolated struct WrappedData: Sendable, Codable {
     let period: WrappedPeriod

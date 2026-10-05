@@ -596,8 +596,6 @@ actor ListenBrainzService {
         Logger.listenBrainz.debug("Enqueued pending listen; queue size=\(self.pendingQueue.count, privacy: .public)")
     }
 
-    // MARK: - Helpers
-
     @discardableResult
     private func beginRecommendationsOperation() -> UInt64 {
         recommendationsOperationGeneration &+= 1

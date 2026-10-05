@@ -11,16 +11,12 @@ protocol ServerServiceProtocol: AnyObject, Sendable {
         customHeaders: [String: String]
     ) async throws
 
-    /// Atomically removes server from SwiftData and Keychain.
-    /// Performs best-effort rollback if one step fails after the other succeeds.
     func removeServer(id: UUID) async throws
 
     func setActiveServer(id: UUID) async throws
 
     func updateCustomHeaders(_ headers: [String: String], forServer id: UUID) async throws
 
-    /// Updates all editable fields of a persisted server in SwiftData and Keychain.
-    /// Tests connectivity before writing; throws `ConnectionTestError` on failure.
     func updateServer(
         id: UUID,
         displayName: String,

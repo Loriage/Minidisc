@@ -37,8 +37,6 @@ struct LidarrAlbumDetailView: View {
         .task { await loadTracks() }
     }
 
-    // MARK: - Header
-
     private var header: some View {
         HStack(alignment: .top, spacing: MinidiscSpacing.m) {
             LidarrCoverImage(path: album.coverPath, client: client) {
@@ -133,8 +131,6 @@ struct LidarrAlbumDetailView: View {
         }
     }
 
-    // MARK: - Actions
-
     private func loadTracks() async {
         errorMessage = nil
         do {
@@ -174,8 +170,6 @@ struct LidarrAlbumDetailView: View {
         }
     }
 }
-
-// MARK: - Track row
 
 private struct LidarrTrackRow: View {
     let track: LidarrTrack

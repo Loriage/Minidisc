@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Minidisc
 
-// MARK: - Fixtures
-
 private let validImageData: Data = {
     let b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVQI12NgAAAAAgAB4iG8MwAAAABJRU5ErkJggg=="
     return Data(base64Encoded: b64)!
@@ -11,8 +9,6 @@ private let validImageData: Data = {
 
 private let invalidImageData = Data("not_an_image".utf8)
 private let testURL = URL(string: "https://coverartarchive.org/release/test/cover.jpg")!
-
-// MARK: - Mock fetchers
 
 @MainActor
 private final class CountingFetcher: ExternalArtworkFetcher {
@@ -84,8 +80,6 @@ private actor CompletionProbe {
     func isCompleted() -> Bool { completed }
 }
 
-// MARK: - Helpers
-
 private func makeTempDir() throws -> URL {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -118,12 +112,8 @@ private func eventually(
     return false
 }
 
-// MARK: - Tests
-
 @Suite("ExternalArtworkCache")
 struct ExternalArtworkCacheTests {
-
-    // MARK: Memory cache
 
     @Test("memory cache hit prevents second network call")
     func memoryCacheHitSkipsNetwork() async throws {
@@ -222,8 +212,6 @@ struct ExternalArtworkCacheTests {
         #expect(await cache.isStoredInMemory(thirdURL))
     }
 
-    // MARK: Disk cache
-
     @Test("disk hit within TTL skips network fetch and populates memory")
     func diskHitSkipsNetwork() async throws {
         let dir = try makeTempDir()
@@ -256,8 +244,6 @@ struct ExternalArtworkCacheTests {
         #expect(fetcher2.callCount == 1)
     }
 
-    // MARK: Fetch failure
-
     @Test("fetch failure returns nil and writes nothing to disk")
     func fetchFailureReturnsNilWritesNothing() async throws {
         let dir = try makeTempDir()
@@ -271,8 +257,6 @@ struct ExternalArtworkCacheTests {
         let contents = try FileManager.default.contentsOfDirectory(atPath: dir.path)
         #expect(contents.isEmpty)
     }
-
-    // MARK: Garbage collection — TTL
 
     @Test("GC removes expired files and keeps files within TTL")
     func gcRemovesExpiredKeepsValid() async throws {
@@ -297,8 +281,6 @@ struct ExternalArtworkCacheTests {
         #expect(fm.fileExists(atPath: valid2.path))
         #expect(!fm.fileExists(atPath: expired.path))
     }
-
-    // MARK: Garbage collection — size cap
 
     @Test("GC size cap removes oldest files until total is under limit")
     func gcSizeCapRemovesOldest() async throws {

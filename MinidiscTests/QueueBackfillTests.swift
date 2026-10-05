@@ -26,8 +26,6 @@ struct QueueBackfillTests {
         )
     }
 
-    // MARK: - similaritySeeds
-
     @Test("seeds are distinct, newest first, and capped")
     func seedsDistinctAndCapped() {
         let events = [
@@ -60,8 +58,6 @@ struct QueueBackfillTests {
         #expect(seeds.artistIds.isEmpty)
         #expect(seeds.genres.isEmpty)
     }
-
-    // MARK: - assembleBackfill
 
     @Test("excluded ids (current queue + recent plays) never appear in the result")
     func dedupesAgainstExcluded() {

@@ -3,8 +3,6 @@ import Foundation
 import SwiftSonic
 @testable import Minidisc
 
-// MARK: - Mock service
-
 @MainActor
 final class MockServerService: ServerServiceProtocol {
     let state: ServerState = ServerState()
@@ -43,8 +41,6 @@ final class MockServerService: ServerServiceProtocol {
     }
 }
 
-// MARK: - Suite
-
 @Suite("OnboardingViewModel — testConnection error routing")
 @MainActor
 struct OnboardingViewModelTests {
@@ -60,8 +56,6 @@ struct OnboardingViewModelTests {
         vm.password = "secret"
         return vm
     }
-
-    // MARK: testConnection
 
     @Test func testConnection_success_clearsConnectionError() async {
         let vm = makeViewModel()
@@ -131,8 +125,6 @@ struct OnboardingViewModelTests {
 
         #expect(vm.isLoading == false)
     }
-
-    // MARK: addServer
 
     @Test func addServer_success_noConnectionError() async {
         let service = MockServerService()

@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Minidisc
 
-// MARK: - Response fixtures
-
 private let testMBID = "5b11f4ce-a62d-471e-81fc-a69a8278c7da"
 private let testQID  = "Q392"
 
@@ -27,8 +25,6 @@ private func wdResponse(qid: String, filename: String) -> Data {
     {"entities":{"\(qid)":{"claims":{"P18":[{"mainsnak":{"datavalue":{"value":"\(filename)"}}}]}}}}
     """.utf8)
 }
-
-// MARK: - Stub HTTP client
 
 @MainActor
 private final class StubHTTPClient: ArtistImageHTTPClient {
@@ -131,12 +127,8 @@ private func eventuallyArtist(
     return false
 }
 
-// MARK: - Tests
-
 @Suite("ExternalArtistImageResolver")
 struct ExternalArtistImageResolverTests {
-
-    // MARK: MBID-based pipeline
 
     @Test("MBID happy path returns Commons URL")
     func mbidHappyPath() async {
@@ -378,8 +370,6 @@ struct ExternalArtistImageResolverTests {
         await sleeper.resumeNext()
     }
 
-    // MARK: Name-based search
-
     @Test("Name search happy path returns Commons URL")
     func nameHappyPath() async {
         let client = StubHTTPClient(responses: [
@@ -458,8 +448,6 @@ struct ExternalArtistImageResolverTests {
         let count = client.callCount
         #expect(count == 1)
     }
-
-    // MARK: MBID guard
 
     @Test("Empty MBID returns nil without network call")
     func emptyMBIDGuard() async {

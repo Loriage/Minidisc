@@ -31,14 +31,14 @@ actor OfflineLibraryReader {
     }
 
     func downloadedSongIds(serverId: UUID) async -> Set<String> {
-        let entries: [FileEntry] = await MainActor.run {
-            let context = ModelContext(modelContainer)
-            let tracks = (try? context.fetch(FetchDescriptor<DownloadedTrack>())) ?? []
-            return tracks
-                .filter { $0.serverId == serverId }
-                .map {
-                    FileEntry(songId: $0.songId, filePath: $0.filePath, fileSize: $0.fileSize)
-                }
+        // This actor owns the context for this read. Only value snapshots leave it.
+        let context = ModelContext(modelContainer)
+        var descriptor = FetchDescriptor<DownloadedTrack>(
+            predicate: #Predicate { $0.serverId == serverId }
+        )
+        descriptor.propertiesToFetch = [\.songId, \.filePath, \.fileSize]
+        let entries = ((try? context.fetch(descriptor)) ?? []).map {
+            FileEntry(songId: $0.songId, filePath: $0.filePath, fileSize: $0.fileSize)
         }
         return Set(entries.compactMap {
             validURL(for: $0, logInvalid: false) == nil ? nil : $0.songId

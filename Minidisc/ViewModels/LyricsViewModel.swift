@@ -20,7 +20,8 @@ final class LyricsViewModel {
 
     private var lyricsList: LyricsList?
     private var trackingTask: Task<Void, Never>?
-    private var resumeTask: Task<Void, Never>?
+    private(set) var resumeTask: Task<Void, Never>?
+    private let resumeDelay: Duration
     private var isShown = false
 
     nonisolated enum State: Equatable {
@@ -37,7 +38,8 @@ final class LyricsViewModel {
         source: LyricsSource,
         lyricsService: LyricsService,
         playerService: any PlayerServiceProtocol,
-        playerState: PlayerState
+        playerState: PlayerState,
+        resumeDelay: Duration = .seconds(3)
     ) {
         self.track = track
         self.serverId = serverId
@@ -45,14 +47,13 @@ final class LyricsViewModel {
         self.lyricsService = lyricsService
         self.playerService = playerService
         self.playerState = playerState
+        self.resumeDelay = resumeDelay
     }
 
     isolated deinit {
         trackingTask?.cancel()
         resumeTask?.cancel()
     }
-
-    // MARK: - Load
 
     func load() async {
         state = .loading
@@ -75,8 +76,6 @@ final class LyricsViewModel {
         }
     }
 
-    // MARK: - Line tracking
-
     func update(elapsedMs: Int) {
         guard case .loaded(let structured) = state, structured.synced else {
             currentLineIndex = nil
@@ -97,8 +96,6 @@ final class LyricsViewModel {
         }
     }
 
-    // MARK: - Seek
-
     func userTapped(lineIndex: Int) {
         guard case .loaded(let structured) = state, structured.synced else { return }
         guard lineIndex < structured.line.count else { return }
@@ -109,13 +106,11 @@ final class LyricsViewModel {
         }
     }
 
-    // MARK: - Auto-scroll
-
     func userStartedScrolling() {
         isUserScrolling = true
         resumeTask?.cancel()
-        resumeTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(3))
+        resumeTask = Task { [weak self, resumeDelay] in
+            try? await Task.sleep(for: resumeDelay)
             guard !Task.isCancelled else { return }
             self?.isUserScrolling = false
         }
@@ -125,16 +120,12 @@ final class LyricsViewModel {
         userStartedScrolling()
     }
 
-    // MARK: - Language selection
-
     func selectLanguage(_ lang: String) {
         guard selectedLanguage != lang else { return }
         selectedLanguage = lang
         currentLineIndex = nil
         applyCurrentLanguage()
     }
-
-    // MARK: - Timer lifecycle
 
     var isPlaying: Bool { playerState.playbackState == .playing }
 
@@ -153,7 +144,6 @@ final class LyricsViewModel {
         reconcileTracking()
     }
 
-    /// Runs line tracking only for visible, playing, time-synced lyrics.
     func reconcileTracking() {
         if isShown && isPlaying && hasSyncedLyrics {
             startTimer()
@@ -181,8 +171,6 @@ final class LyricsViewModel {
         trackingTask?.cancel()
         trackingTask = nil
     }
-
-    // MARK: - Private helpers
 
     private func applyCurrentLanguage() {
         guard let list = lyricsList else { return }

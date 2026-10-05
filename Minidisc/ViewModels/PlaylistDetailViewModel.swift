@@ -16,6 +16,7 @@ final class PlaylistDetailViewModel {
     private var loadGeneration: UInt64 = 0
     private var lastValidatedAt: Date?
     var error: UserFacingError?
+    private(set) var isMutatingTracks = false
     var isDownloadingPlaylist = false
     var downloadingIds: Set<String> = []
 
@@ -117,6 +118,12 @@ final class PlaylistDetailViewModel {
         return requested.compactMap { current[$0.id] }
     }
 
+    func playbackQueue(entries: [PlaylistEntry], selectedID: PlaylistEntry.ID) async -> PreparedPlaybackQueue? {
+        _ = await playbackSongs(from: entries.map(\.song))
+        guard !Task.isCancelled else { return nil }
+        return PlaylistEntry.playbackQueue(requested: entries, selectedID: selectedID, available: songs)
+    }
+
     private func isCurrent(_ generation: UInt64, serverId: UUID) -> Bool {
         generation == loadGeneration && serverState.activeServer?.id == serverId && !Task.isCancelled
     }
@@ -193,28 +200,47 @@ final class PlaylistDetailViewModel {
     }
 
     func removeTrack(at index: Int) async {
-        guard songs.indices.contains(index) else { return }
-        let removed = songs[index]
-        songs.remove(at: index)
+        await removeTracks(at: IndexSet(integer: index))
+    }
+
+    func removeTracks(at indices: IndexSet, expectedSongIDs: [String]? = nil) async {
+        guard !isMutatingTracks, !indices.isEmpty,
+              indices.allSatisfy({ songs.indices.contains($0) }),
+              expectedSongIDs.map({ $0 == songs.map(\.id) }) ?? true,
+              let serverID = serverState.activeServer?.id else { return }
+        isMutatingTracks = true
+        defer { isMutatingTracks = false }
+        let original = songs
         do {
-            try await playlistService.removeTracks(playlistId: playlistId, indices: [index])
+            try await playlistService.removeTracks(playlistId: playlistId, indices: Array(indices))
+            guard serverState.activeServer?.id == serverID else { return }
+            if songs.map(\.id) == original.map(\.id) {
+                songs = original.enumerated().filter { !indices.contains($0.offset) }.map(\.element)
+            } else {
+                await load()
+            }
         } catch {
-            songs.insert(removed, at: index)
             Logger.playlist.error("PlaylistDetailViewModel: remove track failed: \(error)")
-            toastService.showError("Failed to remove track")
+            if !UserFacingError.isCancellation(error) { toastService.showError("Failed to remove track") }
         }
     }
 
     func moveTracks(from source: IndexSet, to destination: Int) async {
-        let originalSongs = songs
-        songs.move(fromOffsets: source, toOffset: destination)
-        let newOrder = songs.map(\.id)
+        guard !isMutatingTracks, source.allSatisfy({ songs.indices.contains($0) }),
+              (0...songs.count).contains(destination), let serverID = serverState.activeServer?.id else { return }
+        isMutatingTracks = true
+        defer { isMutatingTracks = false }
+        let original = songs
+        var reordered = original
+        reordered.move(fromOffsets: source, toOffset: destination)
         do {
-            try await playlistService.reorderTracks(playlistId: playlistId, orderedSongIds: newOrder)
+            try await playlistService.reorderTracks(playlistId: playlistId, orderedSongIds: reordered.map(\.id))
+            guard serverState.activeServer?.id == serverID else { return }
+            if songs.map(\.id) == original.map(\.id) { songs = reordered }
+            else { await load() }
         } catch {
-            songs = originalSongs
             Logger.playlist.error("PlaylistDetailViewModel: reorder failed: \(error)")
-            toastService.showError("Failed to reorder tracks")
+            if !UserFacingError.isCancellation(error) { toastService.showError("Failed to reorder tracks") }
         }
     }
 }

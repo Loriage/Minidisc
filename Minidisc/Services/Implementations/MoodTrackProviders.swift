@@ -2,8 +2,6 @@ import Foundation
 import SwiftSonic
 import OSLog
 
-// MARK: - MoodTrackProvider
-
 nonisolated protocol MoodTrackProvider: Sendable {
     var kind: MoodSourceKind { get }
     func prepare() async
@@ -16,8 +14,6 @@ nonisolated enum MoodSourceKind: String, Sendable, Equatable {
     case sonic
     case tags
 }
-
-// MARK: - AudioMuse
 
 /// Resolves internal AudioMuse IDs through track metadata while preserving similarity order.
 nonisolated struct AudioMuseTrackProvider: MoodTrackProvider {
@@ -62,8 +58,6 @@ nonisolated struct AudioMuseTrackProvider: MoodTrackProvider {
     }
 }
 
-// MARK: - Tags
-
 /// Ranks genre-query candidates by local tags when AudioMuse is unavailable.
 nonisolated struct LibraryTagTrackProvider: MoodTrackProvider {
     let libraryService: any MoodTrackSourcing
@@ -81,7 +75,6 @@ nonisolated struct LibraryTagTrackProvider: MoodTrackProvider {
         var candidates = try await genreCandidates(for: mood)
         var source = "genres"
 
-        // Fall back to a broad sample when genres yield no candidates, then score MOOD and BPM tags.
         if candidates.isEmpty {
             candidates = try await randomCandidates()
             source = "random pool"

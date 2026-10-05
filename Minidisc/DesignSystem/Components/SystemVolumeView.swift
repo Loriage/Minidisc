@@ -34,13 +34,10 @@ struct SystemVolumeView: View {
         .accessibilityLabel("Volume")
         .accessibilityValue(Double(observer.displayVolume).formatted(.percent.precision(.fractionLength(0))))
         .task {
-            // Refresh after audio-session setup without writing back to the system volume.
             observer.refreshFromSystem()
         }
     }
 }
-
-// MARK: - Volume observer
 
 /// Separates displayed volume from pending user input to prevent KVO feedback loops.
 @Observable
@@ -74,9 +71,6 @@ private final class SystemVolumeObserver {
 
 }
 
-// MARK: - Hidden MPVolumeView for writing system volume
-
-/// Consumes pending user input through MPVolumeView, without writing KVO updates back.
 private struct HiddenVolumeWriter: UIViewRepresentable {
     let observer: SystemVolumeObserver
 

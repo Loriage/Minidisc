@@ -5,7 +5,7 @@ import SwiftData
 final class QueueSnapshot {
     var id: UUID
     var serverId: UUID
-    var songIds: [String]       // ordered list of Subsonic song IDs
+    var songIds: [String]
     var currentIndex: Int
     var positionSeconds: Double
     var savedAt: Date

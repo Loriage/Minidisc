@@ -595,7 +595,6 @@ final class MinidiscUXVerificationTests: XCTestCase {
         XCTAssertTrue(app.buttons["Pause"].firstMatch.exists)
         captureHierarchy("queue-edit-removed")
 
-        // The toast's whole 44-point-or-larger button is the Undo action.
         let undo = try XCTUnwrap(app.buttons.matching(identifier: "toast.undoQueue").allElementsBoundByIndex.last { $0.isHittable })
         try tap(undo, named: "queue-edit-undo")
         try require(searchElement(expected[1]))

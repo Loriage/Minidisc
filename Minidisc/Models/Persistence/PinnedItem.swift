@@ -6,11 +6,9 @@ nonisolated enum PinnedItemType: String, CaseIterable, Sendable {
     case playlist
 }
 
-/// Persists an item pinned to HomeView. Stores a metadata snapshot so the
-/// pinned grid renders immediately at launch without a network round-trip.
 @Model
 final class PinnedItem {
-    @Attribute(.unique) var id: String  // "{type}:{itemId}", e.g. "album:abc123"
+    @Attribute(.unique) var id: String
     var itemType: String
     var itemId: String
     var pinnedDate: Date
@@ -31,7 +29,7 @@ final class PinnedItem {
     ) {
         self.itemType = itemType.rawValue
         self.itemId = itemId
-        self.id = "\(itemType.rawValue):\(itemId)"
+        self.id = ServerItemIdentity.key(serverID: serverId, type: itemType.rawValue, itemID: itemId)
         self.displayName = displayName
         self.displaySubtitle = displaySubtitle
         self.coverArtId = coverArtId

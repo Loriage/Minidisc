@@ -4,8 +4,6 @@ import SwiftData
 import SwiftSonic
 @testable import Minidisc
 
-// MARK: - Test infrastructure
-
 enum WrappedTestError: Error { case generic }
 
 final actor MockPlaylistSyncClient: PlaylistSyncClient {
@@ -41,8 +39,6 @@ final actor MockPlaylistSyncClient: PlaylistSyncClient {
         return PlaylistWithSongs(id: returnId, name: name ?? "", songCount: songIds.count, duration: 0)
     }
 }
-
-// MARK: - File-scope helpers
 
 private var wrappedCal: Calendar = {
     var c = Calendar(identifier: .gregorian)
@@ -97,8 +93,6 @@ private func makeEvent(
 }
 
 private let testNow = wDate(year: 2026, month: 5, day: 4)
-
-// MARK: - Suite
 
 @Suite("WrappedPlaylistService Yearly Sync")
 struct WrappedPlaylistServiceTests {
@@ -296,8 +290,6 @@ struct WrappedPlaylistServiceTests {
         #expect(replaceCall?.songIds.count == 100)
     }
 
-    // MARK: - Recovery when the server playlist was deleted (e.g. server rebuild)
-
     @Test func staleCachedId_playlistDeletedOnServer_recreatesInsteadOfWritingToDeadId() async throws {
         let mock = MockPlaylistSyncClient()
         let stats = try makeStats()
@@ -367,8 +359,6 @@ struct WrappedPlaylistServiceTests {
         #expect(prefs.playlistId(year: 2026, serverId: "srv") == "pl-live")
     }
 }
-
-// MARK: - MockPlaylistSyncClient mutation helpers
 
 extension MockPlaylistSyncClient {
     func setGetPlaylistsError(_ error: Error?) { getPlaylistsError = error }

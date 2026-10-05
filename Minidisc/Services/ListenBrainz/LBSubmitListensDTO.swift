@@ -21,8 +21,6 @@ nonisolated struct LBTrackMetadata: Sendable {
     }
 }
 
-// MARK: - Internal Encodable request bodies (module-internal; used by ListenBrainzClient)
-
 nonisolated struct LBSubmitListensBody: Encodable {
     enum CodingKeys: String, CodingKey {
         case listenType = "listen_type"
@@ -47,8 +45,6 @@ nonisolated struct LBListenPayload: Encodable {
     }
 }
 
-/// Constant additional_info fields sent with every submission.
-/// duration_ms is included when known; submission_client and media_player are always "Minidisc".
 nonisolated struct LBAdditionalInfo: Encodable {
     enum CodingKeys: String, CodingKey {
         case durationMs = "duration_ms"

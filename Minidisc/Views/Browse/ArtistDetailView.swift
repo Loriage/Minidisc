@@ -28,8 +28,10 @@ struct ArtistDetailView: View {
     private let heroCoverHeight: CGFloat = 500
     @State private var isGeneratingMix = false
 
-    init(artist: ArtistID3) {
+    /// `viewModel` is for Previews: a supplied model is loaded instead of one built from the container.
+    init(artist: ArtistID3, viewModel: ArtistDetailViewModel? = nil) {
         self.artist = artist
+        _viewModel = State(initialValue: viewModel)
         let cid = "artist:\(artist.id)"
         _artistFavoriteMatches = Query(filter: #Predicate<FavoriteRecord> { $0.id == cid })
     }
@@ -963,3 +965,15 @@ struct OutOfLibraryArtistSheet: View {
         .buttonStyle(.plain)
     }
 }
+
+#if DEBUG
+#Preview("Artist") {
+    let container = AppContainer.preview()
+    let artist = PreviewFixtures.noraVale
+    MinidiscPreview(container: container) {
+        NavigationStack {
+            ArtistDetailView(artist: artist, viewModel: .preview(artist: artist, container: container))
+        }
+    }
+}
+#endif

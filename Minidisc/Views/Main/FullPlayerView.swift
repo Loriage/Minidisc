@@ -1010,3 +1010,18 @@ private struct VolumeSection: View {
         }
     }
 }
+
+#if DEBUG
+#Preview("Playing") {
+    MinidiscPreview(container: .preview()) {
+        FullPlayerView()
+    }
+}
+
+#Preview("Paused, large text") {
+    MinidiscPreview(container: .preview(isPlaying: false)) {
+        FullPlayerView()
+            .dynamicTypeSize(.accessibility2)
+    }
+}
+#endif

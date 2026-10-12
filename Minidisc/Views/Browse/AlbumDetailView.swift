@@ -27,7 +27,9 @@ struct AlbumDetailView: View {
     private let zoomNamespace: Namespace.ID?
     private let mode: AlbumDetailMode
 
-    init(album: AlbumID3, zoomSourceId: String? = nil, zoomNamespace: Namespace.ID? = nil, coverArtId: String? = nil, initialDominantColor: Color = .clear, initialCoverImage: PlatformImage? = nil, mode: AlbumDetailMode = .full) {
+    /// `viewModel` is for Previews: a supplied model is loaded instead of one built from the container.
+    init(album: AlbumID3, zoomSourceId: String? = nil, zoomNamespace: Namespace.ID? = nil, coverArtId: String? = nil, initialDominantColor: Color = .clear, initialCoverImage: PlatformImage? = nil, mode: AlbumDetailMode = .full, viewModel: AlbumDetailViewModel? = nil) {
+        _viewModel = State(initialValue: viewModel)
         albumId = album.id
         initialName = album.name
         initialArtistId = album.artistId
@@ -1229,3 +1231,34 @@ struct ThemeColorSheet: View {
         .presentationDetents([.height(260)])
     }
 }
+
+#if DEBUG
+#Preview("Album") {
+    let container = AppContainer.preview()
+    let album = PreviewFixtures.tidalRooms
+    MinidiscPreview(container: container) {
+        NavigationStack {
+            AlbumDetailView(
+                album: album,
+                coverArtId: album.coverArt,
+                viewModel: .preview(albumId: album.id, container: container)
+            )
+        }
+    }
+}
+
+#Preview("Album, dark") {
+    let container = AppContainer.preview()
+    let album = PreviewFixtures.blueHourSessions
+    MinidiscPreview(container: container) {
+        NavigationStack {
+            AlbumDetailView(
+                album: album,
+                coverArtId: album.coverArt,
+                viewModel: .preview(albumId: album.id, container: container)
+            )
+        }
+    }
+    .preferredColorScheme(.dark)
+}
+#endif

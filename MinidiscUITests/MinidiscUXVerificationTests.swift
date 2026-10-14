@@ -1626,11 +1626,10 @@ final class MinidiscUXVerificationTests: XCTestCase {
     }
 
     private func playPlaylistFromBeginning() throws {
-        // Both the playlist header and a restored mini-player expose "Lecture".
-        // The header is the wide button; the mini-player only resumes its current item.
-        let headerPlay = try XCTUnwrap(app.buttons.matching(identifier: "Lecture").allElementsBoundByIndex.first {
-            $0.frame.width > 100 && $0.isHittable
-        })
+        // Both the playlist header and a restored mini-player expose "Lecture"; the header's round
+        // Play button has its own identifier, while the mini-player only resumes its current item.
+        let headerPlay = app.buttons["playlist.detail.play"]
+        try require(headerPlay)
         captureHierarchy("before-play-playlist")
         headerPlay.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         captureHierarchy("play-playlist")

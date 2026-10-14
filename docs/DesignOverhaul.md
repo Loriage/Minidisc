@@ -10,7 +10,13 @@ Navibeat details, while keeping the rest of the app visually coherent.
 | Favourite iconography | Hearts everywhere (`heart` / `heart.fill`), replacing stars |
 | Typography | Plain SF Pro (`design: .default`) for headings too; no SF Pro Rounded |
 | Artwork-tinted screens | Always dark (player, album, artist, playlist), cover-derived tint, regardless of system appearance |
-| Track rows | No trailing "…" button. Row shows number, title, featured artists, heart, duration. Actions move to the context menu and swipe |
+| Track rows | No trailing "…" button. Row shows number, title, featured artists, heart, duration. Actions move to the context menu and swipe. Tapping the row plays; only the credits text opens artists |
+| Action rows | Every round button in a row is the same size; Play only gets a stronger fill |
+| Section spacing | One gap (`MinidiscSpacing.section`, 32pt) between page sections everywhere |
+| Credit-only artists | Artists with nothing filed under them (e.g. *Bill Evans Trio*, filed under Bill Evans) show every album crediting them |
+| Artist picker | Photos; split into In Your Library (tagged "N albums", counting filed + credited albums) and Not in Your Library |
+| Artist discography | Vertical lists, expanded by default, every album shown, each section collapsible with its own Play / Shuffle |
+| Lock screen | The favourite control stays a star: MediaPlayer exposes no glyph choice for `likeCommand` |
 
 ## Workstreams
 
@@ -26,6 +32,12 @@ Navibeat details, while keeping the rest of the app visually coherent.
 - **W6 Consistency sweep**: carry the row, heart and button changes to playlists, favourites, search,
   offline, local music; update the design-system docs.
 
+## Iteration 1 (UI_Iterations_1.pdf)
+
+Spacing token and right margins, equal action buttons, removed duplicate release block, leaner "Go to"
+menus, row tap fix with a UX verification test, credited albums from the library index, picker redesign,
+collapsible discography lists with per-section play, and genre / label album pages.
+
 ## Deferred (not in the first pass)
 
 - [ ] **Signal path sheet** on the player. Tapping the format line opens a panel describing the playback
@@ -33,6 +45,6 @@ Navibeat details, while keeping the rest of the app visually coherent.
   processing (ReplayGain, crossfade / gapless) → output route (`AVAudioSession.currentRoute`, sample
   rate). Report only what the app can observe; never claim bit-perfect output. Reference: Narjo
   "Signal Path" screenshot.
-- [ ] **Per-section actions on the artist page.** Each discography section header (Albums, Live Albums,
-  Appears On, …) gets a sort label ("Newest First"), a play button and a shuffle button that act on
-  that section's albums only. Reference: Narjo artist page.
+- [x] **Per-section actions on the artist page.** Play and Shuffle shipped in iteration 1.
+- [ ] **Per-section sort label** ("Newest First") on artist discography headers; sections currently follow
+  the global album sort.

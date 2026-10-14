@@ -25,6 +25,8 @@ See `MinidiscColors.md` for the full palette table, WCAG contrast notes, and usa
 ## Spacing
 
 Use `MinidiscSpacing` constants everywhere. Never write a literal `CGFloat` for spacing.
+`MinidiscSpacing.section` (32) is the only gap between page sections (shelves, track lists,
+discography groups); a section that renders nothing must not leave its spacing behind.
 
 ```swift
 enum MinidiscSpacing {
@@ -156,7 +158,13 @@ Button("Play", systemImage: "play.fill") { … }
 `FormatBadge` (lossless formats in `minidiscLossless`), `MetadataChip` + `MetadataChipFlow` (genres,
 label), `DiscHeader` (multi-disc track lists), `TrackArtistsLine` + `ArtistPickerSheet` (tappable
 featured artists: one credit opens the artist, several open the picker), `SimilarArtistsShelf`
-(shared by album and artist pages).
+(shared by album and artist pages). Genre and label chips push `AlbumCollectionView`.
+
+### `DiscographySection`
+
+The artist page's album groups: a header that collapses the list, compact round Play / Shuffle for the
+group, and `DiscographyAlbumRow`s (56pt cover, title, "year · N songs", chevron). Everything starts
+expanded and every album is listed.
 
 ### `SongRow`
 

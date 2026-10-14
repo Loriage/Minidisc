@@ -27,6 +27,13 @@ nonisolated protocol ArtistBrowsing: AnyObject, Sendable {
     /// Individual album failures are logged and skipped (best-effort). Throws `MinidiscError.artistTracksUnavailable`
     /// only when every album fetch fails.
     func fetchAllTracks(forArtistID artistID: String) async throws -> [DisplayableSong]
+
+    /// Albums by other artists that credit this artist on a track, newest first.
+    func appearances(artistID: String, artistName: String) async throws -> [AlbumID3]
+}
+
+extension ArtistBrowsing {
+    nonisolated func appearances(artistID: String, artistName: String) async throws -> [AlbumID3] { [] }
 }
 
 nonisolated protocol SongBrowsing: AnyObject, Sendable {

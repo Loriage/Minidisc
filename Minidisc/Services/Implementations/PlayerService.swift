@@ -128,7 +128,10 @@ actor PlayerService: PlayerServiceProtocol {
     private let engineBridge: AudioEngineBridge
     private var progressTask: Task<Void, Never>?
     private var pendingRestoreInfo: (seekTime: Double, pause: Bool)?
-    private var currentSource: MediaSource?
+    private var currentSource: MediaSource? {
+        didSet { publishSourceKind() }
+    }
+    private var sourceKindRevision: UInt64 = 0
     private var liveStreamStallTask: Task<Void, Never>?
 
     private let audioSession: any AudioSessionControlling
@@ -403,6 +406,16 @@ actor PlayerService: PlayerServiceProtocol {
     private var currentSourceIsRemoteStream: Bool {
         if case .stream = currentSource { return true }
         return false
+    }
+
+    /// Mirrors the source kind into PlayerState without suspending the caller; the revision keeps
+    /// out-of-order main-actor hops from showing an older source.
+    private func publishSourceKind() {
+        sourceKindRevision &+= 1
+        let revision = sourceKindRevision
+        let kind = currentSource.map(PlaybackSourceKind.init)
+        let state = state
+        Task { @MainActor in state.applySourceKind(kind, revision: revision) }
     }
 
     private func diagnosticSourceKind(_ source: MediaSource) -> PlaybackDiagnostics.SourceKind {

@@ -176,6 +176,13 @@ actor LibraryService: LibraryServiceProtocol {
 
     // MARK: - Artist tracks
 
+    func appearances(artistID: String, artistName: String) async throws -> [AlbumID3] {
+        // Search is local-first once the index is complete, and goes to the server otherwise.
+        let result = try await catalog.search(artistName)
+        try Task.checkCancellation()
+        return ArtistAppearances.albums(from: result.song ?? [], artistID: artistID)
+    }
+
     func fetchAllTracks(forArtistID artistID: String) async throws -> [DisplayableSong] {
         try Task.checkCancellation()
         do {

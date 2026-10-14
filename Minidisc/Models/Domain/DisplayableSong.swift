@@ -24,8 +24,22 @@ nonisolated struct DisplayableSong: Identifiable, Hashable, Sendable, Codable {
     /// OpenSubsonic: used as fallback when the selected mode's gain is absent.
     let replayGainFallbackGain: Double?
     var localFile: LocalFileReference? = nil
+    /// OpenSubsonic per-track artist credits. `nil` on servers without multi-artist support.
+    var artists: [ArtistCredit]? = nil
+    /// Source bit rate in kbps as reported by the server, before any transcoding.
+    var bitRate: Int? = nil
+    var bitDepth: Int? = nil
+    /// Source sample rate in Hz.
+    var samplingRate: Int? = nil
+    var channelCount: Int? = nil
 
     var isLocalFile: Bool { localFile != nil }
+}
+
+/// A credited artist on a track. `id` is nil when the credit only comes from a plain artist string.
+nonisolated struct ArtistCredit: Hashable, Sendable, Codable {
+    let id: String?
+    let name: String
 }
 
 extension DisplayableSong {
@@ -49,6 +63,14 @@ extension DisplayableSong {
         self.replayGainAlbumPeak = song.replayGain?.albumPeak
         self.replayGainBaseGain = song.replayGain?.baseGain
         self.replayGainFallbackGain = song.replayGain?.fallbackGain
+        self.artists = song.artists.flatMap { credits in
+            let mapped = credits.map { ArtistCredit(id: $0.id, name: $0.name) }
+            return mapped.isEmpty ? nil : mapped
+        }
+        self.bitRate = song.bitRate
+        self.bitDepth = song.bitDepth
+        self.samplingRate = song.samplingRate
+        self.channelCount = song.channelCount
     }
 
     @MainActor
@@ -72,6 +94,10 @@ extension DisplayableSong {
         self.replayGainAlbumPeak = track.replayGainAlbumPeak
         self.replayGainBaseGain = track.replayGainBaseGain
         self.replayGainFallbackGain = track.replayGainFallbackGain
+        // Downloads keep no server audio properties; the average bit rate follows from the file itself.
+        if let seconds = track.durationSeconds, seconds > 0, track.fileSize > 0 {
+            self.bitRate = Int(track.fileSize * 8 / 1000 / Int64(seconds))
+        }
     }
 
     func withDownloaded(_ flag: Bool) -> DisplayableSong {

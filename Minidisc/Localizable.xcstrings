@@ -56,6 +56,9 @@
         }
       }
     },
+    "%@ isn’t in your library." : {},
+    "%@ kbps" : {},
+    "%@, lossless" : {},
     "%lld of %lld tracks ready" : {
       "localizations" : {
         "de" : {
@@ -274,6 +277,9 @@
         }
       }
     },
+    "Album: %@" : {},
+    "Appears On" : {},
+    "Artists: %@" : {},
     "Automatic generation" : {
       "localizations" : {
         "de" : {
@@ -430,6 +436,9 @@
         }
       }
     },
+    "Cached" : {},
+    "Choose an artist to open" : {},
+    "Compilations" : {},
     "Could not delete mood playlists. Check your connection and permissions, then try again." : {
       "localizations" : {
         "de" : {
@@ -690,6 +699,8 @@
         }
       }
     },
+    "Disc %lld" : {},
+    "EPs" : {},
     "Favorite tracks and albums are saved automatically, outside Downloads and the stream cache limit. Turning this off removes only these automatic copies. Uses the stream cache format and cellular data settings." : {
       "localizations" : {
         "de" : {
@@ -898,6 +909,7 @@
         }
       }
     },
+    "Live Albums" : {},
     "Manage automatic updates and regenerate mood playlists in Application settings." : {
       "localizations" : {
         "de" : {
@@ -1262,6 +1274,7 @@
         }
       }
     },
+    "Off" : {},
     "Offline Mode" : {
       "localizations" : {
         "de" : {
@@ -1418,6 +1431,8 @@
         }
       }
     },
+    "On Device" : {},
+    "One" : {},
     "Only show and play music saved on this device, even when connected to the internet." : {
       "localizations" : {
         "de" : {
@@ -1470,6 +1485,9 @@
         }
       }
     },
+    "Opens the album" : {},
+    "Opens the artist" : {},
+    "Other Releases" : {},
     "Reconnect to browse Lidarr and manage your music library. Your offline music is still available in Minidisc." : {
       "localizations" : {
         "de" : {
@@ -1626,6 +1644,8 @@
         }
       }
     },
+    "Select Artist" : {},
+    "Singles" : {},
     "Some mood playlists could not be deleted. Automatic generation is off. Try again later." : {
       "localizations" : {
         "de" : {
@@ -1834,6 +1854,7 @@
         }
       }
     },
+    "Transcoding" : {},
     "Turn Off Offline Mode" : {
       "localizations" : {
         "fr" : {
@@ -33754,6 +33775,7 @@
       }
     },
     "Singles & EPs" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

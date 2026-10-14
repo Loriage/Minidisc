@@ -27,6 +27,9 @@ struct ArtistDetailView: View {
     @AppStorage("minidisc.albumSort") private var albumSort: AlbumSort = .recentlyAdded
     private let heroCoverHeight: CGFloat = 500
     @State private var isGeneratingMix = false
+    /// Discography groups the listener folded away; everything starts expanded.
+    @State private var collapsedSections: Set<String> = []
+    @State private var loadingSectionID: String?
 
     /// `viewModel` is for Previews: a supplied model is loaded instead of one built from the container.
     init(artist: ArtistID3, viewModel: ArtistDetailViewModel? = nil) {
@@ -60,6 +63,8 @@ struct ArtistDetailView: View {
     private var heroCoverArtId: String {
         if let cover = viewModel?.artist?.coverArt, !cover.isEmpty { return cover }
         if let latest = latestReleaseCoverArtId { return latest }
+        // Credit-only artists (an ensemble filed under its leader) borrow their newest credited cover.
+        if let credited = viewModel?.appearsOn.first?.coverArt { return credited }
         return artist.id
     }
     private var latestReleaseCoverArtId: String? {
@@ -83,7 +88,10 @@ struct ArtistDetailView: View {
                 } else {
                     let albums = container?.visibleAlbums(vm.artist?.album ?? []) ?? []
                     let localTracks = !isOnline ? container?.offlineLibrary.snapshot.artistSongs(artist.id) ?? [] : []
-                    if albums.isEmpty && localTracks.isEmpty {
+                    if albums.isEmpty && localTracks.isEmpty && isOnline && vm.isLoadingAppearances {
+                        // Nothing filed under the artist yet; wait for credits before calling it empty.
+                        skeletonGrid
+                    } else if albums.isEmpty && localTracks.isEmpty && (vm.appearsOn.isEmpty || !isOnline) {
                         if vm.isOffline || !isOnline {
                             EmptyStateView(
                                 systemImage: "wifi.slash",
@@ -138,20 +146,23 @@ struct ArtistDetailView: View {
                                     likedSongsSection(liked)
                                 }
                                 ForEach(vm.releaseShelves) { shelf in
-                                    let albums = container?.visibleAlbums(shelf.albums) ?? []
+                                    let albums = albumSort.sorted(container?.visibleAlbums(shelf.albums) ?? [])
                                     if !albums.isEmpty {
-                                        ArtistAlbumShelf(
+                                        discographySection(
+                                            id: "\(shelf.category)",
                                             title: shelf.category.title,
-                                            albums: albumSort.sorted(albums)
+                                            albums: albums
                                         )
                                     }
                                 }
                                 let appearsOn = container?.visibleAlbums(vm.appearsOn) ?? []
                                 if isOnline && !appearsOn.isEmpty {
-                                    ArtistAlbumShelf(
+                                    discographySection(
+                                        id: "appearsOn",
                                         title: "Appears On",
                                         albums: appearsOn,
-                                        showsArtist: true
+                                        showsAlbumArtist: true,
+                                        creditedSongs: vm.appearanceSongs
                                     )
                                 }
                                 if isOnline && (vm.isLoadingSimilarArtists || !vm.similarArtists.isEmpty) {
@@ -238,11 +249,11 @@ struct ArtistDetailView: View {
             }
             await viewModel?.load()
             guard let viewModel else { return }
+            await viewModel.loadAppearances()
             async let artistInfo: Void = viewModel.loadArtistInfo()
             await viewModel.loadTopSongs()
             await viewModel.loadLikedSongs()
             await viewModel.loadSimilarArtists()
-            await viewModel.loadAppearances()
             await artistInfo
         }
         .sheet(isPresented: $isShowingArtistInformation) {
@@ -288,7 +299,7 @@ struct ArtistDetailView: View {
                 .foregroundStyle(headerTextColor)
                 .multilineTextAlignment(.center)
 
-            let canPlay = !(vm.isPlayLoading || (albums.isEmpty && vm.offlineTracks.isEmpty))
+            let canPlay = !(vm.isPlayLoading || (albums.isEmpty && vm.offlineTracks.isEmpty && vm.appearanceSongs.isEmpty))
             HStack(spacing: MinidiscSpacing.xl) {
                 Button(isArtistFavorite ? "Remove from Favorites" : "Add to Favorites",
                        systemImage: isArtistFavorite ? "heart.fill" : "heart") {
@@ -539,6 +550,12 @@ struct ArtistDetailView: View {
             }
             return
         }
+        if viewModel?.isCreditOnly == true, let credited = viewModel?.appearanceSongs, !credited.isEmpty {
+            await c.toastService.perform {
+                try await c.playerService.play(tracks: shuffled ? credited.shuffled() : credited, startIndex: 0)
+            }
+            return
+        }
         do {
             let tracks = try await c.libraryService.fetchAllTracks(forArtistID: artist.id)
             try await c.playerService.play(tracks: shuffled ? tracks.shuffled() : tracks, startIndex: 0)
@@ -549,6 +566,81 @@ struct ArtistDetailView: View {
         }
     }
 
+    // MARK: - Discography
+
+    private func discographySection(
+        id: String,
+        title: LocalizedStringResource,
+        albums: [AlbumID3],
+        showsAlbumArtist: Bool = false,
+        creditedSongs: [DisplayableSong]? = nil
+    ) -> some View {
+        DiscographySection(
+            title: title,
+            albums: albums,
+            isExpanded: Binding(
+                get: { !collapsedSections.contains(id) },
+                set: { expanded in
+                    if expanded { collapsedSections.remove(id) } else { collapsedSections.insert(id) }
+                }
+            ),
+            showsAlbumArtist: showsAlbumArtist,
+            isPlayLoading: loadingSectionID == id,
+            onPlay: { Task { await playSection(id: id, albums: albums, creditedSongs: creditedSongs, shuffled: false) } },
+            onShuffle: { Task { await playSection(id: id, albums: albums, creditedSongs: creditedSongs, shuffled: true) } }
+        )
+    }
+
+    /// Plays a discography group in its listed order. Appears On plays only the tracks that credit the
+    /// artist; the artist's own groups play their albums in full.
+    private func playSection(
+        id: String,
+        albums: [AlbumID3],
+        creditedSongs: [DisplayableSong]?,
+        shuffled: Bool
+    ) async {
+        guard let c = container, loadingSectionID == nil else { return }
+        loadingSectionID = id
+        defer { loadingSectionID = nil }
+        HapticFeedback.medium.trigger()
+
+        var tracks: [DisplayableSong]
+        if let creditedSongs {
+            let order = Dictionary(uniqueKeysWithValues: albums.enumerated().map { ($1.id, $0) })
+            tracks = creditedSongs.sorted { (order[$0.albumId ?? ""] ?? .max) < (order[$1.albumId ?? ""] ?? .max) }
+        } else {
+            tracks = await Self.albumTracks(albums, library: c.libraryService)
+        }
+        guard !Task.isCancelled else { return }
+        guard !tracks.isEmpty else {
+            c.toastService.showError(String(localized: "Unable to load these albums. Please try again."))
+            return
+        }
+        if shuffled { tracks.shuffle() }
+        await c.toastService.perform { try await c.playerService.play(tracks: tracks, startIndex: 0) }
+    }
+
+    /// Loads each album's tracks (at most five requests in flight) and concatenates them in album order.
+    private static func albumTracks(_ albums: [AlbumID3], library: any AlbumBrowsing) async -> [DisplayableSong] {
+        var byIndex: [Int: [DisplayableSong]] = [:]
+        await withTaskGroup(of: (Int, [DisplayableSong]).self) { group in
+            var pending = albums.enumerated().makeIterator()
+            func enqueue() {
+                guard let (index, album) = pending.next() else { return }
+                group.addTask {
+                    let songs = (try? await library.album(id: album.id).song) ?? []
+                    return (index, songs.map { DisplayableSong(from: $0) })
+                }
+            }
+            for _ in 0..<5 { enqueue() }
+            for await (index, songs) in group {
+                byIndex[index] = songs
+                enqueue()
+            }
+        }
+        return albums.indices.flatMap { byIndex[$0] ?? [] }
+    }
+
     private var skeletonGrid: some View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: MinidiscSpacing.l) {
@@ -556,6 +648,9 @@ struct ArtistDetailView: View {
             }
             .padding(MinidiscSpacing.l)
         }
+        // Loading sits on the same dark surface the page resolves to.
+        .background(bodyColor.ignoresSafeArea())
+        .environment(\.colorScheme, .dark)
     }
 
 }
@@ -564,30 +659,6 @@ struct ArtistDetailView: View {
 
 private enum ArtistDetailMetrics {
     static let topSongArtwork: CGFloat = 44
-}
-
-private struct ArtistAlbumShelf: View {
-    let title: LocalizedStringResource
-    let albums: [AlbumID3]
-    /// Appears On lists other artists' albums, so the card names the album artist instead of the year.
-    var showsArtist = false
-
-    var body: some View {
-        MinidiscShelf {
-            MinidiscCarouselHeaderLink(title, itemCount: albums.count) {
-                AlbumCarouselCollectionView(title, albums: albums)
-            }
-        } content: {
-            ForEach(Array(albums.prefix(MinidiscCarouselMetrics.previewLimit))) { album in
-                AlbumShelfCard(
-                    album: album,
-                    metadataSubtitle: showsArtist
-                        ? (album.artist ?? album.year.map(String.init) ?? "")
-                        : (album.year.map(String.init) ?? "")
-                )
-            }
-        }
-    }
 }
 
 private struct ArtistTopSongsSection: View {
@@ -847,6 +918,16 @@ struct OutOfLibraryArtistSheet: View {
 #Preview("Artist") {
     let container = AppContainer.preview()
     let artist = PreviewFixtures.noraVale
+    MinidiscPreview(container: container) {
+        NavigationStack {
+            ArtistDetailView(artist: artist, viewModel: .preview(artist: artist, container: container))
+        }
+    }
+}
+
+#Preview("Credit-only artist") {
+    let container = AppContainer.preview()
+    let artist = PreviewFixtures.harbourStrings
     MinidiscPreview(container: container) {
         NavigationStack {
             ArtistDetailView(artist: artist, viewModel: .preview(artist: artist, container: container))

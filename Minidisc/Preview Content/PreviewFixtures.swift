@@ -17,11 +17,13 @@ nonisolated enum PreviewFixtures {
     static let hanaOkafor = artist(id: "ar-hana", name: "Hana Okafor")
     static let deltaSleepClub = artist(id: "ar-delta", name: "Delta Sleep Club")
     static let ivoLindqvistTrio = artist(id: "ar-ivo", name: "Ivo Lindqvist Trio")
+    /// Credit-only: guests on other artists' albums and has none filed under it.
+    static let harbourStrings = artist(id: "ar-strings", name: "Harbour String Quartet")
 
     static let tidalRooms = album(
         id: "al-tidal", name: "Tidal Rooms", artist: noraVale, year: 2023, genre: "Indie Pop",
         releaseDate: ItemDate(year: 2023, month: 4, day: 14), label: "Harbour Light Records",
-        guests: [1: hanaOkafor, 7: quietKites],
+        guests: [1: hanaOkafor, 7: quietKites, 8: harbourStrings],
         tracks: [
             ("Undertow", 222), ("Salt in the Static", 245), ("Glass Harbour", 198),
             ("Lighthouse Keeper", 267), ("The Long Way Round", 236), ("Small Hours", 178),
@@ -30,6 +32,7 @@ nonisolated enum PreviewFixtures {
     )
     static let paperLanterns = album(
         id: "al-lanterns", name: "Paper Lanterns", artist: noraVale, year: 2020, genre: "Indie Pop",
+        guests: [2: harbourStrings],
         tracks: [
             ("Paper Lanterns", 241), ("Fold", 198), ("Winter Orchard", 263), ("Postcards from Ys", 225),
             ("Quiet Engine", 207), ("Saltwater Letters", 284), ("Ferris", 176),
@@ -87,7 +90,7 @@ nonisolated enum PreviewFixtures {
         fieldRecordings, midnightTransit, neonHarbour, blueHourSessions,
     ]
     static let artists: [ArtistID3] = [
-        noraVale, quietKites, mossAndCopper, hanaOkafor, deltaSleepClub, ivoLindqvistTrio,
+        noraVale, quietKites, mossAndCopper, hanaOkafor, deltaSleepClub, ivoLindqvistTrio, harbourStrings,
     ]
 
     static let recentlyAdded = [glasshouse, midnightTransit, tidalRooms, neonHarbour, northernStatic]
@@ -250,6 +253,14 @@ nonisolated final class PreviewLibraryService: AlbumBrowsing, ArtistBrowsing, St
             .filter { $0.artistId == artistID }
             .flatMap(PreviewFixtures.songs(of:))
             .map { DisplayableSong(from: $0) }
+    }
+
+    func appearances(artistID: String, artistName: String) async throws -> ArtistAppearanceResult {
+        ArtistAppearances.result(
+            from: PreviewFixtures.albums.flatMap(PreviewFixtures.songs(of:)),
+            artistID: artistID,
+            albumHeaders: Dictionary(uniqueKeysWithValues: PreviewFixtures.albums.map { ($0.id, PreviewFixtures.withoutSongs($0)) })
+        )
     }
 
     func getStarred2() async throws -> Starred2 {

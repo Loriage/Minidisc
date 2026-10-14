@@ -54,10 +54,10 @@ struct DiscographySection: View {
 
             Spacer(minLength: MinidiscSpacing.s)
 
-            Button("Play", systemImage: "play.fill", action: onPlay)
+            Button("Play", systemImage: "play.fill") { onPlay() }
                 .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.compact, isProminent: true))
                 .disabled(isPlayLoading || albums.isEmpty)
-            Button("Shuffle", systemImage: "shuffle", action: onShuffle)
+            Button("Shuffle", systemImage: "shuffle") { onShuffle() }
                 .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.compact))
                 .disabled(isPlayLoading || albums.isEmpty)
         }
@@ -110,3 +110,43 @@ struct DiscographyAlbumRow: View {
         .accessibilityIdentifier("discography.album.\(album.id)")
     }
 }
+
+#if DEBUG
+#Preview {
+    @Previewable @State var albumsExpanded = true
+    @Previewable @State var singlesExpanded = false
+    MinidiscPreview(container: .preview()) {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: MinidiscSpacing.section) {
+                    DiscographySection(
+                        title: "Albums",
+                        albums: [PreviewFixtures.tidalRooms, PreviewFixtures.paperLanterns].map(PreviewFixtures.withoutSongs),
+                        isExpanded: $albumsExpanded,
+                        onPlay: {},
+                        onShuffle: {}
+                    )
+                    DiscographySection(
+                        title: "Singles",
+                        albums: [PreviewFixtures.withoutSongs(PreviewFixtures.glasshouse)],
+                        isExpanded: $singlesExpanded,
+                        onPlay: {},
+                        onShuffle: {}
+                    )
+                    DiscographySection(
+                        title: "Appears On",
+                        albums: [PreviewFixtures.withoutSongs(PreviewFixtures.midnightTransit)],
+                        isExpanded: .constant(true),
+                        showsAlbumArtist: true,
+                        onPlay: {},
+                        onShuffle: {}
+                    )
+                }
+                .padding(.vertical, MinidiscSpacing.l)
+            }
+            .background(ArtworkSurfaceBackground(tint: ArtworkSurfacePalette.tint(from: .teal)))
+        }
+        .environment(\.colorScheme, .dark)
+    }
+}
+#endif

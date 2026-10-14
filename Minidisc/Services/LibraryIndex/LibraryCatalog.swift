@@ -424,6 +424,17 @@ actor LibraryCatalog {
         return try await store.creditedSongs(artistID: artistID, artistName: artistName, serverID: serverID)
     }
 
+    /// Albums whose OpenSubsonic record labels include `label` (case-insensitive), by name.
+    /// `nil` while the album index is incomplete: the Subsonic API has no label filter to fall back to.
+    func albums(recordLabel label: String) async throws -> [AlbumID3]? {
+        let serverID = try await source.activeServerID()
+        guard try await store.status(for: serverID).albums else { return nil }
+        let wanted = LibraryIndexText.normalized(label)
+        return try await store.albums(serverID: serverID).filter { album in
+            (album.recordLabels ?? []).contains { LibraryIndexText.normalized($0.name) == wanted }
+        }
+    }
+
     /// Indexed album headers for the given IDs, in no particular order.
     func indexedAlbums(ids: [String]) async throws -> [AlbumID3] {
         let serverID = try await source.activeServerID()

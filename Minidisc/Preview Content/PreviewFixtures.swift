@@ -229,7 +229,13 @@ private nonisolated struct PreviewArtistInfo: Encodable {
 /// Answers every library read the album, artist and home view models make, from `PreviewFixtures`.
 nonisolated final class PreviewLibraryService: AlbumBrowsing, ArtistBrowsing, StarredBrowsing,
     ArtistRecommendationBrowsing, PlaylistBrowsing, RecentlyAddedAlbumBrowsing,
-    ListeningHistoryBrowsing, GenreBrowsing {
+    ListeningHistoryBrowsing, GenreBrowsing, RecordLabelBrowsing {
+
+    func albums(recordLabel: String) async throws -> [AlbumID3]? {
+        PreviewFixtures.albums
+            .filter { ($0.recordLabels ?? []).contains { $0.name == recordLabel } }
+            .map(PreviewFixtures.withoutSongs)
+    }
 
     func album(id: String) async throws -> AlbumID3 {
         guard let album = PreviewFixtures.album(id: id) else { throw URLError(.fileDoesNotExist) }

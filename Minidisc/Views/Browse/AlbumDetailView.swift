@@ -660,7 +660,18 @@ struct AlbumMetadataSection: View {
                 if !chips.isEmpty {
                     MetadataChipFlow {
                         ForEach(chips, id: \.self) { chip in
-                            MetadataChip(text: chip.text, systemImage: chip.systemImage)
+                            if isOffline {
+                                MetadataChip(text: chip.text, systemImage: chip.systemImage)
+                            } else {
+                                // Opens every album in that genre / from that label.
+                                NavigationLink {
+                                    AlbumCollectionView(kind: chip.kind)
+                                } label: {
+                                    MetadataChip(text: chip.text, systemImage: chip.systemImage)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityHint(Text("Shows all albums"))
+                            }
                         }
                     }
                     .padding(.top, MinidiscSpacing.s)
@@ -673,15 +684,16 @@ struct AlbumMetadataSection: View {
     private struct Chip: Hashable {
         let text: String
         let systemImage: String?
+        let kind: AlbumCollectionKind
     }
 
     private var genreChips: [Chip] {
         let values = genres.isEmpty ? [genre].compactMap { $0 } : genres
-        return Self.unique(values).prefix(3).map { Chip(text: $0, systemImage: nil) }
+        return Self.unique(values).prefix(3).map { Chip(text: $0, systemImage: nil, kind: .genre($0)) }
     }
 
     private var labelChips: [Chip] {
-        Self.unique(recordLabels).prefix(1).map { Chip(text: $0, systemImage: "building.2") }
+        Self.unique(recordLabels).prefix(1).map { Chip(text: $0, systemImage: "building.2", kind: .recordLabel($0)) }
     }
 
     private static func unique(_ values: [String]) -> [String] {

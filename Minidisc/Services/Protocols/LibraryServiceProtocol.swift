@@ -83,6 +83,15 @@ nonisolated protocol GenreBrowsing: AnyObject, Sendable {
     func albumsByGenre(_ genre: String, size: Int) async throws -> [AlbumID3]
 }
 
+nonisolated protocol RecordLabelBrowsing: AnyObject, Sendable {
+    /// `nil` until the library index has every album; labels can only be read from indexed albums.
+    func albums(recordLabel: String) async throws -> [AlbumID3]?
+}
+
+extension RecordLabelBrowsing {
+    nonisolated func albums(recordLabel: String) async throws -> [AlbumID3]? { nil }
+}
+
 nonisolated protocol MoodTrackSourcing: AnyObject, Sendable {
     /// Keeps the raw OpenSubsonic mood and BPM tags used by the local mood matcher.
     func songsByGenre(_ genre: String, count: Int) async throws -> [Song]
@@ -130,6 +139,7 @@ nonisolated protocol ArtworkURLResolving: AnyObject, Sendable {
 nonisolated protocol LibraryServiceProtocol:
     LibrarySearching,
     AlbumBrowsing,
+    RecordLabelBrowsing,
     ArtistBrowsing,
     SongBrowsing,
     PlaylistBrowsing,

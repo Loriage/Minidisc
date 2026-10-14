@@ -333,6 +333,10 @@ actor LibraryService: LibraryServiceProtocol {
         try await client().getGenres()
     }
 
+    func albums(recordLabel: String) async throws -> [AlbumID3]? {
+        try await catalog.albums(recordLabel: recordLabel)
+    }
+
     func albumsByGenre(_ genre: String, size: Int) async throws -> [AlbumID3] {
         try await client().getAlbumList2(type: .byGenre, size: size, genre: genre)
     }

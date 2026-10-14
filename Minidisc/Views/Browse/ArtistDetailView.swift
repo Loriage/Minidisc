@@ -609,7 +609,7 @@ struct ArtistDetailView: View {
             let order = Dictionary(uniqueKeysWithValues: albums.enumerated().map { ($1.id, $0) })
             tracks = creditedSongs.sorted { (order[$0.albumId ?? ""] ?? .max) < (order[$1.albumId ?? ""] ?? .max) }
         } else {
-            tracks = await Self.albumTracks(albums, library: c.libraryService)
+            tracks = await AlbumTrackLoader.tracks(for: albums, library: c.libraryService)
         }
         guard !Task.isCancelled else { return }
         guard !tracks.isEmpty else {
@@ -618,27 +618,6 @@ struct ArtistDetailView: View {
         }
         if shuffled { tracks.shuffle() }
         await c.toastService.perform { try await c.playerService.play(tracks: tracks, startIndex: 0) }
-    }
-
-    /// Loads each album's tracks (at most five requests in flight) and concatenates them in album order.
-    private static func albumTracks(_ albums: [AlbumID3], library: any AlbumBrowsing) async -> [DisplayableSong] {
-        var byIndex: [Int: [DisplayableSong]] = [:]
-        await withTaskGroup(of: (Int, [DisplayableSong]).self) { group in
-            var pending = albums.enumerated().makeIterator()
-            func enqueue() {
-                guard let (index, album) = pending.next() else { return }
-                group.addTask {
-                    let songs = (try? await library.album(id: album.id).song) ?? []
-                    return (index, songs.map { DisplayableSong(from: $0) })
-                }
-            }
-            for _ in 0..<5 { enqueue() }
-            for await (index, songs) in group {
-                byIndex[index] = songs
-                enqueue()
-            }
-        }
-        return albums.indices.flatMap { byIndex[$0] ?? [] }
     }
 
     private var skeletonGrid: some View {

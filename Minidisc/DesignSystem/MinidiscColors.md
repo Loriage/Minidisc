@@ -9,6 +9,7 @@
 | `minidiscAccentText` | white | white | — | Text/icons placed on an accent-filled surface |
 | `minidiscCoverShadow` | rgba(0,0,0,0.15) | transparent | — | Shadow on cover art in light mode |
 | `minidiscCoverBorder` | — | white 8% | — | Thin border on cover art in dark mode (replaces invisible shadow) |
+| `minidiscLossless` | `#1E8A3C` | `#68D97D` | ~4.4:1 on white; ≥ 4:1 on artwork surfaces | Text of the lossless `FormatBadge` (FLAC, ALAC…) and its 18% tinted fill. Nothing else |
 
 ## Rules
 
@@ -27,6 +28,14 @@
 1. Add the color set to `Assets.xcassets` with both Any and Dark Appearance variants.
 2. Add a usage rule to this table.
 3. Do not add a manual `Color` extension — Xcode generates `Color.<assetName>` automatically.
+
+## Artwork surfaces (player, album, artist)
+
+These screens are always dark. `ArtworkSurfacePalette.tint(from:)` keeps the cover's hue (chromatic
+covers get ×1.3 saturation, capped at 0.85) and caps relative luminance at 0.1, so white text is at
+least 7:1 and 70% white secondary text stays above 4.5:1. The page fades from that tint to a base at
+32% of it. Before the cover colour is known the neutral is `Color(white: 0.09)`. Tappable artist
+credits use `minidiscAccent` (dark variant) on these surfaces.
 
 ## Playlist artwork backgrounds
 

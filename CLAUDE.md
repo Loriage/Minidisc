@@ -14,7 +14,7 @@ LRCLIB lyrics, Siri / App Intents and a yearly "Wrapped" recap.
 | `SWIFT_TREAT_WARNINGS_AS_ERRORS` | YES | A warning fails the build. Don't leave unused vars or `try?` results that trigger warnings |
 | `SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY` | YES | Import the module you use in each file (e.g. `import SwiftSonic`, `import OSLog`) |
 | Strings | String Catalogs, `STRING_CATALOG_GENERATE_SYMBOLS = YES` | Catalogs: `Localizable`, `LocalMusic` (table), `InfoPlist`, `AppShortcuts` |
-| Dependency | `swiftsonic/` local Swift package (product `SwiftSonic`) | The Subsonic API client. It is a separate MIT project with its own README/CHANGELOG/tests; change it only on purpose |
+| Dependency | `SwiftSonic` remote Swift package (`github.com/MathieuDubart/swiftsonic`) | The Subsonic API client. It is a separate MIT project with its own README/CHANGELOG/tests; change it only on purpose, upstream |
 
 ## Build and test
 
@@ -22,7 +22,7 @@ Inside Xcode, use the xcode-tools MCP commands. They are faster and pick up the 
 
 - Build: `BuildProject` (scheme **Minidisc**)
 - Quick type check of one file: `XcodeRefreshCodeIssuesInFile`
-- Unit tests: `RunAllTests` / `RunSomeTests` (active test plan **Minidisc**)
+- Unit tests: the **Minidisc** scheme has no test action; run tests through the `MinidiscTests` scheme
 
 From the command line (the project is `Minidisc.xcodeproj` at the repo root; there is no workspace):
 
@@ -32,7 +32,7 @@ xcodebuild build -project Minidisc.xcodeproj -scheme Minidisc \
   -destination 'platform=iOS Simulator,name=<any iPhone simulator>'
 
 # Unit tests (MinidiscTests, Swift Testing)
-xcodebuild test -project Minidisc.xcodeproj -scheme Minidisc \
+xcodebuild test -project Minidisc.xcodeproj -scheme MinidiscTests \
   -destination 'platform=iOS Simulator,name=<any iPhone simulator>' \
   -only-testing:MinidiscTests
 
@@ -40,8 +40,6 @@ xcodebuild test -project Minidisc.xcodeproj -scheme Minidisc \
   -only-testing:MinidiscTests/ServerServiceTests
   -only-testing:MinidiscTests/ServerServiceTests/addServer_firstServer_becomesActive()
 
-# SwiftSonic package tests
-(cd swiftsonic && swift test)
 ```
 
 Shared schemes: `Minidisc`, `MinidiscTests`, `MinidiscUITests`.
@@ -87,7 +85,6 @@ Minidisc/                      app target sources
   *.xcstrings, Info.plist, Minidisc.entitlements, PrivacyInfo.xcprivacy, AppIntentVocabulary.plist
 MinidiscTests/                 ~110 Swift Testing files (no XCTest)
 MinidiscUITests/               XCTest UI tests incl. MinidiscUXVerificationTests
-swiftsonic/                    local SwiftSonic package (Subsonic/OpenSubsonic client)
 Scripts/Testing/               UX fixture server + instructions
 ```
 
@@ -259,6 +256,11 @@ PlayerService (actor, ~4.7k lines: queue, shuffle/repeat, auto-extend, smart shu
   `MinidiscTypography`.
 - Colors: semantic SwiftUI colors for text and backgrounds. `minidiscAccent` is for primary interactive
   elements only. New colors go into `Assets.xcassets` plus `MinidiscColors.md`.
+- Plain SF Pro only (no `design: .rounded`) outside Wrapped and the generated-cover renderers. Favourites
+  are hearts. Player, album, artist and local-collection pages are always dark (`ArtworkSurfacePalette`).
+- Round buttons on those screens use `.buttonStyle(.minidiscCircle(...))` with `MinidiscControlSize`.
+  Track rows have no "…" button; row actions live in the context menu and swipe actions.
+- Design direction, decisions and deferred items: `docs/DesignOverhaul.md`.
 - Cover art goes through `CoverArtCard` (or `CoverArtView` + `.minidiscCoverStyle` in flexible grids).
   Use `EmptyStateView` instead of `ContentUnavailableView` in screens. Reuse `SongRow`, `AlbumRow`,
   `PlayButton` and `SectionHeader`.

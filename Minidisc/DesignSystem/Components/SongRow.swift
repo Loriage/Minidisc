@@ -101,14 +101,21 @@ struct SongRow: View {
     var body: some View {
         HStack(spacing: MinidiscSpacing.s) {
             if let onTap, showsTappableCredits {
+                // The play button fills the row behind the content. Index and title don't take touches,
+                // so taps on them reach it; only the credits link on top opens artists.
                 primaryContent
-                    .onTapGesture(perform: onTap)
-                    .accessibilityAddTraits(.isButton)
-                    .accessibilityAction(.default, onTap)
-                    .accessibilityIdentifier(rowAccessibilityIdentifier)
+                    .background {
+                        Button(action: onTap) {
+                            Color.clear.contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text(verbatim: song.title))
+                        .accessibilityIdentifier(rowAccessibilityIdentifier)
+                    }
             } else if let onTap {
                 Button(action: onTap) {
                     primaryContent
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier(rowAccessibilityIdentifier)
@@ -184,6 +191,8 @@ struct SongRow: View {
                 }
                 .frame(width: 28, height: 44, alignment: .center)
                 .monospacedDigit()
+                .allowsHitTesting(!showsTappableCredits)
+                .accessibilityHidden(showsTappableCredits)
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -192,8 +201,13 @@ struct SongRow: View {
                     .foregroundStyle(isCurrentTrack ? playingAccent : titleColor)
                     .lineLimit(textLineLimit)
                     .fixedSize(horizontal: false, vertical: true)
+                    .allowsHitTesting(!showsTappableCredits)
+                    .accessibilityHidden(showsTappableCredits)
                 if showsTappableCredits, let onArtistsTap {
-                    TrackArtistsLine(credits: artistCredits) { onArtistsTap(artistCredits) }
+                    TrackArtistsLine(
+                        credits: artistCredits,
+                        accessibilityIdentifier: rowAccessibilityIdentifier.isEmpty ? "" : rowAccessibilityIdentifier + ".credits"
+                    ) { onArtistsTap(artistCredits) }
                 } else if let secondaryText = secondaryText ?? (showArtist ? song.artist : nil) {
                     Text(secondaryText)
                         .font(.minidiscCellSubtitle)
@@ -204,9 +218,9 @@ struct SongRow: View {
             }
 
             Spacer(minLength: 0)
+                .allowsHitTesting(!showsTappableCredits)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
     }
 
     private var trailingContent: some View {

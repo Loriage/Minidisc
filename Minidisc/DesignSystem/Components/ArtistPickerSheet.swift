@@ -46,6 +46,7 @@ struct ArtistPickerSheet: View {
                     Text(verbatim: request.trackTitle)
                 }
             }
+            .accessibilityIdentifier("artist.picker")
             .navigationTitle("Select Artist")
             .navigationBarTitleDisplayModeInline()
             .toolbar {

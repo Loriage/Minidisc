@@ -369,6 +369,30 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try await setFixtureState(["fail_stream": false])
     }
 
+    /// Album rows with guest credits: the row plays, only the orange credits open the artist picker.
+    func testFixtureAlbumRowPlaysAndCreditsOpenPicker() async throws {
+        try await launchFixtureApp()
+        try await setFixtureState(["slow_stream": false, "removed": false, "fail_stream": false])
+        try openBrowse("Albums")
+        try tap(app.staticTexts["Horizons de test"].firstMatch, named: "album-credits-open-album")
+        let row = searchElement("album.song.row.ux-song-2")
+        try require(row, timeout: 10)
+        // Tap the title line, not the credits line beneath it.
+        captureHierarchy("before-album-row-title-tap")
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.25)).tap()
+        try require(app.buttons["Pause"].firstMatch, timeout: 8)
+        XCTAssertEqual(try miniPlayerTitle().label, secondTitle, "Tapping the title must play that track.")
+        XCTAssertFalse(searchElement("artist.picker").exists, "Tapping the title must not open the artist picker.")
+        captureHierarchy("album-row-title-played")
+        try tap(app.buttons["Pause"].firstMatch, named: "album-credits-pause")
+
+        let credits = searchElement("album.song.row.ux-song-2.credits")
+        try tap(credits, named: "album-row-credits")
+        try require(searchElement("artist.picker"), timeout: 5)
+        XCTAssertEqual(try miniPlayerTitle().label, secondTitle, "Opening the credits must not change the track.")
+        captureHierarchy("album-row-credits-opened-picker")
+    }
+
     func testFixtureQueuePresentation() async throws {
         try await launchFixtureApp()
         try await setFixtureState(["slow_stream": false, "removed": false, "fail_stream": false])

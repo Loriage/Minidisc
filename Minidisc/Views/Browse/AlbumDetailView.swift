@@ -1037,6 +1037,7 @@ struct AlbumSongRows: View {
                     titleColor: titleColor,
                     secondaryColor: secondaryColor,
                     trailingAccessory: .favorite,
+                    rowAccessibilityIdentifier: "album.song.row.\(song.id)",
                     onDownload: downloadAction,
                     onRemoveDownload: removeAction,
                     isDownloading: isDownloading,

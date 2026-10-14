@@ -274,7 +274,7 @@ struct LibraryView: View {
                 }
                 if isOnline || (!local.favorites.songs.isEmpty || !local.favorites.albums.isEmpty || !local.favorites.artists.isEmpty) {
                     NavigationLink(value: HomeDestination.libraryFavorites) {
-                        HomeLibraryRowLabel(title: "Favorites", systemImage: "star.fill")
+                        HomeLibraryRowLabel(title: "Favorites", systemImage: "heart.fill")
                     }
                     .buttonStyle(.plain)
                     Divider().padding(.leading, 52)

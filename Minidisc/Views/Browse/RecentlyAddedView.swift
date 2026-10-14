@@ -121,7 +121,7 @@ struct RecentlyAddedView: View {
     private var heroContent: some View {
         VStack(spacing: MinidiscSpacing.s) {
             Text("Recently Added")
-                .font(.system(.title, design: .rounded, weight: .semibold))
+                .font(.system(.title, weight: .semibold))
                 .foregroundStyle(headerTextColor)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, MinidiscSpacing.l)

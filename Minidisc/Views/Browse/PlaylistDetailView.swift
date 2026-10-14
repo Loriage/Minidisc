@@ -585,7 +585,7 @@ struct PlaylistDetailView: View {
                 .padding(.top, 100)
             VStack(spacing: MinidiscSpacing.s) {
                 TextField("Playlist Title", text: $editName)
-                    .font(.system(.title2, design: .rounded, weight: .semibold))
+                    .font(.minidiscDetailTitle)
                     .multilineTextAlignment(.center)
                     .padding(.vertical, MinidiscSpacing.s)
                 TextField("Description", text: $editComment, axis: .vertical)

@@ -40,7 +40,7 @@ struct OnboardingStepView<Content: View>: View {
 
             VStack(spacing: MinidiscSpacing.xs) {
                 Text(title)
-                    .font(.system(.title3, design: .rounded, weight: .bold))
+                    .font(.system(.title3, weight: .bold))
                     .foregroundStyle(MinidiscColors.textPrimary)
                     .multilineTextAlignment(.center)
 

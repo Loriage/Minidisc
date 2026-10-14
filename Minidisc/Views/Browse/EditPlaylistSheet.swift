@@ -46,7 +46,7 @@ struct EditPlaylistSheet: View {
 
                 Section {
                     TextField("Playlist Title", text: $editName)
-                        .font(.system(.title2, design: .rounded, weight: .semibold))
+                        .font(.system(.title2, weight: .semibold))
                         .multilineTextAlignment(.center)
                         .padding(.vertical, MinidiscSpacing.xs)
                     TextField("Description", text: $editComment, axis: .vertical)

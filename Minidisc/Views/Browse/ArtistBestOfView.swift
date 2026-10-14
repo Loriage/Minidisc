@@ -48,7 +48,7 @@ struct ArtistBestOfView: View {
                     )
                 } else {
                     EmptyStateView(
-                        systemImage: "star",
+                        systemImage: "heart",
                         title: "No Liked Songs",
                         subtitle: "Songs you favorite from this artist will appear here."
                     )
@@ -124,7 +124,7 @@ struct ArtistBestOfView: View {
     private var heroContent: some View {
         VStack(spacing: MinidiscSpacing.s) {
             Text("The best of \(artistName)")
-                .font(.system(.title, design: .rounded, weight: .semibold))
+                .font(.system(.title, weight: .semibold))
                 .foregroundStyle(headerTextColor)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, MinidiscSpacing.l)

@@ -132,7 +132,7 @@ private struct QueueRow: View {
             } label: {
                 Label(
                     isFavorite ? "Remove from Favorites" : "Add to Favorites",
-                    systemImage: isFavorite ? "star.slash" : "star"
+                    systemImage: isFavorite ? "heart.slash" : "heart"
                 )
             }
             .disabled(!isOnline || song.isLocalFile)

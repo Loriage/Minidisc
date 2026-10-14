@@ -21,6 +21,7 @@ nonisolated enum PreviewFixtures {
     static let tidalRooms = album(
         id: "al-tidal", name: "Tidal Rooms", artist: noraVale, year: 2023, genre: "Indie Pop",
         releaseDate: ItemDate(year: 2023, month: 4, day: 14), label: "Harbour Light Records",
+        guests: [1: hanaOkafor, 7: quietKites],
         tracks: [
             ("Undertow", 222), ("Salt in the Static", 245), ("Glass Harbour", 198),
             ("Lighthouse Keeper", 267), ("The Long Way Round", 236), ("Small Hours", 178),
@@ -53,6 +54,7 @@ nonisolated enum PreviewFixtures {
     )
     static let fieldRecordings = album(
         id: "al-field", name: "Field Recordings, Vol. 2", artist: mossAndCopper, year: 2019, genre: "Folk",
+        label: "Fellside", secondDiscStart: 4,
         tracks: [
             ("Hedgerow", 182), ("The Miller’s Daughter", 254), ("Rain on Slate", 207), ("Copper Kettle", 168),
             ("Over the Fell", 239), ("Lantern Walk", 221), ("Old Stone Bridge", 276),
@@ -160,15 +162,23 @@ nonisolated enum PreviewFixtures {
         releaseTypes: [String] = ["Album"],
         releaseDate: ItemDate? = nil,
         label: String? = nil,
+        guests: [Int: ArtistID3] = [:],
+        secondDiscStart: Int? = nil,
         tracks: [(title: String, seconds: Int)]
     ) -> AlbumID3 {
         let coverArt = "local:preview-\(id)"
         let songs = tracks.enumerated().map { index, track in
-            Song(
-                id: "\(id)-\(index + 1)", title: track.title, album: name, artist: artist.name,
-                track: index + 1, year: year, genre: genre, coverArt: coverArt,
+            let credits = [artist] + [guests[index]].compactMap { $0 }
+            let isSecondDisc = secondDiscStart.map { index >= $0 } ?? false
+            return Song(
+                id: "\(id)-\(index + 1)", title: track.title, album: name,
+                artist: credits.map(\.name).joined(separator: ", "),
+                track: isSecondDisc ? index - (secondDiscStart ?? 0) + 1 : index + 1,
+                year: year, genre: genre, coverArt: coverArt,
                 contentType: "audio/flac", suffix: "flac", duration: track.seconds, bitRate: 1_011,
-                discNumber: 1, albumId: id, artistId: artist.id
+                discNumber: isSecondDisc ? 2 : 1, albumId: id, artistId: artist.id,
+                artists: credits, albumArtists: [artist],
+                bitDepth: 24, samplingRate: 48_000, channelCount: 2
             )
         }
         return AlbumID3(
@@ -415,6 +425,7 @@ extension AppContainer {
         state.duration = queue[2].duration
         state.position = 74
         state.playbackState = isPlaying ? .playing : .paused
+        state.applySourceKind(.stream(transcodedFormat: nil, maxBitRate: nil), revision: 1)
         return container
     }
 }
@@ -423,13 +434,17 @@ extension AppContainer {
 
 extension AlbumDetailViewModel {
     static func preview(albumId: String, container: AppContainer) -> AlbumDetailViewModel {
-        AlbumDetailViewModel(
+        let viewModel = AlbumDetailViewModel(
             albumId: albumId,
             libraryService: PreviewLibraryService(),
             downloadService: container.downloadService,
             toastService: container.toastService,
             serverState: container.serverState
         )
+        if let album = PreviewFixtures.album(id: albumId) {
+            viewModel.applyPreview(album)
+        }
+        return viewModel
     }
 }
 

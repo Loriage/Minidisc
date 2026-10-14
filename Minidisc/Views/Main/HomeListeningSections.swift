@@ -20,7 +20,7 @@ struct HomeFavoriteSongsSection: View {
                 .buttonStyle(.plain)
                 let tracks = songs.map { DisplayableSong(from: $0) }
                 ForEach(Array(tracks.prefix(3).enumerated()), id: \.element.id) { index, song in
-                    SongRow(song: song, index: index + 1, showCoverArt: true, isFavorite: true, trailingAccessory: .menu,
+                    SongRow(song: song, index: index + 1, showCoverArt: true, isFavorite: true, trailingAccessory: .favorite,
                             onAddToPlaylist: playlistAddition.present, onTap: {
                         Task {
                             await container?.toastService.perform {

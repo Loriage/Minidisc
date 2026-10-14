@@ -45,7 +45,12 @@ struct ArtistDetailView: View {
 
     // MARK: - Theming
 
-    private var theme: PlaylistTheme { PlaylistTheme(dominantColor: dominantColor) }
+    /// Artist pages are always dark: the photo melts into a darkened, cover-tinted body.
+    private var theme: PlaylistTheme {
+        PlaylistTheme(dominantColor: dominantColor == .clear
+            ? ArtworkSurfacePalette.neutral
+            : ArtworkSurfacePalette.tint(from: dominantColor))
+    }
     private var bodyColor: Color { theme.isThemed ? theme.dominantColor : systemBackgroundColor }
     private var headerTextColor: Color { theme.contentColor }
     private var headerSecondaryColor: Color { theme.secondaryContentColor }
@@ -132,20 +137,25 @@ struct ArtistDetailView: View {
                                 } else if !liked.isEmpty {
                                     likedSongsSection(liked)
                                 }
-                                if !(container?.visibleAlbums(vm.albumReleases) ?? []).isEmpty {
-                                    ArtistAlbumShelf(
-                                        title: "Albums",
-                                        albums: albumSort.sorted((container?.visibleAlbums(vm.albumReleases) ?? []))
-                                    )
+                                ForEach(vm.releaseShelves) { shelf in
+                                    let albums = container?.visibleAlbums(shelf.albums) ?? []
+                                    if !albums.isEmpty {
+                                        ArtistAlbumShelf(
+                                            title: shelf.category.title,
+                                            albums: albumSort.sorted(albums)
+                                        )
+                                    }
                                 }
-                                if !(container?.visibleAlbums(vm.singlesAndEPs) ?? []).isEmpty {
+                                let appearsOn = container?.visibleAlbums(vm.appearsOn) ?? []
+                                if isOnline && !appearsOn.isEmpty {
                                     ArtistAlbumShelf(
-                                        title: "Singles & EPs",
-                                        albums: albumSort.sorted((container?.visibleAlbums(vm.singlesAndEPs) ?? []))
+                                        title: "Appears On",
+                                        albums: appearsOn,
+                                        showsArtist: true
                                     )
                                 }
                                 if isOnline && (vm.isLoadingSimilarArtists || !vm.similarArtists.isEmpty) {
-                                    ArtistSimilarArtistsShelf(
+                                    SimilarArtistsShelf(
                                         recommendations: vm.similarArtists,
                                         imageURLs: vm.outOfLibraryArtistImages,
                                         isLoading: vm.isLoadingSimilarArtists,
@@ -232,6 +242,7 @@ struct ArtistDetailView: View {
             await viewModel.loadTopSongs()
             await viewModel.loadLikedSongs()
             await viewModel.loadSimilarArtists()
+            await viewModel.loadAppearances()
             await artistInfo
         }
         .sheet(isPresented: $isShowingArtistInformation) {
@@ -273,40 +284,14 @@ struct ArtistDetailView: View {
     private func heroContent(vm: ArtistDetailViewModel, albums: [AlbumID3]) -> some View {
         VStack(spacing: MinidiscSpacing.xl) {
             Text(artist.name)
-                .font(.system(size: 30, weight: .semibold, design: .rounded))
+                .font(.minidiscHeroTitle)
                 .foregroundStyle(headerTextColor)
                 .multilineTextAlignment(.center)
 
-            HStack(spacing: MinidiscSpacing.xxl) {
-                Button {
-                    isShowingArtistInformation = true
-                } label: {
-                    Image(systemName: "info")
-                        .font(.system(size: 17, weight: .regular))
-                        .foregroundStyle(headerTextColor)
-                        .frame(width: 48, height: 48)
-                        .background(.ultraThinMaterial, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Get Info")
-
-                Button {
-                    Task { await playAll() }
-                } label: {
-                    Circle()
-                        .fill(.white)
-                        .frame(width: 66, height: 66)
-                        .overlay {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 26, weight: .bold))
-                                .blendMode(.destinationOut)
-                        }
-                        .compositingGroup()
-                }
-                .buttonStyle(.plain)
-                .disabled(vm.isPlayLoading || (albums.isEmpty && vm.offlineTracks.isEmpty))
-
-                Button {
+            let canPlay = !(vm.isPlayLoading || (albums.isEmpty && vm.offlineTracks.isEmpty))
+            HStack(spacing: MinidiscSpacing.xl) {
+                Button(isArtistFavorite ? "Remove from Favorites" : "Add to Favorites",
+                       systemImage: isArtistFavorite ? "heart.fill" : "heart") {
                     HapticFeedback.light.trigger()
                     Task {
                         if isArtistFavorite {
@@ -315,16 +300,29 @@ struct ArtistDetailView: View {
                             await container?.toastService.perform { try await container?.favoritesService.star(itemType: .artist, itemId: artist.id) }
                         }
                     }
-                } label: {
-                    Image(systemName: isArtistFavorite ? "star.fill" : "star")
-                        .font(.system(size: 18, weight: .regular))
-                        .foregroundStyle(isArtistFavorite ? .white : headerTextColor)
-                        .frame(width: 48, height: 48)
-                        .background(.ultraThinMaterial, in: Circle())
                 }
-                .buttonStyle(.plain)
+                .contentTransition(.symbolEffect(.replace))
+                .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.large))
                 .disabled(!isOnline)
+
+                Button("Play", systemImage: "play.fill") {
+                    Task { await playAll(shuffled: false) }
+                }
+                .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.prominent, isProminent: true))
+                .disabled(!canPlay)
+
+                Button("Shuffle", systemImage: "shuffle") {
+                    Task { await playAll(shuffled: true) }
+                }
+                .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.large))
+                .disabled(!canPlay)
+
+                Button("Get Info", systemImage: "info") {
+                    isShowingArtistInformation = true
+                }
+                .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.large))
             }
+            .foregroundStyle(headerTextColor)
         }
     }
 
@@ -531,17 +529,19 @@ struct ArtistDetailView: View {
         return detail.song?.map { DisplayableSong(from: $0) } ?? []
     }
 
-    private func playAll() async {
+    private func playAll(shuffled: Bool) async {
         guard let c = container else { return }
         viewModel?.isPlayLoading = true
         defer { viewModel?.isPlayLoading = false }
         if let offline = viewModel?.offlineTracks, viewModel?.isOffline == true, !offline.isEmpty {
-            await c.toastService.perform { try await c.playerService.play(tracks: offline.shuffled(), startIndex: 0) }
+            await c.toastService.perform {
+                try await c.playerService.play(tracks: shuffled ? offline.shuffled() : offline, startIndex: 0)
+            }
             return
         }
         do {
             let tracks = try await c.libraryService.fetchAllTracks(forArtistID: artist.id)
-            try await c.playerService.play(tracks: tracks.shuffled(), startIndex: 0)
+            try await c.playerService.play(tracks: shuffled ? tracks.shuffled() : tracks, startIndex: 0)
         } catch MinidiscError.artistTracksUnavailable {
             c.toastService.showError("Unable to load artist tracks. Please check your connection and try again.")
         } catch {
@@ -569,6 +569,8 @@ private enum ArtistDetailMetrics {
 private struct ArtistAlbumShelf: View {
     let title: LocalizedStringResource
     let albums: [AlbumID3]
+    /// Appears On lists other artists' albums, so the card names the album artist instead of the year.
+    var showsArtist = false
 
     var body: some View {
         MinidiscShelf {
@@ -579,7 +581,9 @@ private struct ArtistAlbumShelf: View {
             ForEach(Array(albums.prefix(MinidiscCarouselMetrics.previewLimit))) { album in
                 AlbumShelfCard(
                     album: album,
-                    metadataSubtitle: album.year.map(String.init) ?? ""
+                    metadataSubtitle: showsArtist
+                        ? (album.artist ?? album.year.map(String.init) ?? "")
+                        : (album.year.map(String.init) ?? "")
                 )
             }
         }
@@ -680,7 +684,7 @@ private struct ArtistTopSongsList: View {
                         isFavorite: favoriteSongIDs.contains(song.id),
                         titleColor: titleColor,
                         secondaryColor: secondaryColor,
-                        trailingAccessory: .menu,
+                        trailingAccessory: .favorite,
                         onAddToPlaylist: playlistAddition.present,
                         onGoToAlbum: { presentAlbum(for: song) },
                         onTap: { play(song) }
@@ -739,133 +743,6 @@ private struct ArtistTopSongsCollectionView: View {
         .minidiscContentWidth()
         .navigationTitle("Top Songs")
         .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-private struct ArtistSimilarArtistsShelf: View {
-    let recommendations: [SimilarArtistRecommendation]
-    let imageURLs: [String: URL?]
-    let isLoading: Bool
-    let onOutOfLibraryTap: (SimilarArtistRecommendation) -> Void
-
-    var body: some View {
-        if isLoading {
-            VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
-                MinidiscCarouselHeader("Similar Artists", showsChevron: false)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(alignment: .top, spacing: MinidiscSpacing.m) {
-                        ForEach(0..<6, id: \.self) { _ in
-                            VStack(spacing: MinidiscSpacing.xs) {
-                                SkeletonBlock(
-                                    width: MinidiscCarouselMetrics.artistArtwork,
-                                    height: MinidiscCarouselMetrics.artistArtwork,
-                                    cornerRadius: MinidiscCarouselMetrics.artistArtwork / 2
-                                )
-                                SkeletonBlock(width: 96, height: 11, cornerRadius: 4)
-                            }
-                            .frame(width: MinidiscCarouselMetrics.artistArtwork)
-                        }
-                    }
-                    .padding(.horizontal, MinidiscSpacing.l)
-                }
-            }
-            .allowsHitTesting(false)
-        } else {
-            MinidiscShelf {
-                MinidiscCarouselHeaderLink(
-                    "Similar Artists",
-                    itemCount: recommendations.count
-                ) {
-                    SimilarArtistsCollectionView(
-                        recommendations: recommendations,
-                        imageURLs: imageURLs
-                    )
-                }
-            } content: {
-                ForEach(Array(recommendations.prefix(MinidiscCarouselMetrics.previewLimit))) { recommendation in
-                    ArtistRecommendationCard(
-                        recommendation: recommendation,
-                        imageURL: imageURLs[recommendation.id] ?? nil,
-                        size: MinidiscCarouselMetrics.artistArtwork,
-                        onOutOfLibraryTap: { onOutOfLibraryTap(recommendation) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-private struct ArtistRecommendationCard: View {
-    let recommendation: SimilarArtistRecommendation
-    let imageURL: URL?
-    let size: CGFloat
-    let onOutOfLibraryTap: () -> Void
-
-    var body: some View {
-        VStack {
-            if recommendation.inLibrary {
-                NavigationLink(value: HomeDestination.artist(
-                    ArtistID3(
-                        id: recommendation.id,
-                        name: recommendation.name,
-                        coverArt: recommendation.coverArt
-                    )
-                )) {
-                    SimilarArtistCell(
-                        recommendation: recommendation,
-                        externalImageURL: imageURL,
-                        size: size,
-                        onOutOfLibraryTap: onOutOfLibraryTap
-                    )
-                }
-                .buttonStyle(.plain)
-            } else {
-                SimilarArtistCell(
-                    recommendation: recommendation,
-                    externalImageURL: imageURL,
-                    size: size,
-                    onOutOfLibraryTap: onOutOfLibraryTap
-                )
-            }
-        }
-    }
-}
-
-private struct SimilarArtistsCollectionView: View {
-    let recommendations: [SimilarArtistRecommendation]
-    let imageURLs: [String: URL?]
-
-    @Environment(\.appContainer) private var container
-    @State private var selectedArtist: SimilarArtistRecommendation?
-
-    private let columns = [
-        GridItem(.adaptive(minimum: 140, maximum: 170), spacing: MinidiscSpacing.l)
-    ]
-
-    var body: some View {
-        ScrollView {
-            LazyVGrid(columns: columns, alignment: .center, spacing: MinidiscSpacing.l) {
-                ForEach(recommendations) { recommendation in
-                    ArtistRecommendationCard(
-                        recommendation: recommendation,
-                        imageURL: imageURLs[recommendation.id] ?? nil,
-                        size: 132,
-                        onOutOfLibraryTap: { selectedArtist = recommendation }
-                    )
-                }
-            }
-            .padding(MinidiscSpacing.l)
-        }
-        .minidiscContentWidth()
-        .navigationTitle("Similar Artists")
-        .navigationBarTitleDisplayMode(.inline)
-        .sheet(item: $selectedArtist) { recommendation in
-            OutOfLibraryArtistSheet(
-                artist: recommendation,
-                imageURL: imageURLs[recommendation.id] ?? nil,
-                providers: container?.externalProvidersStore.load() ?? []
-            )
-        }
     }
 }
 

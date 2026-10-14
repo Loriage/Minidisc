@@ -272,4 +272,21 @@ struct ArtistDetailOfflineTests {
         #expect(vm.similarArtists.isEmpty)
         #expect(vm.biography == nil)
     }
+
+    @Test("online releases are grouped into discography shelves in shelf order")
+    func releasesGroupIntoShelves() async {
+        func release(_ id: String, _ types: [String]) -> AlbumID3 {
+            AlbumID3(id: id, name: id, songCount: 1, duration: 60, releaseTypes: types)
+        }
+        let artist = ArtistID3(id: "ar-1", name: "Orelsan", album: [
+            release("live", ["Album", "Live"]),
+            release("lp", ["Album"]),
+            release("single", ["Single"]),
+            release("ep", ["EP"])
+        ])
+        let vm = makeVM(artistData: nil, isOnline: true, apiArtist: artist)
+        await vm.load()
+        #expect(vm.releaseShelves.map(\.category) == [.album, .ep, .single, .live])
+        #expect(vm.releaseShelves.first?.albums.map(\.id) == ["lp"])
+    }
 }

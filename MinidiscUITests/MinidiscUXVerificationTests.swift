@@ -173,7 +173,7 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try require(night, timeout: 20)
         try scrollCardToTop(night, named: "mood-night-card-visible")
         try tap(night, named: "mood-open-recovered-night")
-        try require(app.buttons["playlist.song.menu.ux-song-1"], timeout: 10)
+        try require(app.buttons["playlist.song.row.ux-song-1"], timeout: 10)
         capturePlayerScreenshot("Mood-recovered-server-playlist")
         try tapBack(named: "mood-night-back")
         try tapTab("Accueil")
@@ -191,7 +191,7 @@ final class MinidiscUXVerificationTests: XCTestCase {
         captureHierarchy("mood-after-refresh-stale-reference")
         try scrollCardToTop(night, named: "mood-replaced-card-visible")
         try tap(night, named: "mood-open-replaced-night")
-        try require(app.buttons["playlist.song.menu.ux-song-2"], timeout: 10)
+        try require(app.buttons["playlist.song.row.ux-song-2"], timeout: 10)
         capturePlayerScreenshot("Mood-repaired-stale-reference")
         try tapBack(named: "mood-replaced-night-back")
         try tapTab("Accueil")
@@ -853,9 +853,10 @@ final class MinidiscUXVerificationTests: XCTestCase {
         captureHierarchy("playlist-detail-bright-artwork-header")
         try await Task.sleep(for: .seconds(3))
 
-        let songMenu = searchElement("playlist.song.menu.ux-song-1")
-        try scrollPlaylistTo(songMenu, named: "first-song-menu")
-        try tap(songMenu, named: "playlist-detail-song-menu-open")
+        // Row actions live in the context menu now that rows carry a heart instead of "…".
+        let songRow = searchElement("playlist.song.row.ux-song-1")
+        try scrollPlaylistTo(songRow, named: "first-song-menu")
+        try longPress(songRow, named: "playlist-detail-song-menu-open")
         try require(app.buttons["Informations"])
         captureHierarchy("playlist-detail-song-menu-confirmed")
         try await Task.sleep(for: .seconds(2))
@@ -887,10 +888,10 @@ final class MinidiscUXVerificationTests: XCTestCase {
         XCTAssertLessThanOrEqual(title.frame.width, app.frame.width)
         captureHierarchy("playlist-detail-xxxl-title-and-metadata")
         try await Task.sleep(for: .seconds(3))
-        let songMenu = searchElement("playlist.song.menu.ux-song-2")
-        try scrollPlaylistTo(songMenu, named: "large-long-song")
-        XCTAssertGreaterThanOrEqual(songMenu.frame.width, 44)
-        XCTAssertGreaterThanOrEqual(songMenu.frame.height, 44)
+        let songRow = searchElement("playlist.song.row.ux-song-2")
+        try scrollPlaylistTo(songRow, named: "large-long-song")
+        XCTAssertGreaterThanOrEqual(songRow.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(songRow.frame.height, 44)
         captureHierarchy("playlist-detail-xxxl-long-song-row")
         try await Task.sleep(for: .seconds(3))
     }
@@ -945,10 +946,10 @@ final class MinidiscUXVerificationTests: XCTestCase {
         }
         XCTAssertTrue(miniContains(firstTitle))
 
-        // Open another song's menu: an accidental row tap would change the current track.
-        let menu = searchElement("playlist.song.menu.ux-song-2")
+        // Open another song's context menu: an accidental row tap would change the current track.
+        let menu = searchElement("playlist.song.row.ux-song-2")
         try scrollPlaylistTo(menu, named: "second-song-menu")
-        try tap(menu, named: "playlist-detail-second-song-menu")
+        try longPress(menu, named: "playlist-detail-second-song-menu")
         let info = app.buttons["Informations"]
         try require(info)
         XCTAssertTrue(miniContains(firstTitle), "Opening a future song's menu must preserve the paused current song.")
@@ -1699,6 +1700,13 @@ final class MinidiscUXVerificationTests: XCTestCase {
         element.tap()
         element.typeText(text)
         captureHierarchy("after-enter-field")
+    }
+
+    private func longPress(_ element: XCUIElement, named name: String) throws {
+        try require(element)
+        captureHierarchy("before-\(name)")
+        element.press(forDuration: 0.8)
+        captureHierarchy("after-\(name)")
     }
 
     private func tap(_ element: XCUIElement, named name: String) throws {

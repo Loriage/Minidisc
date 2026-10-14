@@ -6,8 +6,10 @@ import OSLog
 @MainActor
 final class ArtistDetailViewModel {
     var artist: ArtistID3?
-    private(set) var albumReleases: [AlbumID3] = []
-    private(set) var singlesAndEPs: [AlbumID3] = []
+    /// The artist's own releases grouped by category, in shelf order. Empty categories are omitted.
+    private(set) var releaseShelves: [ArtistReleaseShelf] = []
+    /// Albums by other artists that credit this artist. Online only.
+    private(set) var appearsOn: [AlbumID3] = []
     var isLoading = false
     var isPlayLoading = false
     var error: UserFacingError?
@@ -143,8 +145,26 @@ final class ArtistDetailViewModel {
     private func setArtist(_ loadedArtist: ArtistID3) {
         artist = loadedArtist
         let releases = loadedArtist.album ?? []
-        albumReleases = releases.filter { $0.minidiscReleaseCategory == .album }
-        singlesAndEPs = releases.filter { $0.minidiscReleaseCategory == .singleOrEP }
+        let grouped = Dictionary(grouping: releases, by: \.minidiscReleaseCategory)
+        releaseShelves = AlbumReleaseCategory.allCases.compactMap { category in
+            guard let albums = grouped[category], !albums.isEmpty else { return nil }
+            return ArtistReleaseShelf(category: category, albums: albums)
+        }
+    }
+
+    /// Call after `load()`, which resolves the artist name and its own discography.
+    func loadAppearances() async {
+        guard !isOffline, let name = artist?.name else { appearsOn = []; return }
+        let ownAlbumIDs = Set((artist?.album ?? []).map(\.id))
+        do {
+            let albums = try await libraryService.appearances(artistID: artistId, artistName: name)
+            appearsOn = albums.filter { !ownAlbumIDs.contains($0.id) }
+        } catch is CancellationError {
+            return
+        } catch {
+            Logger.library.warning("appearances failed for \(self.artistId, privacy: .public): \(error, privacy: .public)")
+            appearsOn = []
+        }
     }
 
     /// Top songs (getTopSongs takes the artist NAME) — call after `load()` so `artist?.name` is set.
@@ -230,4 +250,11 @@ private extension String {
 
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+}
+
+nonisolated struct ArtistReleaseShelf: Identifiable, Sendable {
+    let category: AlbumReleaseCategory
+    let albums: [AlbumID3]
+
+    var id: AlbumReleaseCategory { category }
 }

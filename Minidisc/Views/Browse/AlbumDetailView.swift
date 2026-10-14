@@ -312,18 +312,6 @@ struct AlbumDetailView: View {
                             } : nil
                         )
 
-                        AlbumReleaseInformationSection(
-                            releaseDate: vm.releaseDate,
-                            fallbackYear: vm.year,
-                            songCount: songs.count,
-                            totalDuration: songs.reduce(0) { $0 + $1.duration },
-                            releaseTypes: vm.releaseTypes,
-                            version: vm.version,
-                            recordLabels: vm.recordLabels,
-                            audioFormats: songs.compactMap(\.audioFormat),
-                            textColor: headerSecondaryColor
-                        )
-
                         if case .full = mode, !vm.isOffline {
                             if let artistId = vm.artistId,
                                let artistName = vm.artistName,
@@ -342,11 +330,14 @@ struct AlbumDetailView: View {
                                     isLoading: isLoadingSimilarArtists,
                                     onOutOfLibraryTap: { selectedOutOfLibraryArtist = $0 }
                                 )
-                                .padding(.top, MinidiscSpacing.xxl)
+                                .padding(.top, MinidiscSpacing.section)
                             }
 
                             AlbumYouMightAlsoLikeSection(albums: visibleRecommendedAlbums)
                         }
+
+                        // Breathing room before the mini player margin, whichever section ends the page.
+                        Color.clear.frame(height: MinidiscSpacing.section)
                     }
                 }
             }
@@ -776,7 +767,7 @@ private struct AlbumPlaybackActions: View {
                         await container?.toastService.perform { try await container?.playerService.play(tracks: songs, startIndex: 0) }
                     }
                 }
-                .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.prominent, isProminent: true))
+                .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.large, isProminent: true))
                 .disabled(songs.isEmpty)
                 .accessibilityIdentifier("album.detail.play")
 
@@ -1054,111 +1045,10 @@ struct AlbumSongRows: View {
                     onArtistsTap: onArtistsTap.map { handler in { handler(song, $0) } },
                     onTap: { onTap(index) }
                 )
-                .padding(.leading, MinidiscSpacing.l)
-                .padding(.trailing, MinidiscSpacing.s)
+                .padding(.horizontal, MinidiscSpacing.l)
             }
         }
     }
-}
-
-// MARK: - Release information
-
-private struct AlbumReleaseInformationSection: View {
-    let releaseDate: ItemDate?
-    let fallbackYear: Int?
-    let songCount: Int
-    let totalDuration: TimeInterval
-    let releaseTypes: [String]
-    let version: String?
-    let recordLabels: [String]
-    let audioFormats: [String]
-    let textColor: Color
-
-    private var dateText: String? {
-        guard let year = releaseDate?.year ?? fallbackYear else { return nil }
-        guard let month = releaseDate?.month else { return String(year) }
-
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
-        var components = DateComponents()
-        components.calendar = calendar
-        components.timeZone = calendar.timeZone
-        components.year = year
-        components.month = month
-        components.day = releaseDate?.day ?? 1
-        guard let date = calendar.date(from: components) else { return String(year) }
-
-        if releaseDate?.day != nil {
-            return date.formatted(.dateTime.day().month(.wide).year())
-        }
-        return date.formatted(.dateTime.month(.wide).year())
-    }
-
-    private var countAndDurationText: String? {
-        guard songCount > 0 else { return nil }
-        let count = String(localized: "\(songCount) songs")
-        guard totalDuration > 0 else { return count }
-        let duration = Duration.seconds(totalDuration).formatted(
-            .units(allowed: [.hours, .minutes], width: .wide, maximumUnitCount: 2)
-        )
-        return "\(count), \(duration)"
-    }
-
-    private var descriptorText: String? {
-        uniqueValues(
-            releaseTypes.map { $0.localizedCapitalized }
-                + [version].compactMap { $0 }
-                + audioFormats.map { $0.uppercased() }
-        )
-        .joined(separator: " · ")
-        .nilIfEmpty
-    }
-
-    private var labelText: String? {
-        uniqueValues(recordLabels).joined(separator: " · ").nilIfEmpty
-    }
-
-    private var hasContent: Bool {
-        dateText != nil || countAndDurationText != nil || descriptorText != nil || labelText != nil
-    }
-
-    var body: some View {
-        if hasContent {
-            VStack(alignment: .leading, spacing: 3) {
-                if let dateText {
-                    Text(verbatim: dateText)
-                }
-                if let countAndDurationText {
-                    Text(verbatim: countAndDurationText)
-                }
-                if let descriptorText {
-                    Text(verbatim: descriptorText)
-                }
-                if let labelText {
-                    Text(verbatim: labelText)
-                }
-            }
-            .font(.footnote)
-            .foregroundStyle(textColor.opacity(0.82))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, MinidiscSpacing.l)
-            .padding(.top, MinidiscSpacing.l)
-            .accessibilityElement(children: .combine)
-        }
-    }
-
-    private func uniqueValues(_ values: [String]) -> [String] {
-        var seen: Set<String> = []
-        return values.compactMap { value in
-            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty, seen.insert(trimmed.lowercased()).inserted else { return nil }
-            return trimmed
-        }
-    }
-}
-
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
 // MARK: - More by artist
@@ -1198,8 +1088,8 @@ private struct AlbumMoreByArtistSection: View {
                 }
             }
         }
-        .padding(.top, MinidiscSpacing.xxl)
-        .padding(.bottom, MinidiscSpacing.xxl)
+        // Spacing only when the shelf shows, so an artist with one album leaves no gap.
+        .padding(.top, albums.isEmpty ? 0 : MinidiscSpacing.section)
         .task(id: artistId) {
             await loadAlbums()
         }
@@ -1257,7 +1147,7 @@ private struct AlbumYouMightAlsoLikeSection: View {
                     AlbumShelfCard(album: album)
                 }
             }
-            .padding(.bottom, MinidiscSpacing.xxl)
+            .padding(.top, MinidiscSpacing.section)
         }
     }
 }

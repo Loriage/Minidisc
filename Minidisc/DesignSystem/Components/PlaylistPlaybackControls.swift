@@ -38,7 +38,7 @@ struct PlaylistPlaybackControls: View {
                 .accessibilityIdentifier("playlist.detail.shuffle")
 
             Button("Play", systemImage: "play.fill", action: onPlay)
-                .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.prominent, isProminent: true))
+                .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.large, isProminent: true))
                 .accessibilityIdentifier("playlist.detail.play")
 
             Button(action: onDownload) {

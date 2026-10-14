@@ -5,7 +5,7 @@ import SwiftUI
 /// the foreground style so they read on any tint.
 struct MinidiscCircleButtonStyle: ButtonStyle {
     var diameter: CGFloat = MinidiscControlSize.regular
-    /// The play button in an action row: slightly stronger fill.
+    /// The play button in an action row: a stronger fill at the same size as its neighbours.
     var isProminent = false
     /// Highlights a toggled state (e.g. the queue or lyrics surface is showing).
     var isActive = false
@@ -39,7 +39,7 @@ struct MinidiscCircleButtonStyle: ButtonStyle {
             let size = min(diameter * scale, diameter * 1.35)
             configuration.label
                 .labelStyle(.iconOnly)
-                .font(isProminent ? .title2.weight(.semibold) : .body.weight(.semibold))
+                .font(.body.weight(.semibold))
                 .foregroundStyle(isActive ? AnyShapeStyle(Color.black) : AnyShapeStyle(.primary))
                 .frame(width: size, height: size)
                 .background(Circle().fill(.primary.opacity(fillOpacity)))
@@ -66,7 +66,7 @@ extension ButtonStyle where Self == MinidiscCircleButtonStyle {
         Button("Favorite", systemImage: "heart") {}
             .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.large))
         Button("Play", systemImage: "play.fill") {}
-            .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.prominent, isProminent: true))
+            .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.large, isProminent: true))
         Button("Shuffle", systemImage: "shuffle") {}
             .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.large))
         Button("Queue", systemImage: "list.bullet") {}

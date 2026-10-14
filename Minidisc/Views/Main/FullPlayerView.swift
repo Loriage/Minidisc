@@ -452,18 +452,12 @@ private struct TrackInfoSection: View {
                             showAlbumSheet = true
                         } label: {
                             Label("Go to Album", systemImage: "music.note.square.stack")
-                            if let albumName = playerState.currentTrack?.albumName, !albumName.isEmpty {
-                                Text(albumName)
-                            }
                         }
                         .disabled(playerState.currentTrack?.albumId == nil || !isOnline)
                         Button {
                             goToArtist()
                         } label: {
                             Label("Go to Artist", systemImage: "music.mic")
-                            if let artist = playerState.currentTrack?.artist, !artist.isEmpty {
-                                Text(artist)
-                            }
                         }
                         .disabled(playerState.currentTrack?.artist == nil || !isOnline || playerState.currentTrack?.isLocalFile == true)
                         Button("Get Info", systemImage: "info.circle") {

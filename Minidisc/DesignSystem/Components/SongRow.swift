@@ -345,11 +345,9 @@ private struct SongActions: View {
                 Section {
                     if let onGoToAlbum,
                        song.albumId != nil,
-                       let albumName = song.albumName,
-                       !albumName.isEmpty {
+                       song.albumName?.isEmpty == false {
                         Button(action: onGoToAlbum) {
                             Label("Go to Album", systemImage: "music.note.square.stack")
-                            Text(albumName)
                         }
                         .disabled(!isOnline)
                     }

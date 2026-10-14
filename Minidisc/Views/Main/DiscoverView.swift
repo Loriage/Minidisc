@@ -27,7 +27,7 @@ struct DiscoverView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
+            LazyVStack(alignment: .leading, spacing: MinidiscSpacing.section) {
                 if let vm {
                     if isOnline {
                         freshReleasesSection(vm: vm)

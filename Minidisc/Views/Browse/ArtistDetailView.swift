@@ -100,7 +100,7 @@ struct ArtistDetailView: View {
                     } else {
                         ScrollView {
                             artistHero(vm: vm)
-                            VStack(alignment: .leading, spacing: MinidiscSpacing.xl) {
+                            VStack(alignment: .leading, spacing: MinidiscSpacing.section) {
                                 if !isOnline && albums.isEmpty {
                                     ForEach(Array(localTracks.enumerated()), id: \.element.id) { index, song in
                                         SongRow(song: song, index: index + 1, showCoverArt: true)
@@ -308,7 +308,7 @@ struct ArtistDetailView: View {
                 Button("Play", systemImage: "play.fill") {
                     Task { await playAll(shuffled: false) }
                 }
-                .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.prominent, isProminent: true))
+                .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.large, isProminent: true))
                 .disabled(!canPlay)
 
                 Button("Shuffle", systemImage: "shuffle") {

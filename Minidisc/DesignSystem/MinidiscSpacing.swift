@@ -12,6 +12,10 @@ nonisolated enum MinidiscSpacing {
     static let xxxl: CGFloat  = 32
     static let xxxxl: CGFloat = 48
 
+    /// Vertical gap between page sections (shelves, track list, discography groups). Use it for every
+    /// section on scrolling pages so headers never crowd the content above them.
+    static let section: CGFloat = 32
+
     /// Bottom scroll margin reserved for the iOS tabViewBottomAccessory mini player,
     /// which floats over tab content without extending the safe area.
     static let miniPlayerBottomMargin: CGFloat = 80
@@ -34,8 +38,7 @@ enum MinidiscCornerRadius {
 enum MinidiscControlSize {
     static let compact: CGFloat   = 36   // inline accessories (row hearts)
     static let regular: CGFloat   = 44   // secondary circle buttons, toolbars
-    static let large: CGFloat     = 52   // album / artist action row
-    static let prominent: CGFloat = 64   // the play button in an action row
+    static let large: CGFloat     = 52   // album / artist / playlist action rows (all buttons equal)
 }
 
 // MARK: - Shadow presets

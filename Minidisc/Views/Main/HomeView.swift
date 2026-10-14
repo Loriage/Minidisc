@@ -66,7 +66,7 @@ struct HomeView: View {
         }
         if !vm.isLoading, vm.isEmpty, !isOnline {
             ScrollView {
-                VStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
+                VStack(alignment: .leading, spacing: MinidiscSpacing.section) {
                     OfflineHomeInfo()
                     HomeFavoriteSongsSection(songs: favorites.songs)
                     HomeAlbumSection(title: "Albums", albums: container?.offlineLibrary.snapshot.albums ?? [], identifier: "home.offlineAlbums")
@@ -88,7 +88,7 @@ struct HomeView: View {
         } else {
             ScrollView {
                 // A stable VStack height avoids lazy-height estimates leaving the refresh inset open.
-                VStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
+                VStack(alignment: .leading, spacing: MinidiscSpacing.section) {
                     if !isOnline {
                         OfflineHomeInfo()
                     } else if vm.hasPartialFailure {

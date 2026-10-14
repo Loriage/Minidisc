@@ -1038,7 +1038,7 @@ struct PlaylistSongRows: View {
             onTap: { onTap(index) }
         )
         .listRowInsets(trailingAccessory == .favorite
-            ? EdgeInsets(top: 5, leading: MinidiscSpacing.xl, bottom: 5, trailing: MinidiscSpacing.s)
+            ? EdgeInsets(top: 5, leading: MinidiscSpacing.xl, bottom: 5, trailing: MinidiscSpacing.xl)
             : nil)
         .alignmentGuide(.listRowSeparatorLeading) { dimensions in
             trailingAccessory == .favorite ? 0 : dimensions[.listRowSeparatorLeading]

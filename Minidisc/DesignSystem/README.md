@@ -83,7 +83,7 @@ weight. Wrapped and the generated-cover renderers keep their own display styling
 ## Control sizes
 
 `MinidiscControlSize` sets circular tap targets: `compact` 36 (row accessories), `regular` 44 (toolbar,
-secondary), `large` 52 (album/artist action rows), `prominent` 64 (the play button in an action row).
+secondary), `large` 52 (album, artist and playlist action rows; every button in a row is the same size, Play only gets a stronger fill).
 
 ## Artwork-led screens
 
@@ -144,11 +144,11 @@ cover loading, cover replacement and large text; see that directory's README for
 ### Round buttons: `.minidiscCircle`
 
 `ButtonStyle` for the soft, filled round buttons on artwork-led screens (player heart/menu/toolbar,
-album, artist and playlist action rows). `isProminent` for Play, `isActive` for a toggled surface.
+album, artist and playlist action rows). `isProminent` for Play (stronger fill, same size), `isActive` for a toggled surface.
 
 ```swift
 Button("Play", systemImage: "play.fill") { … }
-    .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.prominent, isProminent: true))
+    .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.large, isProminent: true))
 ```
 
 ### Album header pieces

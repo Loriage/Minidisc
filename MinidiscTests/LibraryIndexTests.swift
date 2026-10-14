@@ -405,6 +405,29 @@ struct LibraryIndexTests {
         #expect(try await store.counts(for: serverID).tracks == 1)
     }
 
+    @Test("credited songs include primary and secondary credits but not name-alike artists")
+    func creditedSongsFindsPrimaryAndGuestCredits() async throws {
+        let store = try makeStore()
+        let serverID = UUID()
+        let trio = ArtistID3(id: "trio", name: "Bill Evans Trio")
+        let evans = ArtistID3(id: "evans", name: "Bill Evans")
+        let tracks = [
+            // Filed under the leader, credited to the trio as the primary track artist.
+            Song(id: "primary", title: "Autumn Leaves", isDir: false, album: "Portrait in Jazz", artist: trio.name,
+                 albumId: "portrait", artistId: trio.id, artists: [trio], albumArtists: [evans]),
+            // A guest credit: primary artist is someone else, the trio is in `artists`.
+            Song(id: "guest", title: "Duet", isDir: false, album: "Together", artist: "Monica Zetterlund, Bill Evans Trio",
+                 albumId: "together", artistId: "monica", artists: [ArtistID3(id: "monica", name: "Monica Zetterlund"), trio]),
+            // Mentions the name but does not credit the trio.
+            Song(id: "namesake", title: "Tribute to Bill Evans Trio", isDir: false, album: "Tributes",
+                 artist: "Someone Else", albumId: "tributes", artistId: "else", artists: [ArtistID3(id: "else", name: "Someone Else")])
+        ]
+        try await store.upsertTracks(tracks, serverID: serverID, generation: "g", serverOrderStart: 0)
+
+        let credited = try await store.creditedSongs(artistID: trio.id, artistName: trio.name, serverID: serverID)
+        #expect(Set(credited.map(\.id)) == ["primary", "guest"])
+    }
+
     @Test("a failed refresh keeps every row from the previous completed generation")
     func failedRefreshKeepsPreviousGeneration() async throws {
         let store = try makeStore()

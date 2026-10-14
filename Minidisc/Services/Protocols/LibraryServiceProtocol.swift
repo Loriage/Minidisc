@@ -28,12 +28,14 @@ nonisolated protocol ArtistBrowsing: AnyObject, Sendable {
     /// only when every album fetch fails.
     func fetchAllTracks(forArtistID artistID: String) async throws -> [DisplayableSong]
 
-    /// Albums by other artists that credit this artist on a track, newest first.
-    func appearances(artistID: String, artistName: String) async throws -> [AlbumID3]
+    /// Albums not filed under this artist that credit them on a track, newest first, with those tracks.
+    func appearances(artistID: String, artistName: String) async throws -> ArtistAppearanceResult
 }
 
 extension ArtistBrowsing {
-    nonisolated func appearances(artistID: String, artistName: String) async throws -> [AlbumID3] { [] }
+    nonisolated func appearances(artistID: String, artistName: String) async throws -> ArtistAppearanceResult {
+        .empty
+    }
 }
 
 nonisolated protocol SongBrowsing: AnyObject, Sendable {

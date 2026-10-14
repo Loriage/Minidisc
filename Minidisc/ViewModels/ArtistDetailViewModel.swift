@@ -8,8 +8,16 @@ final class ArtistDetailViewModel {
     var artist: ArtistID3?
     /// The artist's own releases grouped by category, in shelf order. Empty categories are omitted.
     private(set) var releaseShelves: [ArtistReleaseShelf] = []
-    /// Albums by other artists that credit this artist. Online only.
+    /// Albums not filed under this artist that credit them on a track. Online only.
     private(set) var appearsOn: [AlbumID3] = []
+    /// The credited tracks on `appearsOn`, newest album first. What Play uses for credit-only artists.
+    private(set) var appearanceSongs: [DisplayableSong] = []
+    /// True until the first appearance lookup finishes, so a credit-only artist is not shown as empty.
+    private(set) var isLoadingAppearances = true
+
+    /// The artist has nothing filed under them, only credits on other albums (e.g. an ensemble filed under
+    /// its leader).
+    var isCreditOnly: Bool { (artist?.album ?? []).isEmpty && !appearsOn.isEmpty }
     var isLoading = false
     var isPlayLoading = false
     var error: UserFacingError?
@@ -138,6 +146,7 @@ final class ArtistDetailViewModel {
         isLoadingLikedSongs = false
         isLoadingSimilarArtists = false
         isLoadingArtistInfo = false
+        isLoadingAppearances = false
         isOffline = true
         return true
     }
@@ -154,17 +163,28 @@ final class ArtistDetailViewModel {
 
     /// Call after `load()`, which resolves the artist name and its own discography.
     func loadAppearances() async {
-        guard !isOffline, let name = artist?.name else { appearsOn = []; return }
+        guard !isOffline, let name = artist?.name ?? artistName else {
+            appearsOn = []
+            appearanceSongs = []
+            isLoadingAppearances = false
+            return
+        }
         let ownAlbumIDs = Set((artist?.album ?? []).map(\.id))
         do {
-            let albums = try await libraryService.appearances(artistID: artistId, artistName: name)
-            appearsOn = albums.filter { !ownAlbumIDs.contains($0.id) }
+            let result = try await libraryService.appearances(artistID: artistId, artistName: name)
+            appearsOn = result.albums.filter { !ownAlbumIDs.contains($0.id) }
+            let visibleIDs = Set(appearsOn.map(\.id))
+            appearanceSongs = result.songs
+                .filter { $0.albumId.map(visibleIDs.contains) ?? false }
+                .map { DisplayableSong(from: $0) }
         } catch is CancellationError {
             return
         } catch {
             Logger.library.warning("appearances failed for \(self.artistId, privacy: .public): \(error, privacy: .public)")
             appearsOn = []
+            appearanceSongs = []
         }
+        isLoadingAppearances = false
     }
 
     /// Top songs (getTopSongs takes the artist NAME) — call after `load()` so `artist?.name` is set.

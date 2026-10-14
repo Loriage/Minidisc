@@ -176,11 +176,22 @@ actor LibraryService: LibraryServiceProtocol {
 
     // MARK: - Artist tracks
 
-    func appearances(artistID: String, artistName: String) async throws -> [AlbumID3] {
-        // Search is local-first once the index is complete, and goes to the server otherwise.
+    func appearances(artistID: String, artistName: String) async throws -> ArtistAppearanceResult {
+        // The complete track index answers exactly. Until it is, a (capped) server search is the best guess.
+        if let songs = try await catalog.creditedSongs(artistID: artistID, artistName: artistName) {
+            try Task.checkCancellation()
+            let draft = ArtistAppearances.result(from: songs, artistID: artistID)
+            let headers = try await catalog.indexedAlbums(ids: draft.albums.map(\.id))
+            try Task.checkCancellation()
+            return ArtistAppearances.result(
+                from: songs,
+                artistID: artistID,
+                albumHeaders: Dictionary(headers.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            )
+        }
         let result = try await catalog.search(artistName)
         try Task.checkCancellation()
-        return ArtistAppearances.albums(from: result.song ?? [], artistID: artistID)
+        return ArtistAppearances.result(from: result.song ?? [], artistID: artistID)
     }
 
     func fetchAllTracks(forArtistID artistID: String) async throws -> [DisplayableSong] {

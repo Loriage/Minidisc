@@ -84,6 +84,20 @@ struct TrackMetadataTests {
         #expect(albums.first?.artist == "Stan Getz")
     }
 
+    @Test func appearances_primaryCreditWithoutArtistsList_counts_andHeaderFilingExcludes() {
+        // Legacy servers: no `artists` list, the primary track artist is the credit.
+        let ensemble = Song(id: "1", title: "A", isDir: false, album: "Live", albumId: "live", artistId: "trio")
+        let own = Song(id: "2", title: "B", isDir: false, album: "Own", albumId: "own", artistId: "trio")
+        let headers = [
+            "live": AlbumID3(id: "live", name: "Live", songCount: 9, duration: 2700, artist: "Bill Evans", artistId: "evans", year: 1961),
+            "own": AlbumID3(id: "own", name: "Own", songCount: 5, duration: 900, artist: "Trio", artistId: "trio")
+        ]
+        let result = ArtistAppearances.result(from: [ensemble, own], artistID: "trio", albumHeaders: headers)
+        #expect(result.albums.map(\.id) == ["live"])
+        #expect(result.albums.first?.songCount == 9, "Index headers carry the real album size.")
+        #expect(result.songs.map(\.id) == ["1"])
+    }
+
     // MARK: - PlaybackSourceKind
 
     @Test func sourceKind_originalStream_isNotTranscoded() throws {

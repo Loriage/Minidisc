@@ -109,6 +109,9 @@ struct LocalArtistDataTests {
 @MainActor
 private final class ARLibraryStub: ArtistBrowsing, StarredBrowsing, ArtistRecommendationBrowsing {
     var artistResult: ArtistID3?
+    var appearanceResult: ArtistAppearanceResult = .empty
+    @MainActor
+    func appearances(artistID: String, artistName: String) async throws -> ArtistAppearanceResult { appearanceResult }
     @MainActor
     func artist(id: String) async throws -> ArtistID3 {
         if let artistResult { return artistResult }
@@ -187,7 +190,8 @@ struct ArtistDetailOfflineTests {
     private func makeVM(
         artistData: LocalArtistData?,
         isOnline: Bool,
-        apiArtist: ArtistID3? = nil
+        apiArtist: ArtistID3? = nil,
+        appearances: ArtistAppearanceResult = .empty
     ) -> ArtistDetailViewModel {
         let state = ServerState()
         state.isOnline = isOnline
@@ -198,6 +202,7 @@ struct ArtistDetailOfflineTests {
         download.artistData = artistData
         let library = ARLibraryStub()
         library.artistResult = apiArtist
+        library.appearanceResult = appearances
         return ArtistDetailViewModel(
             artistId: "ar-1",
             artistName: "Orelsan",
@@ -288,5 +293,22 @@ struct ArtistDetailOfflineTests {
         await vm.load()
         #expect(vm.releaseShelves.map(\.category) == [.album, .ep, .single, .live])
         #expect(vm.releaseShelves.first?.albums.map(\.id) == ["lp"])
+    }
+
+    @Test("a credit-only artist shows the albums crediting it and plays the credited tracks")
+    func creditOnlyArtistUsesAppearances() async {
+        let trio = ArtistID3(id: "ar-1", name: "Bill Evans Trio", album: [])
+        let song = Song(id: "t1", title: "Autumn Leaves", isDir: false, album: "Portrait in Jazz", albumId: "al-portrait",
+                        artistId: "ar-1", artists: [ArtistID3(id: "ar-1", name: "Bill Evans Trio")],
+                        albumArtists: [ArtistID3(id: "ar-evans", name: "Bill Evans")])
+        let credited = ArtistAppearances.result(from: [song], artistID: "ar-1")
+        let vm = makeVM(artistData: nil, isOnline: true, apiArtist: trio, appearances: credited)
+        await vm.load()
+        #expect(vm.isLoadingAppearances)
+        await vm.loadAppearances()
+        #expect(!vm.isLoadingAppearances)
+        #expect(vm.isCreditOnly)
+        #expect(vm.appearsOn.map(\.id) == ["al-portrait"])
+        #expect(vm.appearanceSongs.map(\.id) == ["t1"])
     }
 }

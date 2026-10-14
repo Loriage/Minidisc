@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Spacing scale (4pt grid)
 
-enum MinidiscSpacing {
+nonisolated enum MinidiscSpacing {
     static let xs: CGFloat    = 4
     static let s: CGFloat     = 8
     static let m: CGFloat     = 12
@@ -26,6 +26,16 @@ enum MinidiscCornerRadius {
     static let large: CGFloat     = 12   // full-player cover art, sheets
     static let hero: CGFloat      = 20   // Wrapped stat hero, year card
     static let pill: CGFloat      = 999  // capsule buttons
+}
+
+// MARK: - Control sizes
+
+/// Tap-target diameters for circular controls. Never go below `regular` (44pt HIG minimum) for primary actions.
+enum MinidiscControlSize {
+    static let compact: CGFloat   = 36   // inline accessories (row hearts)
+    static let regular: CGFloat   = 44   // secondary circle buttons, toolbars
+    static let large: CGFloat     = 52   // album / artist action row
+    static let prominent: CGFloat = 64   // the play button in an action row
 }
 
 // MARK: - Shadow presets

@@ -438,6 +438,7 @@
     },
     "Cached" : {},
     "Choose an artist to open" : {},
+    "Collapsed" : {},
     "Compilations" : {},
     "Could not delete mood playlists. Check your connection and permissions, then try again." : {
       "localizations" : {
@@ -701,6 +702,7 @@
     },
     "Disc %lld" : {},
     "EPs" : {},
+    "Expanded" : {},
     "Favorite tracks and albums are saved automatically, outside Downloads and the stream cache limit. Turning this off removes only these automatic copies. Uses the stream cache format and cellular data settings." : {
       "localizations" : {
         "de" : {
@@ -805,6 +807,7 @@
         }
       }
     },
+    "In Your Library" : {},
     "Keep Favorites Offline" : {
       "localizations" : {
         "de" : {
@@ -857,6 +860,7 @@
         }
       }
     },
+    "Label pages appear once Minidisc has indexed every album. Try again shortly." : {},
     "Lidarr returned an unreadable response. Try again later." : {
       "localizations" : {
         "de" : {
@@ -1274,6 +1278,8 @@
         }
       }
     },
+    "Not in Your Library" : {},
+    "Nothing in your library matches." : {},
     "Off" : {},
     "Offline Mode" : {
       "localizations" : {
@@ -1488,6 +1494,7 @@
     "Opens the album" : {},
     "Opens the artist" : {},
     "Other Releases" : {},
+    "Play All" : {},
     "Reconnect to browse Lidarr and manage your music library. Your offline music is still available in Minidisc." : {
       "localizations" : {
         "de" : {
@@ -1645,6 +1652,8 @@
       }
     },
     "Select Artist" : {},
+    "Shows all albums" : {},
+    "Shows or hides these albums" : {},
     "Singles" : {},
     "Some mood playlists could not be deleted. Automatic generation is off. Try again later." : {
       "localizations" : {
@@ -1750,6 +1759,7 @@
         }
       }
     },
+    "Still Indexing Your Library" : {},
     "Sync Favorites Now" : {
       "localizations" : {
         "de" : {
@@ -1907,6 +1917,7 @@
         }
       }
     },
+    "Unable to load these albums. Please try again." : {},
     "Waiting for a connection" : {
       "localizations" : {
         "de" : {

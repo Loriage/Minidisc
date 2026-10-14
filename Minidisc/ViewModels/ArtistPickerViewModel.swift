@@ -7,7 +7,7 @@ import OSLog
 @Observable
 @MainActor
 final class ArtistPickerViewModel {
-    struct Entry: Identifiable {
+    nonisolated struct Entry: Identifiable, Sendable {
         /// Position in the credit list; credits are not guaranteed to carry unique IDs.
         let id: Int
         let credit: ArtistCredit

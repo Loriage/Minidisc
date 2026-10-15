@@ -126,6 +126,14 @@ struct MainTabView: View {
             selectedTab = .home
             homePath.append(HomeDestination.artistById(id: id, name: name, coverArtId: coverArtId))
         }
+        .onReceive(NotificationCenter.default.publisher(for: .minidiscNavigateToAlbum)) { note in
+            guard let id   = note.userInfo?["albumId"]   as? String,
+                  let name = note.userInfo?["albumName"] as? String else { return }
+            let coverArtId = note.userInfo?["coverArtId"] as? String
+            playerPresentation.reset()
+            selectedTab = .home
+            homePath.append(HomeDestination.albumById(id: id, name: name, subtitle: "", coverArtId: coverArtId))
+        }
         .onReceive(NotificationCenter.default.publisher(for: .minidiscNavigateToPlaylist)) { note in
             guard let id   = note.userInfo?["playlistId"] as? String,
                   let name = note.userInfo?["name"]       as? String else { return }

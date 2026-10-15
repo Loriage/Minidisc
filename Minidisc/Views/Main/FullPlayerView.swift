@@ -375,7 +375,6 @@ private struct TrackInfoSection: View {
 
     @Query private var favoriteMatches: [FavoriteRecord]
     @Environment(PlaylistAddition.self) private var playlistAddition
-    @State private var showAlbumSheet = false
     @State private var shareRequest: DisplayableSong?
     @State private var preparedShare: PreparedTrackShare?
     @State private var trackInformation: DisplayableSong?
@@ -448,8 +447,7 @@ private struct TrackInfoSection: View {
 
                         Divider()
                         Button {
-                            guard playerState.currentTrack?.albumId != nil else { return }
-                            showAlbumSheet = true
+                            goToAlbum()
                         } label: {
                             Label("Go to Album", systemImage: "music.note.square.stack")
                         }
@@ -498,15 +496,6 @@ private struct TrackInfoSection: View {
                 .buttonStyle(.minidiscCircle(diameter: compact ? MinidiscControlSize.compact : MinidiscControlSize.regular))
                 .tint(.primary)
                 .accessibilityLabel("More options")
-            }
-        }
-        .sheet(isPresented: $showAlbumSheet) {
-            if let track = playerState.currentTrack,
-               let albumId = track.albumId,
-               let albumName = track.albumName {
-                NavigationStack {
-                    AlbumDetailView(albumId: albumId, albumName: albumName, coverArtId: track.coverArtId)
-                }
             }
         }
         .sheet(item: $preparedShare) { share in
@@ -611,7 +600,7 @@ private struct TrackInfoSection: View {
                 .truncationMode(.tail)
             if isCurrent, song?.albumId != nil {
                 Button {
-                    showAlbumSheet = true
+                    goToAlbum()
                 } label: {
                     label
                 }
@@ -675,6 +664,12 @@ private struct TrackInfoSection: View {
                 await container?.toastService.perform { try await container?.favoritesService.star(itemType: .song, itemId: songId) }
             }
         }
+    }
+
+    /// Closes the player and pushes the album onto the Home stack, like any other album page.
+    private func goToAlbum() {
+        guard let track = playerState.currentTrack, track.albumId != nil else { return }
+        postNavigateToAlbum(track: track)
     }
 
     private func goToArtist() {

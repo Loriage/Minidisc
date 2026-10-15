@@ -10,6 +10,8 @@ final class ArtistDetailViewModel {
     private(set) var releaseShelves: [ArtistReleaseShelf] = []
     /// Albums not filed under this artist that credit them on a track. Online only.
     private(set) var appearsOn: [AlbumID3] = []
+    /// Albums the server listed for the artist but files under someone else.
+    private var listedCredits: [AlbumID3] = []
     /// The credited tracks on `appearsOn`, newest album first. What Play uses for credit-only artists.
     private(set) var appearanceSongs: [DisplayableSong] = []
     /// True until the first appearance lookup finishes, so a credit-only artist is not shown as empty.
@@ -152,8 +154,23 @@ final class ArtistDetailViewModel {
     }
 
     private func setArtist(_ loadedArtist: ArtistID3) {
-        artist = loadedArtist
-        let releases = loadedArtist.album ?? []
+        let listed = loadedArtist.album ?? []
+        // Servers (and cached artist records) can list albums the artist is only credited on; those
+        // belong in Appears On, so the discography only holds albums filed under the artist.
+        let releases = listed.filter { ArtistAppearances.isFiled($0, under: artistId, named: loadedArtist.name) }
+        listedCredits = listed.filter { !ArtistAppearances.isFiled($0, under: artistId, named: loadedArtist.name) }
+        artist = ArtistID3(
+            id: loadedArtist.id,
+            name: loadedArtist.name,
+            albumCount: releases.count,
+            coverArt: loadedArtist.coverArt,
+            starred: loadedArtist.starred,
+            userRating: loadedArtist.userRating,
+            musicBrainzId: loadedArtist.musicBrainzId,
+            sortName: loadedArtist.sortName,
+            roles: loadedArtist.roles,
+            album: releases
+        )
         let grouped = Dictionary(grouping: releases, by: \.minidiscReleaseCategory)
         releaseShelves = AlbumReleaseCategory.allCases.compactMap { category in
             guard let albums = grouped[category], !albums.isEmpty else { return nil }
@@ -172,7 +189,14 @@ final class ArtistDetailViewModel {
         let ownAlbumIDs = Set((artist?.album ?? []).map(\.id))
         do {
             let result = try await libraryService.appearances(artistID: artistId, artistName: name)
-            appearsOn = result.albums.filter { !ownAlbumIDs.contains($0.id) }
+            // Prefer the server's own header for albums it listed on the artist record (real song counts).
+            let listedByID = Dictionary(listedCredits.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            var merged = result.albums.map { listedByID[$0.id] ?? $0 }
+            let found = Set(merged.map(\.id))
+            merged += listedCredits.filter { !found.contains($0.id) }
+            appearsOn = merged
+                .filter { !ownAlbumIDs.contains($0.id) }
+                .sorted { ($0.year ?? 0) > ($1.year ?? 0) }
             let visibleIDs = Set(appearsOn.map(\.id))
             appearanceSongs = result.songs
                 .filter { $0.albumId.map(visibleIDs.contains) ?? false }

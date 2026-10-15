@@ -180,18 +180,52 @@ actor LibraryService: LibraryServiceProtocol {
         // The complete track index answers exactly. Until it is, a (capped) server search is the best guess.
         if let songs = try await catalog.creditedSongs(artistID: artistID, artistName: artistName) {
             try Task.checkCancellation()
-            let draft = ArtistAppearances.result(from: songs, artistID: artistID)
-            let headers = try await catalog.indexedAlbums(ids: draft.albums.map(\.id))
-            try Task.checkCancellation()
-            return ArtistAppearances.result(
-                from: songs,
-                artistID: artistID,
-                albumHeaders: Dictionary(headers.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-            )
+            let indexed = try await appearanceResult(from: songs, artistID: artistID)
+            // A non-empty answer is authoritative. An empty one for an artist with nothing filed under it
+            // can only be a stale index (credits re-tagged since the last scan): such artist rows exist only
+            // because of credits. Ask the server before declaring it uncredited.
+            guard indexed.albums.isEmpty,
+                  await serverService.state.isOnline,
+                  await !catalog.hasIndexedAlbums(filedUnder: artistID) else { return indexed }
         }
-        let result = try await catalog.search(artistName)
+        // Index still scanning (or stale): page through a song search for the name and keep the tracks
+        // that credit the artist. A single default-sized search (20 songs) is far too small.
+        let songs = try await creditedSongsBySearch(artistName: artistName)
         try Task.checkCancellation()
-        return ArtistAppearances.result(from: result.song ?? [], artistID: artistID)
+        return try await appearanceResult(from: songs, artistID: artistID)
+    }
+
+    private func appearanceResult(from songs: [Song], artistID: String) async throws -> ArtistAppearanceResult {
+        let draft = ArtistAppearances.result(from: songs, artistID: artistID)
+        let headers = (try? await catalog.indexedAlbums(ids: draft.albums.map(\.id))) ?? []
+        try Task.checkCancellation()
+        return ArtistAppearances.result(
+            from: songs,
+            artistID: artistID,
+            albumHeaders: Dictionary(headers.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        )
+    }
+
+    private static let creditSearchPageSize = 500
+    private static let creditSearchPageLimit = 4
+
+    private func creditedSongsBySearch(artistName: String) async throws -> [Song] {
+        let client = try await client()
+        var songs: [Song] = []
+        for page in 0..<Self.creditSearchPageLimit {
+            let result = try await client.search3(
+                artistName,
+                artistCount: 0,
+                albumCount: 0,
+                songCount: Self.creditSearchPageSize,
+                songOffset: page * Self.creditSearchPageSize
+            )
+            try Task.checkCancellation()
+            let pageSongs = result.song ?? []
+            songs += pageSongs
+            if pageSongs.count < Self.creditSearchPageSize { break }
+        }
+        return songs
     }
 
     func fetchAllTracks(forArtistID artistID: String) async throws -> [DisplayableSong] {

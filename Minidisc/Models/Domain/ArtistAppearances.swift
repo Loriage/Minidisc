@@ -1,7 +1,7 @@
 import Foundation
 import SwiftSonic
 
-/// Albums by other artists (or filed under another artist) that credit an artist on at least one track,
+/// Albums filed under other artists that credit an artist on at least one track,
 /// with the credited tracks themselves. This is what credit-only artists such as an ensemble whose albums
 /// are filed under its leader ("Bill Evans Trio" under "Bill Evans") are made of.
 nonisolated struct ArtistAppearanceResult: Sendable {
@@ -13,6 +13,20 @@ nonisolated struct ArtistAppearanceResult: Sendable {
 }
 
 nonisolated enum ArtistAppearances {
+    /// True when the album is filed under the artist (its album artist). Albums a server lists on an
+    /// artist's record but files under someone else are credits, not the artist's own releases.
+    /// Without any filing information the album is assumed to be the artist's own.
+    static func isFiled(_ album: AlbumID3, under artistID: String, named artistName: String?) -> Bool {
+        if let artists = album.artists, !artists.isEmpty {
+            return artists.contains { $0.id == artistID }
+        }
+        if let filingID = album.artistId, !filingID.isEmpty {
+            return filingID == artistID
+        }
+        guard let filingName = album.artist, let artistName else { return true }
+        return filingName.caseInsensitiveCompare(artistName) == .orderedSame
+    }
+
     /// A track credits the artist when its OpenSubsonic `artists` list names them, or, on servers without
     /// that list, when the artist is the primary track artist. Plain artist strings are never matched by
     /// name. Albums filed under the artist (`albumArtists`) or listed in `excludingAlbumIDs` are dropped.
@@ -42,10 +56,12 @@ nonisolated enum ArtistAppearances {
             guard let tracks = groups[albumID], let first = tracks.first else { return nil }
             let albumArtist = first.displayAlbumArtist
                 ?? first.albumArtists?.map(\.name).joined(separator: ", ")
+            // Without a header the album's real size is unknown; 0 hides the count instead of showing
+            // the number of credited tracks as if it were the album length.
             return AlbumID3(
                 id: albumID,
                 name: first.album ?? "",
-                songCount: tracks.count,
+                songCount: 0,
                 duration: tracks.reduce(0) { $0 + ($1.duration ?? 0) },
                 artist: albumArtist,
                 artistId: first.albumArtists?.first?.id,

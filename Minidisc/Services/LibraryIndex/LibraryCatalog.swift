@@ -435,6 +435,12 @@ actor LibraryCatalog {
         }
     }
 
+    /// Whether the index holds any album filed under the artist (its album artist).
+    func hasIndexedAlbums(filedUnder artistID: String) async -> Bool {
+        guard let serverID = try? await source.activeServerID() else { return false }
+        return (try? await store.hasAlbums(filedUnder: artistID, serverID: serverID)) ?? false
+    }
+
     /// Indexed album headers for the given IDs, in no particular order.
     func indexedAlbums(ids: [String]) async throws -> [AlbumID3] {
         let serverID = try await source.activeServerID()

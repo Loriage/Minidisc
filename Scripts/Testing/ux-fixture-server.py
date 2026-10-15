@@ -23,7 +23,7 @@ MUTATIONS = []
 REQUESTS = []
 SONGS = [
     {"id": "ux-song-1", "title": "Matin tranquille", "artist": "Atelier Minidisc", "artistId": "ux-artist", "album": "Horizons de test", "albumId": "ux-album", "duration": 30, "track": 1, "size": 960044, "suffix": "wav", "contentType": "audio/wav", "isDir": False, "coverArt": "ux-cover"},
-    {"id": "ux-song-2", "title": "Une très longue promenade au bord de la mer pour vérifier la lisibilité", "artist": "Atelier Minidisc", "artistId": "ux-artist", "album": "Horizons de test", "albumId": "ux-album", "duration": 30, "track": 2, "size": 960044, "suffix": "wav", "contentType": "audio/wav", "isDir": False, "coverArt": "ux-cover",
+    {"id": "ux-song-2", "title": "Une très longue promenade au bord de la mer pour vérifier la lisibilité", "artist": "Atelier Minidisc, Iris Ensemble", "artistId": "ux-artist", "album": "Horizons de test", "albumId": "ux-album", "duration": 30, "track": 2, "size": 960044, "suffix": "wav", "contentType": "audio/wav", "isDir": False, "coverArt": "ux-cover",
      # OpenSubsonic credits: a guest besides the album artist, so album rows show a tappable artists line.
      "artists": [{"id": "ux-artist", "name": "Atelier Minidisc"}, {"id": "ux-browse-favorite-artist", "name": "Iris Ensemble"}],
      "albumArtists": [{"id": "ux-artist", "name": "Atelier Minidisc"}]},
@@ -449,7 +449,9 @@ class Handler(BaseHTTPRequestHandler):
                 for name, values in sorted(indexes.items())
             ]}
         elif endpoint == "getArtist":
-            artist = next((item for item in catalog["artists"] if item["id"] == query.get("id", [""])[0]), None)
+            # Credited artists exist as artist records even when no album is filed under them (Navidrome).
+            known = catalog["artists"] + [BROWSE_FAVORITE_ARTIST]
+            artist = next((item for item in known if item["id"] == query.get("id", [""])[0]), None)
             if artist is None:
                 response.update(status="failed", error={"code": 70, "message": "Artist not found"})
             else:

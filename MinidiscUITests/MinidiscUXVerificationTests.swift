@@ -391,6 +391,13 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try require(searchElement("artist.picker"), timeout: 5)
         XCTAssertEqual(try miniPlayerTitle().label, secondTitle, "Opening the credits must not change the track.")
         captureHierarchy("album-row-credits-opened-picker")
+
+        // Iris Ensemble has nothing filed under it: its page must list the album crediting it.
+        let guest = searchElement("artist.picker.row.1")
+        try require(guest, timeout: 10)
+        try tap(guest, named: "album-credits-open-guest")
+        try require(searchElement("discography.album.ux-album"), timeout: 15)
+        captureHierarchy("credit-only-artist-appears-on")
     }
 
     func testFixtureQueuePresentation() async throws {

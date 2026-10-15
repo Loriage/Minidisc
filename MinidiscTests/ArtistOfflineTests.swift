@@ -311,4 +311,22 @@ struct ArtistDetailOfflineTests {
         #expect(vm.appearsOn.map(\.id) == ["al-portrait"])
         #expect(vm.appearanceSongs.map(\.id) == ["t1"])
     }
+
+    @Test("albums listed on the artist but filed under the leader move to Appears On")
+    func listedButNotFiledAlbumsAreCredits() async {
+        // A server or cached record listing the trio with albums that are filed under Bill Evans.
+        let portrait = AlbumID3(id: "al-portrait", name: "Portrait in Jazz", songCount: 10, duration: 2800,
+                                artist: "Bill Evans", artistId: "ar-evans", year: 1960)
+        let norway = AlbumID3(id: "al-norway", name: "Live in Norway 1966", songCount: 7, duration: 2400,
+                              artist: "Bill Evans", artistId: "ar-evans", year: 2024)
+        let trio = ArtistID3(id: "ar-1", name: "Bill Evans Trio", album: [portrait])
+        let vm = makeVM(artistData: nil, isOnline: true, apiArtist: trio,
+                        appearances: ArtistAppearanceResult(albums: [norway], songs: []))
+        await vm.load()
+        #expect(vm.releaseShelves.isEmpty, "Nothing is filed under the trio.")
+        await vm.loadAppearances()
+        #expect(vm.appearsOn.map(\.id) == ["al-norway", "al-portrait"])
+        #expect(vm.appearsOn.last?.songCount == 10, "The listed header keeps the real album size.")
+        #expect(vm.isCreditOnly)
+    }
 }

@@ -80,7 +80,7 @@ struct TrackMetadataTests {
         ]
         let albums = ArtistAppearances.albums(from: songs, artistID: "bill")
         #expect(albums.map(\.id) == ["getz"])
-        #expect(albums.first?.songCount == 2)
+        #expect(albums.first?.songCount == 0, "Without a header the album size is unknown, not the credit count.")
         #expect(albums.first?.artist == "Stan Getz")
     }
 
@@ -96,6 +96,18 @@ struct TrackMetadataTests {
         #expect(result.albums.map(\.id) == ["live"])
         #expect(result.albums.first?.songCount == 9, "Index headers carry the real album size.")
         #expect(result.songs.map(\.id) == ["1"])
+    }
+
+    @Test func isFiled_usesAlbumArtistNotListing() {
+        let filedUnderLeader = AlbumID3(id: "p", name: "Portrait in Jazz", songCount: 10, duration: 2800,
+                                        artist: "Bill Evans", artistId: "evans")
+        #expect(!ArtistAppearances.isFiled(filedUnderLeader, under: "trio", named: "Bill Evans Trio"))
+        #expect(ArtistAppearances.isFiled(filedUnderLeader, under: "evans", named: "Bill Evans"))
+        let coBilled = AlbumID3(id: "c", name: "Duo", songCount: 8, duration: 2000,
+                                artists: [ArtistID3(id: "chet", name: "Chet Baker"), ArtistID3(id: "evans", name: "Bill Evans")])
+        #expect(ArtistAppearances.isFiled(coBilled, under: "evans", named: "Bill Evans"))
+        let unknown = AlbumID3(id: "u", name: "Unknown", songCount: 1, duration: 60)
+        #expect(ArtistAppearances.isFiled(unknown, under: "evans", named: "Bill Evans"), "No filing data keeps the album.")
     }
 
     // MARK: - PlaybackSourceKind

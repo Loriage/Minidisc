@@ -168,3 +168,48 @@ struct TrackMetadataTests {
         return song
     }
 }
+
+@Suite("Appears On sources")
+struct AppearsOnSourceTests {
+    private struct Failure: Error {}
+
+    private func song(_ id: String) -> Song { Song(id: id, title: id, isDir: false) }
+
+    @Test func online_asksServerEvenWhenIndexHasAnAnswer() async throws {
+        // The reported bug: a stale index that knows one credited album must not hide the others.
+        let songs = try await LibraryService.creditedSongs(isOnline: true, indexed: [song("known")]) {
+            [song("known"), song("unscanned")]
+        }
+        #expect(songs.map(\.id) == ["known", "unscanned"])
+    }
+
+    @Test func online_keepsIndexOnlyCredits() async throws {
+        let songs = try await LibraryService.creditedSongs(isOnline: true, indexed: [song("local")]) {
+            [song("server")]
+        }
+        #expect(Set(songs.map(\.id)) == ["server", "local"])
+    }
+
+    @Test func offline_usesIndexWithoutCallingServer() async throws {
+        var called = false
+        let songs = try await LibraryService.creditedSongs(isOnline: false, indexed: [song("local")]) {
+            called = true
+            return []
+        }
+        #expect(!called)
+        #expect(songs.map(\.id) == ["local"])
+    }
+
+    @Test func serverFailure_fallsBackToIndex() async throws {
+        let songs = try await LibraryService.creditedSongs(isOnline: true, indexed: [song("local")]) {
+            throw Failure()
+        }
+        #expect(songs.map(\.id) == ["local"])
+    }
+
+    @Test func serverFailure_withoutIndex_throws() async {
+        await #expect(throws: Failure.self) {
+            try await LibraryService.creditedSongs(isOnline: true, indexed: nil) { throw Failure() }
+        }
+    }
+}

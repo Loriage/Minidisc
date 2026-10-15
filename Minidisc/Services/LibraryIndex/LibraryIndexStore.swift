@@ -866,15 +866,6 @@ actor LibraryIndexStore {
         return songs.sorted(by: Self.artistTrackOrder)
     }
 
-    func hasAlbums(filedUnder artistID: String, serverID: UUID) throws -> Bool {
-        let context = ModelContext(modelContainer)
-        let sid = serverID
-        let aid: String? = artistID
-        var descriptor = FetchDescriptor<IndexedAlbum>(predicate: #Predicate { $0.serverId == sid && $0.artistId == aid })
-        descriptor.fetchLimit = 1
-        return try context.fetchCount(descriptor) > 0
-    }
-
     func albums(ids: [String], serverID: UUID) throws -> [AlbumID3] {
         guard !ids.isEmpty else { return [] }
         let context = ModelContext(modelContainer)

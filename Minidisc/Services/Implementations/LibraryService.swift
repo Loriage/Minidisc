@@ -177,22 +177,40 @@ actor LibraryService: LibraryServiceProtocol {
     // MARK: - Artist tracks
 
     func appearances(artistID: String, artistName: String) async throws -> ArtistAppearanceResult {
-        // The complete track index answers exactly. Until it is, a (capped) server search is the best guess.
-        if let songs = try await catalog.creditedSongs(artistID: artistID, artistName: artistName) {
-            try Task.checkCancellation()
-            let indexed = try await appearanceResult(from: songs, artistID: artistID)
-            // A non-empty answer is authoritative. An empty one for an artist with nothing filed under it
-            // can only be a stale index (credits re-tagged since the last scan): such artist rows exist only
-            // because of credits. Ask the server before declaring it uncredited.
-            guard indexed.albums.isEmpty,
-                  await serverService.state.isOnline,
-                  await !catalog.hasIndexedAlbums(filedUnder: artistID) else { return indexed }
+        let indexed = (try? await catalog.creditedSongs(artistID: artistID, artistName: artistName)) ?? nil
+        try Task.checkCancellation()
+        let isOnline = await serverService.state.isOnline
+        let version = await serverService.activeConnectionVersion()
+        let songs = try await Self.creditedSongs(isOnline: isOnline, indexed: indexed) {
+            let remote = try await self.creditedSongsBySearch(artistName: artistName)
+            // A server switch mid-search must not mix another library's credits into this page.
+            guard await self.serverService.activeConnectionVersion() == version else { throw CancellationError() }
+            return remote
         }
-        // Index still scanning (or stale): page through a song search for the name and keep the tracks
-        // that credit the artist. A single default-sized search (20 songs) is far too small.
-        let songs = try await creditedSongsBySearch(artistName: artistName)
         try Task.checkCancellation()
         return try await appearanceResult(from: songs, artistID: artistID)
+    }
+
+    /// The library index only holds what its last full scan and later browsing saw, so it misses credits
+    /// re-tagged since and albums never opened. Online, the server is the source of truth and the index
+    /// adds anything it knows; offline, or when the server request fails, the index is the whole answer.
+    nonisolated static func creditedSongs(
+        isOnline: Bool,
+        indexed: [Song]?,
+        remote: () async throws -> [Song]
+    ) async throws -> [Song] {
+        guard isOnline else { return indexed ?? [] }
+        do {
+            let serverSongs = try await remote()
+            var seen: Set<String> = []
+            return (serverSongs + (indexed ?? [])).filter { seen.insert($0.id).inserted }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            guard let indexed else { throw error }
+            Logger.library.info("Appears On: server search failed, using the library index: \(error, privacy: .public)")
+            return indexed
+        }
     }
 
     private func appearanceResult(from songs: [Song], artistID: String) async throws -> ArtistAppearanceResult {

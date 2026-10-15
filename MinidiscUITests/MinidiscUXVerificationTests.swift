@@ -372,7 +372,8 @@ final class MinidiscUXVerificationTests: XCTestCase {
     /// Album rows with guest credits: the row plays, only the orange credits open the artist picker.
     func testFixtureAlbumRowPlaysAndCreditsOpenPicker() async throws {
         try await launchFixtureApp()
-        try await setFixtureState(["slow_stream": false, "removed": false, "fail_stream": false])
+        // The second credited album is published without a new scan, so the app's index cannot know it.
+        try await setFixtureState(["slow_stream": false, "removed": false, "fail_stream": false, "unscanned_credit": true])
         try openBrowse("Albums")
         try tap(app.staticTexts["Horizons de test"].firstMatch, named: "album-credits-open-album")
         let row = searchElement("album.song.row.ux-song-2")
@@ -397,7 +398,9 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try require(guest, timeout: 10)
         try tap(guest, named: "album-credits-open-guest")
         try require(searchElement("discography.album.ux-album"), timeout: 15)
+        try require(searchElement("discography.album.ux-unscanned-album"), timeout: 5)
         captureHierarchy("credit-only-artist-appears-on")
+        try await setFixtureState(["unscanned_credit": false])
     }
 
     func testFixtureQueuePresentation() async throws {

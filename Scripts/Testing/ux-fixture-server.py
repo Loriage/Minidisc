@@ -13,7 +13,7 @@ import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-STATE = {"removed": False, "fail_stream": False, "slow_stream": False, "search_catalog": False, "queue_catalog": False, "home_catalog": False, "browse_catalog": False, "playlist_artwork_catalog": False}
+STATE = {"removed": False, "fail_stream": False, "slow_stream": False, "search_catalog": False, "queue_catalog": False, "home_catalog": False, "browse_catalog": False, "playlist_artwork_catalog": False, "unscanned_credit": False}
 # Mode changes represent completed server scans, so persistent app indexes can refresh.
 LAST_SCAN = time.time()
 LOCK = threading.RLock()
@@ -101,6 +101,14 @@ BROWSE_PLAYLIST = {**PLAYLIST, "id": "ux-browse-playlist", "name": "Index alphab
                    "songCount": len(BROWSE_SONGS), "duration": len(BROWSE_SONGS) * 30,
                    "changed": "2026-09-05T09:00:00Z"}
 BROWSE_FAVORITE_ARTIST = {**ARTIST, "id": "ux-browse-favorite-artist", "name": "Iris Ensemble", "albumCount": 0}
+# An album crediting Iris Ensemble that appears without a new scan timestamp, so a persistent app index
+# stays stale: Appears On must still find it by asking the server.
+UNSCANNED_ALBUM = {**ALBUM, "id": "ux-unscanned-album", "name": "Archives tardives", "songCount": 1, "duration": 30,
+                   "coverArt": "ux-cover", "year": 2025}
+UNSCANNED_SONG = {**SONGS[0], "id": "ux-unscanned-song", "title": "Pièce retrouvée", "album": UNSCANNED_ALBUM["name"],
+                  "albumId": UNSCANNED_ALBUM["id"], "artist": "Atelier Minidisc, Iris Ensemble",
+                  "artists": [{"id": "ux-artist", "name": "Atelier Minidisc"}, {"id": BROWSE_FAVORITE_ARTIST["id"], "name": "Iris Ensemble"}],
+                  "albumArtists": [{"id": "ux-artist", "name": "Atelier Minidisc"}], "year": 2025}
 
 
 def fixture_catalog(state):
@@ -123,6 +131,9 @@ def fixture_catalog(state):
         catalog["albums"] += BROWSE_ALBUMS
         catalog["artists"] += BROWSE_ARTISTS + [BROWSE_FAVORITE_ARTIST]
         catalog["playlists"] += [BROWSE_PLAYLIST]
+    if state.get("unscanned_credit"):
+        catalog["songs"] += [UNSCANNED_SONG]
+        catalog["albums"] += [UNSCANNED_ALBUM]
     if state["playlist_artwork_catalog"]:
         catalog["songs"] += PLAYLIST_ARTWORK_SONGS
         catalog["playlists"] = [

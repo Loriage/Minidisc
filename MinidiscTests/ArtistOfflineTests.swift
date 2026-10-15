@@ -109,6 +109,9 @@ struct LocalArtistDataTests {
 @MainActor
 private final class ARLibraryStub: ArtistBrowsing, StarredBrowsing, ArtistRecommendationBrowsing {
     var artistResult: ArtistID3?
+    var appearanceResult: ArtistAppearanceResult = .empty
+    @MainActor
+    func appearances(artistID: String, artistName: String) async throws -> ArtistAppearanceResult { appearanceResult }
     @MainActor
     func artist(id: String) async throws -> ArtistID3 {
         if let artistResult { return artistResult }
@@ -187,7 +190,8 @@ struct ArtistDetailOfflineTests {
     private func makeVM(
         artistData: LocalArtistData?,
         isOnline: Bool,
-        apiArtist: ArtistID3? = nil
+        apiArtist: ArtistID3? = nil,
+        appearances: ArtistAppearanceResult = .empty
     ) -> ArtistDetailViewModel {
         let state = ServerState()
         state.isOnline = isOnline
@@ -198,6 +202,7 @@ struct ArtistDetailOfflineTests {
         download.artistData = artistData
         let library = ARLibraryStub()
         library.artistResult = apiArtist
+        library.appearanceResult = appearances
         return ArtistDetailViewModel(
             artistId: "ar-1",
             artistName: "Orelsan",
@@ -252,8 +257,28 @@ struct ArtistDetailOfflineTests {
         let empty = ArtistID3(id: "ar-1", name: "Orelsan", album: [])
         let vm = makeVM(artistData: downloadedArtist, isOnline: true, apiArtist: empty)
         await vm.load()
+        // The empty record could be a credit-only artist: the decision waits for Appears On.
+        #expect(!vm.isOffline)
+        await vm.loadAppearances()
         #expect(vm.isOffline)
         #expect(vm.artist?.album?.count == 1)
+    }
+
+    @Test("a credit-only artist with a cached song stays online and lists every crediting album")
+    func creditOnlyArtistWithDownloadsStaysOnline() async {
+        // The reported bug: one cached track made the empty server record fall back to "downloads only",
+        // which hid Appears On entirely.
+        let empty = ArtistID3(id: "ar-1", name: "Orelsan", album: [])
+        let crediting = (1...3).map {
+            AlbumID3(id: "al-\($0)", name: "Album \($0)", songCount: 8, duration: 2400, artist: "Leader", artistId: "ar-leader")
+        }
+        let vm = makeVM(artistData: downloadedArtist, isOnline: true, apiArtist: empty,
+                        appearances: ArtistAppearanceResult(albums: crediting, songs: []))
+        await vm.load()
+        await vm.loadAppearances()
+        #expect(!vm.isOffline)
+        #expect(vm.appearsOn.map(\.id) == ["al-1", "al-2", "al-3"])
+        #expect(vm.isCreditOnly)
     }
 
     @Test("the online-only sections stop loading offline so they collapse instead of showing skeletons")
@@ -271,5 +296,57 @@ struct ArtistDetailOfflineTests {
         #expect(vm.topSongs.isEmpty)
         #expect(vm.similarArtists.isEmpty)
         #expect(vm.biography == nil)
+    }
+
+    @Test("online releases are grouped into discography shelves in shelf order")
+    func releasesGroupIntoShelves() async {
+        func release(_ id: String, _ types: [String]) -> AlbumID3 {
+            AlbumID3(id: id, name: id, songCount: 1, duration: 60, releaseTypes: types)
+        }
+        let artist = ArtistID3(id: "ar-1", name: "Orelsan", album: [
+            release("live", ["Album", "Live"]),
+            release("lp", ["Album"]),
+            release("single", ["Single"]),
+            release("ep", ["EP"])
+        ])
+        let vm = makeVM(artistData: nil, isOnline: true, apiArtist: artist)
+        await vm.load()
+        #expect(vm.releaseShelves.map(\.category) == [.album, .ep, .single, .live])
+        #expect(vm.releaseShelves.first?.albums.map(\.id) == ["lp"])
+    }
+
+    @Test("a credit-only artist shows the albums crediting it and plays the credited tracks")
+    func creditOnlyArtistUsesAppearances() async {
+        let trio = ArtistID3(id: "ar-1", name: "Bill Evans Trio", album: [])
+        let song = Song(id: "t1", title: "Autumn Leaves", isDir: false, album: "Portrait in Jazz", albumId: "al-portrait",
+                        artistId: "ar-1", artists: [ArtistID3(id: "ar-1", name: "Bill Evans Trio")],
+                        albumArtists: [ArtistID3(id: "ar-evans", name: "Bill Evans")])
+        let credited = ArtistAppearances.result(from: [song], artistID: "ar-1")
+        let vm = makeVM(artistData: nil, isOnline: true, apiArtist: trio, appearances: credited)
+        await vm.load()
+        #expect(vm.isLoadingAppearances)
+        await vm.loadAppearances()
+        #expect(!vm.isLoadingAppearances)
+        #expect(vm.isCreditOnly)
+        #expect(vm.appearsOn.map(\.id) == ["al-portrait"])
+        #expect(vm.appearanceSongs.map(\.id) == ["t1"])
+    }
+
+    @Test("albums listed on the artist but filed under the leader move to Appears On")
+    func listedButNotFiledAlbumsAreCredits() async {
+        // A server or cached record listing the trio with albums that are filed under Bill Evans.
+        let portrait = AlbumID3(id: "al-portrait", name: "Portrait in Jazz", songCount: 10, duration: 2800,
+                                artist: "Bill Evans", artistId: "ar-evans", year: 1960)
+        let norway = AlbumID3(id: "al-norway", name: "Live in Norway 1966", songCount: 7, duration: 2400,
+                              artist: "Bill Evans", artistId: "ar-evans", year: 2024)
+        let trio = ArtistID3(id: "ar-1", name: "Bill Evans Trio", album: [portrait])
+        let vm = makeVM(artistData: nil, isOnline: true, apiArtist: trio,
+                        appearances: ArtistAppearanceResult(albums: [norway], songs: []))
+        await vm.load()
+        #expect(vm.releaseShelves.isEmpty, "Nothing is filed under the trio.")
+        await vm.loadAppearances()
+        #expect(vm.appearsOn.map(\.id) == ["al-norway", "al-portrait"])
+        #expect(vm.appearsOn.last?.songCount == 10, "The listed header keeps the real album size.")
+        #expect(vm.isCreditOnly)
     }
 }

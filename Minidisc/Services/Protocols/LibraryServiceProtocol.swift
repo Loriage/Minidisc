@@ -27,6 +27,15 @@ nonisolated protocol ArtistBrowsing: AnyObject, Sendable {
     /// Individual album failures are logged and skipped (best-effort). Throws `MinidiscError.artistTracksUnavailable`
     /// only when every album fetch fails.
     func fetchAllTracks(forArtistID artistID: String) async throws -> [DisplayableSong]
+
+    /// Albums not filed under this artist that credit them on a track, newest first, with those tracks.
+    func appearances(artistID: String, artistName: String) async throws -> ArtistAppearanceResult
+}
+
+extension ArtistBrowsing {
+    nonisolated func appearances(artistID: String, artistName: String) async throws -> ArtistAppearanceResult {
+        .empty
+    }
 }
 
 nonisolated protocol SongBrowsing: AnyObject, Sendable {
@@ -72,6 +81,15 @@ nonisolated protocol RecentlyAddedTrackBrowsing: AnyObject, Sendable {
 nonisolated protocol GenreBrowsing: AnyObject, Sendable {
     func genres() async throws -> [Genre]
     func albumsByGenre(_ genre: String, size: Int) async throws -> [AlbumID3]
+}
+
+nonisolated protocol RecordLabelBrowsing: AnyObject, Sendable {
+    /// `nil` until the library index has every album; labels can only be read from indexed albums.
+    func albums(recordLabel: String) async throws -> [AlbumID3]?
+}
+
+extension RecordLabelBrowsing {
+    nonisolated func albums(recordLabel: String) async throws -> [AlbumID3]? { nil }
 }
 
 nonisolated protocol MoodTrackSourcing: AnyObject, Sendable {
@@ -121,6 +139,7 @@ nonisolated protocol ArtworkURLResolving: AnyObject, Sendable {
 nonisolated protocol LibraryServiceProtocol:
     LibrarySearching,
     AlbumBrowsing,
+    RecordLabelBrowsing,
     ArtistBrowsing,
     SongBrowsing,
     PlaylistBrowsing,

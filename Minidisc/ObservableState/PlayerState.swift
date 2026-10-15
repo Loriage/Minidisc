@@ -58,6 +58,15 @@ final class PlayerState {
     /// Mutually exclusive with active queue playback: starting play(tracks:) clears this to nil.
     var currentRadio: InternetRadioStation?
     var isLiveStream: Bool { currentRadio != nil }
+    /// Where the current track's audio comes from. Presentation only; PlayerService owns the source.
+    private(set) var currentSourceKind: PlaybackSourceKind?
+    @ObservationIgnored private var sourceKindRevision: UInt64 = 0
+
+    func applySourceKind(_ kind: PlaybackSourceKind?, revision: UInt64) {
+        guard revision > sourceKindRevision else { return }
+        sourceKindRevision = revision
+        if currentSourceKind != kind { currentSourceKind = kind }
+    }
     /// True when the current playback session was started via Smart Shuffle.
     /// Survives skips and pauses; resets on new explicit play, radio, stop, or cold start.
     var isSmartShuffleActive: Bool = false

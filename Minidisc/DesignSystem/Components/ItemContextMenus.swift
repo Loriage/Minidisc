@@ -158,7 +158,7 @@ struct SongContextMenuModifier: ViewModifier {
             } label: {
                 Label(
                     isFavorite ? "Remove from Favorites" : "Add to Favorites",
-                    systemImage: isFavorite ? "star.slash" : "star"
+                    systemImage: isFavorite ? "heart.slash" : "heart"
                 )
             }
             }
@@ -298,7 +298,7 @@ struct CollectionContextMenuModifier: ViewModifier {
                     } label: {
                         Label(
                             isFavorite ? "Remove from Favorites" : "Add to Favorites",
-                            systemImage: isFavorite ? "star.slash" : "star"
+                            systemImage: isFavorite ? "heart.slash" : "heart"
                         )
                     }
                 }
@@ -473,7 +473,7 @@ struct LazyCollectionContextMenuModifier: ViewModifier {
                     } label: {
                         Label(
                             isFavorite ? "Remove from Favorites" : "Add to Favorites",
-                            systemImage: isFavorite ? "star.slash" : "star"
+                            systemImage: isFavorite ? "heart.slash" : "heart"
                         )
                     }
                 }

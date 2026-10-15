@@ -270,7 +270,7 @@ struct PlaylistDetailView: View {
                         onContextRemove: removeTrack,
                         onAddToPlaylist: playlistAddition.present,
                         rowBackground: bodyColor,
-                        trailingAccessory: .menu
+                        trailingAccessory: .favorite
                     )
 
                     PlaylistTrackSummary(count: songs.count, duration: songs.reduce(0) { $0 + $1.duration })
@@ -585,7 +585,7 @@ struct PlaylistDetailView: View {
                 .padding(.top, 100)
             VStack(spacing: MinidiscSpacing.s) {
                 TextField("Playlist Title", text: $editName)
-                    .font(.system(.title2, design: .rounded, weight: .semibold))
+                    .font(.minidiscDetailTitle)
                     .multilineTextAlignment(.center)
                     .padding(.vertical, MinidiscSpacing.s)
                 TextField("Description", text: $editComment, axis: .vertical)
@@ -1022,14 +1022,14 @@ struct PlaylistSongRows: View {
             song: liveSong,
             index: index + 1,
             showCoverArt: true,
-            coverArtSize: trailingAccessory == .menu ? 48 : 44,
-            coverArtCornerRadius: trailingAccessory == .menu ? MinidiscCornerRadius.xs : MinidiscCornerRadius.standard,
-            primaryContentSpacing: trailingAccessory == .menu ? MinidiscSpacing.m : MinidiscSpacing.s,
+            coverArtSize: trailingAccessory == .favorite ? 48 : 44,
+            coverArtCornerRadius: trailingAccessory == .favorite ? MinidiscCornerRadius.xs : MinidiscCornerRadius.standard,
+            primaryContentSpacing: trailingAccessory == .favorite ? MinidiscSpacing.m : MinidiscSpacing.s,
             isFavorite: favoriteSongIds.contains("song:\(song.id)"),
             titleColor: titleColor,
             secondaryColor: secondaryColor,
             trailingAccessory: trailingAccessory,
-            menuAccessibilityIdentifier: "playlist.song.menu.\(song.id)",
+            rowAccessibilityIdentifier: "playlist.song.row.\(song.id)",
             onDownload: downloadAction,
             onRemoveDownload: removeAction,
             isDownloading: isDownloading,
@@ -1037,13 +1037,13 @@ struct PlaylistSongRows: View {
             onAddToPlaylist: onAddToPlaylist,
             onTap: { onTap(index) }
         )
-        .listRowInsets(trailingAccessory == .menu
-            ? EdgeInsets(top: 5, leading: MinidiscSpacing.xl, bottom: 5, trailing: MinidiscSpacing.s)
+        .listRowInsets(trailingAccessory == .favorite
+            ? EdgeInsets(top: 5, leading: MinidiscSpacing.xl, bottom: 5, trailing: MinidiscSpacing.trackRowTrailing)
             : nil)
         .alignmentGuide(.listRowSeparatorLeading) { dimensions in
-            trailingAccessory == .menu ? 0 : dimensions[.listRowSeparatorLeading]
+            trailingAccessory == .favorite ? 0 : dimensions[.listRowSeparatorLeading]
         }
-        .listRowSeparatorTint(trailingAccessory == .menu ? secondaryColor.opacity(0.22) : nil)
+        .listRowSeparatorTint(trailingAccessory == .favorite ? secondaryColor.opacity(0.22) : nil)
         .listRowBackground(Color.clear)
     }
 }

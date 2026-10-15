@@ -47,7 +47,8 @@ struct MiniPlayerAccessoryView: View {
             }
         }
         .offset(x: dragOffset)
-        .opacity(1.0 - min(abs(dragOffset) / 200, 0.4))
+        // Explicit CGFloat: Previews wrap literals for live editing, which leaves `/ 200` ambiguous.
+        .opacity(1.0 - min(abs(dragOffset) / CGFloat(200), 0.4))
         .contentShape(Rectangle())
         .onTapGesture(perform: expandPlayer)
         .gesture(!playerState.queue.isEmpty && !isLiveStream ? swipeSkipGesture : nil)
@@ -279,3 +280,30 @@ private struct MiniPlayerPlacementReader<Content: View>: View {
         content(placement == .inline)
     }
 }
+
+#if DEBUG
+#Preview("In the tab bar") {
+    MinidiscPreview(container: .preview()) {
+        TabView {
+            Tab("Home", systemImage: "house.fill") { Color.clear }
+            Tab("Library", systemImage: "music.note.square.stack.fill") { Color.clear }
+            Tab("Search", systemImage: "magnifyingglass") { Color.clear }
+        }
+        .tabViewBottomAccessory {
+            MiniPlayerAccessoryView(expandPlayer: {})
+        }
+    }
+}
+
+#Preview("Inline and expanded, paused") {
+    MinidiscPreview(container: .preview(isPlaying: false)) {
+        VStack(spacing: MinidiscSpacing.xxl) {
+            MiniPlayerAccessoryView(placementOverride: true, expandPlayer: {})
+                .frame(height: 48)
+            MiniPlayerAccessoryView(placementOverride: false, expandPlayer: {})
+                .frame(height: 56)
+        }
+        .padding(MinidiscSpacing.l)
+    }
+}
+#endif

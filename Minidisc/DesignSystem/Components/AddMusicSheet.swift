@@ -124,7 +124,7 @@ struct AddMusicSheet: View {
                         Divider().padding(.leading, 52)
                         AddMusicLibraryRow(title: "Artists", systemImage: "music.mic", route: .allArtists)
                         Divider().padding(.leading, 52)
-                        AddMusicLibraryRow(title: "Favorites", systemImage: "star.fill", route: .favorites)
+                        AddMusicLibraryRow(title: "Favorites", systemImage: "heart.fill", route: .favorites)
                         Divider().padding(.leading, 52)
                         AddMusicLibraryRow(title: "Downloads", systemImage: "arrow.down.circle.fill", route: .downloads)
                     }

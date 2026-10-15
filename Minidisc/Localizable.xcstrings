@@ -56,6 +56,9 @@
         }
       }
     },
+    "%@ isn’t in your library." : {},
+    "%@ kbps" : {},
+    "%@, lossless" : {},
     "%lld of %lld tracks ready" : {
       "localizations" : {
         "de" : {
@@ -274,6 +277,9 @@
         }
       }
     },
+    "Album: %@" : {},
+    "Appears On" : {},
+    "Artists: %@" : {},
     "Automatic generation" : {
       "localizations" : {
         "de" : {
@@ -430,6 +436,10 @@
         }
       }
     },
+    "Cached" : {},
+    "Choose an artist to open" : {},
+    "Collapsed" : {},
+    "Compilations" : {},
     "Could not delete mood playlists. Check your connection and permissions, then try again." : {
       "localizations" : {
         "de" : {
@@ -690,6 +700,9 @@
         }
       }
     },
+    "Disc %lld" : {},
+    "EPs" : {},
+    "Expanded" : {},
     "Favorite tracks and albums are saved automatically, outside Downloads and the stream cache limit. Turning this off removes only these automatic copies. Uses the stream cache format and cellular data settings." : {
       "localizations" : {
         "de" : {
@@ -794,6 +807,7 @@
         }
       }
     },
+    "In Your Library" : {},
     "Keep Favorites Offline" : {
       "localizations" : {
         "de" : {
@@ -846,6 +860,7 @@
         }
       }
     },
+    "Label pages appear once Minidisc has indexed every album. Try again shortly." : {},
     "Lidarr returned an unreadable response. Try again later." : {
       "localizations" : {
         "de" : {
@@ -898,6 +913,7 @@
         }
       }
     },
+    "Live Albums" : {},
     "Manage automatic updates and regenerate mood playlists in Application settings." : {
       "localizations" : {
         "de" : {
@@ -1262,6 +1278,9 @@
         }
       }
     },
+    "Not in Your Library" : {},
+    "Nothing in your library matches." : {},
+    "Off" : {},
     "Offline Mode" : {
       "localizations" : {
         "de" : {
@@ -1418,6 +1437,8 @@
         }
       }
     },
+    "On Device" : {},
+    "One" : {},
     "Only show and play music saved on this device, even when connected to the internet." : {
       "localizations" : {
         "de" : {
@@ -1470,6 +1491,10 @@
         }
       }
     },
+    "Opens the album" : {},
+    "Opens the artist" : {},
+    "Other Releases" : {},
+    "Play All" : {},
     "Reconnect to browse Lidarr and manage your music library. Your offline music is still available in Minidisc." : {
       "localizations" : {
         "de" : {
@@ -1626,6 +1651,10 @@
         }
       }
     },
+    "Select Artist" : {},
+    "Shows all albums" : {},
+    "Shows or hides these albums" : {},
+    "Singles" : {},
     "Some mood playlists could not be deleted. Automatic generation is off. Try again later." : {
       "localizations" : {
         "de" : {
@@ -1730,6 +1759,7 @@
         }
       }
     },
+    "Still Indexing Your Library" : {},
     "Sync Favorites Now" : {
       "localizations" : {
         "de" : {
@@ -1834,6 +1864,7 @@
         }
       }
     },
+    "Transcoding" : {},
     "Turn Off Offline Mode" : {
       "localizations" : {
         "fr" : {
@@ -1886,6 +1917,7 @@
         }
       }
     },
+    "Unable to load these albums. Please try again." : {},
     "Waiting for a connection" : {
       "localizations" : {
         "de" : {
@@ -33754,6 +33786,7 @@
       }
     },
     "Singles & EPs" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

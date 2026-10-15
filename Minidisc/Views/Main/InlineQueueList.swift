@@ -132,7 +132,7 @@ private struct QueueRow: View {
             } label: {
                 Label(
                     isFavorite ? "Remove from Favorites" : "Add to Favorites",
-                    systemImage: isFavorite ? "star.slash" : "star"
+                    systemImage: isFavorite ? "heart.slash" : "heart"
                 )
             }
             .disabled(!isOnline || song.isLocalFile)
@@ -317,3 +317,45 @@ private struct LegacyQueueList: View {
         .environment(\.editMode, .constant(.active))
     }
 }
+
+#if DEBUG
+#Preview("Queue") {
+    let container = AppContainer.preview()
+    MinidiscPreview(container: container) {
+        InlineQueueList(
+            playerState: container.playerState,
+            contentColor: .white,
+            secondaryContentColor: .white.opacity(0.6)
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(PreviewArtworkBackground())
+        .environment(\.colorScheme, .dark)
+    }
+}
+
+/// The iOS 26 list. The iOS 27 reorderable list above renders empty in the iOS 27 preview simulator.
+#Preview("Queue, iOS 26 list") {
+    let container = AppContainer.preview()
+    MinidiscPreview(container: container) {
+        LegacyQueueList(
+            entries: QueueRowSnapshot.capture(container.playerState),
+            queueCount: container.playerState.queue.count,
+            contentColor: .white,
+            secondaryContentColor: .white.opacity(0.6),
+            loadArtwork: true
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(PreviewArtworkBackground())
+        .environment(\.colorScheme, .dark)
+    }
+}
+
+/// The queue sits on the player's artwork-tinted background in the app.
+private struct PreviewArtworkBackground: View {
+    var body: some View {
+        LinearGradient(colors: [Color(red: 0.11, green: 0.31, blue: 0.42), .black],
+                       startPoint: .top, endPoint: .bottom)
+            .ignoresSafeArea()
+    }
+}
+#endif

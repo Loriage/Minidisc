@@ -39,7 +39,7 @@ struct LyricsLineView: View {
     }
 
     private var lineFont: Font {
-        .system(.title, design: .rounded, weight: .bold)
+        .system(.title, weight: .bold)
     }
 
     var body: some View {

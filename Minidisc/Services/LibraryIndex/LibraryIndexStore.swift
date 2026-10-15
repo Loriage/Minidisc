@@ -843,6 +843,39 @@ actor LibraryIndexStore {
         return try songs(artistID: artistID, serverID: serverID, in: context)
     }
 
+    /// Every track that credits the artist: as the primary track artist (the indexed `artistId`) or in the
+    /// OpenSubsonic `artists` list. Secondary credits are found through the search text, which holds the
+    /// display artist string, then confirmed against the decoded credits.
+    func creditedSongs(artistID: String, artistName: String, serverID: UUID) throws -> [Song] {
+        let context = ModelContext(modelContainer)
+        let sid = serverID
+        let targetArtistID: String? = artistID
+        let term = LibraryIndexText.normalized(artistName)
+        let primary = try context.fetch(FetchDescriptor<IndexedTrack>(
+            predicate: #Predicate { $0.serverId == sid && $0.artistId == targetArtistID }
+        ))
+        let named = term.isEmpty ? [] : try context.fetch(FetchDescriptor<IndexedTrack>(
+            predicate: #Predicate {
+                $0.serverId == sid && $0.artistId != targetArtistID && $0.searchText.localizedStandardContains(term)
+            }
+        ))
+        var seen: Set<String> = []
+        let songs = (primary.compactMap(decodeSong) + named.compactMap(decodeSong).filter { song in
+            song.artists?.contains(where: { $0.id == artistID }) == true
+        }).filter { seen.insert($0.id).inserted }
+        return songs.sorted(by: Self.artistTrackOrder)
+    }
+
+    func albums(ids: [String], serverID: UUID) throws -> [AlbumID3] {
+        guard !ids.isEmpty else { return [] }
+        let context = ModelContext(modelContainer)
+        let sid = serverID
+        let rows = try context.fetch(FetchDescriptor<IndexedAlbum>(
+            predicate: #Predicate { $0.serverId == sid && ids.contains($0.itemId) }
+        ))
+        return rows.compactMap(decodeAlbum)
+    }
+
     func playlists(serverID: UUID) throws -> [Playlist] {
         let context = ModelContext(modelContainer)
         let sid = serverID

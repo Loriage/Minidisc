@@ -21,7 +21,7 @@ struct LocalMusicCollectionView: View {
     }
 
     private var artworkID: String { tracks.first?.song.coverArtId ?? tracks.first?.id ?? group.artworkID }
-    private var palette: AlbumDetailPalette { AlbumDetailPalette(dominantColor: dominantColor, appearance: colorScheme) }
+    private var palette: AlbumDetailPalette { AlbumDetailPalette(dominantColor: dominantColor) }
 
     var body: some View {
         ScrollView {
@@ -138,7 +138,7 @@ struct LocalMusicTrackRows: View {
                     showArtist: showCoverArt,
                     secondaryText: track.isAvailable ? nil : String(localized: "Unavailable on this device", table: "LocalMusic"),
                     titleColor: track.isAvailable ? titleColor : secondaryColor,
-                    secondaryColor: secondaryColor, trailingAccessory: .menu,
+                    secondaryColor: secondaryColor, trailingAccessory: .favorite,
                     onTap: { play(track) })
                 .padding(.vertical, MinidiscSpacing.s)
                 .id(track.id)

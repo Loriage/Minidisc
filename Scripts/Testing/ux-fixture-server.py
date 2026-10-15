@@ -13,7 +13,7 @@ import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-STATE = {"removed": False, "fail_stream": False, "slow_stream": False, "search_catalog": False, "queue_catalog": False, "home_catalog": False, "browse_catalog": False, "playlist_artwork_catalog": False}
+STATE = {"removed": False, "fail_stream": False, "slow_stream": False, "search_catalog": False, "queue_catalog": False, "home_catalog": False, "browse_catalog": False, "playlist_artwork_catalog": False, "unscanned_credit": False}
 # Mode changes represent completed server scans, so persistent app indexes can refresh.
 LAST_SCAN = time.time()
 LOCK = threading.RLock()
@@ -23,7 +23,10 @@ MUTATIONS = []
 REQUESTS = []
 SONGS = [
     {"id": "ux-song-1", "title": "Matin tranquille", "artist": "Atelier Minidisc", "artistId": "ux-artist", "album": "Horizons de test", "albumId": "ux-album", "duration": 30, "track": 1, "size": 960044, "suffix": "wav", "contentType": "audio/wav", "isDir": False, "coverArt": "ux-cover"},
-    {"id": "ux-song-2", "title": "Une très longue promenade au bord de la mer pour vérifier la lisibilité", "artist": "Atelier Minidisc", "artistId": "ux-artist", "album": "Horizons de test", "albumId": "ux-album", "duration": 30, "track": 2, "size": 960044, "suffix": "wav", "contentType": "audio/wav", "isDir": False, "coverArt": "ux-cover"},
+    {"id": "ux-song-2", "title": "Une très longue promenade au bord de la mer pour vérifier la lisibilité", "artist": "Atelier Minidisc, Iris Ensemble", "artistId": "ux-artist", "album": "Horizons de test", "albumId": "ux-album", "duration": 30, "track": 2, "size": 960044, "suffix": "wav", "contentType": "audio/wav", "isDir": False, "coverArt": "ux-cover",
+     # OpenSubsonic credits: a guest besides the album artist, so album rows show a tappable artists line.
+     "artists": [{"id": "ux-artist", "name": "Atelier Minidisc"}, {"id": "ux-browse-favorite-artist", "name": "Iris Ensemble"}],
+     "albumArtists": [{"id": "ux-artist", "name": "Atelier Minidisc"}]},
 ]
 ALBUM = {"id": "ux-album", "name": "Horizons de test", "artist": "Atelier Minidisc", "artistId": "ux-artist", "songCount": 2, "duration": 60, "created": "2026-09-01T12:00:00Z", "coverArt": "ux-cover", "genre": "Ambient", "year": 2026}
 PLAYLIST = {"id": "ux-playlist", "name": "Escapade temporaire", "comment": "Données locales de vérification", "owner": "test", "public": False, "songCount": 2, "duration": 60, "created": "2026-09-01T12:00:00Z", "changed": "2026-09-01T12:00:00Z", "coverArt": "ux-cover"}
@@ -98,6 +101,14 @@ BROWSE_PLAYLIST = {**PLAYLIST, "id": "ux-browse-playlist", "name": "Index alphab
                    "songCount": len(BROWSE_SONGS), "duration": len(BROWSE_SONGS) * 30,
                    "changed": "2026-09-05T09:00:00Z"}
 BROWSE_FAVORITE_ARTIST = {**ARTIST, "id": "ux-browse-favorite-artist", "name": "Iris Ensemble", "albumCount": 0}
+# An album crediting Iris Ensemble that appears without a new scan timestamp, so a persistent app index
+# stays stale: Appears On must still find it by asking the server.
+UNSCANNED_ALBUM = {**ALBUM, "id": "ux-unscanned-album", "name": "Archives tardives", "songCount": 1, "duration": 30,
+                   "coverArt": "ux-cover", "year": 2025}
+UNSCANNED_SONG = {**SONGS[0], "id": "ux-unscanned-song", "title": "Pièce retrouvée", "album": UNSCANNED_ALBUM["name"],
+                  "albumId": UNSCANNED_ALBUM["id"], "artist": "Atelier Minidisc, Iris Ensemble",
+                  "artists": [{"id": "ux-artist", "name": "Atelier Minidisc"}, {"id": BROWSE_FAVORITE_ARTIST["id"], "name": "Iris Ensemble"}],
+                  "albumArtists": [{"id": "ux-artist", "name": "Atelier Minidisc"}], "year": 2025}
 
 
 def fixture_catalog(state):
@@ -120,6 +131,9 @@ def fixture_catalog(state):
         catalog["albums"] += BROWSE_ALBUMS
         catalog["artists"] += BROWSE_ARTISTS + [BROWSE_FAVORITE_ARTIST]
         catalog["playlists"] += [BROWSE_PLAYLIST]
+    if state.get("unscanned_credit"):
+        catalog["songs"] += [UNSCANNED_SONG]
+        catalog["albums"] += [UNSCANNED_ALBUM]
     if state["playlist_artwork_catalog"]:
         catalog["songs"] += PLAYLIST_ARTWORK_SONGS
         catalog["playlists"] = [
@@ -446,7 +460,9 @@ class Handler(BaseHTTPRequestHandler):
                 for name, values in sorted(indexes.items())
             ]}
         elif endpoint == "getArtist":
-            artist = next((item for item in catalog["artists"] if item["id"] == query.get("id", [""])[0]), None)
+            # Credited artists exist as artist records even when no album is filed under them (Navidrome).
+            known = catalog["artists"] + [BROWSE_FAVORITE_ARTIST]
+            artist = next((item for item in known if item["id"] == query.get("id", [""])[0]), None)
             if artist is None:
                 response.update(status="failed", error={"code": 70, "message": "Artist not found"})
             else:

@@ -8,6 +8,10 @@ final class AlbumDetailViewModel {
     var artistName: String? = nil
     var year: Int? = nil
     var genre: String? = nil
+    /// Every genre tag (OpenSubsonic `genres`), falling back to the single legacy genre.
+    var genres: [String] = []
+    /// Disc subtitles keyed by disc number (OpenSubsonic `discTitles`).
+    var discTitles: [Int: String] = [:]
     var songCount: Int = 0
     var releaseDate: ItemDate? = nil
     var releaseTypes: [String] = []
@@ -67,24 +71,42 @@ final class AlbumDetailViewModel {
             loadedAlbum = apiAlbum
             guard let serverId = serverState.activeServer?.id else { return }
             let downloadedIds = await downloadService.downloadedSongIds(serverId: serverId)
-            albumName = apiAlbum.name
-            artistName = apiAlbum.artist
-            year = apiAlbum.year
-            genre = apiAlbum.genre
-            songCount = apiAlbum.songCount
-            releaseDate = apiAlbum.releaseDate ?? apiAlbum.originalReleaseDate
-            releaseTypes = apiAlbum.releaseTypes ?? []
-            version = apiAlbum.version
-            recordLabels = apiAlbum.recordLabels?.map(\.name) ?? []
-            coverArtId = apiAlbum.coverArt
-            artistId = apiAlbum.artistId
-            songs = (apiAlbum.song ?? []).map { DisplayableSong(from: $0, isDownloaded: downloadedIds.contains($0.id)) }
-            isOffline = false
+            apply(apiAlbum, downloadedIds: downloadedIds)
         } catch {
             if await loadFromLocal() { return }
             self.error = UserFacingError.from(error)
         }
     }
+
+    private func apply(_ apiAlbum: AlbumID3, downloadedIds: Set<String>) {
+        albumName = apiAlbum.name
+        artistName = apiAlbum.artist
+        year = apiAlbum.year
+        genre = apiAlbum.genre
+        let tagged = (apiAlbum.genres ?? []).map(\.name).filter { !$0.isEmpty }
+        genres = tagged.isEmpty ? [apiAlbum.genre].compactMap { $0 }.filter { !$0.isEmpty } : tagged
+        discTitles = Dictionary(
+            (apiAlbum.discTitles ?? []).map { ($0.disc, $0.title) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        songCount = apiAlbum.songCount
+        releaseDate = apiAlbum.releaseDate ?? apiAlbum.originalReleaseDate
+        releaseTypes = apiAlbum.releaseTypes ?? []
+        version = apiAlbum.version
+        recordLabels = apiAlbum.recordLabels?.map(\.name) ?? []
+        coverArtId = apiAlbum.coverArt
+        artistId = apiAlbum.artistId
+        songs = (apiAlbum.song ?? []).map { DisplayableSong(from: $0, isDownloaded: downloadedIds.contains($0.id)) }
+        isOffline = false
+    }
+
+    #if DEBUG
+    /// Previews render before an async load finishes; seed the loaded state directly.
+    func applyPreview(_ album: AlbumID3) {
+        loadedAlbum = album
+        apply(album, downloadedIds: [])
+    }
+    #endif
 
     /// Returns true when a downloaded copy with at least one track was loaded.
     /// Sets isOffline only on success — a transient online failure must not flip
@@ -112,6 +134,8 @@ final class AlbumDetailViewModel {
         // offline (the long-lived VM re-runs load() on connectivity change) doesn't keep showing them.
         year = nil
         genre = nil
+        genres = []
+        discTitles = [:]
         releaseDate = nil
         releaseTypes = []
         version = nil

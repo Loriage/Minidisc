@@ -37,7 +37,7 @@ struct ArtistPlaceholderView: View {
             .frame(width: size, height: size)
             .overlay {
                 Text(initials)
-                    .font(.system(size: size * 0.35, weight: .semibold, design: .rounded))
+                    .font(.system(size: size * 0.35, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.9))
             }
     }

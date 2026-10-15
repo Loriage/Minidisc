@@ -6,8 +6,22 @@ import OSLog
 @MainActor
 final class ArtistDetailViewModel {
     var artist: ArtistID3?
-    private(set) var albumReleases: [AlbumID3] = []
-    private(set) var singlesAndEPs: [AlbumID3] = []
+    /// The artist's own releases grouped by category, in shelf order. Empty categories are omitted.
+    private(set) var releaseShelves: [ArtistReleaseShelf] = []
+    /// Albums not filed under this artist that credit them on a track. Online only.
+    private(set) var appearsOn: [AlbumID3] = []
+    /// Albums the server listed for the artist but files under someone else.
+    private var listedCredits: [AlbumID3] = []
+    /// Set when the server returned the artist without albums; resolved by `loadAppearances()`.
+    private var deferredLocalFallback = false
+    /// The credited tracks on `appearsOn`, newest album first. What Play uses for credit-only artists.
+    private(set) var appearanceSongs: [DisplayableSong] = []
+    /// True until the first appearance lookup finishes, so a credit-only artist is not shown as empty.
+    private(set) var isLoadingAppearances = true
+
+    /// The artist has nothing filed under them, only credits on other albums (e.g. an ensemble filed under
+    /// its leader).
+    var isCreditOnly: Bool { (artist?.album ?? []).isEmpty && !appearsOn.isEmpty }
     var isLoading = false
     var isPlayLoading = false
     var error: UserFacingError?
@@ -76,9 +90,10 @@ final class ArtistDetailViewModel {
     private func loadFromAPI() async {
         do {
             let fetched = try await libraryService.artist(id: artistId)
-            // Empty-success guard: behind a captive proxy the server answers 200 with no albums.
-            // That never throws, so prefer the downloaded copy over an empty screen.
-            if (fetched.album ?? []).isEmpty, await loadFromLocal() { return }
+            // A record with no albums is normal for credit-only artists (an ensemble filed under its leader),
+            // but it is also what a captive proxy's empty 200 looks like. Stay online and decide once Appears
+            // On has loaded: only when that is empty too does the downloaded copy replace the page.
+            deferredLocalFallback = (fetched.album ?? []).isEmpty
             setArtist(fetched)
             isOffline = false
         } catch {
@@ -136,15 +151,75 @@ final class ArtistDetailViewModel {
         isLoadingLikedSongs = false
         isLoadingSimilarArtists = false
         isLoadingArtistInfo = false
+        isLoadingAppearances = false
         isOffline = true
         return true
     }
 
     private func setArtist(_ loadedArtist: ArtistID3) {
-        artist = loadedArtist
-        let releases = loadedArtist.album ?? []
-        albumReleases = releases.filter { $0.minidiscReleaseCategory == .album }
-        singlesAndEPs = releases.filter { $0.minidiscReleaseCategory == .singleOrEP }
+        let listed = loadedArtist.album ?? []
+        // Servers (and cached artist records) can list albums the artist is only credited on; those
+        // belong in Appears On, so the discography only holds albums filed under the artist.
+        let releases = listed.filter { ArtistAppearances.isFiled($0, under: artistId, named: loadedArtist.name) }
+        listedCredits = listed.filter { !ArtistAppearances.isFiled($0, under: artistId, named: loadedArtist.name) }
+        artist = ArtistID3(
+            id: loadedArtist.id,
+            name: loadedArtist.name,
+            albumCount: releases.count,
+            coverArt: loadedArtist.coverArt,
+            starred: loadedArtist.starred,
+            userRating: loadedArtist.userRating,
+            musicBrainzId: loadedArtist.musicBrainzId,
+            sortName: loadedArtist.sortName,
+            roles: loadedArtist.roles,
+            album: releases
+        )
+        let grouped = Dictionary(grouping: releases, by: \.minidiscReleaseCategory)
+        releaseShelves = AlbumReleaseCategory.allCases.compactMap { category in
+            guard let albums = grouped[category], !albums.isEmpty else { return nil }
+            return ArtistReleaseShelf(category: category, albums: albums)
+        }
+    }
+
+    /// Call after `load()`, which resolves the artist name and its own discography.
+    func loadAppearances() async {
+        guard !isOffline, let name = artist?.name ?? artistName else {
+            appearsOn = []
+            appearanceSongs = []
+            isLoadingAppearances = false
+            return
+        }
+        let ownAlbumIDs = Set((artist?.album ?? []).map(\.id))
+        do {
+            let result = try await libraryService.appearances(artistID: artistId, artistName: name)
+            // Prefer the server's own header for albums it listed on the artist record (real song counts).
+            let listedByID = Dictionary(listedCredits.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            var merged = result.albums.map { listedByID[$0.id] ?? $0 }
+            let found = Set(merged.map(\.id))
+            merged += listedCredits.filter { !found.contains($0.id) }
+            appearsOn = merged
+                .filter { !ownAlbumIDs.contains($0.id) }
+                .sorted { ($0.year ?? 0) > ($1.year ?? 0) }
+            let visibleIDs = Set(appearsOn.map(\.id))
+            appearanceSongs = result.songs
+                .filter { $0.albumId.map(visibleIDs.contains) ?? false }
+                .map { DisplayableSong(from: $0) }
+        } catch is CancellationError {
+            return
+        } catch {
+            Logger.library.warning("appearances failed for \(self.artistId, privacy: .public): \(error, privacy: .public)")
+            appearsOn = []
+            appearanceSongs = []
+        }
+        if deferredLocalFallback {
+            deferredLocalFallback = false
+            // No filed albums and no credits: the empty record was not a credit-only artist, so prefer
+            // whatever is downloaded over an empty screen.
+            if appearsOn.isEmpty, (artist?.album ?? []).isEmpty {
+                await loadFromLocal()
+            }
+        }
+        isLoadingAppearances = false
     }
 
     /// Top songs (getTopSongs takes the artist NAME) — call after `load()` so `artist?.name` is set.
@@ -230,4 +305,11 @@ private extension String {
 
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+}
+
+nonisolated struct ArtistReleaseShelf: Identifiable, Sendable {
+    let category: AlbumReleaseCategory
+    let albums: [AlbumID3]
+
+    var id: AlbumReleaseCategory { category }
 }

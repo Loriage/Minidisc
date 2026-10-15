@@ -173,7 +173,7 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try require(night, timeout: 20)
         try scrollCardToTop(night, named: "mood-night-card-visible")
         try tap(night, named: "mood-open-recovered-night")
-        try require(app.buttons["playlist.song.menu.ux-song-1"], timeout: 10)
+        try require(app.buttons["playlist.song.row.ux-song-1"], timeout: 10)
         capturePlayerScreenshot("Mood-recovered-server-playlist")
         try tapBack(named: "mood-night-back")
         try tapTab("Accueil")
@@ -191,7 +191,7 @@ final class MinidiscUXVerificationTests: XCTestCase {
         captureHierarchy("mood-after-refresh-stale-reference")
         try scrollCardToTop(night, named: "mood-replaced-card-visible")
         try tap(night, named: "mood-open-replaced-night")
-        try require(app.buttons["playlist.song.menu.ux-song-2"], timeout: 10)
+        try require(app.buttons["playlist.song.row.ux-song-2"], timeout: 10)
         capturePlayerScreenshot("Mood-repaired-stale-reference")
         try tapBack(named: "mood-replaced-night-back")
         try tapTab("Accueil")
@@ -367,6 +367,40 @@ final class MinidiscUXVerificationTests: XCTestCase {
         captureHierarchy("full-player-confirmed")
         try await Task.sleep(for: .seconds(3))
         try await setFixtureState(["fail_stream": false])
+    }
+
+    /// Album rows with guest credits: the row plays, only the orange credits open the artist picker.
+    func testFixtureAlbumRowPlaysAndCreditsOpenPicker() async throws {
+        try await launchFixtureApp()
+        // The second credited album is published without a new scan, so the app's index cannot know it.
+        try await setFixtureState(["slow_stream": false, "removed": false, "fail_stream": false, "unscanned_credit": true])
+        try openBrowse("Albums")
+        try tap(app.staticTexts["Horizons de test"].firstMatch, named: "album-credits-open-album")
+        let row = searchElement("album.song.row.ux-song-2")
+        try require(row, timeout: 10)
+        // Tap the title line, not the credits line beneath it.
+        captureHierarchy("before-album-row-title-tap")
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.25)).tap()
+        try require(app.buttons["Pause"].firstMatch, timeout: 8)
+        XCTAssertEqual(try miniPlayerTitle().label, secondTitle, "Tapping the title must play that track.")
+        XCTAssertFalse(searchElement("artist.picker").exists, "Tapping the title must not open the artist picker.")
+        captureHierarchy("album-row-title-played")
+        try tap(app.buttons["Pause"].firstMatch, named: "album-credits-pause")
+
+        let credits = searchElement("album.song.row.ux-song-2.credits")
+        try tap(credits, named: "album-row-credits")
+        try require(searchElement("artist.picker"), timeout: 5)
+        XCTAssertEqual(try miniPlayerTitle().label, secondTitle, "Opening the credits must not change the track.")
+        captureHierarchy("album-row-credits-opened-picker")
+
+        // Iris Ensemble has nothing filed under it: its page must list the album crediting it.
+        let guest = searchElement("artist.picker.row.1")
+        try require(guest, timeout: 10)
+        try tap(guest, named: "album-credits-open-guest")
+        try require(searchElement("discography.album.ux-album"), timeout: 15)
+        try require(searchElement("discography.album.ux-unscanned-album"), timeout: 5)
+        captureHierarchy("credit-only-artist-appears-on")
+        try await setFixtureState(["unscanned_credit": false])
     }
 
     func testFixtureQueuePresentation() async throws {
@@ -853,9 +887,10 @@ final class MinidiscUXVerificationTests: XCTestCase {
         captureHierarchy("playlist-detail-bright-artwork-header")
         try await Task.sleep(for: .seconds(3))
 
-        let songMenu = searchElement("playlist.song.menu.ux-song-1")
-        try scrollPlaylistTo(songMenu, named: "first-song-menu")
-        try tap(songMenu, named: "playlist-detail-song-menu-open")
+        // Row actions live in the context menu now that rows carry a heart instead of "…".
+        let songRow = searchElement("playlist.song.row.ux-song-1")
+        try scrollPlaylistTo(songRow, named: "first-song-menu")
+        try longPress(songRow, named: "playlist-detail-song-menu-open")
         try require(app.buttons["Informations"])
         captureHierarchy("playlist-detail-song-menu-confirmed")
         try await Task.sleep(for: .seconds(2))
@@ -887,10 +922,10 @@ final class MinidiscUXVerificationTests: XCTestCase {
         XCTAssertLessThanOrEqual(title.frame.width, app.frame.width)
         captureHierarchy("playlist-detail-xxxl-title-and-metadata")
         try await Task.sleep(for: .seconds(3))
-        let songMenu = searchElement("playlist.song.menu.ux-song-2")
-        try scrollPlaylistTo(songMenu, named: "large-long-song")
-        XCTAssertGreaterThanOrEqual(songMenu.frame.width, 44)
-        XCTAssertGreaterThanOrEqual(songMenu.frame.height, 44)
+        let songRow = searchElement("playlist.song.row.ux-song-2")
+        try scrollPlaylistTo(songRow, named: "large-long-song")
+        XCTAssertGreaterThanOrEqual(songRow.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(songRow.frame.height, 44)
         captureHierarchy("playlist-detail-xxxl-long-song-row")
         try await Task.sleep(for: .seconds(3))
     }
@@ -945,10 +980,10 @@ final class MinidiscUXVerificationTests: XCTestCase {
         }
         XCTAssertTrue(miniContains(firstTitle))
 
-        // Open another song's menu: an accidental row tap would change the current track.
-        let menu = searchElement("playlist.song.menu.ux-song-2")
+        // Open another song's context menu: an accidental row tap would change the current track.
+        let menu = searchElement("playlist.song.row.ux-song-2")
         try scrollPlaylistTo(menu, named: "second-song-menu")
-        try tap(menu, named: "playlist-detail-second-song-menu")
+        try longPress(menu, named: "playlist-detail-second-song-menu")
         let info = app.buttons["Informations"]
         try require(info)
         XCTAssertTrue(miniContains(firstTitle), "Opening a future song's menu must preserve the paused current song.")
@@ -1601,11 +1636,10 @@ final class MinidiscUXVerificationTests: XCTestCase {
     }
 
     private func playPlaylistFromBeginning() throws {
-        // Both the playlist header and a restored mini-player expose "Lecture".
-        // The header is the wide button; the mini-player only resumes its current item.
-        let headerPlay = try XCTUnwrap(app.buttons.matching(identifier: "Lecture").allElementsBoundByIndex.first {
-            $0.frame.width > 100 && $0.isHittable
-        })
+        // Both the playlist header and a restored mini-player expose "Lecture"; the header's round
+        // Play button has its own identifier, while the mini-player only resumes its current item.
+        let headerPlay = app.buttons["playlist.detail.play"]
+        try require(headerPlay)
         captureHierarchy("before-play-playlist")
         headerPlay.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         captureHierarchy("play-playlist")
@@ -1699,6 +1733,13 @@ final class MinidiscUXVerificationTests: XCTestCase {
         element.tap()
         element.typeText(text)
         captureHierarchy("after-enter-field")
+    }
+
+    private func longPress(_ element: XCUIElement, named name: String) throws {
+        try require(element)
+        captureHierarchy("before-\(name)")
+        element.press(forDuration: 0.8)
+        captureHierarchy("after-\(name)")
     }
 
     private func tap(_ element: XCUIElement, named name: String) throws {

@@ -27,7 +27,9 @@ struct AlbumDetailView: View {
     private let zoomNamespace: Namespace.ID?
     private let mode: AlbumDetailMode
 
-    init(album: AlbumID3, zoomSourceId: String? = nil, zoomNamespace: Namespace.ID? = nil, coverArtId: String? = nil, initialDominantColor: Color = .clear, initialCoverImage: PlatformImage? = nil, mode: AlbumDetailMode = .full) {
+    /// `viewModel` is for Previews: a supplied model is loaded instead of one built from the container.
+    init(album: AlbumID3, zoomSourceId: String? = nil, zoomNamespace: Namespace.ID? = nil, coverArtId: String? = nil, initialDominantColor: Color = .clear, initialCoverImage: PlatformImage? = nil, mode: AlbumDetailMode = .full, viewModel: AlbumDetailViewModel? = nil) {
+        _viewModel = State(initialValue: viewModel)
         albumId = album.id
         initialName = album.name
         initialArtistId = album.artistId
@@ -73,6 +75,12 @@ struct AlbumDetailView: View {
     @State private var showDeleteAlert = false
     @State private var showThemeColorSheet = false
     @State private var recommendedAlbums: [AlbumID3] = []
+    @State private var similarArtists: [SimilarArtistRecommendation] = []
+    @State private var similarArtistImages: [String: URL?] = [:]
+    @State private var isLoadingSimilarArtists = false
+    @State private var selectedOutOfLibraryArtist: SimilarArtistRecommendation?
+    @State private var artistPicker: ArtistPickerRequest?
+    @State private var pushedArtist: ArtistID3?
     @Query private var albumFavoriteMatches: [FavoriteRecord]
     @Query private var downloadedAlbumTracks: [DownloadedTrack]
 
@@ -92,7 +100,7 @@ struct AlbumDetailView: View {
         viewModel == nil || (viewModel?.isLoading == true && viewModel?.songs.isEmpty == true)
     }
     private var palette: AlbumDetailPalette {
-        AlbumDetailPalette(dominantColor: dominantColor, appearance: colorScheme)
+        AlbumDetailPalette(dominantColor: dominantColor)
     }
     private var headerTextColor: Color { palette.contentColor }
     private var headerSecondaryColor: Color { palette.secondaryContentColor }
@@ -175,28 +183,30 @@ struct AlbumDetailView: View {
         }
     }
 
-    private func shouldShowTrackArtists(in songs: [DisplayableSong]) -> Bool {
-        let trackArtists = Set(
-            songs.compactMap { song -> String? in
-                guard let artist = song.artist?.trimmingCharacters(in: .whitespacesAndNewlines),
-                      !artist.isEmpty else { return nil }
-                return artist.lowercased()
+    // MARK: - Artist navigation
+
+    /// One credited artist opens directly; several open the picker.
+    private func openArtists(_ credits: [ArtistCredit], trackTitle: String) {
+        if credits.count == 1, let credit = credits.first {
+            open(credit)
+        } else if !credits.isEmpty {
+            artistPicker = ArtistPickerRequest(trackTitle: trackTitle, credits: credits)
+        }
+    }
+
+    private func open(_ credit: ArtistCredit) {
+        if let id = credit.id, !id.isEmpty {
+            pushedArtist = ArtistID3(id: id, name: credit.name)
+            return
+        }
+        // Credits parsed from a plain artist string carry no ID; resolve it by name.
+        Task {
+            if let found = await container?.libraryService.findArtist(byName: credit.name) {
+                pushedArtist = found
+            } else {
+                container?.toastService.showError(String(localized: "\(credit.name) isn’t in your library."))
             }
-        )
-
-        if trackArtists.count > 1 {
-            return true
         }
-
-        guard let trackArtist = trackArtists.first,
-              let albumArtist = viewModel?.artistName?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased(),
-              !albumArtist.isEmpty else {
-            return false
-        }
-
-        return trackArtist != albumArtist
     }
 
     var body: some View {
@@ -218,7 +228,12 @@ struct AlbumDetailView: View {
                     year: viewModel?.year,
                     genre: viewModel?.genre,
                     isLoading: viewModel == nil,
-                    isOffline: viewModel?.isOffline == true
+                    isOffline: viewModel?.isOffline == true,
+                    songCount: songs.count,
+                    totalDuration: songs.reduce(0) { $0 + $1.duration },
+                    audioFormats: songs.compactMap(\.audioFormat),
+                    genres: viewModel?.genres ?? [],
+                    recordLabels: viewModel?.recordLabels ?? []
                 )
                 .padding(.top, MinidiscSpacing.xl)
 
@@ -228,12 +243,12 @@ struct AlbumDetailView: View {
                     mode: mode,
                     viewModel: viewModel,
                     downloadedAlbumTracks: downloadedAlbumTracks,
-                    contentColor: palette.contentColor,
-                    controlFillColor: palette.controlFillColor,
-                    playLabelColor: palette.playLabelColor,
+                    isFavorite: isAlbumFavorite,
+                    canFavorite: isOnline,
+                    onToggleFavorite: toggleAlbumFavorite,
                     showDeleteAlert: $showDeleteAlert
                 )
-                .padding(.top, MinidiscSpacing.l)
+                .padding(.top, MinidiscSpacing.xl)
                 .padding(.bottom, MinidiscSpacing.xl)
 
                 if isLoadingSkeleton {
@@ -266,10 +281,13 @@ struct AlbumDetailView: View {
                             songs: songs,
                             albumId: albumId,
                             serverId: serverId,
-                            showArtists: shouldShowTrackArtists(in: songs),
+                            showArtists: true,
                             downloadingIds: vm.downloadingIds,
                             titleColor: headerTextColor,
                             secondaryColor: headerSecondaryColor,
+                            albumArtistId: vm.artistId,
+                            albumArtistName: vm.artistName,
+                            discTitles: vm.discTitles,
                             onTap: { index in
                                 Task {
                                     do {
@@ -288,19 +306,10 @@ struct AlbumDetailView: View {
                             onRemoveDownload: { songId in
                                 Task { await container?.toastService.perform { try await container?.downloadService.remove(songId: songId, serverId: serverId) } }
                             },
-                            onAddToPlaylist: playlistAddition.present
-                        )
-
-                        AlbumReleaseInformationSection(
-                            releaseDate: vm.releaseDate,
-                            fallbackYear: vm.year,
-                            songCount: songs.count,
-                            totalDuration: songs.reduce(0) { $0 + $1.duration },
-                            releaseTypes: vm.releaseTypes,
-                            version: vm.version,
-                            recordLabels: vm.recordLabels,
-                            audioFormats: songs.compactMap(\.audioFormat),
-                            textColor: headerSecondaryColor
+                            onAddToPlaylist: playlistAddition.present,
+                            onArtistsTap: isOnline && !vm.isOffline ? { song, credits in
+                                openArtists(credits, trackTitle: song.title)
+                            } : nil
                         )
 
                         if case .full = mode, !vm.isOffline {
@@ -314,8 +323,21 @@ struct AlbumDetailView: View {
                                 )
                             }
 
+                            if isLoadingSimilarArtists || !similarArtists.isEmpty {
+                                SimilarArtistsShelf(
+                                    recommendations: similarArtists,
+                                    imageURLs: similarArtistImages,
+                                    isLoading: isLoadingSimilarArtists,
+                                    onOutOfLibraryTap: { selectedOutOfLibraryArtist = $0 }
+                                )
+                                .padding(.top, MinidiscSpacing.section)
+                            }
+
                             AlbumYouMightAlsoLikeSection(albums: visibleRecommendedAlbums)
                         }
+
+                        // Breathing room before the mini player margin, whichever section ends the page.
+                        Color.clear.frame(height: MinidiscSpacing.section)
                     }
                 }
             }
@@ -344,24 +366,6 @@ struct AlbumDetailView: View {
                     dismiss()
                 }
                 .tint(palette.contentColor)
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button(
-                    isAlbumFavorite ? "Remove from Favorites" : "Add to Favorites",
-                    systemImage: isAlbumFavorite ? "star.fill" : "star"
-                ) {
-                    HapticFeedback.light.trigger()
-                    Task {
-                        if isAlbumFavorite {
-                            await container?.toastService.perform { try await container?.favoritesService.unstar(itemType: .album, itemId: albumId) }
-                        } else {
-                            await container?.toastService.perform { try await container?.favoritesService.star(itemType: .album, itemId: albumId) }
-                        }
-                    }
-                }
-                .tint(palette.contentColor)
-                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isAlbumFavorite)
-                .disabled(!isOnline)
             }
             ToolbarItem(placement: .primaryAction) {
                 Menu("More options", systemImage: "ellipsis") {
@@ -393,6 +397,19 @@ struct AlbumDetailView: View {
             }
         }
         .sheet(item: $songSelection) { SongSelectionSheet(request: $0) }
+        .sheet(item: $artistPicker) { request in
+            ArtistPickerSheet(request: request) { open($0) }
+        }
+        .sheet(item: $selectedOutOfLibraryArtist) { recommendation in
+            OutOfLibraryArtistSheet(
+                artist: recommendation,
+                imageURL: similarArtistImages[recommendation.id] ?? nil,
+                providers: container?.externalProvidersStore.load() ?? []
+            )
+        }
+        .navigationDestination(item: $pushedArtist) { artist in
+            ArtistDetailView(artist: artist)
+        }
         .sheet(isPresented: $showThemeColorSheet) {
             ThemeColorSheet(
                 color: Binding(
@@ -434,6 +451,9 @@ struct AlbumDetailView: View {
 
             await loadDominantColor(coverArtId: artId)
         }
+        .task(id: similarArtistsRequestID) {
+            await loadSimilarArtists()
+        }
         .task(id: recommendationRequest) {
             guard let recommendationRequest else {
                 recommendedAlbums = []
@@ -443,6 +463,55 @@ struct AlbumDetailView: View {
             await loadAlbumRecommendations(for: recommendationRequest)
         }
         .minidiscZoomTransition(sourceID: zoomSourceId, in: zoomNamespace)
+    }
+
+    // MARK: - Favourite
+
+    private func toggleAlbumFavorite() {
+        HapticFeedback.light.trigger()
+        let wasFavorite = isAlbumFavorite
+        Task {
+            if wasFavorite {
+                await container?.toastService.perform { try await container?.favoritesService.unstar(itemType: .album, itemId: albumId) }
+            } else {
+                await container?.toastService.perform { try await container?.favoritesService.star(itemType: .album, itemId: albumId) }
+            }
+        }
+    }
+
+    // MARK: - Similar artists
+
+    /// Changes when the album artist is known, so the shelf loads once per artist and only online.
+    private var similarArtistsRequestID: String? {
+        guard case .full = mode, isOnline, viewModel?.isOffline != true else { return nil }
+        return viewModel?.artistId
+    }
+
+    private func loadSimilarArtists() async {
+        guard let artistId = similarArtistsRequestID, let container else {
+            similarArtists = []
+            return
+        }
+        isLoadingSimilarArtists = true
+        defer { isLoadingSimilarArtists = false }
+        do {
+            let recommendations = try await container.recommendationService.similarArtists(to: artistId)
+            try Task.checkCancellation()
+            similarArtists = recommendations
+        } catch is CancellationError {
+            return
+        } catch {
+            similarArtists = []
+            Logger.recommendations.warning(
+                "Album similar artists failed for \(artistId, privacy: .public): \(error, privacy: .public)"
+            )
+            return
+        }
+        for recommendation in similarArtists where !recommendation.inLibrary {
+            let url = await container.externalArtistImageResolver.resolveImageURL(for: recommendation)
+            guard !Task.isCancelled else { return }
+            similarArtistImages[recommendation.id] = url
+        }
     }
 
     // MARK: - Color loading
@@ -487,92 +556,17 @@ struct AlbumDetailView: View {
 
 // MARK: - Album presentation
 
+/// Album pages are always dark: a cover-tinted surface with white content, whatever the system
+/// appearance (see `ArtworkSurfacePalette`).
 struct AlbumDetailPalette {
-    let backgroundTopColor: Color
-    let backgroundBottomColor: Color
-    let contentColor: Color
-    let secondaryContentColor: Color
-    let controlFillColor: Color
-    let playLabelColor: Color
-    let preferredContentScheme: ColorScheme?
+    let tint: Color
+    let contentColor: Color = .white
+    let secondaryContentColor: Color = .white.opacity(0.7)
+    let controlFillColor: Color = .white.opacity(0.16)
+    let preferredContentScheme: ColorScheme? = .dark
 
-    init(dominantColor: Color, appearance: ColorScheme) {
-        guard dominantColor != .clear else {
-            let background = Color(UIColor.systemBackground)
-            backgroundTopColor = background
-            backgroundBottomColor = background
-            contentColor = .primary
-            secondaryContentColor = .secondary
-            controlFillColor = Color.primary.opacity(0.12)
-            playLabelColor = .black
-            preferredContentScheme = nil
-            return
-        }
-
-        var hue: CGFloat = 0
-        var saturation: CGFloat = 0
-        var brightness: CGFloat = 0
-        var alpha: CGFloat = 0
-        guard UIColor(dominantColor).getHue(
-            &hue,
-            saturation: &saturation,
-            brightness: &brightness,
-            alpha: &alpha
-        ) else {
-            let usesDarkContent = dominantColor.luminance > 0.6
-            let foreground: Color = usesDarkContent ? .black : .white
-            backgroundTopColor = dominantColor
-            backgroundBottomColor = dominantColor
-            contentColor = foreground
-            secondaryContentColor = foreground.opacity(0.7)
-            controlFillColor = foreground.opacity(0.12)
-            playLabelColor = usesDarkContent ? .black : dominantColor
-            preferredContentScheme = usesDarkContent ? .light : .dark
-            return
-        }
-
-        let isChromatic = saturation >= 0.08
-        let adjustedSaturation: Double
-        let adjustedBrightness: Double
-
-        if isChromatic {
-            adjustedSaturation = min(
-                max(Double(saturation) * (appearance == .dark ? 1.7 : 1.45), 0.46),
-                0.96
-            )
-            adjustedBrightness = appearance == .dark
-                ? min(max(Double(brightness) * 0.78, 0.28), 0.48)
-                : min(max(Double(brightness) * 1.08, 0.52), 0.74)
-        } else {
-            // Keep monochrome artwork themed with a neutral grey background.
-            adjustedSaturation = min(Double(saturation) * 1.2, 0.10)
-            adjustedBrightness = appearance == .dark
-                ? min(max(Double(brightness) * 0.52, 0.18), 0.30)
-                : min(max(Double(brightness) * 0.78, 0.34), 0.48)
-        }
-
-        func themedColor(brightnessMultiplier: Double) -> Color {
-            Color(
-                hue: Double(hue),
-                saturation: adjustedSaturation,
-                brightness: min(max(adjustedBrightness * brightnessMultiplier, 0), 1)
-            )
-        }
-
-        let topColor = themedColor(brightnessMultiplier: appearance == .dark ? 1.06 : 1.08)
-        let bottomColor = themedColor(brightnessMultiplier: appearance == .dark ? 0.84 : 0.92)
-        let usesDarkContent = topColor.luminance > 0.62 && bottomColor.luminance > 0.55
-        let foreground: Color = usesDarkContent ? .black : .white
-
-        backgroundTopColor = topColor
-        backgroundBottomColor = bottomColor
-        contentColor = foreground
-        secondaryContentColor = foreground.opacity(0.7)
-        controlFillColor = foreground.opacity(0.12)
-        playLabelColor = themedColor(
-            brightnessMultiplier: min(max(0.32 / max(adjustedBrightness, 0.01), 0.5), 1)
-        )
-        preferredContentScheme = usesDarkContent ? .light : .dark
+    init(dominantColor: Color) {
+        tint = ArtworkSurfacePalette.tint(from: dominantColor)
     }
 }
 
@@ -580,12 +574,7 @@ struct AlbumDetailPageBackground: View {
     let palette: AlbumDetailPalette
 
     var body: some View {
-        LinearGradient(
-            colors: [palette.backgroundTopColor, palette.backgroundBottomColor],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .ignoresSafeArea()
+        ArtworkSurfaceBackground(tint: palette.tint)
     }
 }
 
@@ -624,11 +613,16 @@ struct AlbumMetadataSection: View {
     let genre: String?
     let isLoading: Bool
     let isOffline: Bool
+    var songCount: Int = 0
+    var totalDuration: TimeInterval = 0
+    var audioFormats: [String] = []
+    var genres: [String] = []
+    var recordLabels: [String] = []
 
     var body: some View {
         VStack(spacing: MinidiscSpacing.xs) {
             Text(albumName)
-                .font(.title2.weight(.bold))
+                .font(.minidiscDetailTitle)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
 
@@ -638,14 +632,15 @@ struct AlbumMetadataSection: View {
                 if let artistId, !isOffline {
                     NavigationLink(value: HomeDestination.artist(ArtistID3(id: artistId, name: artistName))) {
                         Text(artistName)
-                            .font(.title3.weight(.medium))
-                            .foregroundStyle(.secondary)
+                            .font(.minidiscDetailSubtitle)
+                            .foregroundStyle(.primary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityHint(Text("Opens the artist"))
                 } else {
                     Text(artistName)
-                        .font(.title3.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .font(.minidiscDetailSubtitle)
+                        .foregroundStyle(.primary)
                 }
             }
 
@@ -653,94 +648,160 @@ struct AlbumMetadataSection: View {
                 SkeletonBlock(width: 100, height: 14, cornerRadius: 4)
                     .padding(.top, MinidiscSpacing.xs)
             } else {
-                AlbumMetadataLine(genre: genre, year: year)
-                    .padding(.top, MinidiscSpacing.xs)
+                AlbumMetadataLine(
+                    year: year,
+                    songCount: songCount,
+                    totalDuration: totalDuration,
+                    audioFormats: audioFormats
+                )
+                .padding(.top, MinidiscSpacing.xs)
+
+                let chips = genreChips + labelChips
+                if !chips.isEmpty {
+                    MetadataChipFlow {
+                        ForEach(chips, id: \.self) { chip in
+                            if isOffline {
+                                MetadataChip(text: chip.text, systemImage: chip.systemImage)
+                            } else {
+                                // Opens every album in that genre / from that label.
+                                NavigationLink {
+                                    AlbumCollectionView(kind: chip.kind)
+                                } label: {
+                                    MetadataChip(text: chip.text, systemImage: chip.systemImage)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityHint(Text("Shows all albums"))
+                            }
+                        }
+                    }
+                    .padding(.top, MinidiscSpacing.s)
+                }
             }
         }
         .padding(.horizontal, MinidiscSpacing.xxl)
     }
-}
 
-private struct AlbumMetadataLine: View {
-    let genre: String?
-    let year: Int?
+    private struct Chip: Hashable {
+        let text: String
+        let systemImage: String?
+        let kind: AlbumCollectionKind
+    }
 
-    var body: some View {
-        HStack(spacing: MinidiscSpacing.xs) {
-            if let genre, !genre.isEmpty {
-                Text(genre)
-                    .lineLimit(1)
-            }
-            if genre?.isEmpty == false, year != nil {
-                Text("·")
-            }
-            if let year {
-                Text(String(year))
-            }
+    private var genreChips: [Chip] {
+        let values = genres.isEmpty ? [genre].compactMap { $0 } : genres
+        return Self.unique(values).prefix(3).map { Chip(text: $0, systemImage: nil, kind: .genre($0)) }
+    }
+
+    private var labelChips: [Chip] {
+        Self.unique(recordLabels).prefix(1).map { Chip(text: $0, systemImage: "building.2", kind: .recordLabel($0)) }
+    }
+
+    private static func unique(_ values: [String]) -> [String] {
+        var seen: Set<String> = []
+        return values.compactMap { value in
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, seen.insert(trimmed.lowercased()).inserted else { return nil }
+            return trimmed
         }
-        .font(.minidiscCaption)
-        .foregroundStyle(.secondary)
     }
 }
 
+/// "2023 · 10 songs · 38 min [FLAC]" under the album artist.
+private struct AlbumMetadataLine: View {
+    let year: Int?
+    let songCount: Int
+    let totalDuration: TimeInterval
+    let audioFormats: [String]
+
+    private var parts: [String] {
+        var parts: [String] = []
+        if let year { parts.append(String(year)) }
+        if songCount > 0 { parts.append(String(localized: "\(songCount) songs")) }
+        if totalDuration > 0 {
+            parts.append(Duration.seconds(totalDuration).formatted(
+                .units(allowed: [.hours, .minutes], width: .abbreviated, maximumUnitCount: 2)
+            ))
+        }
+        return parts
+    }
+
+    /// One badge per distinct format; mixed-format albums show at most two.
+    private var formats: [String] {
+        var seen: Set<String> = []
+        return audioFormats.map { $0.uppercased() }.filter { seen.insert($0).inserted }.prefix(2).map { $0 }
+    }
+
+    var body: some View {
+        HStack(spacing: MinidiscSpacing.s) {
+            if !parts.isEmpty {
+                Text(verbatim: parts.joined(separator: " · "))
+                    .lineLimit(1)
+            }
+            ForEach(formats, id: \.self) { format in
+                FormatBadge(format: format)
+            }
+        }
+        .font(.minidiscMetadata)
+        .foregroundStyle(.secondary)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// Favourite · Play · Shuffle · Download, as a row of round buttons.
 private struct AlbumPlaybackActions: View {
     let albumId: String
     let songs: [DisplayableSong]
     let mode: AlbumDetailMode
     let viewModel: AlbumDetailViewModel?
     let downloadedAlbumTracks: [DownloadedTrack]
-    let contentColor: Color
-    let controlFillColor: Color
-    let playLabelColor: Color
+    let isFavorite: Bool
+    let canFavorite: Bool
+    let onToggleFavorite: () -> Void
     @Binding var showDeleteAlert: Bool
 
     @Environment(\.appContainer) private var container
 
     var body: some View {
         VStack(spacing: MinidiscSpacing.m) {
-            HStack(spacing: MinidiscSpacing.m) {
-                Button {
+            HStack(spacing: MinidiscSpacing.xl) {
+                Button(isFavorite ? "Remove from Favorites" : "Add to Favorites",
+                       systemImage: isFavorite ? "heart.fill" : "heart",
+                       action: onToggleFavorite)
+                    .contentTransition(.symbolEffect(.replace))
+                    .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.large))
+                    .disabled(!canFavorite)
+                    .accessibilityIdentifier("album.detail.favorite")
+
+                Button("Play", systemImage: "play.fill") {
+                    HapticFeedback.medium.trigger()
+                    Task {
+                        guard !songs.isEmpty else { return }
+                        await container?.toastService.perform { try await container?.playerService.play(tracks: songs, startIndex: 0) }
+                    }
+                }
+                .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.large, isProminent: true))
+                .disabled(songs.isEmpty)
+                .accessibilityIdentifier("album.detail.play")
+
+                Button("Shuffle", systemImage: "shuffle") {
                     HapticFeedback.medium.trigger()
                     Task {
                         guard !songs.isEmpty else { return }
                         await container?.toastService.perform { try await container?.playerService.play(tracks: songs.shuffled(), startIndex: 0) }
                     }
-                } label: {
-                    AlbumCircularActionLabel(
-                        systemImage: "shuffle",
-                        foregroundColor: contentColor,
-                        backgroundColor: controlFillColor
-                    )
                 }
+                .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.large))
                 .disabled(songs.isEmpty)
-                .accessibilityLabel("Shuffle")
-
-                PlayButton(
-                    action: {
-                        Task {
-                            guard !songs.isEmpty else { return }
-                            await container?.toastService.perform { try await container?.playerService.play(tracks: songs, startIndex: 0) }
-                        }
-                    },
-                    isDisabled: songs.isEmpty,
-                    accentColor: .white,
-                    labelColor: playLabelColor,
-                    height: 48
-                )
-                .frame(maxWidth: 220)
+                .accessibilityIdentifier("album.detail.shuffle")
 
                 AlbumDownloadActionButton(
                     albumId: albumId,
                     mode: mode,
                     viewModel: viewModel,
                     downloadedAlbumTracks: downloadedAlbumTracks,
-                    contentColor: contentColor,
-                    controlFillColor: controlFillColor,
                     showDeleteAlert: $showDeleteAlert
                 )
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, MinidiscSpacing.xxxxl)
 
             if mode == .full, let viewModel, viewModel.isDownloadingAlbum {
                 AlbumDownloadProgress(
@@ -752,28 +813,11 @@ private struct AlbumPlaybackActions: View {
     }
 }
 
-private struct AlbumCircularActionLabel: View {
-    let systemImage: String
-    let foregroundColor: Color
-    let backgroundColor: Color
-
-    var body: some View {
-        Image(systemName: systemImage)
-            .font(.minidiscCellTitle)
-            .foregroundStyle(foregroundColor)
-            .frame(width: 48, height: 48)
-            .background(backgroundColor, in: Circle())
-            .contentShape(Circle())
-    }
-}
-
 private struct AlbumDownloadActionButton: View {
     let albumId: String
     let mode: AlbumDetailMode
     let viewModel: AlbumDetailViewModel?
     let downloadedAlbumTracks: [DownloadedTrack]
-    let contentColor: Color
-    let controlFillColor: Color
     @Binding var showDeleteAlert: Bool
 
     @Environment(\.appContainer) private var container
@@ -797,15 +841,13 @@ private struct AlbumDownloadActionButton: View {
 
     var body: some View {
         Button(action: performAction) {
-            AlbumCircularActionLabel(
-                systemImage: state.systemImage,
-                foregroundColor: contentColor,
-                backgroundColor: controlFillColor
-            )
+            Image(systemName: state.systemImage)
+                .contentTransition(.symbolEffect(.replace))
         }
+        .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.large))
         .disabled(state == .unavailable)
-        .opacity(state == .unavailable ? 0.4 : 1)
         .accessibilityLabel(Text(actionLabel))
+        .accessibilityIdentifier("album.detail.download")
     }
 
     private var actionLabel: LocalizedStringResource {
@@ -935,10 +977,15 @@ struct AlbumSongRows: View {
     let downloadingIds: Set<String>
     let titleColor: Color
     let secondaryColor: Color
+    let albumArtistId: String?
+    let albumArtistName: String?
+    let discTitles: [Int: String]
     let onTap: (Int) -> Void
     let onDownload: ((String) -> Void)?
     let onRemoveDownload: ((String) -> Void)?
     let onAddToPlaylist: ((DisplayableSong) -> Void)?
+    /// Receives a track's credits when its artist line is tapped. `nil` shows plain, untappable artists.
+    let onArtistsTap: ((DisplayableSong, [ArtistCredit]) -> Void)?
 
     @Query private var downloadedTracks: [DownloadedTrack]
     @Query private var allFavorites: [FavoriteRecord]
@@ -947,16 +994,20 @@ struct AlbumSongRows: View {
         Set(allFavorites.map(\.id))
     }
 
-    init(songs: [DisplayableSong], albumId: String, serverId: UUID, showArtists: Bool = false, downloadingIds: Set<String> = [], titleColor: Color = .primary, secondaryColor: Color = .secondary, onTap: @escaping (Int) -> Void, onDownload: ((String) -> Void)? = nil, onRemoveDownload: ((String) -> Void)? = nil, onAddToPlaylist: ((DisplayableSong) -> Void)? = nil) {
+    init(songs: [DisplayableSong], albumId: String, serverId: UUID, showArtists: Bool = false, downloadingIds: Set<String> = [], titleColor: Color = .primary, secondaryColor: Color = .secondary, albumArtistId: String? = nil, albumArtistName: String? = nil, discTitles: [Int: String] = [:], onTap: @escaping (Int) -> Void, onDownload: ((String) -> Void)? = nil, onRemoveDownload: ((String) -> Void)? = nil, onAddToPlaylist: ((DisplayableSong) -> Void)? = nil, onArtistsTap: ((DisplayableSong, [ArtistCredit]) -> Void)? = nil) {
         self.songs = songs
         self.showArtists = showArtists
         self.downloadingIds = downloadingIds
         self.titleColor = titleColor
         self.secondaryColor = secondaryColor
+        self.albumArtistId = albumArtistId
+        self.albumArtistName = albumArtistName
+        self.discTitles = discTitles
         self.onTap = onTap
         self.onDownload = onDownload
         self.onRemoveDownload = onRemoveDownload
         self.onAddToPlaylist = onAddToPlaylist
+        self.onArtistsTap = onArtistsTap
         let aid = albumId
         let sid = serverId
         _downloadedTracks = Query(
@@ -970,125 +1021,48 @@ struct AlbumSongRows: View {
         Set(downloadedTracks.map(\.songId))
     }
 
+    /// Disc headers appear only when the album spans more than one disc.
+    private var isMultiDisc: Bool {
+        Set(songs.map { $0.discNumber ?? 1 }).count > 1
+    }
+
     var body: some View {
+        let multiDisc = isMultiDisc
         ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
             let liveDownloaded = downloadedSongIds.contains(song.id)
             let liveSong = song.withDownloaded(liveDownloaded)
             let isDownloading = downloadingIds.contains(song.id)
             let downloadAction: (() -> Void)? = (liveDownloaded || isDownloading) ? nil : onDownload.map { action in { action(song.id) } }
             let removeAction: (() -> Void)? = liveDownloaded ? onRemoveDownload.map { action in { action(song.id) } } : nil
+            let credits = TrackArtistCredits.credits(for: song, albumArtistID: albumArtistId, albumArtistName: albumArtistName)
+            let disc = song.discNumber ?? 1
             VStack(spacing: 0) {
-                SongRow(song: liveSong, index: index + 1, showArtist: showArtists, isFavorite: favoriteSongIds.contains("song:\(song.id)"), titleColor: titleColor, secondaryColor: secondaryColor, trailingAccessory: .menu, onDownload: downloadAction, onRemoveDownload: removeAction, isDownloading: isDownloading, onAddToPlaylist: onAddToPlaylist, onTap: { onTap(index) })
-                    .padding(.vertical, MinidiscSpacing.xs)
-                    .padding(.horizontal, MinidiscSpacing.l)
-                if index < songs.count - 1 {
-                    Divider()
-                        .overlay(titleColor.opacity(0.22))
-                        .padding(.leading, MinidiscSpacing.l + 36)
+                if multiDisc, index == 0 || (songs[index - 1].discNumber ?? 1) != disc {
+                    DiscHeader(discNumber: disc, title: discTitles[disc])
+                        .foregroundStyle(titleColor)
                 }
+                SongRow(
+                    song: liveSong,
+                    index: index + 1,
+                    showArtist: showArtists && !credits.isEmpty,
+                    isFavorite: favoriteSongIds.contains("song:\(song.id)"),
+                    titleColor: titleColor,
+                    secondaryColor: secondaryColor,
+                    trailingAccessory: .favorite,
+                    rowAccessibilityIdentifier: "album.song.row.\(song.id)",
+                    onDownload: downloadAction,
+                    onRemoveDownload: removeAction,
+                    isDownloading: isDownloading,
+                    onAddToPlaylist: onAddToPlaylist,
+                    artistCredits: credits,
+                    onArtistsTap: onArtistsTap.map { handler in { handler(song, $0) } },
+                    onTap: { onTap(index) }
+                )
+                .padding(.leading, MinidiscSpacing.l)
+                .padding(.trailing, MinidiscSpacing.trackRowTrailing)
             }
         }
     }
-}
-
-// MARK: - Release information
-
-private struct AlbumReleaseInformationSection: View {
-    let releaseDate: ItemDate?
-    let fallbackYear: Int?
-    let songCount: Int
-    let totalDuration: TimeInterval
-    let releaseTypes: [String]
-    let version: String?
-    let recordLabels: [String]
-    let audioFormats: [String]
-    let textColor: Color
-
-    private var dateText: String? {
-        guard let year = releaseDate?.year ?? fallbackYear else { return nil }
-        guard let month = releaseDate?.month else { return String(year) }
-
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
-        var components = DateComponents()
-        components.calendar = calendar
-        components.timeZone = calendar.timeZone
-        components.year = year
-        components.month = month
-        components.day = releaseDate?.day ?? 1
-        guard let date = calendar.date(from: components) else { return String(year) }
-
-        if releaseDate?.day != nil {
-            return date.formatted(.dateTime.day().month(.wide).year())
-        }
-        return date.formatted(.dateTime.month(.wide).year())
-    }
-
-    private var countAndDurationText: String? {
-        guard songCount > 0 else { return nil }
-        let count = String(localized: "\(songCount) songs")
-        guard totalDuration > 0 else { return count }
-        let duration = Duration.seconds(totalDuration).formatted(
-            .units(allowed: [.hours, .minutes], width: .wide, maximumUnitCount: 2)
-        )
-        return "\(count), \(duration)"
-    }
-
-    private var descriptorText: String? {
-        uniqueValues(
-            releaseTypes.map { $0.localizedCapitalized }
-                + [version].compactMap { $0 }
-                + audioFormats.map { $0.uppercased() }
-        )
-        .joined(separator: " · ")
-        .nilIfEmpty
-    }
-
-    private var labelText: String? {
-        uniqueValues(recordLabels).joined(separator: " · ").nilIfEmpty
-    }
-
-    private var hasContent: Bool {
-        dateText != nil || countAndDurationText != nil || descriptorText != nil || labelText != nil
-    }
-
-    var body: some View {
-        if hasContent {
-            VStack(alignment: .leading, spacing: 3) {
-                if let dateText {
-                    Text(verbatim: dateText)
-                }
-                if let countAndDurationText {
-                    Text(verbatim: countAndDurationText)
-                }
-                if let descriptorText {
-                    Text(verbatim: descriptorText)
-                }
-                if let labelText {
-                    Text(verbatim: labelText)
-                }
-            }
-            .font(.footnote)
-            .foregroundStyle(textColor.opacity(0.82))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, MinidiscSpacing.l)
-            .padding(.top, MinidiscSpacing.l)
-            .accessibilityElement(children: .combine)
-        }
-    }
-
-    private func uniqueValues(_ values: [String]) -> [String] {
-        var seen: Set<String> = []
-        return values.compactMap { value in
-            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty, seen.insert(trimmed.lowercased()).inserted else { return nil }
-            return trimmed
-        }
-    }
-}
-
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
 // MARK: - More by artist
@@ -1128,8 +1102,8 @@ private struct AlbumMoreByArtistSection: View {
                 }
             }
         }
-        .padding(.top, MinidiscSpacing.xxl)
-        .padding(.bottom, MinidiscSpacing.xxl)
+        // Spacing only when the shelf shows, so an artist with one album leaves no gap.
+        .padding(.top, albums.isEmpty ? 0 : MinidiscSpacing.section)
         .task(id: artistId) {
             await loadAlbums()
         }
@@ -1187,7 +1161,7 @@ private struct AlbumYouMightAlsoLikeSection: View {
                     AlbumShelfCard(album: album)
                 }
             }
-            .padding(.bottom, MinidiscSpacing.xxl)
+            .padding(.top, MinidiscSpacing.section)
         }
     }
 }
@@ -1229,3 +1203,34 @@ struct ThemeColorSheet: View {
         .presentationDetents([.height(260)])
     }
 }
+
+#if DEBUG
+#Preview("Album") {
+    let container = AppContainer.preview()
+    let album = PreviewFixtures.tidalRooms
+    MinidiscPreview(container: container) {
+        NavigationStack {
+            AlbumDetailView(
+                album: album,
+                coverArtId: album.coverArt,
+                viewModel: .preview(albumId: album.id, container: container)
+            )
+        }
+    }
+}
+
+#Preview("Album, two discs, large text") {
+    let container = AppContainer.preview()
+    let album = PreviewFixtures.fieldRecordings
+    MinidiscPreview(container: container) {
+        NavigationStack {
+            AlbumDetailView(
+                album: album,
+                coverArtId: album.coverArt,
+                viewModel: .preview(albumId: album.id, container: container)
+            )
+        }
+    }
+    .dynamicTypeSize(.xxLarge)
+}
+#endif

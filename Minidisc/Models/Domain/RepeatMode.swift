@@ -22,4 +22,13 @@ extension RepeatMode {
         case .one:  return "repeat.1"
         }
     }
+
+    /// Spoken state for the repeat toggle.
+    var accessibilityValue: LocalizedStringResource {
+        switch self {
+        case .off: "Off"
+        case .all: "All"
+        case .one: "One"
+        }
+    }
 }

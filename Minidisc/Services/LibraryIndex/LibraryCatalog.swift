@@ -417,6 +417,30 @@ actor LibraryCatalog {
         return try await store.songs(artistID: artistID, serverID: serverID)
     }
 
+    /// `nil` when the track index is incomplete, so callers can fall back to a server search.
+    func creditedSongs(artistID: String, artistName: String) async throws -> [Song]? {
+        let serverID = try await source.activeServerID()
+        guard try await store.status(for: serverID).tracks else { return nil }
+        return try await store.creditedSongs(artistID: artistID, artistName: artistName, serverID: serverID)
+    }
+
+    /// Albums whose OpenSubsonic record labels include `label` (case-insensitive), by name.
+    /// `nil` while the album index is incomplete: the Subsonic API has no label filter to fall back to.
+    func albums(recordLabel label: String) async throws -> [AlbumID3]? {
+        let serverID = try await source.activeServerID()
+        guard try await store.status(for: serverID).albums else { return nil }
+        let wanted = LibraryIndexText.normalized(label)
+        return try await store.albums(serverID: serverID).filter { album in
+            (album.recordLabels ?? []).contains { LibraryIndexText.normalized($0.name) == wanted }
+        }
+    }
+
+    /// Indexed album headers for the given IDs, in no particular order.
+    func indexedAlbums(ids: [String]) async throws -> [AlbumID3] {
+        let serverID = try await source.activeServerID()
+        return try await store.albums(ids: ids, serverID: serverID)
+    }
+
     func findArtist(byName name: String) async -> ArtistID3? {
         do {
             let serverID = try await source.activeServerID()

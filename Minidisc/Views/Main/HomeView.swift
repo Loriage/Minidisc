@@ -13,6 +13,11 @@ struct HomeView: View {
 
     private var isOnline: Bool { container?.serverState.isOnline == true }
 
+    /// `viewModel` is for Previews: a supplied model is loaded instead of one built from the container.
+    init(viewModel: HomeFeedViewModel? = nil) {
+        _viewModel = State(initialValue: viewModel)
+    }
+
     var body: some View {
         Group {
             if let vm = viewModel {
@@ -35,7 +40,9 @@ struct HomeView: View {
         }
         .task(id: LoadIdentity(serverID: container?.serverState.activeServer?.id, online: isOnline)) {
             guard let c = container, let serverID = c.serverState.activeServer?.id else { return }
-            if viewModel == nil || loadedServerID != serverID {
+            // A model built here always records its server, so a nil loadedServerID with a model present
+            // means it was injected (Previews) and is kept. A server switch still rebuilds a built model.
+            if viewModel == nil || (loadedServerID != nil && loadedServerID != serverID) {
                 loadedServerID = serverID
                 viewModel = HomeFeedViewModel(libraryService: c.libraryService, cache: HomeFeedCache.shared, serverID: serverID,
                                               diagnostics: c.playbackDiagnostics)
@@ -59,7 +66,7 @@ struct HomeView: View {
         }
         if !vm.isLoading, vm.isEmpty, !isOnline {
             ScrollView {
-                VStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
+                VStack(alignment: .leading, spacing: MinidiscSpacing.section) {
                     OfflineHomeInfo()
                     HomeFavoriteSongsSection(songs: favorites.songs)
                     HomeAlbumSection(title: "Albums", albums: container?.offlineLibrary.snapshot.albums ?? [], identifier: "home.offlineAlbums")
@@ -81,7 +88,7 @@ struct HomeView: View {
         } else {
             ScrollView {
                 // A stable VStack height avoids lazy-height estimates leaving the refresh inset open.
-                VStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
+                VStack(alignment: .leading, spacing: MinidiscSpacing.section) {
                     if !isOnline {
                         OfflineHomeInfo()
                     } else if vm.hasPartialFailure {
@@ -285,3 +292,13 @@ private struct HomeShelfPlaceholder: View {
         .accessibilityValue("Loading")
     }
 }
+
+#if DEBUG
+#Preview("Home") {
+    MinidiscPreview(container: .preview()) {
+        NavigationStack {
+            HomeView(viewModel: .preview())
+        }
+    }
+}
+#endif

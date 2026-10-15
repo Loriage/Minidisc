@@ -21,63 +21,37 @@ enum PlaylistDownloadControl {
     }
 }
 
+/// Shuffle · Play · Download for playlist pages, as the same round buttons used on albums and artists.
 struct PlaylistPlaybackControls: View {
     let isEnabled: Bool
+    /// Kept for call-site compatibility; the round play button follows the foreground style.
     let playColor: Color
     let downloadControl: PlaylistDownloadControl?
     let onPlay: () -> Void
     let onShuffle: () -> Void
     let onDownload: () -> Void
 
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @ScaledMetric(relativeTo: .callout) private var scaledControlSize: CGFloat = 48
-    @ScaledMetric(relativeTo: .callout) private var scaledPlayWidth: CGFloat = 160
-
-    private var controlSize: CGFloat { min(scaledControlSize, 64) }
-
     var body: some View {
-        let layout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(spacing: MinidiscSpacing.l))
-            : AnyLayout(HStackLayout(spacing: MinidiscSpacing.l))
+        HStack(spacing: MinidiscSpacing.xl) {
+            Button("Shuffle", systemImage: "shuffle", action: onShuffle)
+                .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.large))
+                .accessibilityIdentifier("playlist.detail.shuffle")
 
-        layout {
-            Button(action: onShuffle) {
-                Image(systemName: "shuffle")
-                    .font(.minidiscCellTitle)
-                    .foregroundStyle(.white)
-                    .frame(width: controlSize, height: controlSize)
-                    .background(.white.opacity(0.1), in: Circle())
-                    .contentShape(Circle())
-            }
-            .accessibilityLabel("Shuffle")
-            .accessibilityIdentifier("playlist.detail.shuffle")
-
-            PlayButton(
-                action: onPlay,
-                isDisabled: !isEnabled,
-                accentColor: .white,
-                labelColor: playColor,
-                height: dynamicTypeSize.isAccessibilitySize ? nil : controlSize
-            )
-            .frame(maxWidth: scaledPlayWidth)
-            .accessibilityIdentifier("playlist.detail.play")
+            Button("Play", systemImage: "play.fill", action: onPlay)
+                .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.large, isProminent: true))
+                .accessibilityIdentifier("playlist.detail.play")
 
             Button(action: onDownload) {
                 Image(systemName: (downloadControl ?? .download).symbol)
-                    .font(.minidiscCellTitle)
-                    .foregroundStyle(.white)
-                    .frame(width: controlSize, height: controlSize)
-                    .background(.white.opacity(0.1), in: Circle())
-                    .contentShape(Circle())
+                    .contentTransition(.symbolEffect(.replace))
             }
+            .buttonStyle(.minidiscCircle(diameter: MinidiscControlSize.large))
             .disabled(downloadControl == nil)
-            .opacity(downloadControl == nil ? 0.4 : 1)
             .accessibilityLabel((downloadControl ?? .download).label)
             .accessibilityIdentifier("playlist.detail.download")
         }
-        .buttonStyle(.borderless)
+        .foregroundStyle(.white)
         .disabled(!isEnabled)
-        .opacity(isEnabled ? 1 : 0.4)
         .frame(maxWidth: .infinity)
         .padding(.horizontal, MinidiscSpacing.xxl)
     }

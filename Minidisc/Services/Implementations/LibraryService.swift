@@ -176,6 +176,76 @@ actor LibraryService: LibraryServiceProtocol {
 
     // MARK: - Artist tracks
 
+    func appearances(artistID: String, artistName: String) async throws -> ArtistAppearanceResult {
+        let indexed = (try? await catalog.creditedSongs(artistID: artistID, artistName: artistName)) ?? nil
+        try Task.checkCancellation()
+        let isOnline = await serverService.state.isOnline
+        let version = await serverService.activeConnectionVersion()
+        let songs = try await Self.creditedSongs(isOnline: isOnline, indexed: indexed) {
+            let remote = try await self.creditedSongsBySearch(artistName: artistName)
+            // A server switch mid-search must not mix another library's credits into this page.
+            guard await self.serverService.activeConnectionVersion() == version else { throw CancellationError() }
+            return remote
+        }
+        try Task.checkCancellation()
+        return try await appearanceResult(from: songs, artistID: artistID)
+    }
+
+    /// The library index only holds what its last full scan and later browsing saw, so it misses credits
+    /// re-tagged since and albums never opened. Online, the server is the source of truth and the index
+    /// adds anything it knows; offline, or when the server request fails, the index is the whole answer.
+    nonisolated static func creditedSongs(
+        isOnline: Bool,
+        indexed: [Song]?,
+        remote: () async throws -> [Song]
+    ) async throws -> [Song] {
+        guard isOnline else { return indexed ?? [] }
+        do {
+            let serverSongs = try await remote()
+            var seen: Set<String> = []
+            return (serverSongs + (indexed ?? [])).filter { seen.insert($0.id).inserted }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            guard let indexed else { throw error }
+            Logger.library.info("Appears On: server search failed, using the library index: \(error, privacy: .public)")
+            return indexed
+        }
+    }
+
+    private func appearanceResult(from songs: [Song], artistID: String) async throws -> ArtistAppearanceResult {
+        let draft = ArtistAppearances.result(from: songs, artistID: artistID)
+        let headers = (try? await catalog.indexedAlbums(ids: draft.albums.map(\.id))) ?? []
+        try Task.checkCancellation()
+        return ArtistAppearances.result(
+            from: songs,
+            artistID: artistID,
+            albumHeaders: Dictionary(headers.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        )
+    }
+
+    private static let creditSearchPageSize = 500
+    private static let creditSearchPageLimit = 4
+
+    private func creditedSongsBySearch(artistName: String) async throws -> [Song] {
+        let client = try await client()
+        var songs: [Song] = []
+        for page in 0..<Self.creditSearchPageLimit {
+            let result = try await client.search3(
+                artistName,
+                artistCount: 0,
+                albumCount: 0,
+                songCount: Self.creditSearchPageSize,
+                songOffset: page * Self.creditSearchPageSize
+            )
+            try Task.checkCancellation()
+            let pageSongs = result.song ?? []
+            songs += pageSongs
+            if pageSongs.count < Self.creditSearchPageSize { break }
+        }
+        return songs
+    }
+
     func fetchAllTracks(forArtistID artistID: String) async throws -> [DisplayableSong] {
         try Task.checkCancellation()
         do {
@@ -313,6 +383,10 @@ actor LibraryService: LibraryServiceProtocol {
 
     func genres() async throws -> [Genre] {
         try await client().getGenres()
+    }
+
+    func albums(recordLabel: String) async throws -> [AlbumID3]? {
+        try await catalog.albums(recordLabel: recordLabel)
     }
 
     func albumsByGenre(_ genre: String, size: Int) async throws -> [AlbumID3] {

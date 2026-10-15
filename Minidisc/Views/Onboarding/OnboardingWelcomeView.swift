@@ -52,7 +52,7 @@ struct OnboardingWelcomeView: View {
 
             VStack(spacing: MinidiscSpacing.m) {
                 Text("Your music.\nYour rules.")
-                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                    .font(.system(.largeTitle, weight: .bold))
                     .foregroundStyle(MinidiscColors.textPrimary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -62,7 +62,7 @@ struct OnboardingWelcomeView: View {
                     .animation(.spring(duration: 0.5, bounce: 0.3).delay(0.05), value: appeared)
 
                 Text("Stream your library from your own server.\nNo subscriptions. No big tech.")
-                    .font(.system(.body, design: .rounded))
+                    .font(.system(.body))
                     .foregroundStyle(MinidiscColors.textSecondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -95,7 +95,7 @@ struct OnboardingWelcomeView: View {
             showingServerForm = true
         } label: {
             Text("Get Started")
-                .font(.system(.body, design: .rounded, weight: .semibold))
+                .font(.system(.body, weight: .semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity)

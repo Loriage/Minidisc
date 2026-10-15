@@ -48,7 +48,7 @@ struct FullPlayerView: View {
 
     // MARK: - Player layout
 
-    private static let playerCoverHPadding: CGFloat = MinidiscSpacing.xxl
+    private static let playerCoverHPadding: CGFloat = MinidiscSpacing.xxxl
     private static let playerHorizontalPadding: CGFloat = MinidiscSpacing.xxxl
     private static let playerTopGap: CGFloat = 36
     private static let playerCoverToTitleGap: CGFloat = MinidiscSpacing.xl
@@ -186,7 +186,8 @@ struct FullPlayerView: View {
                         playerState: playerState,
                         playerService: container?.playerService,
                         contentColor: vm.contentColor,
-                        secondaryContentColor: vm.secondaryContentColor
+                        secondaryContentColor: vm.secondaryContentColor,
+                        isCellular: container?.serverState.networkPathEvent.descriptor.isCellular == true
                     )
                     .padding(.horizontal, Self.playerHorizontalPadding)
                     .padding(.top, MinidiscSpacing.m)
@@ -201,6 +202,8 @@ struct FullPlayerView: View {
                     keepsPauseIcon: trackSwipe.keepsPauseIcon,
                     contentColor: vm.contentColor
                 )
+                // Shuffle and repeat sit in 44pt frames; inset them to line up with the scrubber.
+                .padding(.horizontal, Self.playerHorizontalPadding - MinidiscSpacing.m)
                 .padding(.top, Self.playerControlsSpacing)
 
                 if dynamicTypeSize < .accessibility1 {
@@ -372,7 +375,6 @@ private struct TrackInfoSection: View {
 
     @Query private var favoriteMatches: [FavoriteRecord]
     @Environment(PlaylistAddition.self) private var playlistAddition
-    @State private var showAlbumSheet = false
     @State private var shareRequest: DisplayableSong?
     @State private var preparedShare: PreparedTrackShare?
     @State private var trackInformation: DisplayableSong?
@@ -399,7 +401,7 @@ private struct TrackInfoSection: View {
     private var isOnline: Bool { container?.serverState.isOnline == true }
 
     var body: some View {
-        HStack(alignment: .top, spacing: MinidiscSpacing.m) {
+        HStack(alignment: compact ? .center : .top, spacing: MinidiscSpacing.m) {
             trackMetadata
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -409,13 +411,11 @@ private struct TrackInfoSection: View {
                     Button {
                         toggleFavorite()
                     } label: {
-                        Image(systemName: isFavorite ? "star.fill" : "star")
-                            .font(.title2.weight(.semibold))
+                        Image(systemName: isFavorite ? "heart.fill" : "heart")
                             .foregroundStyle(contentColor)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Circle())
+                            .contentTransition(.symbolEffect(.replace))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.minidiscCircle(diameter: compact ? MinidiscControlSize.compact : MinidiscControlSize.regular))
                     .disabled(!isOnline || playerState.currentTrack == nil || playerState.currentTrack?.isLocalFile == true)
                     .accessibilityLabel(isFavorite ? "Remove from Favorites" : "Add to Favorites")
                 }
@@ -433,12 +433,12 @@ private struct TrackInfoSection: View {
                             }
 
                             if isFavorite {
-                                Button("Undo", systemImage: "star.slash.fill") {
+                                Button("Undo", systemImage: "heart.slash.fill") {
                                     toggleFavorite()
                                 }
                                 .disabled(!isOnline || playerState.currentTrack == nil || playerState.currentTrack?.isLocalFile == true)
                             } else {
-                                Button("Favorite", systemImage: "star.fill") {
+                                Button("Favorite", systemImage: "heart.fill") {
                                     toggleFavorite()
                                 }
                                 .disabled(!isOnline || playerState.currentTrack == nil || playerState.currentTrack?.isLocalFile == true)
@@ -447,22 +447,15 @@ private struct TrackInfoSection: View {
 
                         Divider()
                         Button {
-                            guard playerState.currentTrack?.albumId != nil else { return }
-                            showAlbumSheet = true
+                            goToAlbum()
                         } label: {
                             Label("Go to Album", systemImage: "music.note.square.stack")
-                            if let albumName = playerState.currentTrack?.albumName, !albumName.isEmpty {
-                                Text(albumName)
-                            }
                         }
                         .disabled(playerState.currentTrack?.albumId == nil || !isOnline)
                         Button {
                             goToArtist()
                         } label: {
                             Label("Go to Artist", systemImage: "music.mic")
-                            if let artist = playerState.currentTrack?.artist, !artist.isEmpty {
-                                Text(artist)
-                            }
                         }
                         .disabled(playerState.currentTrack?.artist == nil || !isOnline || playerState.currentTrack?.isLocalFile == true)
                         Button("Get Info", systemImage: "info.circle") {
@@ -497,24 +490,12 @@ private struct TrackInfoSection: View {
                     .disabled(container?.serverState.activeServer == nil)
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.title2.weight(.semibold))
                         .foregroundStyle(contentColor)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
                 }
                 .menuOrder(.fixed)
-                .buttonStyle(.plain)
+                .buttonStyle(.minidiscCircle(diameter: compact ? MinidiscControlSize.compact : MinidiscControlSize.regular))
                 .tint(.primary)
                 .accessibilityLabel("More options")
-            }
-        }
-        .sheet(isPresented: $showAlbumSheet) {
-            if let track = playerState.currentTrack,
-               let albumId = track.albumId,
-               let albumName = track.albumName {
-                NavigationStack {
-                    AlbumDetailView(albumId: albumId, albumName: albumName, coverArtId: track.coverArtId)
-                }
             }
         }
         .sheet(item: $preparedShare) { share in
@@ -565,6 +546,9 @@ private struct TrackInfoSection: View {
                     .lineLimit(1)
             } else {
                 metadataSubtitle(for: song, isCurrent: isCurrent)
+                if !compact {
+                    albumLine(for: song, isCurrent: isCurrent)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -602,6 +586,30 @@ private struct TrackInfoSection: View {
                 .disabled(!isOnline)
             } else {
                 artistLabel(artist, usesMarquee: false)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func albumLine(for song: DisplayableSong?, isCurrent: Bool) -> some View {
+        if let albumName = song?.albumName, !albumName.isEmpty {
+            let label = Text(verbatim: albumName)
+                .font(.minidiscPlayerTertiary)
+                .foregroundStyle(secondaryContentColor.opacity(0.85))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            if isCurrent, song?.albumId != nil {
+                Button {
+                    goToAlbum()
+                } label: {
+                    label
+                }
+                .buttonStyle(.plain)
+                .disabled(!isOnline)
+                .accessibilityLabel(Text("Album: \(albumName)"))
+                .accessibilityHint(Text("Opens the album"))
+            } else {
+                label
             }
         }
     }
@@ -658,6 +666,12 @@ private struct TrackInfoSection: View {
         }
     }
 
+    /// Closes the player and pushes the album onto the Home stack, like any other album page.
+    private func goToAlbum() {
+        guard let track = playerState.currentTrack, track.albumId != nil else { return }
+        postNavigateToAlbum(track: track)
+    }
+
     private func goToArtist() {
         guard let track = playerState.currentTrack else { return }
         if track.artistId != nil {
@@ -697,6 +711,7 @@ private struct ScrubberView: View {
     let playerService: (any PlayerServiceProtocol)?
     let contentColor: Color
     let secondaryContentColor: Color
+    var isCellular = false
 
     @State private var isDragging = false
     @State private var isSeeking = false
@@ -732,6 +747,8 @@ private struct ScrubberView: View {
                 },
                 trackColor: contentColor.opacity(0.2),
                 fillColor: contentColor.opacity(0.95),
+                trackHeight: 4,
+                showsThumb: true,
                 isInteracting: isDragging || isSeeking
             )
 
@@ -741,6 +758,42 @@ private struct ScrubberView: View {
                 overridePosition: (isDragging || isSeeking) ? displayPosition : nil,
                 color: secondaryContentColor
             )
+            .overlay {
+                PlaybackFormatLine(
+                    description: PlaybackFormatDescription(
+                        track: playerState.currentTrack,
+                        source: playerState.currentSourceKind,
+                        isCellular: isCellular
+                    ),
+                    color: secondaryContentColor
+                )
+                // Clear the elapsed and remaining labels on either side.
+                .padding(.horizontal, MinidiscSpacing.xxxxl)
+            }
+        }
+    }
+}
+
+/// "Streaming · FLAC · 1213 kbps", centred between the scrubber times.
+private struct PlaybackFormatLine: View {
+    let description: PlaybackFormatDescription?
+    let color: Color
+
+    var body: some View {
+        if let description {
+            HStack(spacing: MinidiscSpacing.xs) {
+                Image(systemName: description.systemImage)
+                    .imageScale(.small)
+                    .accessibilityHidden(true)
+                Text(verbatim: description.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .font(.minidiscCaption)
+            .monospacedDigit()
+            .foregroundStyle(color)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("player.formatLine")
         }
     }
 }
@@ -778,7 +831,12 @@ struct ProgressSlider: View {
     var fillColor: Color = Color.white.opacity(0.95)
     var height: CGFloat = 32
     var trackHeight: CGFloat = 5
+    /// Draws a position dot at the end of the fill (the player scrubber). The volume slider omits it.
+    var showsThumb: Bool = false
     var isInteracting: Bool = false
+
+    private static let thumbDiameter: CGFloat = 12
+    private static let draggingThumbDiameter: CGFloat = 20
 
     @State private var isDragging = false
     @State private var dragValue: TimeInterval?
@@ -796,7 +854,19 @@ struct ProgressSlider: View {
                     .frame(width: progressWidth(in: trackW))
                     .animation(nil, value: value)
             }
-            .frame(height: isDragging ? 12 : trackHeight)
+            .frame(height: isDragging && !showsThumb ? 12 : trackHeight)
+            .overlay(alignment: .leading) {
+                if showsThumb {
+                    let diameter = isDragging ? Self.draggingThumbDiameter : Self.thumbDiameter
+                    Circle()
+                        .fill(fillColor)
+                        .frame(width: diameter, height: diameter)
+                        .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
+                        .offset(x: min(max(progressWidth(in: trackW) - diameter / 2, 0), max(trackW - diameter, 0)))
+                        .animation(nil, value: value)
+                        .accessibilityHidden(true)
+                }
+            }
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isDragging)
             .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
@@ -860,8 +930,19 @@ private struct PlaybackControlsView: View {
     var body: some View {
         let showsPause = keepsPauseIcon || playerState.wantsPlayback
 
-        HStack(spacing: MinidiscSpacing.xxxxl) {
+        HStack(spacing: 0) {
             if !playerState.isLiveStream {
+                modeToggle(
+                    systemImage: "shuffle",
+                    isActive: playerState.isShuffled,
+                    label: playerState.isShuffled ? "Shuffle On" : "Shuffle Off"
+                ) {
+                    Task { await playerService?.toggleShuffle() }
+                }
+                .accessibilityIdentifier("player.shuffle")
+
+                Spacer(minLength: MinidiscSpacing.s)
+
                 Button {
                     HapticFeedback.light.trigger()
                     Task { await container?.toastService.perform { try await playerService?.skipToPrevious() } }
@@ -873,6 +954,8 @@ private struct PlaybackControlsView: View {
                 }
                 .disabled(playerState.queue.isEmpty)
                 .accessibilityLabel("Skip to previous")
+
+                Spacer(minLength: MinidiscSpacing.s)
             }
 
             Button {
@@ -884,6 +967,7 @@ private struct PlaybackControlsView: View {
                 Image(systemName: showsPause ? "pause.fill" : "play.fill")
                     .font(.system(size: 44))
                     .foregroundStyle(isPlaybackAvailable ? contentColor : contentColor.opacity(0.4))
+                    .contentTransition(.symbolEffect(.replace))
                     .frame(width: 80, height: 80)
             }
             .disabled(!isPlaybackAvailable)
@@ -891,6 +975,8 @@ private struct PlaybackControlsView: View {
             .accessibilityValue(playerState.playbackStatusMessage ?? "")
 
             if !playerState.isLiveStream {
+                Spacer(minLength: MinidiscSpacing.s)
+
                 Button {
                     HapticFeedback.light.trigger()
                     Task { await container?.toastService.perform { try await playerService?.skipToNext() } }
@@ -902,8 +988,48 @@ private struct PlaybackControlsView: View {
                 }
                 .disabled(playerState.queue.isEmpty)
                 .accessibilityLabel("Skip to next")
+
+                Spacer(minLength: MinidiscSpacing.s)
+
+                modeToggle(
+                    systemImage: playerState.repeatMode.systemImage,
+                    isActive: playerState.repeatMode != .off,
+                    label: "Repeat"
+                ) {
+                    Task { await playerService?.setRepeatMode(playerState.repeatMode.next) }
+                }
+                .accessibilityValue(Text(playerState.repeatMode.accessibilityValue))
+                .accessibilityIdentifier("player.repeat")
             }
         }
+    }
+
+    /// Shuffle and repeat flank the transport. Active modes sit in a filled circle, like Narjo's.
+    private func modeToggle(
+        systemImage: String,
+        isActive: Bool,
+        label: LocalizedStringKey,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            HapticFeedback.light.trigger()
+            action()
+        } label: {
+            Image(systemName: systemImage)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(isActive ? Color.black : contentColor.opacity(0.75))
+                .frame(width: MinidiscControlSize.compact, height: MinidiscControlSize.compact)
+                .background {
+                    Circle().fill(isActive ? contentColor : .clear)
+                }
+                .frame(width: MinidiscControlSize.regular, height: MinidiscControlSize.regular)
+                .contentShape(Circle())
+                .animation(.smooth(duration: 0.2), value: isActive)
+        }
+        .buttonStyle(.plain)
+        .disabled(playerState.queue.isEmpty)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 }
 
@@ -925,17 +1051,16 @@ private struct BottomToolbar: View {
                     withAnimation(.smooth(duration: 0.3)) { showLyrics.toggle() }
                 } label: {
                     Image(systemName: "quote.bubble")
-                        .font(.title3)
-                        .foregroundStyle(showLyrics && surface == .player ? accentColor : secondaryContentColor)
-                        .frame(width: 44, height: 44)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.minidiscCircle(isActive: showLyrics && surface == .player))
                 .accessibilityLabel("Lyrics")
+                .accessibilityAddTraits(showLyrics ? .isSelected : [])
                 .disabled(playerState.currentTrack?.isLocalFile == true)
             }
 
-            AirPlayRouteButton(tintColor: secondaryContentColor)
-                .frame(width: 44, height: 44)
+            AirPlayRouteButton(tintColor: .white)
+                .frame(width: MinidiscControlSize.regular, height: MinidiscControlSize.regular)
+                .background(Circle().fill(.primary.opacity(0.16)))
 
             if !isLiveStream {
                 Button {
@@ -947,8 +1072,6 @@ private struct BottomToolbar: View {
                     }
                 } label: {
                     Image(systemName: "list.bullet")
-                        .font(.title3)
-                        .foregroundStyle(surface == .queue ? accentColor : secondaryContentColor)
                         .overlay(alignment: .topTrailing) {
                             if let badge = playerState.queueModeBadge {
                                 Image(systemName: badge)
@@ -957,15 +1080,15 @@ private struct BottomToolbar: View {
                                     .padding(2)
                                     .background(.background, in: Circle())
                                     .overlay(Circle().stroke(.background.opacity(0.5), lineWidth: 0.5))
-                                    .offset(x: 6, y: -6)
+                                    .offset(x: 10, y: -10)
                                     .transition(.scale.combined(with: .opacity))
                             }
                         }
                         .animation(.smooth(duration: 0.2), value: playerState.queueModeBadge)
-                        .frame(width: 44, height: 44)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.minidiscCircle(isActive: surface == .queue))
                 .accessibilityLabel("Queue")
+                .accessibilityAddTraits(surface == .queue ? .isSelected : [])
             }
         }
     }
@@ -1010,3 +1133,18 @@ private struct VolumeSection: View {
         }
     }
 }
+
+#if DEBUG
+#Preview("Playing") {
+    MinidiscPreview(container: .preview()) {
+        FullPlayerView()
+    }
+}
+
+#Preview("Paused, large text") {
+    MinidiscPreview(container: .preview(isPlaying: false)) {
+        FullPlayerView()
+            .dynamicTypeSize(.accessibility2)
+    }
+}
+#endif

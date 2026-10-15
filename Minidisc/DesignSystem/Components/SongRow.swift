@@ -1,14 +1,18 @@
 import SwiftUI
 
 nonisolated enum SongRowTrailingAccessory: Sendable, Equatable {
+    /// Duration only (compact lists).
     case duration
-    case menu
+    /// A heart toggle followed by the duration. Row actions live in the context menu and swipe actions.
+    case favorite
 }
 
 /// Standard track cell for album and playlist detail screens.
 ///
 /// - `showCoverArt`: show a 44pt thumbnail (useful in playlist context where tracks
 ///   may come from different albums). Default `false` for album tracks.
+/// - `artistCredits`: when non-empty, replaces the artist line with tappable credits (album track lists
+///   with featured artists). `onArtistsTap` receives the credits.
 struct SongRow: View {
     let song: DisplayableSong
     let index: Int
@@ -22,26 +26,27 @@ struct SongRow: View {
     var titleColor: Color = .primary
     var secondaryColor: Color = .secondary
     var trailingAccessory: SongRowTrailingAccessory = .duration
-    var menuAccessibilityIdentifier: String = ""
+    var rowAccessibilityIdentifier: String = ""
     let onDownload: (() -> Void)?
     let onRemoveDownload: (() -> Void)?
     var isDownloading: Bool = false
     var onRemoveFromPlaylist: (() -> Void)? = nil
     var onAddToPlaylist: ((DisplayableSong) -> Void)? = nil
     var onGoToAlbum: (() -> Void)? = nil
+    var artistCredits: [ArtistCredit] = []
+    var onArtistsTap: (([ArtistCredit]) -> Void)? = nil
     var onTap: (() -> Void)? = nil
 
     @Environment(\.appContainer) private var container
     @Environment(ArtworkImageCache.self) private var artworkImageCache
     @Environment(\.minidiscPlayingAccent) private var playingAccent
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @ScaledMetric(relativeTo: .body) private var menuSymbolSize: CGFloat = 17
     @State private var coverImage: PlatformImage?
     @State private var shareRequest: DisplayableSong?
     @State private var preparedShare: PreparedTrackShare?
     @State private var trackInformation: DisplayableSong?
 
-    init(song: DisplayableSong, index: Int, showCoverArt: Bool = false, showArtist: Bool = true, secondaryText: String? = nil, coverArtSize: CGFloat = 44, coverArtCornerRadius: CGFloat = MinidiscCornerRadius.standard, primaryContentSpacing: CGFloat = MinidiscSpacing.s, isFavorite: Bool = false, titleColor: Color = .primary, secondaryColor: Color = .secondary, trailingAccessory: SongRowTrailingAccessory = .duration, menuAccessibilityIdentifier: String = "", onDownload: (() -> Void)? = nil, onRemoveDownload: (() -> Void)? = nil, isDownloading: Bool = false, onRemoveFromPlaylist: (() -> Void)? = nil, onAddToPlaylist: ((DisplayableSong) -> Void)? = nil, onGoToAlbum: (() -> Void)? = nil, onTap: (() -> Void)? = nil) {
+    init(song: DisplayableSong, index: Int, showCoverArt: Bool = false, showArtist: Bool = true, secondaryText: String? = nil, coverArtSize: CGFloat = 44, coverArtCornerRadius: CGFloat = MinidiscCornerRadius.standard, primaryContentSpacing: CGFloat = MinidiscSpacing.s, isFavorite: Bool = false, titleColor: Color = .primary, secondaryColor: Color = .secondary, trailingAccessory: SongRowTrailingAccessory = .duration, rowAccessibilityIdentifier: String = "", onDownload: (() -> Void)? = nil, onRemoveDownload: (() -> Void)? = nil, isDownloading: Bool = false, onRemoveFromPlaylist: (() -> Void)? = nil, onAddToPlaylist: ((DisplayableSong) -> Void)? = nil, onGoToAlbum: (() -> Void)? = nil, artistCredits: [ArtistCredit] = [], onArtistsTap: (([ArtistCredit]) -> Void)? = nil, onTap: (() -> Void)? = nil) {
         self.song = song
         self.index = index
         self.showCoverArt = showCoverArt
@@ -54,19 +59,27 @@ struct SongRow: View {
         self.titleColor = titleColor
         self.secondaryColor = secondaryColor
         self.trailingAccessory = trailingAccessory
-        self.menuAccessibilityIdentifier = menuAccessibilityIdentifier
+        self.rowAccessibilityIdentifier = rowAccessibilityIdentifier
         self.onDownload = onDownload
         self.onRemoveDownload = onRemoveDownload
         self.isDownloading = isDownloading
         self.onRemoveFromPlaylist = onRemoveFromPlaylist
         self.onAddToPlaylist = onAddToPlaylist
         self.onGoToAlbum = onGoToAlbum
+        self.artistCredits = artistCredits
+        self.onArtistsTap = onArtistsTap
         self.onTap = onTap
     }
 
     private var textLineLimit: Int {
-        trailingAccessory == .menu && dynamicTypeSize.isAccessibilitySize ? 2 : 1
+        trailingAccessory == .favorite && dynamicTypeSize.isAccessibilitySize ? 2 : 1
     }
+
+    /// Tappable credits need their own button, so the row uses a tap gesture instead of wrapping
+    /// everything in one Button (nested buttons don't split taps reliably).
+    private var showsTappableCredits: Bool { !artistCredits.isEmpty && onArtistsTap != nil }
+    /// With the heart on the trailing edge, the leading favourite marker would repeat it.
+    private var showsLeadingFavoriteMarker: Bool { isFavorite && trailingAccessory != .favorite }
 
     private var isCurrentTrack: Bool { container?.playerState.currentTrack?.id == song.id }
     private var isPlaying: Bool { container?.playerState.playbackState == .playing }
@@ -81,24 +94,38 @@ struct SongRow: View {
             onAddToPlaylist: onAddToPlaylist,
             onShare: { shareRequest = song },
             onGoToAlbum: onGoToAlbum,
-            onGetInfo: trailingAccessory == .menu ? { trackInformation = song } : nil
+            onGetInfo: { trackInformation = song }
         )
     }
 
     var body: some View {
         HStack(spacing: MinidiscSpacing.s) {
-            if let onTap {
+            if let onTap, showsTappableCredits {
+                // The play button fills the row behind the content. Index and title don't take touches,
+                // so taps on them reach it; only the credits link on top opens artists.
+                primaryContent
+                    .background {
+                        Button(action: onTap) {
+                            Color.clear.contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text(verbatim: song.title))
+                        .accessibilityIdentifier(rowAccessibilityIdentifier)
+                    }
+            } else if let onTap {
                 Button(action: onTap) {
                     primaryContent
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier(rowAccessibilityIdentifier)
             } else {
                 primaryContent
             }
 
             trailingContent
         }
-        .padding(.vertical, trailingAccessory == .menu ? 0 : MinidiscSpacing.s)
+        .padding(.vertical, trailingAccessory == .favorite ? MinidiscSpacing.xs : MinidiscSpacing.s)
         .contentShape(Rectangle())
         .task(id: song.id) {
             coverImage = await artworkImageCache.load(coverArtId: song.coverArtId ?? song.id)
@@ -138,8 +165,8 @@ struct SongRow: View {
                         }
                     }
                     .overlay(alignment: .topLeading) {
-                        if isFavorite {
-                            Image(systemName: "star.fill")
+                        if showsLeadingFavoriteMarker {
+                            Image(systemName: "heart.fill")
                                 .font(.system(size: 8, weight: .bold))
                                 .foregroundStyle(playingAccent)
                                 .padding(3)
@@ -151,11 +178,11 @@ struct SongRow: View {
                         NowPlayingBarsIndicator(isPlaying: isPlaying)
                     } else {
                         Text("\(song.trackNumber ?? index)")
-                            .font(.minidiscCellSubtitle)
+                            .font(.minidiscTrackNumber)
                             .foregroundStyle(secondaryColor.opacity(0.72))
-                            .opacity(isFavorite ? 0 : 1)
-                        if isFavorite {
-                            Image(systemName: "star.fill")
+                            .opacity(showsLeadingFavoriteMarker ? 0 : 1)
+                        if showsLeadingFavoriteMarker {
+                            Image(systemName: "heart.fill")
                                 .font(.caption2)
                                 .foregroundStyle(playingAccent)
                                 .accessibilityLabel("Favorite")
@@ -164,15 +191,24 @@ struct SongRow: View {
                 }
                 .frame(width: 28, height: 44, alignment: .center)
                 .monospacedDigit()
+                .allowsHitTesting(!showsTappableCredits)
+                .accessibilityHidden(showsTappableCredits)
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(song.title)
-                    .font(.minidiscBody)
+                    .font(.minidiscTrackTitle)
                     .foregroundStyle(isCurrentTrack ? playingAccent : titleColor)
                     .lineLimit(textLineLimit)
                     .fixedSize(horizontal: false, vertical: true)
-                if let secondaryText = secondaryText ?? (showArtist ? song.artist : nil) {
+                    .allowsHitTesting(!showsTappableCredits)
+                    .accessibilityHidden(showsTappableCredits)
+                if showsTappableCredits, let onArtistsTap {
+                    TrackArtistsLine(
+                        credits: artistCredits,
+                        accessibilityIdentifier: rowAccessibilityIdentifier.isEmpty ? "" : rowAccessibilityIdentifier + ".credits"
+                    ) { onArtistsTap(artistCredits) }
+                } else if let secondaryText = secondaryText ?? (showArtist ? song.artist : nil) {
                     Text(secondaryText)
                         .font(.minidiscCellSubtitle)
                         .foregroundStyle(secondaryColor)
@@ -182,9 +218,9 @@ struct SongRow: View {
             }
 
             Spacer(minLength: 0)
+                .allowsHitTesting(!showsTappableCredits)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
     }
 
     private var trailingContent: some View {
@@ -198,29 +234,27 @@ struct SongRow: View {
                     .scaleEffect(0.7)
                     .frame(width: 16, height: 16)
             }
-            switch trailingAccessory {
-            case .duration:
-                if song.duration > 0 {
-                    Text(Duration.seconds(song.duration).formatted(.time(pattern: .minuteSecond)))
-                        .font(.minidiscCaption)
-                        .foregroundStyle(secondaryColor.opacity(0.6))
-                        .monospacedDigit()
-                }
-            case .menu:
-                Menu {
-                    actions
+            if trailingAccessory == .favorite, !song.isLocalFile {
+                Button {
+                    SongActions.toggleFavorite(song: song, isFavorite: isFavorite, container: container)
                 } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: min(menuSymbolSize, 22), weight: .semibold))
-                        .foregroundStyle(secondaryColor)
-                        .frame(width: 44, height: 44)
+                    Image(systemName: isFavorite ? "heart.fill" : "heart")
+                        .font(.body)
+                        .foregroundStyle(isFavorite ? AnyShapeStyle(playingAccent) : AnyShapeStyle(secondaryColor))
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(width: MinidiscControlSize.regular, height: MinidiscControlSize.regular)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .tint(secondaryColor)
-                .menuOrder(.fixed)
-                .accessibilityLabel("More options")
-                .accessibilityIdentifier(menuAccessibilityIdentifier)
+                .disabled(container?.serverState.isOnline != true)
+                .accessibilityLabel(isFavorite ? "Remove from Favorites" : "Add to Favorites")
+            }
+            if song.duration > 0 {
+                Text(Duration.seconds(song.duration).formatted(.time(pattern: .minuteSecond)))
+                    .font(trailingAccessory == .favorite ? .minidiscTrackNumber : .minidiscCaption)
+                    .foregroundStyle(secondaryColor.opacity(trailingAccessory == .favorite ? 0.75 : 0.6))
+                    .monospacedDigit()
+                    .frame(minWidth: trailingAccessory == .favorite ? MinidiscSpacing.xxxxl : nil, alignment: .trailing)
             }
         }
     }
@@ -284,13 +318,13 @@ private struct SongActions: View {
                     Button("Share", systemImage: "square.and.arrow.up.fill", action: onShare)
 
                     if isFavorite {
-                        Button("Undo", systemImage: "star.slash.fill") {
-                            toggleFavorite()
+                        Button("Undo", systemImage: "heart.slash.fill") {
+                            Self.toggleFavorite(song: song, isFavorite: isFavorite, container: container)
                         }
                         .disabled(!isOnline)
                     } else {
-                        Button("Favorite", systemImage: "star.fill") {
-                            toggleFavorite()
+                        Button("Favorite", systemImage: "heart.fill") {
+                            Self.toggleFavorite(song: song, isFavorite: isFavorite, container: container)
                         }
                         .disabled(!isOnline)
                     }
@@ -325,11 +359,9 @@ private struct SongActions: View {
                 Section {
                     if let onGoToAlbum,
                        song.albumId != nil,
-                       let albumName = song.albumName,
-                       !albumName.isEmpty {
+                       song.albumName?.isEmpty == false {
                         Button(action: onGoToAlbum) {
                             Label("Go to Album", systemImage: "music.note.square.stack")
-                            Text(albumName)
                         }
                         .disabled(!isOnline)
                     }
@@ -369,13 +401,17 @@ private struct SongActions: View {
         .tint(.primary)
     }
 
-    private func toggleFavorite() {
+    static func toggleFavorite(song: DisplayableSong, isFavorite: Bool, container: AppContainer?) {
         HapticFeedback.light.trigger()
         Task {
             if isFavorite {
-                try? await container?.favoritesService.unstar(itemType: .song, itemId: song.id)
+                await container?.toastService.perform {
+                    try await container?.favoritesService.unstar(itemType: .song, itemId: song.id)
+                }
             } else {
-                try? await container?.favoritesService.star(itemType: .song, itemId: song.id)
+                await container?.toastService.perform {
+                    try await container?.favoritesService.star(itemType: .song, itemId: song.id)
+                }
             }
         }
     }

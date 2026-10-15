@@ -129,7 +129,7 @@ private struct SearchMatchRow: View {
         switch match {
         case .song(let song):
             SongRow(song: song, index: 1, showCoverArt: true, isFavorite: isFavorite,
-                    trailingAccessory: .menu, onAddToPlaylist: onAddToPlaylist, onTap: {
+                    trailingAccessory: .favorite, onAddToPlaylist: onAddToPlaylist, onTap: {
                 Task {
                     await container?.toastService.perform {
                         try await container?.playerService.play(tracks: songs, startIndex: songs.firstIndex { $0.id == song.id } ?? 0)

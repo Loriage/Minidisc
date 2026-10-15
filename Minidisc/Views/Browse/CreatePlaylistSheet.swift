@@ -141,7 +141,7 @@ struct CreatePlaylistSheet: View {
             VStack(spacing: MinidiscSpacing.xl) {
                 TextField("Playlist Title", text: Bindable(vm).name)
                     .disabled(vm.createdPlaylist != nil || isCommitting)
-                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                    .font(.system(.largeTitle, weight: .bold))
                     .submitLabel(.done)
                     .padding(.vertical, MinidiscSpacing.s)
                     .padding(.horizontal, MinidiscSpacing.l)

@@ -24,7 +24,7 @@ struct OnboardingCompleteView: View {
 
                 VStack(spacing: MinidiscSpacing.m) {
                     Text("You're all set.")
-                        .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                        .font(.system(.largeTitle, weight: .bold))
                         .foregroundStyle(MinidiscColors.textPrimary)
                         .multilineTextAlignment(.center)
                         .opacity(appeared ? 1 : 0)
@@ -32,7 +32,7 @@ struct OnboardingCompleteView: View {
                         .animation(.spring(duration: 0.5, bounce: 0.3).delay(0.2), value: appeared)
 
                     Text("Your library is waiting.\nTime to press play.")
-                        .font(.system(.body, design: .rounded))
+                        .font(.system(.body))
                         .foregroundStyle(MinidiscColors.textSecondary)
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
@@ -41,7 +41,7 @@ struct OnboardingCompleteView: View {
                         .animation(.spring(duration: 0.5, bounce: 0.3).delay(0.3), value: appeared)
 
                     Text("You can adjust everything anytime in Settings.")
-                        .font(.system(.footnote, design: .rounded))
+                        .font(.system(.footnote))
                         .foregroundStyle(MinidiscColors.textTertiary)
                         .multilineTextAlignment(.center)
                         .opacity(appeared ? 1 : 0)
@@ -56,7 +56,7 @@ struct OnboardingCompleteView: View {
                     startTransition()
                 } label: {
                     Text("Start Listening")
-                        .font(.system(.body, design: .rounded, weight: .semibold))
+                        .font(.system(.body, weight: .semibold))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)

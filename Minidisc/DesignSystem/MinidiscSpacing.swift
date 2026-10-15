@@ -16,6 +16,10 @@ nonisolated enum MinidiscSpacing {
     /// section on scrolling pages so headers never crowd the content above them.
     static let section: CGFloat = 32
 
+    /// Right inset for track rows ending in a duration. Wider than the leading inset: the track number on
+    /// the left is centred in its column, so this balances the visible gaps on both edges.
+    static let trackRowTrailing: CGFloat = 32
+
     /// Bottom scroll margin reserved for the iOS tabViewBottomAccessory mini player,
     /// which floats over tab content without extending the safe area.
     static let miniPlayerBottomMargin: CGFloat = 80

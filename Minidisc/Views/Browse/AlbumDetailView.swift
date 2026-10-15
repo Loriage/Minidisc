@@ -1058,7 +1058,8 @@ struct AlbumSongRows: View {
                     onArtistsTap: onArtistsTap.map { handler in { handler(song, $0) } },
                     onTap: { onTap(index) }
                 )
-                .padding(.horizontal, MinidiscSpacing.l)
+                .padding(.leading, MinidiscSpacing.l)
+                .padding(.trailing, MinidiscSpacing.trackRowTrailing)
             }
         }
     }

@@ -28,6 +28,8 @@ struct HomeFavoriteSongsSection: View {
                             }
                         }
                     })
+                    // Rows end in a duration: give them the wider track-row inset, headers keep the shelf inset.
+                    .padding(.trailing, MinidiscSpacing.trackRowTrailing - MinidiscSpacing.l)
                 }
             }
             .padding(.horizontal, MinidiscSpacing.l)

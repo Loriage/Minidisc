@@ -511,7 +511,8 @@ struct ArtistDetailView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, MinidiscSpacing.l)
+            .padding(.leading, MinidiscSpacing.l)
+            .padding(.trailing, MinidiscSpacing.trackRowTrailing)
         }
     }
 
@@ -662,7 +663,8 @@ private struct ArtistTopSongsSection: View {
                 titleColor: titleColor,
                 secondaryColor: secondaryColor
             )
-            .padding(.horizontal, MinidiscSpacing.l)
+            .padding(.leading, MinidiscSpacing.l)
+            .padding(.trailing, MinidiscSpacing.trackRowTrailing)
         }
     }
 }

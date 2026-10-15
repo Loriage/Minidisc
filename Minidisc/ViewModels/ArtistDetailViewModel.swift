@@ -12,6 +12,8 @@ final class ArtistDetailViewModel {
     private(set) var appearsOn: [AlbumID3] = []
     /// Albums the server listed for the artist but files under someone else.
     private var listedCredits: [AlbumID3] = []
+    /// Set when the server returned the artist without albums; resolved by `loadAppearances()`.
+    private var deferredLocalFallback = false
     /// The credited tracks on `appearsOn`, newest album first. What Play uses for credit-only artists.
     private(set) var appearanceSongs: [DisplayableSong] = []
     /// True until the first appearance lookup finishes, so a credit-only artist is not shown as empty.
@@ -88,9 +90,10 @@ final class ArtistDetailViewModel {
     private func loadFromAPI() async {
         do {
             let fetched = try await libraryService.artist(id: artistId)
-            // Empty-success guard: behind a captive proxy the server answers 200 with no albums.
-            // That never throws, so prefer the downloaded copy over an empty screen.
-            if (fetched.album ?? []).isEmpty, await loadFromLocal() { return }
+            // A record with no albums is normal for credit-only artists (an ensemble filed under its leader),
+            // but it is also what a captive proxy's empty 200 looks like. Stay online and decide once Appears
+            // On has loaded: only when that is empty too does the downloaded copy replace the page.
+            deferredLocalFallback = (fetched.album ?? []).isEmpty
             setArtist(fetched)
             isOffline = false
         } catch {
@@ -207,6 +210,14 @@ final class ArtistDetailViewModel {
             Logger.library.warning("appearances failed for \(self.artistId, privacy: .public): \(error, privacy: .public)")
             appearsOn = []
             appearanceSongs = []
+        }
+        if deferredLocalFallback {
+            deferredLocalFallback = false
+            // No filed albums and no credits: the empty record was not a credit-only artist, so prefer
+            // whatever is downloaded over an empty screen.
+            if appearsOn.isEmpty, (artist?.album ?? []).isEmpty {
+                await loadFromLocal()
+            }
         }
         isLoadingAppearances = false
     }

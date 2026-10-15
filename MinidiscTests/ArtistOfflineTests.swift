@@ -257,8 +257,28 @@ struct ArtistDetailOfflineTests {
         let empty = ArtistID3(id: "ar-1", name: "Orelsan", album: [])
         let vm = makeVM(artistData: downloadedArtist, isOnline: true, apiArtist: empty)
         await vm.load()
+        // The empty record could be a credit-only artist: the decision waits for Appears On.
+        #expect(!vm.isOffline)
+        await vm.loadAppearances()
         #expect(vm.isOffline)
         #expect(vm.artist?.album?.count == 1)
+    }
+
+    @Test("a credit-only artist with a cached song stays online and lists every crediting album")
+    func creditOnlyArtistWithDownloadsStaysOnline() async {
+        // The reported bug: one cached track made the empty server record fall back to "downloads only",
+        // which hid Appears On entirely.
+        let empty = ArtistID3(id: "ar-1", name: "Orelsan", album: [])
+        let crediting = (1...3).map {
+            AlbumID3(id: "al-\($0)", name: "Album \($0)", songCount: 8, duration: 2400, artist: "Leader", artistId: "ar-leader")
+        }
+        let vm = makeVM(artistData: downloadedArtist, isOnline: true, apiArtist: empty,
+                        appearances: ArtistAppearanceResult(albums: crediting, songs: []))
+        await vm.load()
+        await vm.loadAppearances()
+        #expect(!vm.isOffline)
+        #expect(vm.appearsOn.map(\.id) == ["al-1", "al-2", "al-3"])
+        #expect(vm.isCreditOnly)
     }
 
     @Test("the online-only sections stop loading offline so they collapse instead of showing skeletons")

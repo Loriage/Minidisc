@@ -309,9 +309,12 @@ actor ListenBrainzClient {
         }
     }
 
-    private static func isValidUsernameFormat(_ username: String) -> Bool {
+    /// Shared with Settings so locally accepted accounts also reach the API.
+    nonisolated static func isValidUsernameFormat(_ username: String) -> Bool {
         guard (1...40).contains(username.count) else { return false }
-        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
+        // Standalone dot segments would change the meaning of the user URL path.
+        guard username != ".", username != ".." else { return false }
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-")
         return username.unicodeScalars.allSatisfy { allowed.contains($0) }
     }
 

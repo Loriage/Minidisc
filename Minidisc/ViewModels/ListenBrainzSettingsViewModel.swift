@@ -45,12 +45,9 @@ final class ListenBrainzSettingsViewModel {
             usernameInputValidationError = nil
             return
         }
-        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
-        let isValid = (1...40).contains(usernameInput.count) &&
-                      usernameInput.unicodeScalars.allSatisfy { allowed.contains($0) }
-        usernameInputValidationError = isValid
+        usernameInputValidationError = ListenBrainzClient.isValidUsernameFormat(usernameInput)
             ? nil
-            : "Username contains invalid characters. Use letters, numbers, dashes, or underscores."
+            : userFacingMessage(for: .invalidUsername)
     }
 
     func connect() async {
@@ -174,7 +171,7 @@ final class ListenBrainzSettingsViewModel {
     private func userFacingMessage(for error: ListenBrainzError) -> String {
         switch error {
         case .invalidUsername:
-            return "Username contains invalid characters. Use letters, numbers, dashes, or underscores."
+            return "Username contains invalid characters. Use letters, numbers, periods, dashes, or underscores."
         case .userNotFound:
             return "No ListenBrainz user found with this username."
         case .rateLimited(let retryAfter):

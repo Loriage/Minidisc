@@ -59,8 +59,9 @@ private func makeComponents(transport: any ListenBrainzTransport) -> (ListenBrai
 @Suite("ListenBrainzService — enable")
 struct ListenBrainzServiceEnableTests {
 
-    @Test("happy path: transitions to .valid, persists username, flips isEnabled")
-    func enableHappyPath() async throws {
+    @Test("happy path: transitions to .valid, persists username, flips isEnabled",
+          arguments: ["validuser", "valid.user"])
+    func enableHappyPath(username: String) async throws {
         let transport = FlexibleTransport()
         transport.enqueue(status: 200)
         let (service, keychain, defaultsSuiteName) = makeComponents(transport: transport)
@@ -69,15 +70,15 @@ struct ListenBrainzServiceEnableTests {
         #expect(initial.validationStatus == ValidationStatus.unknown)
         #expect(!initial.isEnabled)
 
-        try await service.enable(username: "validuser")
+        try await service.enable(username: username)
 
         let snap = await service.currentSnapshot()
         #expect(snap.isEnabled)
         #expect(snap.validationStatus == ValidationStatus.valid)
-        #expect(snap.username == "validuser")
+        #expect(snap.username == username)
 
         let stored = try await keychain.retrieve(String.self, forKey: keychainKey)
-        #expect(stored == "validuser")
+        #expect(stored == username)
         #expect(UserDefaults(suiteName: defaultsSuiteName)!.bool(forKey: defaultsKey))
     }
 
@@ -161,14 +162,15 @@ struct ListenBrainzServiceRevalidateTests {
         try await service.revalidate()
     }
 
-    @Test("with stored username: re-validates via network, transitions to .valid")
-    func revalidateWithUsername() async throws {
+    @Test("with stored username: re-validates via network, transitions to .valid",
+          arguments: ["myuser", "my.user"])
+    func revalidateWithUsername(username: String) async throws {
         let transport = FlexibleTransport()
         transport.enqueue(status: 200) // for enable
         transport.enqueue(status: 200) // for revalidate
         let (service, _, _) = makeComponents(transport: transport)
 
-        try await service.enable(username: "myuser")
+        try await service.enable(username: username)
         try await service.revalidate()
 
         let snap = await service.currentSnapshot()

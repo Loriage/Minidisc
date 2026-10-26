@@ -32,6 +32,20 @@ private nonisolated func response(status: Int, headers: [String: String]? = nil)
 @Suite("ListenBrainzClient — validateUsername")
 struct ListenBrainzClientTests {
 
+    @Test("dotted usernames reach the listen-count endpoint unchanged",
+          arguments: ["test.user", "test.user.name", "Test.User_123-name", String(repeating: "a", count: 38) + ".b"])
+    func dottedUsernameReachesAPI(username: String) async throws {
+        let body = Data(#"{"payload":{"count":0}}"#.utf8)
+        let client = makeClient { request in
+            #expect(request.httpMethod == "GET")
+            #expect(request.url?.host == "api.listenbrainz.org")
+            #expect(request.url?.path == "/1/user/\(username)/listen-count")
+            #expect(request.url?.query == nil)
+            return (body, response(status: 200))
+        }
+        #expect(try await client.validateUsername(username))
+    }
+
     @Test("valid username, 200 + count > 0 returns true")
     func happyPathWithCount() async throws {
         let body = Data(#"{"payload":{"count":1234}}"#.utf8)
@@ -124,13 +138,14 @@ struct ListenBrainzClientTests {
         }
     }
 
-    @Test("invalid username format rejects locally without network call")
-    func invalidUsernameRejectsLocally() async throws {
+    @Test("invalid username format rejects locally without network call",
+          arguments: ["invalid user@#!", ".", "..", "user/name", "user?name", "user#name"])
+    func invalidUsernameRejectsLocally(username: String) async throws {
         // FailingTransport throws URLError -> would become .network if called.
         // Receiving .invalidUsername proves no network hop happened.
         let client = ListenBrainzClient(transport: FailingTransport())
         do {
-            _ = try await client.validateUsername("invalid user@#!")
+            _ = try await client.validateUsername(username)
             Issue.record("Expected throw")
         } catch ListenBrainzError.invalidUsername {
         } catch {

@@ -59,6 +59,23 @@ private func makeComponents() -> (ListenBrainzSettingsViewModel, VMTransport, St
 @Suite("ListenBrainzSettingsViewModel")
 struct ListenBrainzSettingsViewModelTests {
 
+    @Test("a dotted username passes input validation and connects without changing the account name")
+    @MainActor func dottedUsernameConnects() async {
+        let (vm, transport, defaultsSuiteName) = makeComponents()
+        defer { UserDefaults.standard.removePersistentDomain(forName: defaultsSuiteName) }
+        transport.enqueue(status: 200)
+
+        vm.usernameInput = "Test.User_123-name"
+        vm.validateUsernameInputLocally()
+        #expect(vm.usernameInputValidationError == nil)
+
+        await vm.connect()
+        #expect(vm.snapshot.isEnabled)
+        #expect(vm.snapshot.username == "Test.User_123-name")
+        #expect(vm.userFacingError == nil)
+        #expect(!vm.isProcessing)
+    }
+
     @Test("valid username clears validation error")
     @MainActor func validUsernameInputClearsError() {
         let (vm, _, _) = makeComponents()

@@ -39,7 +39,7 @@ struct AlbumShelfCard: View {
     private var side: CGFloat { dynamicTypeSize.isAccessibilitySize ? 260 : 160 }
 
     var body: some View {
-        NavigationLink(value: HomeDestination.album(album)) {
+        MusicAlbumLink(album: album) {
             VStack(alignment: .leading, spacing: MinidiscSpacing.xs) {
                 CoverArtView(id: album.coverArt ?? album.id, size: Int(side * 2))
                     .frame(width: side, height: side)

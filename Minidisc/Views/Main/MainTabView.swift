@@ -47,29 +47,25 @@ struct MainTabView: View {
 
     private var tabs: some View {
         TabView(selection: $selectedTab) {
-            if container?.serverState.activeServer != nil {
-                Tab("Home", image: "HomeTabIcon", value: AppTab.home) {
-                    NavigationStack(path: $homePath) {
-                        HomeView()
-                            .playerAlbumDestinations()
-                    }
-                    .environment(\.albumNavigationContext, AlbumNavigationContext(navigation: albumNavigation, tab: .home))
+            Tab("Home", image: "HomeTabIcon", value: AppTab.home) {
+                NavigationStack(path: $homePath) {
+                    HomeView()
+                        .playerAlbumDestinations()
                 }
+                .environment(\.albumNavigationContext, AlbumNavigationContext(navigation: albumNavigation, tab: .home))
+            }
 
-                Tab("Discover", systemImage: "square.grid.2x2.fill", value: AppTab.discover) {
-                    NavigationStack(path: $discoverPath) {
-                        DiscoverView()
-                            .playerAlbumDestinations()
-                    }
-                    .environment(\.albumNavigationContext, AlbumNavigationContext(navigation: albumNavigation, tab: .discover))
+            Tab("Discover", systemImage: "square.grid.2x2.fill", value: AppTab.discover) {
+                NavigationStack(path: $discoverPath) {
+                    DiscoverView()
+                        .playerAlbumDestinations()
                 }
-
+                .environment(\.albumNavigationContext, AlbumNavigationContext(navigation: albumNavigation, tab: .discover))
             }
 
             Tab("Library", systemImage: "music.note.square.stack.fill", value: AppTab.library) {
                 NavigationStack(path: $libraryPath) {
-                    if container?.serverState.activeServer == nil { LocalMusicView() }
-                    else { LibraryView().playerAlbumDestinations() }
+                    LibraryView().playerAlbumDestinations()
                 }
                 .environment(\.albumNavigationContext, AlbumNavigationContext(navigation: albumNavigation, tab: .library))
             }
@@ -84,21 +80,20 @@ struct MainTabView: View {
 
             // Bare `Tab(value:role:)`: the search role renders its own detached button, glyph and
             // label. Passing a title and systemImage here draws a second glyph over the system's.
-            if container?.serverState.activeServer != nil {
-                Tab(value: AppTab.search, role: .search) {
-                    NavigationStack(path: $searchPath) {
-                        SearchView(searchQuery: $searchText, path: $searchPath)
-                            .playerAlbumDestinations()
-                            .navigationTitle("Search")
-                            .toolbarTitleDisplayMode(.inlineLarge)
-                    }
-                    .environment(\.albumNavigationContext, AlbumNavigationContext(navigation: albumNavigation, tab: .search))
-                    .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always),
-                                prompt: "Artists, albums, songs, playlists…")
+            Tab(value: AppTab.search, role: .search) {
+                NavigationStack(path: $searchPath) {
+                    SearchView(searchQuery: $searchText, path: $searchPath)
+                        .playerAlbumDestinations()
+                        .navigationTitle("Search")
+                        .toolbarTitleDisplayMode(.inlineLarge)
                 }
+                .environment(\.albumNavigationContext, AlbumNavigationContext(navigation: albumNavigation, tab: .search))
+                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always),
+                            prompt: container?.serverState.activeServer == nil
+                                ? Text("Artists, albums, songs…", tableName: "LocalMusic")
+                                : Text("Artists, albums, songs, playlists…"))
             }
         }
-        .onAppear { if container?.serverState.activeServer == nil { selectedTab = .library } }
         .accentColor(.minidiscAccent)
         .preferredColorScheme(theme.colorScheme)
         .onChange(of: container?.serverState.activeServer?.id) {
@@ -110,7 +105,9 @@ struct MainTabView: View {
             searchText = ""
         }
         .onChange(of: lidarrConnected, initial: true) {
-            if !lidarrConnected, selectedTab == .lidarr { selectedTab = .home }
+            if !lidarrConnected, selectedTab == .lidarr {
+                selectedTab = .home
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .minidiscNavigateToLibrary)) { _ in
             playerPresentation.reset()
@@ -124,7 +121,7 @@ struct MainTabView: View {
         }
 
         .task(id: container?.serverState.accessSnapshot) {
-            guard container?.serverState.isOnline == true else { return }
+            guard container?.serverState.activeServer != nil, container?.serverState.isOnline == true else { return }
             try? await container?.favoritesService.syncFromServer()
         }
         .onReceive(NotificationCenter.default.publisher(for: .minidiscNavigateToArtist)) { note in
@@ -136,6 +133,12 @@ struct MainTabView: View {
             homePath.append(HomeDestination.artistById(id: id, name: name, coverArtId: coverArtId))
         }
         .onReceive(NotificationCenter.default.publisher(for: .minidiscNavigateToAlbum)) { note in
+            if let local = note.object as? LocalMusicDestination {
+                playerPresentation.reset()
+                selectedTab = .library
+                libraryPath.append(local)
+                return
+            }
             guard let album = note.object as? PlayerAlbumDestination,
                   let action = albumNavigation.action(for: album, from: selectedTab,
                                                       activeServerID: container?.serverState.activeServer?.id) else { return }

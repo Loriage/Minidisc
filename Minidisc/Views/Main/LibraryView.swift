@@ -41,7 +41,7 @@ struct LibraryView: View {
         GridItem(.flexible())
     ]
 
-    private var isOnline: Bool { container?.serverState.isOnline == true }
+    private var isOnline: Bool { container?.serverState.activeServer != nil && container?.serverState.isOnline == true }
 
     private var recentDownloadedItems: [DownloadedItem] {
         let albumItems = recentDownloadedAlbums.map {
@@ -98,8 +98,10 @@ struct LibraryView: View {
                 if !visiblePinnedItems.isEmpty {
                     pinnedSection
                 }
-                if !isOnline && container?.offlineLibrary.snapshot.songs.isEmpty != false
-                    && container?.localMusic.snapshot.tracks.contains(where: \.isAvailable) != true {
+                if container?.serverState.activeServer == nil && container?.localMusic.snapshot.tracks.isEmpty != false {
+                    MusicLibraryEmptyView()
+                } else if !isOnline && container?.offlineLibrary.snapshot.songs.isEmpty != false
+                    && container?.localMusic.snapshot.tracks.isEmpty != false {
                     OfflineBrowsingEmptyView()
                 }
                 librarySection
@@ -193,7 +195,7 @@ struct LibraryView: View {
         .task(id: container?.serverState.isOnline) {
             guard let svc = container?.libraryService else { return }
             if viewModel == nil { viewModel = HomeViewModel(libraryService: svc) }
-            guard container?.serverState.isOnline == true else { return }
+            guard isOnline else { return }
             await viewModel?.load()
         }
     }
@@ -236,13 +238,6 @@ struct LibraryView: View {
         let local = container?.offlineLibrary.snapshot ?? OfflineBrowsingSnapshot()
         return VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
             VStack(spacing: 0) {
-                if container?.localMusic.snapshot.folders.isEmpty == false {
-                    NavigationLink { LocalMusicView() } label: {
-                        HomeLibraryRowLabel(title: "Local Files", systemImage: "folder.fill", tableName: "LocalMusic")
-                    }
-                    .buttonStyle(.plain)
-                    Divider().padding(.leading, 52)
-                }
                 if isOnline || (!local.playlists.isEmpty) {
                     NavigationLink(value: HomeDestination.libraryPlaylists) {
                         HomeLibraryRowLabel(title: "Playlists", systemImage: "music.note.list")
@@ -250,21 +245,21 @@ struct LibraryView: View {
                     .buttonStyle(.plain)
                     Divider().padding(.leading, 52)
                 }
-                if isOnline || (!local.albums.isEmpty) {
+                if isOnline || !local.albums.isEmpty || container?.serverState.activeServer == nil || container?.localMusic.catalog.albums.isEmpty == false {
                     NavigationLink(value: HomeDestination.libraryAlbums) {
                         HomeLibraryRowLabel(title: "Albums", systemImage: "square.stack")
                     }
                     .buttonStyle(.plain)
                     Divider().padding(.leading, 52)
                 }
-                if isOnline || (!local.artists.isEmpty) {
+                if isOnline || !local.artists.isEmpty || container?.serverState.activeServer == nil || container?.localMusic.catalog.artists.isEmpty == false {
                     NavigationLink(value: HomeDestination.libraryArtists) {
                         HomeLibraryRowLabel(title: "Artists", systemImage: "music.mic")
                     }
                     .buttonStyle(.plain)
                     Divider().padding(.leading, 52)
                 }
-                if isOnline || (!local.songs.isEmpty) {
+                if isOnline || !local.songs.isEmpty || container?.serverState.activeServer == nil || container?.localMusic.catalog.songs.isEmpty == false {
                     NavigationLink(value: HomeDestination.librarySongs) {
                         HomeLibraryRowLabel(title: "Songs", systemImage: "music.note")
                     }
@@ -292,28 +287,24 @@ struct LibraryView: View {
 
     @ViewBuilder
     private var recentlySection: some View {
-        if isOnline {
-            if let vm = viewModel, !vm.recentAlbums.isEmpty || vm.isLoading {
-                VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
-                    Text("Recently Added")
-                        .font(.minidiscShelfTitle)
-                    if vm.isLoading && vm.recentAlbums.isEmpty {
-                        LazyVGrid(columns: recentColumns, spacing: MinidiscSpacing.m) {
-                            ForEach(0..<6, id: \.self) { _ in SkeletonAlbumCard() }
-                        }
+        let localAlbums = container?.localMusic.catalog.albums ?? []
+        let albums = Array(AlbumSort.recentlyAdded.sorted((isOnline ? viewModel?.recentAlbums ?? [] : []) + localAlbums).prefix(24))
+        if !albums.isEmpty || (isOnline && viewModel?.isLoading == true) {
+            VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
+                Text("Recently Added").font(.minidiscShelfTitle)
+                LazyVGrid(columns: recentColumns, spacing: MinidiscSpacing.m) {
+                    if albums.isEmpty {
+                        ForEach(0..<6, id: \.self) { _ in SkeletonAlbumCard() }
                     } else {
-                        LazyVGrid(columns: recentColumns, spacing: MinidiscSpacing.m) {
-                            ForEach(vm.recentAlbums) { album in
-                                NavigationLink(value: HomeDestination.album(album)) {
-                                    HomeAlbumCell(album: album, namespace: recentlyAddedZoomNamespace)
-                                }
+                        ForEach(albums) { album in
+                            MusicAlbumLink(album: album) { AlbumGridCell(album: album) }
                                 .buttonStyle(.plain)
-                            }
                         }
                     }
                 }
             }
-        } else if !recentDownloadedItems.isEmpty {
+        }
+        if !isOnline && !recentDownloadedItems.isEmpty {
             VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
                 Text("Recently Downloaded")
                     .font(.minidiscShelfTitle)

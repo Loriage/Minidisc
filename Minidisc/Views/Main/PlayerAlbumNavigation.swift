@@ -73,5 +73,26 @@ extension View {
         navigationDestination(for: PlayerAlbumDestination.self) { album in
             AlbumDetailView(albumId: album.albumID, albumName: album.name, coverArtId: album.coverArtID)
         }
+        .navigationDestination(for: LocalMusicDestination.self) { destination in
+            LocalMusicDestinationView(destination: destination)
+        }
+    }
+}
+
+private struct LocalMusicDestinationView: View {
+    let destination: LocalMusicDestination
+    @Environment(\.appContainer) private var container
+
+    var body: some View {
+        if let group = LocalMusicGroup.groups(in: container?.localMusic.snapshot.tracks ?? [], category: destination.category)
+            .first(where: { $0.id == destination.key }) {
+            LocalMusicCollectionView(group: group, category: destination.category)
+        } else {
+            ContentUnavailableView {
+                Label { Text("Local Files", tableName: "LocalMusic") } icon: { Image(systemName: "folder") }
+            } description: {
+                Text("No audio files found. Check your folders in Files, then refresh.", tableName: "LocalMusic")
+            }
+        }
     }
 }

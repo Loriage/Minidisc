@@ -63,19 +63,13 @@ struct SettingsView: View {
                     Label("Playback", systemImage: "play.circle")
                         .foregroundStyle(.primary)
                 }
-                NavigationLink {
-                    StorageSettingsView(vm: downloadsVM)
-                } label: {
-                    Label("Storage", systemImage: "internaldrive")
-                        .foregroundStyle(.primary)
-                }
-                NavigationLink {
-                    LocalMusicFoldersView()
-                } label: {
-                    Label { Text("Local Files", tableName: "LocalMusic") } icon: {
-                        Image(systemName: "folder")
+                if container?.serverState.activeServer != nil {
+                    NavigationLink {
+                        StorageSettingsView(vm: downloadsVM)
+                    } label: {
+                        Label("Storage", systemImage: "internaldrive")
+                            .foregroundStyle(.primary)
                     }
-                    .foregroundStyle(.primary)
                 }
                 NavigationLink {
                     IntegrationsSettingsView()
@@ -94,6 +88,17 @@ struct SettingsView: View {
 
     private func serverSection() -> some View {
         Section {
+            NavigationLink {
+                LocalMusicFoldersView()
+            } label: {
+                HStack {
+                    Text("Local Files", tableName: "LocalMusic")
+                    Spacer()
+                    Text(container?.localMusic.snapshot.tracks.count ?? 0, format: .number)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityIdentifier("settings.localMusic")
             if let server = container?.serverState.activeServer,
                let serverService = container?.serverService {
                 NavigationLink {
@@ -107,11 +112,15 @@ struct SettingsView: View {
                     }
                 }
             } else {
-                Text("No server configured.")
-                    .foregroundStyle(.secondary)
+                NavigationLink {
+                    ConnectServerSettingsView()
+                } label: {
+                    Text("Connect a Server", tableName: "LocalMusic")
+                }
+                .accessibilityIdentifier("settings.connectServer")
             }
         } header: {
-            Text("Server")
+            Text("Music Sources", tableName: "LocalMusic")
         }
     }
 
@@ -154,6 +163,29 @@ struct SettingsView: View {
             Text("Version \(Self.appVersion)")
                 .frame(maxWidth: .infinity)
                 .padding(.top, 8)
+        }
+    }
+}
+
+private struct ConnectServerSettingsView: View {
+    @Environment(\.appContainer) private var container
+    @Environment(\.dismiss) private var dismiss
+    @State private var viewModel: OnboardingViewModel?
+    @AppStorage("onboardingComplete") private var onboardingComplete = false
+
+    var body: some View {
+        Group {
+            if let viewModel { ServerFormView(viewModel: viewModel) }
+            else { ProgressView() }
+        }
+        .task {
+            guard viewModel == nil, let container else { return }
+            viewModel = OnboardingViewModel(serverService: container.serverService)
+        }
+        .onChange(of: container?.serverState.activeServer?.id) { _, id in
+            guard id != nil else { return }
+            onboardingComplete = true
+            dismiss()
         }
     }
 }
@@ -723,42 +755,42 @@ private struct PlaybackSettingsView: View {
 
     var body: some View {
         Form {
-            Section {
-                if let stream = container?.streamSettings {
-                    Picker(selection: Binding(
-                        get: { stream.wifiQuality },
-                        set: { stream.wifiQuality = $0 }
-                    )) {
-                        ForEach(StreamQuality.allCases) { quality in
-                            Text(quality.displayName).tag(quality)
+            if container?.serverState.activeServer != nil {
+                Section {
+                    if let stream = container?.streamSettings {
+                        Picker(selection: Binding(
+                            get: { stream.wifiQuality },
+                            set: { stream.wifiQuality = $0 }
+                        )) {
+                            ForEach(StreamQuality.allCases) { quality in
+                                Text(quality.displayName).tag(quality)
+                            }
+                        } label: {
+                            Text("Quality on Wi-Fi").foregroundStyle(.primary)
                         }
-                    } label: {
-                        Text("Quality on Wi-Fi")
-                            .foregroundStyle(.primary)
-                    }
-                    .pickerStyle(.menu)
-                    .tint(.secondary)
+                        .pickerStyle(.menu)
+                        .tint(.secondary)
 
-                    Picker(selection: Binding(
-                        get: { stream.cellularQuality },
-                        set: { stream.cellularQuality = $0 }
-                    )) {
-                        ForEach(StreamQuality.allCases) { quality in
-                            Text(quality.displayName).tag(quality)
+                        Picker(selection: Binding(
+                            get: { stream.cellularQuality },
+                            set: { stream.cellularQuality = $0 }
+                        )) {
+                            ForEach(StreamQuality.allCases) { quality in
+                                Text(quality.displayName).tag(quality)
+                            }
+                        } label: {
+                            Text("Quality on cellular").foregroundStyle(.primary)
                         }
-                    } label: {
-                        Text("Quality on cellular")
-                            .foregroundStyle(.primary)
+                        .pickerStyle(.menu)
+                        .tint(.secondary)
                     }
-                    .pickerStyle(.menu)
-                    .tint(.secondary)
+                } header: {
+                    Text("Streaming")
+                } footer: {
+                    Text("The server transcodes to the chosen tier for each network. Original streams your files untouched (lossless); a lighter tier saves cellular data and lowers decoding load. Applies to the next track.")
                 }
-            } header: {
-                Text("Streaming")
-            } footer: {
-                Text("The server transcodes to the chosen tier for each network. Original streams your files untouched (lossless); a lighter tier saves cellular data and lowers decoding load. Applies to the next track.")
             }
-            if let lyrics = container?.lyricsSettings {
+            if container?.serverState.activeServer != nil, let lyrics = container?.lyricsSettings {
                 LyricsSettingsSection(settings: lyrics)
             }
             ReplayGainSettingsSection()
@@ -794,6 +826,8 @@ private struct LyricsSettingsSection: View {
 }
 
 private struct IntegrationsSettingsView: View {
+    @Environment(\.appContainer) private var container
+
     var body: some View {
         Form {
             Section {
@@ -803,11 +837,13 @@ private struct IntegrationsSettingsView: View {
                     Text("ListenBrainz")
                         .foregroundStyle(.primary)
                 }
-                NavigationLink {
-                    AudioMuseSettingsView()
-                } label: {
-                    Text("AudioMuse")
-                        .foregroundStyle(.primary)
+                if container?.serverState.activeServer != nil {
+                    NavigationLink {
+                        AudioMuseSettingsView()
+                    } label: {
+                        Text("AudioMuse")
+                            .foregroundStyle(.primary)
+                    }
                 }
                 NavigationLink {
                     LidarrSettingsView()
@@ -835,7 +871,7 @@ private struct ApplicationSettingsView: View {
 
     var body: some View {
         Form {
-            if let container {
+            if let container, container.serverState.activeServer != nil {
                 @Bindable var state = container.serverState
                 Section {
                     Toggle("Offline Mode", isOn: $state.isOfflineModeEnabled)
@@ -856,8 +892,10 @@ private struct ApplicationSettingsView: View {
             } footer: {
                 Text("System follows your device's light or dark setting.")
             }
-            MoodPlaylistSettingsSection()
-            SiriSettingsSection()
+            if container?.serverState.activeServer != nil {
+                MoodPlaylistSettingsSection()
+                SiriSettingsSection()
+            }
             ApplicationDebugSection()
         }
         .formStyle(.grouped)

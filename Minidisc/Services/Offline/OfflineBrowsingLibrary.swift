@@ -153,7 +153,7 @@ extension AppContainer {
         serverState.isOnline ? songs : songs.filter { offlineLibrary.snapshot.songIDs.contains($0.id) }
     }
     func visibleAlbums(_ albums: [AlbumID3]) -> [AlbumID3] {
-        serverState.isOnline ? albums : albums.filter { offlineLibrary.snapshot.albumIDs.contains($0.id) }
+        serverState.isOnline ? albums : albums.filter { offlineLibrary.snapshot.albumIDs.contains($0.id) || localMusic.catalog.groups[$0.id] != nil }
     }
     func visiblePlaylists(_ playlists: [Playlist]) -> [Playlist] {
         serverState.isOnline ? playlists : playlists.filter { offlineLibrary.snapshot.playlistIDs.contains($0.id) }

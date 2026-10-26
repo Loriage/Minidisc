@@ -1,5 +1,7 @@
 import Foundation
 import Testing
+import SwiftData
+import SwiftSonic
 @testable import Minidisc
 
 nonisolated enum LocalMusicFixture {
@@ -16,6 +18,119 @@ nonisolated enum LocalMusicFixture {
 }
 
 @Suite struct LocalMusicTests {
+    @Test @MainActor func sharedSearchKeepsBothSourcesAndRanksThemTogether() throws {
+        let local = taggedTrack(title: "Été", artist: "Adèle", album: "Été", available: true)
+        let unavailable = taggedTrack(title: "Été ailleurs", artist: "Adèle", album: "Été", available: false)
+        let catalog = LocalMusicCatalog(tracks: [local, unavailable])
+        let serverSong = DisplayableSong(from: Song(id: "server-song", title: "Été au loin"))
+        let serverAlbum = AlbumID3(id: "server-album", name: "Été", songCount: 2, duration: 120)
+        let matches = LibrarySearchRanking.mergingLocal(catalog,
+            into: [.song(serverSong), .album(serverAlbum)], query: "ete")
+        #expect(matches.contains { $0.id == "song:\(local.id)" })
+        #expect(matches.contains { $0.id == "song:server-song" })
+        #expect(matches.filter { $0.scope == .albums }.count == 2)
+        #expect(LibrarySearchRanking.score(try #require(matches.first), query: "ete") == 1_000)
+        let playable = catalog.playable([serverSong, unavailable.song, local.song])
+        #expect(playable.map(\.id) == [serverSong.id, local.id])
+        #expect(playable.last?.localFile == local.song.localFile)
+        #expect(LibrarySearchRanking.mergingLocal(catalog, into: [], query: " \n").isEmpty)
+        #expect(LibrarySearchRanking.mergingLocal(catalog, into: [], query: "missing").isEmpty)
+        #expect(LibrarySearchRanking.mergingLocal(catalog, into: [], query: "adele").contains { $0.id == "song:\(unavailable.id)" })
+    }
+
+    @Test func collectionIdentityIsStableAndDoesNotMergeDifferentArtists() {
+        let first = taggedTrack(title: "One", artist: "A", album: "Album", available: true)
+        let second = taggedTrack(title: "Two", artist: "B", album: "Album", available: true)
+        let catalog = LocalMusicCatalog(tracks: [first, second])
+        #expect(catalog.albums.count == 2)
+        #expect(Set(catalog.albums.map(\.id)) == Set(LocalMusicCatalog(tracks: [second, first]).albums.map(\.id)))
+        #expect(catalog.albums.allSatisfy { LocalMusicCatalog.isCollectionID($0.id) })
+        #expect(LocalMusicCatalog.collectionID(.albums, key: ["a:b", "c"]) != LocalMusicCatalog.collectionID(.albums, key: ["a", "b:c"]))
+    }
+
+    @Test @MainActor func discoverShuffleUsesLocalFilesWithoutAServerEvenWhenNetworkIsOnline() async throws {
+        let root = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = root.appendingPathComponent("Music")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try LocalMusicFixture.wav(at: folder.appendingPathComponent("One.wav"))
+        try LocalMusicFixture.wav(at: folder.appendingPathComponent("Two.wav"))
+        let store = LocalMusicStore(directory: root.appendingPathComponent("Index"))
+        try await store.add([folder])
+        let snapshot = try await store.refresh()
+        let server = MockServerService()
+        #expect(server.state.activeServer == nil)
+        server.state.isOnline = true
+        let models = try ModelContainer.minidisc(inMemory: true)
+        let index = LibraryIndexStore(modelContainer: try ModelContainer.libraryIndex(inMemory: true))
+        let source = SwiftSonicLibrarySource(serverService: server)
+        let catalog = LibraryCatalog(source: source, store: index,
+            synchronizer: LibraryIndexSynchronizer(source: source, store: index))
+        let library = LibraryService(serverService: server, modelContainer: models,
+            downloadService: DownloadService(serverService: server, modelContainer: models, toastService: ToastService()),
+            statsService: StatsService(modelContainer: models), catalog: catalog, indexStore: index, localMusicStore: store)
+        let queue = try await library.smartShuffleQueue(targetSize: 50)
+        #expect(Set(queue.map(\.id)) == Set(snapshot.tracks.map(\.id)))
+        #expect(queue.allSatisfy { $0.isLocalFile })
+        #expect(try await library.smartShuffleQueue(targetSize: 1).count == 1)
+    }
+
+    private func taggedTrack(title: String, artist: String, album: String, available: Bool) -> LocalMusicTrack {
+        let reference = LocalFileReference(folderID: UUID(), relativePath: "Track.wav")
+        let song = DisplayableSong(id: reference.id, title: title, artist: artist, albumId: nil,
+                                   albumName: album, artistId: nil, genre: nil, duration: 60,
+                                   trackNumber: nil, isDownloaded: false, coverArtId: nil, audioFormat: "WAV",
+                                   replayGainTrackGain: nil, replayGainTrackPeak: nil, replayGainAlbumGain: nil,
+                                   replayGainAlbumPeak: nil, replayGainBaseGain: nil, replayGainFallbackGain: nil,
+                                   localFile: reference)
+        return LocalMusicTrack(song: song, isAvailable: available)
+    }
+
+    @Test func localPlaybackFiltersUnavailableTracksAndPreservesExplicitOrder() throws {
+        var first = LocalMusicStore.placeholder(LocalFileReference(folderID: UUID(), relativePath: "First.wav"))
+        first.isAvailable = true
+        let unavailable = LocalMusicStore.placeholder(LocalFileReference(folderID: UUID(), relativePath: "Missing.wav"))
+        var last = LocalMusicStore.placeholder(LocalFileReference(folderID: UUID(), relativePath: "Last.wav"))
+        last.isAvailable = true
+        let tracks = [first, unavailable, last]
+        let queue = try LocalMusicTrack.playbackQueue(tracks, order: .shuffled)
+        #expect(queue.tracks.map(\.id) == [first.id, last.id])
+        #expect(queue.order == .shuffled)
+        #expect(try LocalMusicTrack.playbackQueue(tracks, startingAt: last.id).startIndex == 1)
+        #expect(throws: LocalMusicError.unavailable) { try LocalMusicTrack.playbackQueue(tracks, startingAt: unavailable.id) }
+        #expect(throws: LocalMusicError.unavailable) { try LocalMusicTrack.playbackQueue([unavailable]) }
+    }
+
+    @Test func playerDestinationsUseLocalCollectionIdentity() {
+        var track = taggedTrack(title: "Track", artist: "Artist", album: "Album", available: true).song
+        #expect(LocalMusicDestination(track: track, category: .albums)?.key == ["Album", "Artist"])
+        #expect(LocalMusicDestination(track: track, category: .artists)?.key == ["Artist"])
+        #expect(LocalMusicDestination(track: nil, category: .albums) == nil)
+        track.localFile = nil
+        #expect(LocalMusicDestination(track: track, category: .albums) == nil)
+    }
+
+    @Test @MainActor func successfulRetryClearsFolderErrorAndUpdatesLibrary() async throws {
+        let root = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = root.appendingPathComponent("Music")
+        let library = LocalMusicLibrary(store: LocalMusicStore(directory: root.appendingPathComponent("Index")))
+        await library.add([folder])
+        #expect(library.errorMessage != nil)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try LocalMusicFixture.wav(at: folder.appendingPathComponent("Track.wav"))
+        await library.add([folder])
+        #expect(library.errorMessage == nil)
+        #expect(library.snapshot.tracks.count == 1)
+        #expect(library.catalog.songs.count == 1)
+        #expect(library.catalog.albums.count == 1)
+        #expect(!library.isRefreshing)
+        let savedFolder = try #require(library.snapshot.folders.first)
+        await library.remove(savedFolder)
+        #expect(library.catalog.songs.isEmpty)
+        #expect(library.catalog.albums.isEmpty)
+    }
+
     @Test func cloudPlaceholdersAreRejectedBeforeAnyContentRead() {
         #expect(!LocalMusicStore.isDownloaded(isUbiquitous: true, status: .notDownloaded, allocatedSize: 4096))
         #expect(!LocalMusicStore.isDownloaded(isUbiquitous: true, status: nil, allocatedSize: 4096))

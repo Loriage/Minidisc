@@ -1343,6 +1343,60 @@ struct ShuffledPlaybackIntegrationTests {
 
 @Suite @MainActor
 struct LocalMusicPlaybackTests {
+    @Test func mixedQueueAdvancesFromServerToLocalAndBack() async throws {
+        let root = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = root.appendingPathComponent("Music")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try LocalMusicFixture.wav(at: folder.appendingPathComponent("Local.wav"))
+        let store = LocalMusicStore(directory: root.appendingPathComponent("Index"))
+        try await store.add([folder])
+        let local = try #require(try await store.refresh().tracks.first?.song)
+        let first = DisplayableSong(from: Song(id: "server-a", title: "First", duration: 120))
+        let last = DisplayableSong(from: Song(id: "server-b", title: "Last", duration: 120))
+        let h = try RecoveryHarness(localMusicStore: store)
+        try await h.player.play(tracks: [first, local, last], startIndex: 0)
+        #expect(h.state.currentTrack?.id == first.id)
+        #expect(h.engine.sourceURL?.isFileURL == false)
+        try await h.player.skipToNext()
+        #expect(h.state.currentTrack?.localFile == local.localFile)
+        #expect(h.engine.sourceURL?.lastPathComponent == "Local.wav")
+        try await h.player.skipToNext()
+        #expect(h.state.currentTrack?.id == last.id)
+        #expect(h.engine.sourceURL?.isFileURL == false)
+        #expect(h.state.queue.map(\.id) == [first.id, local.id, last.id])
+        await h.player.stop()
+    }
+
+    @Test func localShuffleCanRestoreOrderAndSeekWithoutAServer() async throws {
+        let root = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = root.appendingPathComponent("Music")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        for name in ["First", "Second", "Third"] {
+            try LocalMusicFixture.wav(at: folder.appendingPathComponent("\(name).wav"))
+        }
+        let store = LocalMusicStore(directory: root.appendingPathComponent("Index"))
+        try await store.add([folder])
+        let tracks = try await store.refresh().tracks
+        let h = try RecoveryHarness(localMusicStore: store, configureServer: false)
+        try await h.player.play(preparingQueue: { try LocalMusicTrack.playbackQueue(tracks, order: .shuffled) })
+        #expect(h.state.isShuffled)
+        let shuffled = h.state.queue
+        try await h.player.skipToNext()
+        #expect(h.state.currentTrack?.id == shuffled[1].id)
+        #expect(h.state.isShuffled)
+        await h.player.seek(to: 0.5)
+        let current = h.state.currentTrack
+        let playCount = h.engine.playCount
+        await h.player.toggleShuffle()
+        #expect(h.state.queue == tracks.map(\.song))
+        #expect(h.state.currentTrack == current)
+        #expect(h.engine.playCount == playCount)
+        #expect(!h.state.isShuffled)
+        await h.player.stop()
+    }
+
     @Test func localQueuePlaysAndAdvancesWithoutAServer() async throws {
         let root = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

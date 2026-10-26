@@ -29,6 +29,8 @@ struct SearchView: View {
         self._path = path
     }
 
+    private var isOnline: Bool { container?.serverState.activeServer != nil && container?.serverState.isOnline == true }
+
     private var serverId: String {
         container?.serverState.activeServer?.id.uuidString ?? ""
     }
@@ -87,12 +89,13 @@ struct SearchView: View {
                     PlaylistDetailView(playlist: playlist)
                 }
             case .album(let album):
-                AlbumDetailView(
-                    album: album,
-                    zoomSourceId: album.id,
-                    zoomNamespace: albumZoomNamespace,
-                    coverArtId: album.coverArt
-                )
+                HistoryRecordingView {
+                    await container?.searchHistoryService.record(itemId: album.id, itemType: "album",
+                        displayName: album.name, coverArtId: album.coverArt, serverId: serverId)
+                } content: {
+                    AlbumDetailView(album: album, zoomSourceId: album.id,
+                                    zoomNamespace: albumZoomNamespace, coverArtId: album.coverArt)
+                }
             case .albumById(let id, let name, _, let coverArtId):
                 AlbumDetailView(
                     albumId: id,
@@ -102,7 +105,10 @@ struct SearchView: View {
                     coverArtId: coverArtId
                 )
             case .artist(let artist):
-                ArtistDetailView(artist: artist)
+                HistoryRecordingView {
+                    await container?.searchHistoryService.record(itemId: artist.id, itemType: "artist",
+                        displayName: artist.name, coverArtId: artist.coverArt, serverId: serverId)
+                } content: { ArtistDetailView(artist: artist) }
             case .artistById(let id, let name, let coverArtId):
                 ArtistDetailView(artistId: id, artistName: name, coverArtId: coverArtId)
             case .artistBestOf(let id, let name, let coverArtId):
@@ -132,13 +138,13 @@ struct SearchView: View {
                                             playlistBrowser: container.libraryService)
                 loadedServerId = serverId
             }
-            if container.serverState.isOnline { await viewModel?.loadPlaylists() }
+            if isOnline { await viewModel?.loadPlaylists() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .minidiscPlaylistsChanged)) { _ in
-            Task { await viewModel?.loadPlaylists() }
+            if isOnline { Task { await viewModel?.loadPlaylists() } }
         }
-        .task(id: SearchRequest(serverId: loadedServerId, query: searchQuery, online: container?.serverState.isOnline == true)) {
-            if container?.serverState.isOnline == true { await viewModel?.search(query: searchQuery) }
+        .task(id: SearchRequest(serverId: loadedServerId, query: searchQuery, online: isOnline)) {
+            if isOnline { await viewModel?.search(query: searchQuery) }
         }
         .sheet(item: $songSelection) { SongSelectionSheet(request: $0) }
         .minidiscContentWidth()
@@ -172,14 +178,16 @@ struct SearchView: View {
     // downloaded-track queries must never invalidate the navigation destinations themselves.
     @ViewBuilder
     private func activeSearchContent(_ vm: SearchViewModel) -> some View {
-        let matches = container?.serverState.isOnline == false ? offlineMatches : vm.matches
+        let serverMatches = !isOnline ? offlineMatches : vm.matches
+        let matches = LibrarySearchRanking.mergingLocal(container?.localMusic.catalog ?? LocalMusicCatalog(),
+                                                       into: serverMatches, query: searchQuery)
         if !matches.isEmpty {
             SearchResultsContent(matches: matches, scope: $scope,
                                  onAddToPlaylist: playlistAddition.present,
-                                 canSelectSongs: container?.serverState.isOnline == true && !selectableSongs.isEmpty,
+                                 canSelectSongs: isOnline && !selectableSongs.isEmpty,
                                  onSelectSongs: { songSelection = SongSelectionRequest(songs: selectableSongs) })
         }
-        if container?.serverState.isOnline == false {
+        if !isOnline {
             if matches.filter({ scope == .all || $0.scope == scope }).isEmpty {
                 EmptyStateView(systemImage: "magnifyingglass", title: "No results", subtitle: "Try another category or search term.")
             }
@@ -197,13 +205,14 @@ struct SearchView: View {
         } else if let error = vm.searchError {
             SearchRetryRow(message: error.displayMessage) { Task { await vm.search(query: searchQuery) } }
         }
-        if container?.serverState.isOnline == true && (vm.isOffline || vm.searchError != nil), scope != .playlists {
+        if isOnline && (vm.isOffline || vm.searchError != nil), scope != .playlists {
             LocalSearchResultsSection(
                 query: searchQuery.trimmingCharacters(in: .whitespaces),
                 scope: scope,
+                showEmptyState: matches.filter { scope == .all || $0.scope == scope }.isEmpty,
                 onAddToPlaylist: playlistAddition.present
             )
-        } else if container?.serverState.isOnline == true, matches.filter({ scope == .all || $0.scope == scope }).isEmpty,
+        } else if isOnline, matches.filter({ scope == .all || $0.scope == scope }).isEmpty,
                   !vm.isSearching, !vm.isLoadingPlaylists,
                   vm.resultsQuery == searchQuery.trimmingCharacters(in: .whitespaces),
                   vm.searchError == nil, (scope != .playlists || vm.playlistError == nil) {
@@ -221,6 +230,7 @@ struct SearchView: View {
     private struct LocalSearchResultsSection: View {
         let query: String
         let scope: LibrarySearchScope
+        let showEmptyState: Bool
         let onAddToPlaylist: (DisplayableSong) -> Void
 
         @Environment(\.appContainer) private var container
@@ -283,12 +293,12 @@ struct SearchView: View {
                 || ((scope == .all || scope == .artists) && !artists.isEmpty)
                 || ((scope == .all || scope == .albums) && !albums.isEmpty)
             if !hasVisibleResults {
-                EmptyStateView(
+                if showEmptyState { EmptyStateView(
                     systemImage: "wifi.slash",
                     title: "No Downloaded Matches",
                     subtitle: "Only downloaded music can be searched while offline."
                 )
-                .listRowSeparator(.hidden)
+                .listRowSeparator(.hidden) }
             } else {
                 if !artists.isEmpty, scope == .all || scope == .artists {
                     Section("Artists") {
@@ -401,7 +411,7 @@ struct SearchView: View {
                 EmptyStateView(
                     systemImage: "magnifyingglass",
                     title: "Search your library",
-                    subtitle: "Find songs, albums, artists, and playlists from your server."
+                    subtitle: "Find songs, albums, artists, and playlists in your library."
                 )
             } else {
                 List {

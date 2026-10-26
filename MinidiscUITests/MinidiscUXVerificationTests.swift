@@ -254,8 +254,8 @@ final class MinidiscUXVerificationTests: XCTestCase {
         app.launchEnvironment["NO_PROXY"] = "localhost,127.0.0.1"
         app.launch()
         captureHierarchy("onboarding-before")
-        if app.buttons["Commencer"].exists {
-            try tap(app.buttons["Commencer"], named: "server-form")
+        if app.buttons["onboarding.connectServer"].exists {
+            try tap(app.buttons["onboarding.connectServer"], named: "server-form")
             try enter("http://127.0.0.1:18992", into: app.textFields["https://music.example.com"])
             try enter("test", into: app.textFields["Nom d'utilisateur"])
             try enter("fixture-only", into: app.secureTextFields["Mot de passe"])
@@ -1732,7 +1732,7 @@ final class MinidiscUXVerificationTests: XCTestCase {
             "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"
         ]
         app.launch()
-        guard app.buttons["Commencer"].waitForExistence(timeout: 5) else {
+        guard app.buttons["onboarding.connectServer"].waitForExistence(timeout: 5) else {
             throw XCTSkip("Reinstall on the disposable simulator before checking welcome text at AX XXXL.")
         }
         captureHierarchy("onboarding-xxxl-top")
@@ -1741,7 +1741,7 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try require(scroll)
         scroll.swipeUp()
         captureHierarchy("onboarding-xxxl-scrolled")
-        XCTAssertTrue(app.buttons["Commencer"].isHittable)
+        XCTAssertTrue(app.buttons["onboarding.connectServer"].isHittable)
         try await Task.sleep(for: .seconds(3))
     }
 

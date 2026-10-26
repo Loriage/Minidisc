@@ -16,7 +16,7 @@ struct DiscoverView: View {
     @State private var availableMoods: [MoodPlaylist] = []
     @State private var moodReloadID = 0
 
-    private var isOnline: Bool { container?.serverState.isOnline == true }
+    private var isOnline: Bool { container?.serverState.activeServer != nil && container?.serverState.isOnline == true }
     private var visibleMoods: [MoodPlaylist] {
         guard !isOnline else { return availableMoods }
         return (container?.offlineLibrary.snapshot.playlists ?? []).compactMap { playlist in
@@ -33,13 +33,17 @@ struct DiscoverView: View {
                         freshReleasesSection(vm: vm)
                         stationsSection(vm)
                     }
-                    if isOnline || container?.offlineLibrary.snapshot.songs.isEmpty == false {
+                    if isOnline || container?.offlineLibrary.snapshot.songs.isEmpty == false || container?.localMusic.catalog.availableSongIDs.isEmpty == false {
                         SmartShuffleCard(coverIDs: shuffleCoverIDs(vm), isStarting: isStartingShuffle) {
                             Task { await triggerSmartShuffle() }
                         }
                     }
+                    if container?.serverState.activeServer == nil {
+                        if container?.localMusic.snapshot.tracks.isEmpty != false { MusicLibraryEmptyView() }
+                        else { LocalMusicHomeSections() }
+                    }
                     moodsSection
-                    wrappedSection
+                    if container?.serverState.activeServer != nil { wrappedSection }
                     if isOnline { internetRadioSection }
                 }
             }
@@ -65,7 +69,10 @@ struct DiscoverView: View {
             if isOnline { await refreshDiscover(forceRefresh: false) }
             else if let serverID { await loadMoodPlaylists(serverId: serverID.uuidString) }
         }
-        .refreshable { await refreshDiscover(forceRefresh: true) }
+        .refreshable {
+            await refreshDiscover(forceRefresh: true)
+            await container?.localMusic.refresh()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .minidiscMoodPlaylistsChanged)) { _ in
             moodReloadID += 1
         }
@@ -176,7 +183,7 @@ struct DiscoverView: View {
     private func shuffleCoverIDs(_ vm: DiscoverViewModel) -> [String] {
         var seen = Set<String>()
         let albums = isOnline ? vm.recentlyPlayed + vm.mostPlayed : container?.offlineLibrary.snapshot.albums ?? []
-        return albums.map { $0.coverArt ?? $0.id }
+        return (albums + (container?.localMusic.catalog.albums ?? [])).map { $0.coverArt ?? $0.id }
             .filter { seen.insert($0).inserted }.prefix(3).map { $0 }
     }
 

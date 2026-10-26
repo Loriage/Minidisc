@@ -27,13 +27,13 @@ private struct QueueRow: View {
         self.secondaryContentColor = secondaryContentColor
         self.loadArtwork = loadArtwork
         self.showsReorderHint = showsReorderHint
-        let cid = "song:\(song.id)"
-        _favoriteMatches = Query(filter: #Predicate<FavoriteRecord> { $0.id == cid })
+        let cid = song.id
+        _favoriteMatches = Query(filter: #Predicate<FavoriteRecord> { $0.itemType == "song" && $0.itemId == cid })
     }
 
     private var isOnline: Bool { container?.serverState.isOnline == true }
     private var isPlaying: Bool { container?.playerState.playbackState == .playing }
-    private var isFavorite: Bool { !favoriteMatches.isEmpty }
+    private var isFavorite: Bool { favoriteMatches.contains { $0.serverId == container?.serverState.activeServer?.id } }
 
     var body: some View {
         HStack(spacing: 0) {

@@ -4,8 +4,6 @@ import Testing
 @Suite("HeaderValidator")
 struct HeaderValidatorTests {
 
-    // MARK: - isValidName — valid
-
     @Test func validName_commonHeaders() {
         #expect(HeaderValidator.isValidName("Authorization"))
         #expect(HeaderValidator.isValidName("content-type"))
@@ -20,8 +18,6 @@ struct HeaderValidatorTests {
             #expect(HeaderValidator.isValidName("a\(ch)b"), "tchar '\(ch)' should be valid")
         }
     }
-
-    // MARK: - isValidName — invalid
 
     @Test func invalidName_empty() {
         #expect(!HeaderValidator.isValidName(""))
@@ -51,8 +47,6 @@ struct HeaderValidatorTests {
         #expect(!HeaderValidator.isValidName("header\0"))
     }
 
-    // MARK: - isValidValue — valid
-
     @Test func validValue_empty() {
         // Empty value is allowed by RFC 7230
         #expect(HeaderValidator.isValidValue(""))
@@ -68,8 +62,6 @@ struct HeaderValidatorTests {
         #expect(HeaderValidator.isValidValue("value with spaces"))
         #expect(HeaderValidator.isValidValue("value\twith\ttabs"))
     }
-
-    // MARK: - isValidValue — invalid
 
     @Test func invalidValue_carriageReturn() {
         #expect(!HeaderValidator.isValidValue("value\r"))

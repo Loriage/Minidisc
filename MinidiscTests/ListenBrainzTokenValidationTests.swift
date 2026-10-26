@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Minidisc
 
-// MARK: - Helpers
-
 private struct TokenMockTransport: ListenBrainzTransport {
     let handler: @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)
 
@@ -31,8 +29,6 @@ private let defaultRoot = URL(string: "https://api.listenbrainz.org")!
 private final class CapturedBox<Value> {
     var value: Value?
 }
-
-// MARK: - validateToken decoding
 
 @Suite("ListenBrainzClient — validateToken")
 struct ListenBrainzTokenValidationTests {
@@ -136,8 +132,6 @@ struct ListenBrainzTokenValidationTests {
         #expect(captured.value?.absoluteString == "https://myhost.example.com/lb/1/validate-token")
     }
 }
-
-// MARK: - URL normalization
 
 @Suite("ListenBrainzService — normalizeServerURL")
 struct ListenBrainzURLNormalizationTests {

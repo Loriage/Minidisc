@@ -28,9 +28,12 @@ nonisolated final class SystemAudioSessionController: AudioSessionControlling {
     func activate() throws {
         try configured.withLock { configured in
             let session = AVAudioSession.sharedInstance()
-            if !configured {
+            // The process can survive a suspension or media-services disruption while the
+            // system session has reverted to another category, before a reset is delivered.
+            if !configured || session.category != .playback || session.mode != .default
+                || session.routeSharingPolicy != .longFormAudio {
                 // Playback already supports A2DP and AirPlay. HFP options belong to recording.
-                try session.setCategory(.playback)
+                try session.setCategory(.playback, mode: .default, policy: .longFormAudio)
                 configured = true
             }
             try session.setActive(true)

@@ -5,8 +5,6 @@ import Foundation
 @Suite("AudioFaststartRemuxer — detection + skip paths")
 struct AudioFaststartRemuxerTests {
 
-    // MARK: - Synthetic ISO-BMFF box builders
-
     /// 8-byte-header box (UInt32 big-endian size + 4-char type) with a zero payload.
     private func box(_ type: String, payload: Int) -> [UInt8] {
         let size = 8 + payload
@@ -37,8 +35,6 @@ struct AudioFaststartRemuxerTests {
         await body(url)
     }
 
-    // MARK: - classify (pure)
-
     @Test("moov before mdat is faststart")
     func moovFirstIsFaststart() {
         #expect(AudioFaststartRemuxer.classify(boxTypes: ["ftyp", "moov", "mdat"]) == .faststart)
@@ -63,7 +59,6 @@ struct AudioFaststartRemuxerTests {
         #expect(AudioFaststartRemuxer.classify(boxTypes: ["ftyp", "moov"]) == .faststart)
     }
 
-    // MARK: - Output acceptance (pure)
     // Output validation must reject truncated exports even when classify reports faststart.
 
     @Test("a complete faststart export is accepted")
@@ -79,8 +74,6 @@ struct AudioFaststartRemuxerTests {
         #expect(AudioFaststartRemuxer.isUsableFaststartOutput(boxTypes: ["ftyp", "moov"]) == false)
         #expect(AudioFaststartRemuxer.isUsableFaststartOutput(boxTypes: ["ftyp", "mdat"]) == false)
     }
-
-    // MARK: - Export-despite-detection fallback
 
     @Test("detection seeing nothing on a VERIFIED MP4 still exports")
     func exportsWhenDetectionBlindOnVerifiedMP4() {
@@ -102,8 +95,6 @@ struct AudioFaststartRemuxerTests {
         #expect(AudioFaststartRemuxer.shouldExportDespiteDetection(state: .notMP4, container: "mp3") == false)
         #expect(AudioFaststartRemuxer.shouldExportDespiteDetection(state: nil, container: nil) == false)
     }
-
-    // MARK: - File size (the cross-check the box scan depends on)
 
     @Test("fileSize reports the real byte count, not 0")
     func fileSizeReadsTheRealSize() async {
@@ -149,8 +140,6 @@ struct AudioFaststartRemuxerTests {
         #expect(AudioFaststartRemuxer.isUsableFaststartOutput(boxTypes: []) == false)
     }
 
-    // MARK: - topLevelBoxTypes(in:) (pure byte parser)
-
     @Test("in-memory parser reads ordered top-level box types")
     func parsesInMemoryBoxOrder() {
         let faststart = Data(box("ftyp", payload: 8) + box("moov", payload: 16) + box("mdat", payload: 32))
@@ -170,8 +159,6 @@ struct AudioFaststartRemuxerTests {
         #expect(AudioFaststartRemuxer.topLevelBoxTypes(in: toEnd) == ["ftyp", "moov", "mdat"])
     }
 
-    // MARK: - topLevelBoxTypes(atPath:) (file scanner, seeks past mdat)
-
     @Test("file scanner reads box order from disk and classifies mdat-first as needsRemux")
     func fileScannerRoundTrip() async {
         let bytes = box("ftyp", payload: 8) + box("mdat", payload: 4096) + box("moov", payload: 16)
@@ -181,8 +168,6 @@ struct AudioFaststartRemuxerTests {
             #expect(AudioFaststartRemuxer.classify(boxTypes: types ?? []) == .needsRemux)
         }
     }
-
-    // MARK: - Content detection (isM4AContainer) + skip paths (no AVFoundation export)
 
     @Test("isM4AContainer detects an ftyp container regardless of extension")
     func contentDetection() async {

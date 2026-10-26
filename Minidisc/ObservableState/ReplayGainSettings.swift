@@ -16,15 +16,12 @@ nonisolated struct ReplayGainConfig: Sendable {
 @Observable
 @MainActor
 final class ReplayGainSettings {
-    // MARK: - Storage (observation ignored)
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private var _enabled: Bool
     @ObservationIgnored private var _mode: ReplayGainMode
     @ObservationIgnored private var _preAmp: Double
     @ObservationIgnored private var _preventClipping: Bool
-
-    // MARK: - Visible properties (manual observation hooks)
 
     var enabled: Bool {
         get {
@@ -79,8 +76,6 @@ final class ReplayGainSettings {
         }
     }
 
-    // MARK: - Defaults, bounds & keys
-
     static let defaultEnabled: Bool = false
     static let defaultMode: ReplayGainMode = .track
     static let defaultPreAmp: Double = 0
@@ -93,13 +88,9 @@ final class ReplayGainSettings {
     private static let preAmpKey = "minidisc.replayGain.preAmp"
     private static let preventClippingKey = "minidisc.replayGain.preventClipping"
 
-    // MARK: - Derived
-
     var config: ReplayGainConfig {
         ReplayGainConfig(enabled: _enabled, mode: _mode, preAmp: _preAmp, preventClipping: _preventClipping)
     }
-
-    // MARK: - Init
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults

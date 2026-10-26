@@ -79,12 +79,23 @@ struct OfflineBrowsingTests {
         try await index.upsertTracks([song("cached"), song("remote")], serverID: id, generation: "fixture", serverOrderStart: 0)
         try await index.cachePlaylistDetail(PlaylistWithSongs(id: "cached-list", name: "Cached membership", songCount: 3,
             duration: 90, entry: [song("remote"), favorite, song("cached")]), serverID: id)
+        // An explicitly cleared download must not resurrect older indexed membership.
+        // Legacy downloads without saved membership still use the index as a fallback.
+        for (playlistID, count) in [("cleared-list", 0), ("legacy-list", 1)] {
+            models.mainContext.insert(DownloadedPlaylist(playlistId: playlistID, serverId: id,
+                name: playlistID, tracksCount: 0, totalTracksCount: count, songIds: []))
+            try await index.cachePlaylistDetail(PlaylistWithSongs(id: playlistID, name: playlistID,
+                songCount: 1, duration: 30, entry: [song("manual")]), serverID: id)
+        }
+        try models.mainContext.save()
         let downloads = DownloadService(serverService: server, modelContainer: models, toastService: ToastService())
         let reader = OfflineBrowsingReader(models: models, downloads: downloads, cache: cache, favorites: favorites, index: index)
         let snapshot = try await reader.read(serverID: id)
         #expect(snapshot.songIDs == ["manual", "favorite", "cached"])
         #expect(snapshot.playlistSongs["manual-list"]?.map(\.id) == ["manual"])
         #expect(snapshot.playlistSongs["cached-list"]?.map(\.id) == ["favorite", "cached"])
+        #expect(snapshot.playlistSongs["cleared-list"] == nil)
+        #expect(snapshot.playlistSongs["legacy-list"]?.map(\.id) == ["manual"])
         #expect(snapshot.songs.first(where: { $0.id == "manual" })?.isDownloaded == true)
         #expect(snapshot.songs.first(where: { $0.id == "favorite" })?.isDownloaded == false)
         #expect(try await reader.read(serverID: UUID()).songs.isEmpty)

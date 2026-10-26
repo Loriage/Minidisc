@@ -2,7 +2,6 @@ import SwiftSonic
 
 nonisolated enum HomeDestination: Hashable {
 
-    // MARK: - Library sections
     case libraryAlbums
     case libraryArtists
     case librarySongs
@@ -10,19 +9,15 @@ nonisolated enum HomeDestination: Hashable {
     case libraryFavorites
     case libraryDownloads
 
-    // MARK: - Content destinations
     case album(AlbumID3)
     case artist(ArtistID3)
     case playlist(Playlist)
     case downloadedAlbum(DownloadedAlbumDisplay)
 
-    // MARK: - ID-only destinations (for PinnedItem @Model and DownloadedItem)
-    /// Used when only IDs are available (PinnedItem @Model, HomeDownloadedItemCard)
     case albumById(id: String, name: String, subtitle: String, coverArtId: String?)
     case playlistById(id: String, name: String, coverArtId: String?)
     case artistById(id: String, name: String, coverArtId: String?)
 
-    // MARK: - Derived (virtual) destinations
     /// "The best of <artist>" — the user's starred tracks for one artist, computed from getStarred2.
     /// Carries only identity: the track list is never persisted, it is recomputed by the screen.
     case artistBestOf(artistId: String, artistName: String, coverArtId: String?)
@@ -31,7 +26,6 @@ nonisolated enum HomeDestination: Hashable {
     /// itself is never persisted, the screen recomputes it.
     case recentlyAdded(coverArtId: String?)
 
-    // MARK: - Offline-derived destinations
     case offlineArtist(OfflineArtistSummary)
     case offlineAlbum(OfflineAlbumSummary)
 }

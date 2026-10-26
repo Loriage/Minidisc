@@ -2,8 +2,6 @@ import Foundation
 import Testing
 @testable import Minidisc
 
-// MARK: - shouldSchedulePrefetch
-
 @Suite("PlayerService.shouldSchedulePrefetch")
 struct ShouldSchedulePrefetchTests {
 
@@ -116,8 +114,6 @@ struct EffectiveCrossfadeOverlapTests {
     }
 }
 
-// MARK: - isAlbumSequencePair
-
 @Suite("PlayerService.isAlbumSequencePair")
 struct IsAlbumSequencePairTests {
 
@@ -191,5 +187,12 @@ struct ClampedSeekTargetTests {
 
     @Test func usesUnboundedNonnegativeTargetWhenDurationIsUnknown() {
         #expect(PlayerService.clampedSeekTarget(requested: 42, stateDuration: 0, engineDuration: 0) == 42)
+    }
+
+    @Test func sourceDurationTakesPrecedenceOverStaleLongerMetadata() {
+        #expect(PlayerService.clampedSeekTarget(requested: 183, stateDuration: 183, engineDuration: 180.25) == 180.25)
+        for unknown in [0.0, -1, Double.nan, .infinity] {
+            #expect(PlayerService.clampedSeekTarget(requested: 250, stateDuration: 180, engineDuration: unknown) == 180)
+        }
     }
 }

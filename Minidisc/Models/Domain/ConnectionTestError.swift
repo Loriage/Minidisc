@@ -22,8 +22,6 @@ nonisolated enum ConnectionTestError: Error, Sendable, Equatable {
     case unknown(domain: String, code: Int)
 }
 
-// MARK: - Presentation
-
 extension ConnectionTestError {
     var presentation: ConnectionErrorPresentation {
         switch self {
@@ -108,8 +106,6 @@ extension ConnectionTestError {
         }
     }
 }
-
-// MARK: - LocalizedError
 
 extension ConnectionTestError: LocalizedError {
     nonisolated var errorDescription: String? {

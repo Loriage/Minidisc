@@ -29,8 +29,6 @@ struct LyricsView: View {
         .onChange(of: viewModel.isPlaying) { _, _ in viewModel.reconcileTracking() }
     }
 
-    // MARK: - Loaded
-
     @ViewBuilder
     private func loadedContent(_ structured: StructuredLyrics) -> some View {
         ScrollViewReader { proxy in
@@ -77,8 +75,6 @@ struct LyricsView: View {
         }
     }
 
-    // MARK: - Header
-
     @ViewBuilder
     private var header: some View {
         HStack(spacing: 16) {
@@ -115,8 +111,6 @@ struct LyricsView: View {
         .padding(.horizontal, 32)
         .padding(.vertical, 12)
     }
-
-    // MARK: - Empty states
 
     private var emptyState: some View {
         VStack(spacing: 16) {
@@ -161,8 +155,6 @@ struct LyricsView: View {
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-
-    // MARK: - Helpers
 
     private func displayName(for lang: String) -> String {
         guard lang != "und", lang != "xxx" else { return "—" }

@@ -3,8 +3,6 @@ import Foundation
 import SwiftSonic
 @testable import Minidisc
 
-// MARK: - Mock
-
 private struct CHTRecordingTransport: HTTPTransport {
     actor State {
         private(set) var lastRequest: URLRequest?
@@ -28,8 +26,6 @@ private func makeResponse(status: Int = 200) -> (Data, HTTPURLResponse) {
     )!
     return (Data(), resp)
 }
-
-// MARK: - Header injection
 
 @Suite("CustomHeadersTransport — header injection")
 struct CustomHeadersTransportTests {
@@ -91,8 +87,6 @@ struct CustomHeadersTransportTests {
         #expect((caught as? URLError)?.code == .notConnectedToInternet)
     }
 }
-
-// MARK: - Slow-server timeout (disabled — takes ~30s)
 
 @Suite("CustomHeadersTransport — timeout")
 struct CustomHeadersTransportTimeoutTests {

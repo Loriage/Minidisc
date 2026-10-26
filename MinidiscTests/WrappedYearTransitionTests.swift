@@ -3,8 +3,6 @@ import Foundation
 import SwiftData
 @testable import Minidisc
 
-// MARK: - File-scope helpers
-
 private var ytCal: Calendar = {
     var c = Calendar(identifier: .gregorian)
     c.timeZone = TimeZone(identifier: "UTC")!
@@ -51,8 +49,6 @@ private func ytMakeEvent(trackId: String, timestamp: Date, serverId: String = "s
         serverId: serverId
     )
 }
-
-// MARK: - Year Transition Suite
 
 @Suite("WrappedPlaylistService Year Transition")
 struct WrappedYearTransitionTests {
@@ -154,8 +150,6 @@ struct WrappedYearTransitionTests {
         #expect(replaceCalls[1].songIds == ["jan-t"])
     }
 }
-
-// MARK: - WrappedPreferences Suite
 
 @Suite("WrappedPreferences")
 struct WrappedPreferencesTests {

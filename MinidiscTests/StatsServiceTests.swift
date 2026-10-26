@@ -36,8 +36,6 @@ struct StatsServiceTests {
         )
     }
 
-    // MARK: recordPlayback
-
     @Test func recordPlayback_insertsEvent() async throws {
         let service = try makeService()
 
@@ -58,16 +56,12 @@ struct StatsServiceTests {
         #expect(count == 3)
     }
 
-    // MARK: eventCount
-
     @Test func eventCount_unknownServer_returnsZero() async throws {
         let service = try makeService()
 
         let count = await service.eventCount(forServer: "nonexistent")
         #expect(count == 0)
     }
-
-    // MARK: deleteAllEvents
 
     @Test func deleteAllEvents_clearsTargetServer() async throws {
         let service = try makeService()
@@ -92,8 +86,6 @@ struct StatsServiceTests {
         let count = await service.eventCount(forServer: "nonexistent")
         #expect(count == 0)
     }
-
-    // MARK: Multi-server isolation
 
     @Test func multiServer_eventsAreIsolated() async throws {
         let service = try makeService()

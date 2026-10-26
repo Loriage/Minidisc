@@ -92,8 +92,6 @@ struct WrappedView: View {
         }
     }
 
-    // MARK: - Empty state
-
     private var emptyState: some View {
         VStack(spacing: MinidiscSpacing.s) {
             Image(systemName: "waveform")
@@ -109,8 +107,6 @@ struct WrappedView: View {
         .frame(maxWidth: .infinity)
         .padding(.top, MinidiscSpacing.xxxxl)
     }
-
-    // MARK: - Data loading
 
     private func refreshData() async {
         #if DEBUG
@@ -163,8 +159,6 @@ struct WrappedView: View {
     }
 }
 
-// MARK: - Cascade appear modifier
-
 private extension View {
     func cascadeAppear(order: Int, trigger: Bool) -> some View {
         self
@@ -176,8 +170,6 @@ private extension View {
             )
     }
 }
-
-// MARK: - Server-scoped playback event watcher
 
 private struct PlaybackEventWatcher: View {
     let onCountChange: () -> Void

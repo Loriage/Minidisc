@@ -1,7 +1,5 @@
 import Foundation
 
-// MARK: - Artist lookup
-
 /// A result of `GET /api/v1/artist/lookup`. Only the fields the add flow needs are decoded.
 nonisolated struct LidarrArtistLookup: Decodable, Sendable, Identifiable {
     /// MusicBrainz id. The stable identity of a lookup result and the key Lidarr adds by.
@@ -52,8 +50,6 @@ nonisolated func lidarrImagePath(from images: [LidarrImage]?, coverType: String 
     if let remote = img.remoteUrl, !remote.isEmpty { return remote }
     return nil
 }
-
-// MARK: - Managed artist and albums
 
 nonisolated struct LidarrStatistics: Decodable, Sendable, Hashable {
     let albumCount: Int?
@@ -151,8 +147,6 @@ nonisolated struct LidarrAlbumSearchCommand: Encodable, Sendable {
     let albumIds: [Int]
 }
 
-// MARK: - Interactive search (releases)
-
 /// One release found by an indexer (`GET /api/v1/release`).
 nonisolated struct LidarrRelease: Decodable, Sendable, Identifiable {
     let guid: String
@@ -249,8 +243,6 @@ nonisolated struct LidarrGrabRequest: Encodable, Sendable {
     var artistId: Int?
 }
 
-// MARK: - Profiles and folders
-
 nonisolated struct LidarrProfile: Decodable, Sendable, Identifiable {
     let id: Int
     let name: String
@@ -261,8 +253,6 @@ nonisolated struct LidarrRootFolder: Decodable, Sendable, Identifiable {
     let path: String
     let freeSpace: Int64?
 }
-
-// MARK: - Add request
 
 nonisolated enum LidarrMonitorOption: String, CaseIterable, Identifiable, Sendable {
     case all

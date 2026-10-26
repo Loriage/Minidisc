@@ -42,8 +42,6 @@ struct ExternalProviderEditView: View {
         }
     }
 
-    // MARK: - Computed validation
-
     private var urlValidation: ExternalReleaseProvider.ValidationResult? {
         guard !urlTemplate.isEmpty else { return nil }
         return ExternalReleaseProvider.validate(urlTemplate: urlTemplate)
@@ -68,8 +66,6 @@ struct ExternalProviderEditView: View {
     private var canSave: Bool {
         ExternalReleaseProvider.validate(name: name) && urlValidation == .valid
     }
-
-    // MARK: - Body
 
     var body: some View {
         Form {

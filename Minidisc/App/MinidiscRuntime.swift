@@ -4,12 +4,16 @@ import Foundation
 @MainActor
 final class MinidiscRuntime {
     static let shared = MinidiscRuntime()
-    let diagnostics = PlaybackDiagnostics()
+    let diagnostics: PlaybackDiagnostics
     private var initialization: Task<AppContainer, Error>?
     private let load: (@MainActor () async throws -> AppContainer)?
 
     init(load: (@MainActor () async throws -> AppContainer)? = nil) {
         self.load = load
+        diagnostics = PlaybackDiagnostics(
+            persistenceDirectory: load == nil ? PlaybackDiagnosticArchive.defaultDirectory : nil,
+            networkProbesEnabled: load == nil
+        )
     }
 
     func container() async throws -> AppContainer {

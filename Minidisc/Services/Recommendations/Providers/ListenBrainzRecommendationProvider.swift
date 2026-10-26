@@ -42,8 +42,6 @@ actor ListenBrainzRecommendationProvider: RecommendationProvider {
         self.cacheTTL = cacheTTL
     }
 
-    // MARK: - RecommendationProvider
-
     func freshReleases(limit: Int, daysWindow: Int) async throws -> [AlbumRecommendation] {
         let snapshot = await service.currentSnapshot()
         guard snapshot.isEnabled, let username = snapshot.username else { return [] }
@@ -125,8 +123,6 @@ actor ListenBrainzRecommendationProvider: RecommendationProvider {
         Logger.listenBrainz.debug("similarArtists: \(results.count, privacy: .public) results (\(inLibraryCount, privacy: .public) in library) for mbid=\(mbid, privacy: .public)")
         return results
     }
-
-    // MARK: - Mapping
 
     private func map(_ dto: LBFreshReleaseDTO) -> AlbumRecommendation {
         let releaseDate: Date?

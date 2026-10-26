@@ -6,6 +6,7 @@ import SwiftData
 @Model
 final class PlaybackSession {
     @Attribute(.unique) var id: String
+    var serverId: UUID?
     var currentIndex: Int
     var currentPosition: TimeInterval
     var queueData: Data

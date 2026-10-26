@@ -2,7 +2,6 @@ import Foundation
 import SwiftSonic
 
 protocol PlayerServiceProtocol: AnyObject, Sendable {
-    /// MainActor playback state shared by views and system Now Playing.
     var state: PlayerState { get }
 
     func play(tracks: [DisplayableSong], startIndex: Int) async throws
@@ -42,8 +41,6 @@ protocol PlayerServiceProtocol: AnyObject, Sendable {
     /// A supplied seedTrack starts immediately while similarity queries build the queue.
     /// Without it, waits for the mix and throws instantMixEmpty if none is available.
     func playInstantMix(from seed: InstantMixSeed, startingWith seedTrack: DisplayableSong?) async throws
-    /// Toggles the auto-extend preference and persists it to UserDefaults.
-    /// When enabled and ≤15 tracks remain, the player appends a fresh smart shuffle batch automatically.
     func setAutoExtendEnabled(_ enabled: Bool) async
     func setVolume(_ volume: Float) async
     func togglePlayPause() async

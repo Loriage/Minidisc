@@ -12,8 +12,6 @@ final class RecentlyAddedViewModel {
 
     var coverArtId: String? { rawSongs.first?.coverArt }
 
-    /// The fetched payload kept in its server form — `download(song:)` takes a SwiftSonic `Song`, and
-    /// `DisplayableSong` can't be converted back.
     private var rawSongs: [Song] = []
 
     private let libraryService: any RecentlyAddedTrackBrowsing

@@ -178,7 +178,8 @@ final class AppContainer {
             audioStreamCache: cache,
             serverService: server,
             serverState: serverState,
-            streamSettings: streamSettings
+            streamSettings: streamSettings,
+            diagnostics: playbackDiagnostics
         )
         mediaResolver = resolver
 
@@ -186,7 +187,10 @@ final class AppContainer {
         let lb = ListenBrainzService(client: lbClient, keychain: keychain)
         listenBrainzService = lb
 
-        let audioEngine: AudioEngine = AVPlayerEngine()
+        // Keep an explicit diagnostic fallback for A/B device runs on this migration branch.
+        let audioEngine: AudioEngine = ProcessInfo.processInfo.environment["MINIDISC_AUDIO_ENGINE"] == "avplayer"
+            ? AVPlayerEngine(diagnostics: playbackDiagnostics)
+            : AudioStreamingEngine(diagnostics: playbackDiagnostics)
         let player = PlayerService(
             state: playerState,
             mediaResolver: resolver,
@@ -219,7 +223,7 @@ final class AppContainer {
         nowPlayingService = nowPlaying
 
         favoritesService = FavoritesService(libraryService: library, serverState: serverState, modelContainer: modelContainer)
-        let pin = PinService(modelContainer: modelContainer)
+        let pin = PinService(modelContainer: modelContainer, serverState: serverState)
         pinService = pin
         let playlist = PlaylistService(
             serverService: server,
@@ -273,9 +277,32 @@ final class AppContainer {
     /// PlayerService→NowPlayingService wiring is complete before any user
     /// interaction is possible.
     func setup() async {
+        if let server = serverService as? ServerService {
+            await server.setLibraryChangeHandler { [weak player = _player] in await player?.stop() }
+        }
         await _player.setNowPlayingService(nowPlayingService)
         await nowPlayingService.setFavoritesService(favoritesService)
         await _player.crossfadeSettingsDidChange()
+        recordPlaybackDiagnosticContext()
+        retainLifecycleTask(Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(15)) } catch { break }
+                guard let self else { break }
+                self.recordPlaybackDiagnosticContext()
+            }
+        })
+    }
+
+    func recordPlaybackDiagnosticContext() {
+        playbackDiagnostics.record(.context(PlaybackRuntimeDiagnostics(state: playerState, settings: diagnosticSettings)))
+    }
+
+    private var diagnosticSettings: PlaybackDiagnosticSettings {
+        .init(wifiQuality: streamSettings.wifiQuality, cellularQuality: streamSettings.cellularQuality,
+              selectedQuality: streamSettings.currentQuality, offlineMode: serverState.isOfflineModeEnabled,
+              cacheFormat: cacheSettings.cacheFormat, cacheOverCellular: cacheSettings.cacheOverCellular,
+              cacheCapacityMB: cacheSettings.capacityMegabytes, offlineFavorites: cacheSettings.keepFavoritesOffline,
+              crossfade: crossfadeSettings.config, replayGain: replayGainSettings.config)
     }
 
     func makePlaybackDiagnosticsReport() -> String {
@@ -289,7 +316,17 @@ final class AppContainer {
                 playbackStatus: PlaybackDiagnostics.PlaybackStatus(playerState.playbackState),
                 isPlaybackAvailable: playerState.isPlaybackAvailable,
                 networkPath: PlaybackDiagnostics.NetworkPath(serverState.networkPathEvent),
-                connectionVersion: serverState.activeConnectionVersion
+                connectionVersion: serverState.activeConnectionVersion,
+                settings: PlaybackDiagnosticSettings(
+                    wifiQuality: streamSettings.wifiQuality, cellularQuality: streamSettings.cellularQuality,
+                    selectedQuality: streamSettings.currentQuality, offlineMode: serverState.isOfflineModeEnabled,
+                    cacheFormat: cacheSettings.cacheFormat, cacheOverCellular: cacheSettings.cacheOverCellular,
+                    cacheCapacityMB: cacheSettings.capacityMegabytes, offlineFavorites: cacheSettings.keepFavoritesOffline,
+                    crossfade: crossfadeSettings.config, replayGain: replayGainSettings.config
+                ),
+                queueCount: playerState.queue.count, queueIndex: playerState.currentIndex,
+                position: playerState.position, duration: playerState.duration, waitingReason: playerState.waitingReason,
+                lowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled, thermalState: ProcessInfo.processInfo.thermalState
             )
         )
     }
@@ -324,7 +361,9 @@ extension ModelContainer {
             PlaylistCoverChoice.self
         ])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: inMemory)
-        return try ModelContainer(for: schema, configurations: config)
+        let container = try ModelContainer(for: schema, configurations: config)
+        try ServerItemIdentity.migrate(in: container)
+        return container
     }
 
     /// Keeps frequent position saves out of the main SwiftData observation graph.
@@ -353,69 +392,19 @@ extension ModelContainer {
     }
 }
 
-// MARK: - Cover art cache invalidation
-
 extension AppContainer {
     private static let coverArtCacheVersionKey = "minidisc.coverArtCacheVersion"
     private static let currentCoverArtCacheVersion = 5
 
-    /// Invalidates older artwork tiers so full-resolution files cannot bypass thumbnail decoding.
-    static func invalidateCoverArtCacheIfNeeded(artworkCache: ArtworkImageCache) {
+    /// Invalidates regenerable tiers while keeping the covers saved with downloads.
+    static func invalidateCoverArtCacheIfNeeded(artworkCache: ArtworkImageCache,
+                                               downloads: any DownloadServiceProtocol) async {
         let stored = UserDefaults.standard.integer(forKey: coverArtCacheVersionKey)
         guard stored < currentCoverArtCacheVersion else { return }
-
-        artworkCache.clearCache()
-        artworkCache.clearRevalidationMetadata()
-        let coverArtsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("app.minidisc/coverarts")
-        try? FileManager.default.removeItem(at: coverArtsDir)
-        try? FileManager.default.createDirectory(at: coverArtsDir, withIntermediateDirectories: true)
-        URLCache.shared.removeAllCachedResponses()
-
+        await artworkCache.clearStreamingCache(using: downloads)
         UserDefaults.standard.set(currentCoverArtCacheVersion, forKey: coverArtCacheVersionKey)
-        Logger.player.info("ArtworkImageCache: invalidated cover art disk cache (version \(stored) → \(currentCoverArtCacheVersion))")
     }
 }
-
-// MARK: - Legacy cover art sweep
-
-extension AppContainer {
-    private static let artworkLegacySweepKey = "minidisc.artworkLegacySweep_v2"
-
-    /// Removes legacy artwork files without @thumb or @hero suffixes.
-    @discardableResult
-    static func sweepLegacyCoverArtFiles() -> Task<Void, Never>? {
-        guard !UserDefaults.standard.bool(forKey: artworkLegacySweepKey) else { return nil }
-
-        return Task.detached(priority: .utility) {
-            let fm = FileManager.default
-            guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
-            let coverArtsDir = docs.appendingPathComponent("app.minidisc/coverarts", isDirectory: true)
-
-            guard let items = try? fm.contentsOfDirectory(at: coverArtsDir, includingPropertiesForKeys: nil) else { return }
-
-            var deletedCount = 0
-            for fileURL in items {
-                guard !Task.isCancelled else { return }
-                let name = fileURL.lastPathComponent
-                guard !name.contains("@thumb") && !name.contains("@hero") else { continue }
-                do {
-                    try fm.removeItem(at: fileURL)
-                    deletedCount += 1
-                } catch {
-                    Logger.artworkCache.warning("[SWEEP] Failed to delete legacy cover '\(name, privacy: .public)': \(error, privacy: .public)")
-                }
-            }
-
-            await MainActor.run {
-                UserDefaults.standard.set(true, forKey: artworkLegacySweepKey)
-            }
-            Logger.artworkCache.info("[SWEEP] Legacy cover art sweep complete: \(deletedCount) files deleted")
-        }
-    }
-}
-
-// MARK: - Audio extension migration
 
 extension AppContainer {
     private static let audioExtMigrationKey = "minidisc.audioExtMigration_v1"
@@ -522,7 +511,6 @@ extension AppContainer {
             }
         }
 
-        // Persist the fileSize updates; only mark done on a clean pass so failures are retried.
         var saveOK = true
         do {
             try ctx.save()
@@ -557,8 +545,6 @@ extension AppContainer {
         }
     }
 }
-
-// MARK: - SwiftUI environment key
 
 private struct AppContainerKey: EnvironmentKey {
     static let defaultValue: AppContainer? = nil

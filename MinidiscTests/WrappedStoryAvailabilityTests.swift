@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Minidisc
 
-// MARK: - File-scope helpers
-
 private func makeDate(
     year: Int, month: Int, day: Int,
     hour: Int = 12, minute: Int = 0, second: Int = 0,
@@ -31,12 +29,8 @@ private func parisCalendar() -> Calendar {
     return cal
 }
 
-// MARK: - Suite
-
 @Suite("WrappedStoryAvailability")
 struct WrappedStoryAvailabilityTests {
-
-    // MARK: Past years — always available
 
     @Test func pastYear_isAlwaysAvailable() {
         let date = makeDate(year: 2026, month: 1, day: 1)
@@ -47,8 +41,6 @@ struct WrappedStoryAvailabilityTests {
         let date = makeDate(year: 2026, month: 3, day: 10)
         #expect(WrappedStoryAvailability.isStoryAvailable(forYear: 2024, currentDate: date, calendar: utcCalendar()))
     }
-
-    // MARK: Current year — locked before Dec 28, unlocked on/after
 
     @Test func currentYear_beforeDec28_notAvailable() {
         let date = makeDate(year: 2026, month: 12, day: 27, hour: 23, minute: 59, second: 59)
@@ -70,8 +62,6 @@ struct WrappedStoryAvailabilityTests {
         #expect(WrappedStoryAvailability.isStoryAvailable(forYear: 2026, currentDate: date, calendar: utcCalendar()))
     }
 
-    // MARK: Future years — never available
-
     @Test func futureYear_neverAvailable() {
         let date = makeDate(year: 2026, month: 12, day: 31)
         #expect(!WrappedStoryAvailability.isStoryAvailable(forYear: 2027, currentDate: date, calendar: utcCalendar()))
@@ -81,8 +71,6 @@ struct WrappedStoryAvailabilityTests {
         let date = makeDate(year: 2026, month: 12, day: 29)
         #expect(!WrappedStoryAvailability.isStoryAvailable(forYear: 2027, currentDate: date, calendar: utcCalendar()))
     }
-
-    // MARK: Timezone edge case
 
     @Test func timezoneEdge_sameInstant_lockedInUTC_unlockedInParis() {
         // Dec 27 2026 23:00 UTC = Dec 28 2026 00:00 CET (Europe/Paris).
@@ -102,8 +90,6 @@ struct WrappedStoryAvailabilityTests {
             calendar: parisCalendar()
         ), "Should be unlocked at 00:00 CET (already Dec 28 in Paris)")
     }
-
-    // MARK: isWrappedCardVisible — window Dec 3 N to Jan 1 N+1
 
     @Test func cardVisible_beforeDec3_hidden() {
         let date = makeDate(year: 2026, month: 12, day: 2, hour: 23, minute: 59)
@@ -134,8 +120,6 @@ struct WrappedStoryAvailabilityTests {
         let date = makeDate(year: 2027, month: 1, day: 1, hour: 0, minute: 0, second: 0)
         #expect(!WrappedStoryAvailability.isWrappedCardVisible(forYear: 2026, currentDate: date, calendar: utcCalendar()))
     }
-
-    // MARK: daysUntilStoryUnlock — countdown to Dec 28
 
     @Test func daysUntilUnlock_dec3_returns25() {
         let date = makeDate(year: 2026, month: 12, day: 3, hour: 15)

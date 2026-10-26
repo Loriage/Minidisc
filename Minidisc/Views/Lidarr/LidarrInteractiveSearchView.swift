@@ -187,8 +187,6 @@ struct LidarrInteractiveSearchView: View {
     }
 }
 
-// MARK: - Release row
-
 private struct LidarrReleaseRow: View {
     let release: LidarrRelease
 

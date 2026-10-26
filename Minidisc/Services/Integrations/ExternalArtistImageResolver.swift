@@ -1,15 +1,11 @@
 import Foundation
 import OSLog
 
-// MARK: - HTTP client protocol (testable)
-
 nonisolated protocol ArtistImageHTTPClient: Sendable {
     func data(for request: URLRequest) async throws -> (Data, URLResponse)
 }
 
 extension URLSession: ArtistImageHTTPClient {}
-
-// MARK: - MusicBrainz rate limiter
 
 /// Grants one MusicBrainz request at a time, separated by `minimumInterval`.
 ///
@@ -123,8 +119,6 @@ actor MusicBrainzRateLimiter {
     }
 }
 
-// MARK: - Actor
-
 /// Resolves out-of-library artist photos via MusicBrainz → Wikidata → Wikimedia Commons.
 /// Supports both MBID-based lookup (LB-sourced recommendations) and name-based search
 /// (Subsonic provider, which does not supply MBIDs).
@@ -161,8 +155,6 @@ actor ExternalArtistImageResolver {
         self.httpClient = httpClient
         musicBrainzRateLimiter = MusicBrainzRateLimiter(minimumInterval: minimumMBRequestInterval)
     }
-
-    // MARK: - Public API
 
     func resolveImageURL(for recommendation: SimilarArtistRecommendation) async -> URL? {
         if let mbid = recommendation.mbid?.trimmingCharacters(in: .whitespacesAndNewlines),

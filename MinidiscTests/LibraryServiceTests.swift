@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Minidisc
 
-// MARK: - normalizeArtistName
-
 @Suite("LibraryService — normalizeArtistName")
 struct LibraryServiceNormalizationTests {
 

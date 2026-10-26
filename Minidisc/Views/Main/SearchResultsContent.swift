@@ -38,6 +38,7 @@ struct SearchResultsContent: View {
     let onAddToPlaylist: (DisplayableSong) -> Void
     let canSelectSongs: Bool
     let onSelectSongs: () -> Void
+    @Environment(\.appContainer) private var container
     @Query private var favorites: [FavoriteRecord]
 
     private var songs: [DisplayableSong] {
@@ -50,7 +51,7 @@ struct SearchResultsContent: View {
     }
 
     var body: some View {
-        let favoriteIds = Set(favorites.map(\.id))
+        let favoriteIds = Set(favorites.filter { $0.serverId == container?.serverState.activeServer?.id }.map { "\($0.itemType):\($0.itemId)" })
         let best = scope == .all ? matches.first : nil
         if let best {
             Section {

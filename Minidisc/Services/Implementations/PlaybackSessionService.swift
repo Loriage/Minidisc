@@ -20,6 +20,7 @@ actor PlaybackSessionService {
             currentTrack: playerState.currentTrack,
             repeatMode: playerState.repeatMode
         )
+        session.serverId = playerState.serverId
         do {
             try modelContext.save()
         } catch {
@@ -37,6 +38,17 @@ actor PlaybackSessionService {
         } catch {
             Logger.session.warning("PlaybackSessionService: savePosition failed — \(error)")
         }
+    }
+
+    func loadRestoredSession(serverID: UUID?) -> RestoredSession? {
+        guard let session = fetchSession() else { return nil }
+        if let saved = session.serverId, saved != serverID,
+           !session.decodedQueue().allSatisfy(\.isLocalFile) { return nil }
+        if session.serverId == nil, let serverID {
+            session.serverId = serverID
+            try? modelContext.save()
+        }
+        return loadRestoredSession()
     }
 
     /// Extracts and returns restoration data, keeping @Model objects on this actor's context.
@@ -104,17 +116,14 @@ actor PlaybackSessionService {
     }
 }
 
-// MARK: - SessionPayload
-
 nonisolated struct SessionPayload: Sendable {
     let currentIndex: Int
     let currentPosition: TimeInterval
     let queue: [DisplayableSong]
     let currentTrack: DisplayableSong?
     let repeatMode: RepeatMode
+    var serverId: UUID? = nil
 }
-
-// MARK: - RestoredSession
 
 nonisolated struct RestoredSession: Sendable {
     let queue: [DisplayableSong]

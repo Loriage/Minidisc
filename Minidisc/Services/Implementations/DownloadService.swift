@@ -186,6 +186,7 @@ actor DownloadService: DownloadServiceProtocol {
     private var isRemovingAllDownloads = false
     private let toastService: ToastService
     private let downloadSession: URLSession
+    private let coverDataLoader: (@Sendable (URLRequest) async throws -> (Data, URLResponse))?
     private let transferTransport: (any DownloadTransport)?
     private let journalURL: URL
     private let diagnostics: PlaybackDiagnostics?
@@ -195,12 +196,14 @@ actor DownloadService: DownloadServiceProtocol {
 
     init(serverService: any ServerServiceProtocol, modelContainer: ModelContainer, toastService: ToastService,
          transferTransport: (any DownloadTransport)? = nil, journalURL: URL? = nil,
-         diagnostics: PlaybackDiagnostics? = nil) {
+         diagnostics: PlaybackDiagnostics? = nil, baseDirectory: URL? = nil,
+         coverDataLoader: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil) {
         self.serverService = serverService
         self.modelContainer = modelContainer
         self.toastService = toastService
         self.transferTransport = transferTransport
         self.diagnostics = diagnostics
+        self.coverDataLoader = coverDataLoader
         self.journalURL = journalURL ?? (transferTransport == nil
             ? URL.temporaryDirectory.appendingPathComponent("minidisc-test-downloads-\(UUID())/queue.json")
             : URL.applicationSupportDirectory.appendingPathComponent("minidisc-downloads/queue.json"))
@@ -212,7 +215,7 @@ actor DownloadService: DownloadServiceProtocol {
         self.downloadSession = URLSession(configuration: sessionConfig)
 
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let base = docs.appendingPathComponent("app.minidisc", isDirectory: true)
+        let base = baseDirectory ?? docs.appendingPathComponent("app.minidisc", isDirectory: true)
         let downloadsDirectory = base.appendingPathComponent("downloads", isDirectory: true)
         self.downloadsDirectory = downloadsDirectory
         self.coverArtsDirectory = base.appendingPathComponent("coverarts", isDirectory: true)
@@ -372,14 +375,54 @@ actor DownloadService: DownloadServiceProtocol {
             includingPropertiesForKeys: [.fileSizeKey]
         ) else { return (0, 0) }
         var bytes: Int64 = 0
-        for file in files {
+        let variants = files.filter { CoverArtFiles.isStreamingVariant($0.lastPathComponent) }
+        for file in variants {
             bytes += Int64((try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
         }
-        return (files.count, bytes)
+        return (variants.count, bytes)
     }
 
-    func clearAllCovers() {
-        try? FileManager.default.removeItem(at: coverArtsDirectory)
+    func clearStreamingCovers() {
+        do { try CoverArtFiles.clearStreamingVariants(in: coverArtsDirectory) }
+        catch { Logger.download.error("Unable to clear streaming covers: \(error, privacy: .private)") }
+    }
+
+    func healMissingDownloadedCovers(serverID: UUID, allowsCellular: Bool,
+                                     shouldContinue: @escaping @Sendable () async -> Bool) async -> Int {
+        let ids = downloadedCoverIDs(serverID: serverID).filter { id in
+            let url = coverArtsDirectory.appendingPathComponent(id)
+            return ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) == 0
+        }
+        var repaired = 0
+        let ordered = Array(ids).sorted()
+        for start in stride(from: 0, to: ordered.count, by: 3) {
+            guard !Task.isCancelled, await shouldContinue() else { break }
+            let batch = Array(ordered[start..<min(start + 3, ordered.count)])
+            repaired += await withTaskGroup(of: Int.self) { group in
+                for id in batch {
+                    group.addTask {
+                        guard !Task.isCancelled, await shouldContinue() else { return 0 }
+                        do {
+                            return try await self._downloadCoverArt(id: id, serverID: serverID,
+                                                                   allowsCellular: allowsCellular, repairing: true) ? 1 : 0
+                        } catch { return 0 }
+                    }
+                }
+                var count = 0
+                for await result in group { count += result }
+                return count
+            }
+        }
+        Logger.download.info("Repaired \(repaired) missing offline covers")
+        return repaired
+    }
+
+    private func downloadedCoverIDs(serverID: UUID) -> Set<String> {
+        let context = ModelContext(modelContainer)
+        let albums = (try? context.fetch(FetchDescriptor<DownloadedAlbum>(predicate: #Predicate { $0.serverId == serverID }))) ?? []
+        let tracks = (try? context.fetch(FetchDescriptor<DownloadedTrack>(predicate: #Predicate { $0.serverId == serverID }))) ?? []
+        let playlists = (try? context.fetch(FetchDescriptor<DownloadedPlaylist>(predicate: #Predicate { $0.serverId == serverID }))) ?? []
+        return Set(albums.compactMap(\.coverArtId) + tracks.compactMap(\.coverArtId) + playlists.compactMap(\.coverArtId))
     }
 
     func garbageCollectOrphanedCovers(referencedIds: Set<String>) async -> Int {
@@ -474,7 +517,6 @@ actor DownloadService: DownloadServiceProtocol {
             throw MinidiscError.downloadFailed(songId: song.id, underlying: HTTPError(statusCode: code))
         }
 
-        // Reject error envelopes and incomplete payloads before storing a permanent download.
         do {
             try AudioResponseValidator.validate(fileAt: tempURL, response: response, songId: song.id, logger: Logger.download)
         } catch {
@@ -876,8 +918,6 @@ actor DownloadService: DownloadServiceProtocol {
         try await offlineRemovalCoordinator.removeAll()
     }
 
-    // MARK: - Helpers
-
     private func checkDownloadCancellation() throws {
         try Task.checkCancellation()
         guard !isRemovingAllDownloads else { throw CancellationError() }
@@ -954,12 +994,14 @@ actor DownloadService: DownloadServiceProtocol {
 
     /// Downloads a cover art image to `coverArtsDirectory/<id>`. No-op if the file already exists.
     /// Throws on network or write error — callers must catch and treat as best-effort.
-    private func _downloadCoverArt(id: String, serverID: UUID? = nil) async throws {
+    @discardableResult
+    private func _downloadCoverArt(id: String, serverID: UUID? = nil,
+                                   allowsCellular: Bool = true, repairing: Bool = false) async throws -> Bool {
         try checkDownloadCancellation()
         let fileURL = coverArtsDirectory.appendingPathComponent(id)
-        guard !FileManager.default.fileExists(atPath: fileURL.path) else {
+        guard ((try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) == 0 else {
             Logger.download.debug("Cover art '\(id, privacy: .public)' already on disk — skipping.")
-            return
+            return false
         }
 
         let connection = try await serverService.activeConnection()
@@ -972,12 +1014,25 @@ actor DownloadService: DownloadServiceProtocol {
         }
 
         var request = URLRequest(url: artURL)
+        request.allowsCellularAccess = allowsCellular
+        request.allowsExpensiveNetworkAccess = allowsCellular
+        if repairing { request.allowsConstrainedNetworkAccess = false }
         for (key, value) in connection.authorizationHeaders(for: artURL) {
             request.setValue(value, forHTTPHeaderField: key)
         }
 
-        let (data, response) = try await downloadSession.data(for: request)
+        let (data, response): (Data, URLResponse)
+        if let coverDataLoader {
+            (data, response) = try await coverDataLoader(request)
+        } else {
+            (data, response) = try await downloadSession.data(for: request)
+        }
         try checkDownloadCancellation()
+        if repairing, let serverID {
+            let current = try await serverService.activeConnection()
+            guard current.version == connection.version,
+                  downloadedCoverIDs(serverID: serverID).contains(id) else { throw CancellationError() }
+        }
         guard !ArtworkResponsePolicy.isTransient(response) else { throw URLError(.resourceUnavailable) }
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? -1
@@ -988,5 +1043,6 @@ actor DownloadService: DownloadServiceProtocol {
         try FileManager.default.createDirectory(at: coverArtsDirectory, withIntermediateDirectories: true)
         try data.write(to: fileURL, options: .atomic)
         Logger.download.info("Cover art '\(id, privacy: .public)' downloaded (\(data.count) bytes)")
+        return true
     }
 }

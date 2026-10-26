@@ -1,8 +1,6 @@
 import Foundation
 import OSLog
 
-// MARK: - Errors
-
 nonisolated enum AudioMuseError: Error, Equatable, Sendable {
     /// HTTP 400 — usually `CLAP_ENABLED=false` on the instance. Carries the server's own message,
     /// which distinguishes "search disabled" from the rarer bad-parameter cases.
@@ -16,8 +14,6 @@ nonisolated enum AudioMuseError: Error, Equatable, Sendable {
     case transport(String)
     case decoding(String)
 }
-
-// MARK: - Wire types
 
 /// CLAP search result. item_id may be an internal fp_ ID requiring metadata resolution.
 nonisolated struct AudioMuseTrack: Decodable, Sendable, Equatable {
@@ -56,8 +52,6 @@ private nonisolated struct ServersResponse: Decodable {
     let defaultId: String?
     enum CodingKeys: String, CodingKey { case servers, defaultId = "default_id" }
 }
-
-// MARK: - Client
 
 /// AudioMuse warmup and CLAP search client, with authentication separate from Subsonic.
 actor AudioMuseClient {
@@ -124,11 +118,8 @@ actor AudioMuseClient {
             throw AudioMuseError.decoding(String(describing: error))
         }
 
-        // Keep internal IDs and metadata for the provider’s library-resolution fallback.
         return results
     }
-
-    // MARK: - Transport
 
     private func send(path: String, body: Data?, method: String = "POST") async throws -> Data {
         guard let url = URL(string: path, relativeTo: baseURL) else { throw AudioMuseError.badURL }
@@ -153,7 +144,6 @@ actor AudioMuseClient {
         guard let http = response as? HTTPURLResponse else { throw AudioMuseError.transport("non-HTTP response") }
         switch http.statusCode {
         case 200...299:  return data
-        // HTTP 400 has multiple causes; preserve the server’s message rather than guessing.
         case 400:        throw AudioMuseError.searchDisabled(Self.errorMessage(in: data))
         case 401, 403:   throw AudioMuseError.unauthorized
         case 503:        throw AudioMuseError.notAnalysed

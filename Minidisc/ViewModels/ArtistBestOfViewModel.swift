@@ -10,8 +10,6 @@ final class ArtistBestOfViewModel {
     var isDownloadingAll = false
     var downloadingIds: Set<String> = []
 
-    /// The starred payload kept in its server form — `download(song:)` takes a SwiftSonic `Song`, and
-    /// `DisplayableSong` can't be converted back.
     private var rawSongs: [Song] = []
 
     private let artistId: String

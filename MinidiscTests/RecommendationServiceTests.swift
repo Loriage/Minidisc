@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Minidisc
 
-// MARK: - Mock
-
 private enum MockError: Error { case failure }
 
 private struct MockRecommendationProvider: RecommendationProvider {
@@ -32,13 +30,9 @@ private struct MockRecommendationProvider: RecommendationProvider {
     }
 }
 
-// MARK: - Fixtures
-
 private let artistStub = SimilarArtistRecommendation(id: "a1", name: "Artist One", coverArt: nil, inLibrary: true, mbid: nil)
 private let artistStub2 = SimilarArtistRecommendation(id: "a2", name: "Artist Two", coverArt: nil, inLibrary: true, mbid: nil)
 private let albumStub = AlbumRecommendation(id: "al1", title: "Album One", artistName: "Artist One", releaseDate: nil, coverArtURL: nil, inLibrary: true)
-
-// MARK: - RecommendationService — similarArtists
 
 @Suite("RecommendationService — similarArtists")
 struct RecommendationServiceSimilarArtistsTests {
@@ -87,8 +81,6 @@ struct RecommendationServiceSimilarArtistsTests {
         #expect(caughtError is MockError)
     }
 }
-
-// MARK: - RecommendationService — freshReleases
 
 @Suite("RecommendationService — freshReleases")
 struct RecommendationServiceFreshReleasesTests {

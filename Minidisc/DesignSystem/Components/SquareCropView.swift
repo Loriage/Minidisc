@@ -69,8 +69,6 @@ struct SquareCropView: View {
         .preferredColorScheme(.dark)
     }
 
-    // MARK: - Geometry
-
     private func baseSize(forFrame F: CGFloat) -> CGSize {
         let minDim = max(min(image.size.width, image.size.height), 1)
         let f = F / minDim
@@ -85,12 +83,9 @@ struct SquareCropView: View {
                       height: min(max(o.height, -maxY), maxY))
     }
 
-    // MARK: - Overlay (dim + frame + rule-of-thirds grid)
-
     private func dimAndGrid(in size: CGSize, frame F: CGFloat) -> some View {
         let rect = CGRect(x: (size.width - F) / 2, y: (size.height - F) / 2, width: F, height: F)
         return ZStack {
-            // Dim everything except the crop square (even-odd hole).
             Path { p in
                 p.addRect(CGRect(origin: .zero, size: size))
                 p.addRect(rect)
@@ -111,8 +106,6 @@ struct SquareCropView: View {
             .stroke(Color.white.opacity(0.35), lineWidth: 0.5)
         }
     }
-
-    // MARK: - Render
 
     @MainActor
     private func performCrop() {
@@ -136,7 +129,6 @@ struct SquareCropView: View {
     }
 }
 
-/// Shared image wrapper for fullScreenCover(item:) in the create and edit flows.
 struct CroppableImage: Identifiable {
     let id = UUID()
     let image: UIImage

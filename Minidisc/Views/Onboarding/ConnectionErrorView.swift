@@ -35,8 +35,6 @@ struct ConnectionErrorView: View {
     }
 }
 
-// MARK: - Previews
-
 #Preview("DNS failure") {
     ConnectionErrorView(error: .dnsFailure)
         .padding()

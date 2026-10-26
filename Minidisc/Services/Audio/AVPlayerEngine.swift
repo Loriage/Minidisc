@@ -5,7 +5,7 @@ import MediaToolbox
 import OSLog
 import Synchronization
 
-/// Two AVPlayer decks alternate active and standby roles for gapless playback and crossfades.
+/// Sequential playback keeps one active queue; only crossfades prepare a second audible deck.
 /// A recursive lock protects deck roles and transition state across control calls and callbacks.
 /// ReplayGain boosts use an audio processing tap because AVPlayer.volume cannot exceed 1.
 nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
@@ -37,9 +37,16 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         set { lock.withLock { storedDelegate = newValue } }
     }
 
-    private let playerFactory: @Sendable () -> AVPlayer
-    private var deckA: AVPlayer
-    private var deckB: AVPlayer
+    private let diagnostics: PlaybackDiagnostics?
+    private var diagnosticObservers: [NSObjectProtocol] = []
+    private var lastDiagnosticSampleAt: TimeInterval = 0
+    private var diagnosticHealth = PlaybackDiagnosticHealth()
+    private var reportedNativeWait = false
+    private var currentSourceHeaderCount = 0
+
+    private let playerFactory: @Sendable () -> AVQueuePlayer
+    private var deckA: AVQueuePlayer
+    private var deckB: AVQueuePlayer
     private var contextA = ReplayGainTapContext()
     private var contextB = ReplayGainTapContext()
     /// Accessed only while `lock` is held. Separate counters allow both physical decks to prepare
@@ -50,8 +57,9 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     private var replayGainTaskA: Task<Void, Never>?
     private var replayGainTaskB: Task<Void, Never>?
     private var activeIsA = true
-    private var activePlayer: AVPlayer { activeIsA ? deckA : deckB }
-    private var standbyPlayer: AVPlayer { activeIsA ? deckB : deckA }
+    private var airPlayActive = false
+    private var activePlayer: AVQueuePlayer { activeIsA ? deckA : deckB }
+    private var standbyPlayer: AVQueuePlayer { activeIsA ? deckB : deckA }
     private var activeContext: ReplayGainTapContext { activeIsA ? contextA : contextB }
     private var standbyContext: ReplayGainTapContext { activeIsA ? contextB : contextA }
 
@@ -66,13 +74,14 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     private var preloadedSourceURL: URL?
     private var preloadedSourceHeaders: [String: String] = [:]
     private var preloadedStartPosition: TimeInterval = 0
+    private var preloadedInActiveQueue = false
+    private var changingQueue = false
     private var standbyPreparationState: StandbyPreparationState = .idle
     /// Monotonic within this engine instance. It is deliberately never reset with the decks, so a
     /// callback queued for an item that was stopped can never alias a later load of the same song.
     private var nextPlaybackTokenRawValue: UInt64 = 0
     /// Overlap window for the pending transition (0 = gapless butt-splice).
     private var pendingOverlap: Double = 0
-    /// URL of an item the engine already promoted at a hand-off; the next `play` with it adopts.
     private var handedOffTrackID: String?
 
     /// PlayerService-facing volume (restore mute, user fades). Deck volumes = fadeLevel × ramp.
@@ -105,6 +114,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     private static let frozenClockGrace: Double = 1.0
 
     private var timeControlObservers: [NSKeyValueObservation] = []
+    private var queueItemObservers: [NSKeyValueObservation] = []
     private var statusObserver: NSKeyValueObservation?
     private var endObserver: NSObjectProtocol?
     private var failObserver: NSObjectProtocol?
@@ -112,11 +122,14 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     private var periodicToken: Any?
     private var periodicOwner: AVPlayer?
 
-    init(playerFactory: @escaping @Sendable () -> AVPlayer = { AVPlayer() }) {
+    init(diagnostics: PlaybackDiagnostics? = nil,
+         playerFactory: @escaping @Sendable () -> AVQueuePlayer = { AVQueuePlayer() }) {
+        self.diagnostics = diagnostics
         self.playerFactory = playerFactory
         deckA = playerFactory()
         deckB = playerFactory()
         configurePlayers()
+        configureDiagnosticObservers()
     }
 
     /// Installs observers on the current physical players, including after a system reset.
@@ -125,12 +138,28 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         for deck in [deckA, deckB] {
             deck.automaticallyWaitsToMinimizeStalling = true
             deck.actionAtItemEnd = .pause
+            queueItemObservers.append(deck.observe(\.currentItem, options: [.new]) { [weak self] player, _ in
+                guard let self else { return }
+                let transition = self.lock.withLock {
+                    if player === self.activePlayer { self.recordDiagnostic(.queueChanged) }
+                    guard !self.changingQueue, player === self.activePlayer,
+                          self.preloadedInActiveQueue,
+                          let next = self.preloadedItem, player.currentItem === next else { return nil as AudioEngineTrackEnd? }
+                    return self.finalizeAdvance()
+                }
+                if let transition { self.delegate?.audioEngineDidReachEndOfTrack(transition) }
+            })
         }
         // State events follow the ACTIVE deck only; the standby warming up must not leak states.
         for deck in [deckA, deckB] {
             timeControlObservers.append(deck.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
                 guard let self else { return }
                 self.lock.lock()
+                if let item = player.currentItem {
+                    self.recordDiagnostic(.timeControl, item: item)
+                } else if player === self.activePlayer {
+                    self.recordDiagnostic(.timeControl)
+                }
                 let isActive = player === self.activePlayer
                 let playbackToken = isActive ? self.currentPlaybackToken : nil
                 if !isActive, player === self.standbyPlayer {
@@ -166,6 +195,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     }
 
     deinit {
+        diagnosticObservers.forEach { NotificationCenter.default.removeObserver($0) }
         replayGainTaskA?.cancel()
         replayGainTaskB?.cancel()
         overlapTimer?.cancel()
@@ -173,12 +203,80 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         clearItemObservers()
         standbyStatusObserver?.invalidate()
         timeControlObservers.forEach { $0.invalidate() }
+        queueItemObservers.forEach { $0.invalidate() }
         if let periodicToken, let periodicOwner {
             periodicOwner.removeTimeObserver(periodicToken)
         }
         if let overlapBoundaryToken, let overlapBoundaryOwner {
             overlapBoundaryOwner.removeTimeObserver(overlapBoundaryToken)
         }
+    }
+
+    // MARK: - Redacted diagnostics
+
+    private func configureDiagnosticObservers() {
+        guard diagnostics != nil else { return }
+        diagnosticObservers.append(NotificationCenter.default.addObserver(
+            forName: AVAudioSession.mediaServicesWereLostNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            self?.diagnostics?.record(.audioSession(.mediaServicesLost))
+        })
+        let notifications: [(Notification.Name, AudioEngineDiagnosticSnapshot.Trigger)] = [
+            (AVPlayerItem.playbackStalledNotification, .stalled),
+            (AVPlayerItem.newAccessLogEntryNotification, .accessLog),
+            (AVPlayerItem.newErrorLogEntryNotification, .errorLog)
+        ]
+        for (name, trigger) in notifications {
+            diagnosticObservers.append(NotificationCenter.default.addObserver(
+                forName: name, object: nil, queue: .main
+            ) { [weak self] notification in
+                guard let self, let item = notification.object as? AVPlayerItem else { return }
+                self.lock.withLock { self.recordDiagnostic(trigger, item: item) }
+            })
+        }
+    }
+
+    /// Caller holds the engine lock. Never passes AVFoundation objects to the report buffer.
+    private func recordDiagnostic(_ trigger: AudioEngineDiagnosticSnapshot.Trigger, item: AVPlayerItem? = nil) {
+        guard let diagnostics, let item = item ?? currentItem else { return }
+        let token: AudioEnginePlaybackToken
+        let role: AudioEngineDiagnosticSnapshot.Role
+        let player: AVQueuePlayer
+        let context: ReplayGainTapContext
+        if item === currentItem, let currentPlaybackToken {
+            token = currentPlaybackToken
+            role = .active
+            player = activePlayer
+            context = activeContext
+        } else if item === preloadedItem, let preloadedPlaybackToken {
+            token = preloadedPlaybackToken
+            role = preloadedInActiveQueue ? .queued : .standby
+            player = preloadedInActiveQueue ? activePlayer : standbyPlayer
+            context = standbyContext
+        } else {
+            return
+        }
+        let sourceAsset = role == .active ? currentAsset : preloadedAsset
+        if [.play, .preload, .promoted].contains(trigger), let asset = sourceAsset as? AVURLAsset {
+            diagnostics.record(.sourceRequest(token, PlaybackRequestDiagnostics(
+                url: asset.url, headerCount: role == .active ? currentSourceHeaderCount : preloadedSourceHeaders.count
+            )))
+        }
+        diagnostics.record(.engineSnapshot(AudioEngineDiagnosticSnapshot(
+            trigger: trigger, token: token, role: role, player: player, item: item,
+            intendedPlayback: shouldBePlaying, airPlay: airPlayActive, replayGainTap: context.tapInstalled,
+            libraryDuration: metadataDuration, nextToken: preloadedPlaybackToken, endSignalled: didSignalEnd
+        )))
+    }
+
+    private func sampleDiagnosticsIfNeeded() {
+        guard diagnostics != nil, shouldBePlaying else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        let interval: TimeInterval = activePlayer.timeControlStatus == .playing ? 15 : 5
+        guard now - lastDiagnosticSampleAt >= interval else { return }
+        lastDiagnosticSampleAt = now
+        recordDiagnostic(.sample)
+        if let preloadedItem { recordDiagnostic(.sample, item: preloadedItem) }
     }
 
     // MARK: - Asset construction
@@ -201,7 +299,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
 
         // A Next command may beat the failed item's callback to PlayerService. A failed
         // AVPlayer is terminal: replacing its AVPlayerItem is not enough to revive it.
-        if deckA.status == .failed || deckB.status == .failed {
+        if activePlayer.status == .failed {
             recreatePlayers()
         }
 
@@ -209,11 +307,24 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
            currentItem != nil,
            let currentPlaybackToken {
             handedOffTrackID = nil
+            recordTransition(.adoptPromoted)
             beginPlaying()
             return currentPlaybackToken
         }
 
-        if trackID == preloadedTrackID,
+        if preloadedInActiveQueue, trackID == preloadedTrackID {
+            recordTransition(.manualQueuedAdvance)
+            changingQueue = true
+            if activePlayer.currentItem !== preloadedItem { activePlayer.advanceToNextItem() }
+            changingQueue = false
+            if activePlayer.currentItem === preloadedItem {
+                promoteQueuedItem()
+                beginPlaying()
+                return currentPlaybackToken!
+            }
+        }
+
+        if !preloadedInActiveQueue, trackID == preloadedTrackID,
            standbyPreparationState == .ready,
            preloadedItem?.status == .readyToPlay {
             promotePreloaded(startPlaying: true)
@@ -222,7 +333,8 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
             return currentPlaybackToken!
         }
 
-        resetDecks()
+        resetDecks(preservingActiveItem: true)
+        recordTransition(.freshItem)
         let asset = AVURLAsset(url: url, options: Self.assetOptions(headers: headers))
         let item = AVPlayerItem(asset: asset)
         attachItemObservers(item)
@@ -231,6 +343,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         currentTrackID = trackID
         let playbackToken = makePlaybackToken()
         currentPlaybackToken = playbackToken
+        currentSourceHeaderCount = headers.count
         activePlayer.replaceCurrentItem(with: item)
         applyDeckVolumes()
         beginPlaying()
@@ -238,34 +351,26 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         return playbackToken
     }
 
-    func setTrackEndTrim(_ seconds: Double) {
-        lock.lock()
-        defer { lock.unlock() }
-        guard let item = currentItem else { return }
-        guard seconds > 0 else {
-            item.forwardPlaybackEndTime = .invalid
-            return
-        }
-        let duration = item.duration.isNumeric ? CMTimeGetSeconds(item.duration) : metadataDuration
-        guard duration > seconds else { return }
-        // Ending the item early makes AVPlayer post didPlayToEndTime at that point, so the hand-off
-        // fires where the music actually stops rather than after the encoder's padding.
-        item.forwardPlaybackEndTime = CMTime(seconds: duration - seconds, preferredTimescale: 600)
-    }
-
     func preloadNext(
         trackID: String,
         url: URL,
         headers: [String: String],
         crossfadeDuration: Double,
-        leadInTrim: Double,
         replayGainDB: Float
     ) {
         lock.lock()
         defer { lock.unlock() }
         guard currentItem != nil else { return }
-        if trackID == preloadedTrackID {
+        if airPlayActive || crossfadeDuration <= 0 {
+            enqueueNext(trackID: trackID, url: url, headers: headers, replayGainDB: replayGainDB)
+            return
+        }
+        if trackID == preloadedTrackID, preloadedSourceURL == url,
+           preloadedSourceHeaders == headers, !preloadedInActiveQueue {
             pendingOverlap = crossfadeDuration
+            standbyContext.gain = pow(10, replayGainDB / 20)
+            applyDeckVolumes()
+            installReplayGainTapIfNeeded(context: standbyContext, trackID: trackID)
             if crossfadeDuration > 0 {
                 installTransitionObservers(on: activePlayer)
             } else {
@@ -273,7 +378,16 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
             }
             return
         }
+        cancelOverlap()
         clearPreloadedDeck()
+        if standbyPlayer.status == .failed {
+            timeControlObservers.forEach { $0.invalidate() }
+            timeControlObservers.removeAll()
+            queueItemObservers.forEach { $0.invalidate() }
+            queueItemObservers.removeAll()
+            if activeIsA { deckB = playerFactory() } else { deckA = playerFactory() }
+            configurePlayers()
+        }
         let asset = AVURLAsset(url: url, options: Self.assetOptions(headers: headers))
         let item = AVPlayerItem(asset: asset)
         standbyPlayer.replaceCurrentItem(with: item)
@@ -283,9 +397,10 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         preloadedPlaybackToken = makePlaybackToken()
         preloadedSourceURL = url
         preloadedSourceHeaders = headers
-        preloadedStartPosition = max(0, leadInTrim)
+        preloadedStartPosition = 0
         standbyPreparationState = .preparing
         pendingOverlap = crossfadeDuration
+        recordDiagnostic(.preload, item: item)
         if crossfadeDuration > 0 {
             installTransitionObservers(on: activePlayer)
         } else {
@@ -294,13 +409,13 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         standbyContext.gain = pow(10, replayGainDB / 20)
         applyDeckVolumes()
         installReplayGainTapIfNeeded(context: standbyContext, trackID: trackID)
-        // Preroll once ready so the hand-off starts render-tight, and park the playhead past the
-        // track's silent lead-in first — seeking after the deck is audible would be heard.
+        // Prime the incoming crossfade deck before starting its volume ramp.
         standbyStatusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             guard let self else { return }
             self.lock.lock()
             defer { self.lock.unlock() }
             guard item === self.preloadedItem else { return }
+            self.recordDiagnostic(.itemStatus, item: item)
             if item.status == .failed {
                 Logger.player.warning("[ENGINE] standby preload failed — falling back to a cold transition")
                 self.clearPreloadedDeck()
@@ -310,26 +425,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
             Logger.player.info(
                 "[CROSSFADE] standby item ready track='\(self.preloadedTrackID ?? "unknown", privacy: .public)' overlap=\(self.pendingOverlap, format: .fixed(precision: 1))s"
             )
-            if leadInTrim > 0 {
-                item.seek(
-                    to: CMTime(seconds: leadInTrim, preferredTimescale: 600),
-                    toleranceBefore: .zero,
-                    toleranceAfter: .zero
-                ) { [weak self] completed in
-                    guard let self else { return }
-                    self.lock.lock()
-                    defer { self.lock.unlock() }
-                    guard item === self.preloadedItem else { return }
-                    guard completed else {
-                        Logger.player.warning("[ENGINE] standby lead-in seek failed — using cold transition")
-                        self.clearPreloadedDeck()
-                        return
-                    }
-                    self.prerollStandby(item)
-                }
-            } else {
-                self.prerollStandby(item)
-            }
+            self.prerollStandby(item)
         }
     }
 
@@ -360,15 +456,102 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         }
     }
 
-    func cancelPreload() {
+    func setAirPlayActive(_ active: Bool) {
         lock.lock()
         defer { lock.unlock() }
+        guard airPlayActive != active else { return }
+        cancelPreload()
+        airPlayActive = active
+        recordDiagnostic(.routeChanged)
+    }
+
+    private func enqueueNext(trackID: String, url: URL, headers: [String: String], replayGainDB: Float) {
+        if trackID == preloadedTrackID, preloadedSourceURL == url,
+           preloadedSourceHeaders == headers, preloadedInActiveQueue {
+            standbyContext.gain = pow(10, replayGainDB / 20)
+            applyDeckVolumes()
+            installReplayGainTapIfNeeded(context: standbyContext, trackID: trackID)
+            return
+        }
+        cancelOverlap()
+        clearPreloadedDeck()
+        let asset = AVURLAsset(url: url, options: Self.assetOptions(headers: headers))
+        let item = AVPlayerItem(asset: asset)
+        guard let currentItem, activePlayer.currentItem === currentItem,
+              activePlayer.canInsert(item, after: currentItem) else { return }
+        preloadedItem = item
+        preloadedAsset = asset
+        preloadedTrackID = trackID
+        preloadedPlaybackToken = makePlaybackToken()
+        preloadedSourceURL = url
+        preloadedSourceHeaders = headers
+        preloadedInActiveQueue = true
+        standbyContext.gain = pow(10, replayGainDB / 20)
+        installReplayGainTapIfNeeded(context: standbyContext, trackID: trackID)
+        // AVQueuePlayer owns buffering and the natural hand-off, even if the next item is still loading.
+        activePlayer.actionAtItemEnd = .advance
+        activePlayer.insert(item, after: currentItem)
+        recordDiagnostic(.preload, item: item)
+        standbyStatusObserver = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+            guard let self else { return }
+            self.lock.withLock {
+                self.recordDiagnostic(.itemStatus, item: item)
+                guard item.status == .failed, self.preloadedInActiveQueue, item === self.preloadedItem,
+                      item !== self.activePlayer.currentItem else { return }
+                self.clearPreloadedDeck()
+            }
+        }
+    }
+
+    private func promoteQueuedItem() {
+        recordTransition(.queuedPromoted)
+        reportedNativeWait = false
+        clearItemObservers()
+        replayGainTaskA?.cancel()
+        replayGainTaskB?.cancel()
+        replayGainGenerationA &+= 1
+        replayGainGenerationB &+= 1
+        let incomingContext = standbyContext
+        if activeIsA {
+            contextA = incomingContext
+            contextB = ReplayGainTapContext()
+        } else {
+            contextB = incomingContext
+            contextA = ReplayGainTapContext()
+        }
+        currentItem = preloadedItem
+        currentAsset = preloadedAsset
+        currentTrackID = preloadedTrackID
+        currentPlaybackToken = preloadedPlaybackToken
+        currentSourceHeaderCount = preloadedSourceHeaders.count
+        preloadedInActiveQueue = false
+        clearPreloadedDeck()
+        metadataDuration = 0
+        didSignalEnd = false
+        applyDeckVolumes()
+        if let item = currentItem { attachItemObservers(item) }
+        if let trackID = currentTrackID { installReplayGainTapIfNeeded(context: activeContext, trackID: trackID) }
+        recordDiagnostic(.promoted)
+        if shouldBePlaying { startWatchdog() }
+    }
+
+    func cancelPreload() {
+        lock.lock()
+        // The native queue can advance before its KVO callback obtains our lock.
+        // Preserve that hand-off before discarding the remaining preparation metadata.
+        let transition: AudioEngineTrackEnd?
+        if preloadedInActiveQueue, let next = preloadedItem, activePlayer.currentItem === next {
+            transition = finalizeAdvance()
+        } else {
+            transition = nil
+        }
         // A path change can arrive while the standby deck is already audible in a crossfade.
         // Restore the active deck to full volume and stop the ramp before clearing standby;
         // otherwise the orphaned timer would keep fading the only remaining deck to silence.
         cancelOverlap()
         clearPreloadedDeck()
-        currentItem?.forwardPlaybackEndTime = .invalid
+        lock.unlock()
+        if let transition { delegate?.audioEngineDidReachEndOfTrack(transition) }
     }
 
     func pause() {
@@ -376,6 +559,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         defer { lock.unlock() }
         cancelOverlap()
         shouldBePlaying = false
+        diagnosticHealth.reset()
         stopWatchdog()
         activePlayer.pause()
     }
@@ -402,9 +586,12 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     /// Caller holds the lock. Discard both decks, their observers, and all pending work
     /// tied to the old media services. Tokens never restart, even if the same song reloads.
     private func recreatePlayers() {
+        recordDiagnostic(.reset)
         let activeGain = activeContext.gain
         timeControlObservers.forEach { $0.invalidate() }
         timeControlObservers.removeAll()
+        queueItemObservers.forEach { $0.invalidate() }
+        queueItemObservers.removeAll()
         replayGainTaskA?.cancel()
         replayGainTaskB?.cancel()
         replayGainTaskA = nil
@@ -428,6 +615,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
             // A seek moves the playhead on its own; without a fresh baseline the watchdog would read the
             // jump as a frozen clock (or, seeking backwards, as one that never advanced).
             resetWatchdogBaseline()
+            diagnosticHealth.reset()
             didSignalEnd = false
             return (activePlayer, currentItem)
         }
@@ -703,6 +891,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     private func beginPlaying() {
         shouldBePlaying = true
         activePlayer.play()
+        recordDiagnostic(.play)
         startWatchdog()
     }
 
@@ -742,6 +931,8 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
                 delegate?.audioEngineDidReachEndOfTrack(endedTransition)
             }
         }
+        sampleDiagnosticsIfNeeded()
+        observeDiagnosticHealth()
         guard shouldBePlaying, !didSignalEnd, let item = currentItem else { return }
 
         let itemDuration = item.duration.isNumeric ? CMTimeGetSeconds(item.duration) : 0
@@ -769,6 +960,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         Logger.player.warning(
             "[ENGINE] end-of-track watchdog fired — AVPlayer never reported EOF (\(reading, privacy: .public))"
         )
+        recordDiagnostic(.watchdogEnd)
         endedTransition = finalizeAdvance()
     }
 
@@ -778,14 +970,36 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         // The notification, the crossfade ramp and the watchdog all land here, and any two of them can
         // fire for the same track — one advance per item.
         guard !didSignalEnd, let endedPlaybackToken = currentPlaybackToken else { return nil }
-        let endedTime = activePlayer.currentTime()
+        // EOF and currentItem KVO can arrive in either order. Adopt only once AVQueuePlayer
+        // has actually advanced; calling advanceToNextItem here could skip a second song.
+        if preloadedInActiveQueue, activePlayer.currentItem === currentItem {
+            if !reportedNativeWait { recordTransition(.waitingForNativeAdvance); reportedNativeWait = true }
+            return nil
+        }
+        let endedTime = currentItem?.currentTime() ?? .invalid
         let endedPosition = endedTime.isNumeric ? max(0, CMTimeGetSeconds(endedTime)) : 0
         didSignalEnd = true
+        if preloadedInActiveQueue,
+           let item = preloadedItem, activePlayer.currentItem === item,
+           let trackID = preloadedTrackID, let token = preloadedPlaybackToken,
+           let url = preloadedSourceURL {
+            let time = item.currentTime()
+            let promoted = AudioEnginePromotedPlayback(
+                playbackToken: token, trackID: trackID, sourceURL: url,
+                sourceHeaders: preloadedSourceHeaders, startedAt: Date(),
+                position: time.isNumeric ? max(0, CMTimeGetSeconds(time)) : 0, audibleDuration: 0
+            )
+            handedOffTrackID = trackID
+            promoteQueuedItem()
+            return AudioEngineTrackEnd(endedPlaybackToken: endedPlaybackToken,
+                                      endedPosition: endedPosition, promotedPlayback: promoted)
+        }
         guard standbyPreparationState == .ready,
               let preloadedItem, preloadedItem.status == .readyToPlay,
               let trackID = preloadedTrackID,
               let promotedPlaybackToken = preloadedPlaybackToken,
               let sourceURL = preloadedSourceURL else {
+            recordTransition(.coldBoundary)
             clearPreloadedDeck()
             return AudioEngineTrackEnd(
                 endedPlaybackToken: endedPlaybackToken,
@@ -817,6 +1031,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
     }
 
     private func promotePreloaded(startPlaying: Bool) {
+        recordTransition(.crossfadePromoted)
         overlapTimer?.cancel()
         overlapTimer = nil
         isOverlapping = false
@@ -834,6 +1049,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         currentAsset = preloadedAsset
         currentTrackID = preloadedTrackID
         currentPlaybackToken = preloadedPlaybackToken
+        currentSourceHeaderCount = preloadedSourceHeaders.count
         preloadedItem = nil
         preloadedAsset = nil
         preloadedTrackID = nil
@@ -844,24 +1060,32 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         standbyPreparationState = .idle
         pendingOverlap = 0
         metadataDuration = 0
+        activePlayer.actionAtItemEnd = .pause
         rampActive = 1
         rampStandby = 1
         applyDeckVolumes()
         if let item = currentItem {
             attachItemObservers(item)
         }
-        // The promoted deck carries on playing: either it was started here, or it has been audible
-        // since the crossfade began. Either way the new item starts its own end-detection cycle.
         didSignalEnd = false
         shouldBePlaying = true
         if startPlaying {
             activePlayer.play()
         }
+        recordDiagnostic(.promoted)
         startWatchdog()
         removeTransitionObservers()
     }
 
-    private func resetDecks() {
+    private func resetDecks(preservingActiveItem: Bool = false) {
+        diagnosticHealth.reset()
+        reportedNativeWait = false
+        changingQueue = true
+        defer { changingQueue = false }
+        if preloadedInActiveQueue, let item = preloadedItem, item !== activePlayer.currentItem {
+            activePlayer.remove(item)
+        }
+        preloadedInActiveQueue = false
         removeTransitionObservers()
         overlapTimer?.cancel()
         overlapTimer = nil
@@ -875,16 +1099,19 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         clearItemObservers()
         standbyStatusObserver?.invalidate()
         standbyStatusObserver = nil
+        deckA.actionAtItemEnd = .pause
+        deckB.actionAtItemEnd = .pause
         deckA.pause()
         deckB.pause()
         deckA.cancelPendingPrerolls()
         deckB.cancelPendingPrerolls()
-        deckA.replaceCurrentItem(with: nil)
-        deckB.replaceCurrentItem(with: nil)
+        if !preservingActiveItem || !activeIsA { deckA.removeAllItems() }
+        if !preservingActiveItem || activeIsA { deckB.removeAllItems() }
         currentItem = nil
         currentAsset = nil
         currentTrackID = nil
         currentPlaybackToken = nil
+        currentSourceHeaderCount = 0
         preloadedItem = nil
         preloadedAsset = nil
         preloadedTrackID = nil
@@ -905,6 +1132,13 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
 
     /// Clears only the standby role. Caller holds `lock`.
     private func clearPreloadedDeck() {
+        reportedNativeWait = false
+        if let preloadedItem, preloadedItem !== currentItem { recordDiagnostic(.preloadCleared, item: preloadedItem) }
+        activePlayer.actionAtItemEnd = .pause
+        if preloadedInActiveQueue, let item = preloadedItem, item !== activePlayer.currentItem {
+            activePlayer.remove(item)
+        }
+        preloadedInActiveQueue = false
         removeTransitionObservers()
         standbyStatusObserver?.invalidate()
         standbyStatusObserver = nil
@@ -932,6 +1166,28 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         return AudioEnginePlaybackToken(rawValue: nextPlaybackTokenRawValue)
     }
 
+    private func recordTransition(_ decision: PlaybackDiagnostics.TransitionDecision) {
+        diagnostics?.record(.transition(decision, current: currentPlaybackToken,
+                                         next: preloadedPlaybackToken, intended: shouldBePlaying))
+    }
+
+    private func observeDiagnosticHealth() {
+        guard let diagnostics, let token = currentPlaybackToken else { return }
+        let position = activePlayer.currentTime().seconds
+        let itemDuration = currentItem?.duration.seconds ?? 0
+        let duration = metadataDuration > 0 ? metadataDuration : itemDuration
+        let waitingAtBoundary = preloadedInActiveQueue && activePlayer.currentItem === currentItem
+            && duration.isFinite && duration > 0 && position > 0
+            && abs(duration - position) <= Self.endOfFileTolerance
+        if let (finding, seconds) = diagnosticHealth.observe(token: token, position: position,
+            intended: shouldBePlaying, waitingAtBoundary: waitingAtBoundary,
+            at: ProcessInfo.processInfo.systemUptime) {
+            recordDiagnostic(.sample)
+            diagnostics.record(.health(token, finding, seconds: seconds))
+            if let next = preloadedItem { recordDiagnostic(.sample, item: next) }
+        }
+    }
+
     private func applyDeckVolumes() {
         activePlayer.volume = fadeLevel * rampActive * activeContext.deckVolumeScale
         standbyPlayer.volume = fadeLevel * rampStandby * standbyContext.deckVolumeScale
@@ -941,8 +1197,10 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
 
     private func attachItemObservers(_ item: AVPlayerItem) {
         clearItemObservers()
-        statusObserver = item.observe(\.status, options: [.new]) { [weak self] item, _ in
-            guard let self, item.status == .failed else { return }
+        statusObserver = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+            guard let self else { return }
+            self.lock.withLock { self.recordDiagnostic(.itemStatus, item: item) }
+            guard item.status == .failed else { return }
             let failure = Self.failure(item: item, error: item.error)
             let playbackToken = self.lock.withLock {
                 item === self.currentItem ? self.currentPlaybackToken : nil
@@ -957,6 +1215,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
         ) { [weak self, weak item] _ in
             guard let self else { return }
             self.lock.lock()
+            if let item { self.recordDiagnostic(.ended, item: item) }
             // A queued EOF from the retired deck must not advance the newly promoted track.
             let endedTransition: AudioEngineTrackEnd? = if let item, item === self.currentItem {
                 self.finalizeAdvance()
@@ -978,6 +1237,7 @@ nonisolated final class AVPlayerEngine: AudioEngine, @unchecked Sendable {
             let failure = Self.failure(item: item, error: error)
             let playbackToken: AudioEnginePlaybackToken? = self.lock.withLock {
                 guard let item, item === self.currentItem else { return nil }
+                self.recordDiagnostic(.failedToEnd, item: item)
                 return self.currentPlaybackToken
             }
             guard let playbackToken else { return }

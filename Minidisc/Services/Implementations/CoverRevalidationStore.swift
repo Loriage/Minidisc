@@ -1,8 +1,6 @@
 import Foundation
 import OSLog
 
-// MARK: - Revalidation decision
-
 /// Compares Last-Modified from HEAD responses because Navidrome does not return 304 here.
 nonisolated enum CoverRevalidationOutcome: Equatable {
     /// First time we check this cover: adopt the server value as the baseline, keep the image.
@@ -18,8 +16,6 @@ nonisolated enum CoverRevalidationOutcome: Equatable {
         return server == stored ? .unchanged : .changed
     }
 }
-
-// MARK: - CoverRevalidationStore
 
 /// Cover IDs may stay unchanged when artwork is replaced. Persist Last-Modified and
 /// check times to detect those changes; coalesce writes during cache warmup.
@@ -46,16 +42,12 @@ final class CoverRevalidationStore {
         }
     }
 
-    // MARK: - Queries
-
     func isDue(id: String, now: Date = Date(), ttl: TimeInterval = defaultTTL) -> Bool {
         guard let entry = entries[id] else { return true }
         return now.timeIntervalSince(entry.lastChecked) >= ttl
     }
 
     func lastModified(for id: String) -> String? { entries[id]?.lastModified }
-
-    // MARK: - Mutations
 
     /// Records the outcome of a check (or a fresh fetch): stores the server's `Last-Modified` and
     /// resets the timer. Passing `nil` for `lastModified` keeps whatever was there.
@@ -88,8 +80,6 @@ final class CoverRevalidationStore {
         pendingSave = nil
         saveNow()
     }
-
-    // MARK: - Persistence
 
     private func scheduleSave() {
         guard pendingSave == nil else { return }

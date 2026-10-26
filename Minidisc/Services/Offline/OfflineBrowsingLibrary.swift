@@ -84,7 +84,7 @@ actor OfflineBrowsingReader {
             return (tracks.filter { validDownloads.contains($0.songId) }.map { DisplayableSong(from: $0) },
                     lists.map { Playlist(id: $0.playlistId, name: $0.name, songCount: $0.tracksCount,
                                          duration: 0, coverArt: $0.coverArtId) },
-                    Dictionary(lists.map { ($0.playlistId, $0.songIds) }, uniquingKeysWith: { first, _ in first }))
+                    Dictionary(lists.filter { !$0.songIds.isEmpty || $0.totalTracksCount == 0 }.map { ($0.playlistId, $0.songIds) }, uniquingKeysWith: { first, _ in first }))
         }
         let saved = try await favorites.snapshot(serverID: serverID)
         var automatic: [DisplayableSong] = []
@@ -98,7 +98,7 @@ actor OfflineBrowsingReader {
         var members = membership
         for playlist in indexedPlaylists {
             try Task.checkCancellation()
-            if members[playlist.id]?.isEmpty != false, let detail = try await index.playlist(id: playlist.id, serverID: serverID) {
+            if members[playlist.id] == nil, let detail = try await index.playlist(id: playlist.id, serverID: serverID) {
                 members[playlist.id] = (detail.playlist.entry ?? []).map(\.id)
             }
         }

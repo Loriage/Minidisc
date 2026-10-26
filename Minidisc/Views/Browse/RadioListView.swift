@@ -76,8 +76,6 @@ struct RadioListView: View {
     }
 }
 
-// MARK: - Row
-
 private struct RadioStationRow: View {
     let station: InternetRadioStation
 

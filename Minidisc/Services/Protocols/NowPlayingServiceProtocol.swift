@@ -1,6 +1,5 @@
 import Foundation
 
-/// Owns system Now Playing metadata and remote commands.
 protocol NowPlayingServiceProtocol: AnyObject, Sendable {
     func start() async
 
@@ -15,9 +14,6 @@ protocol NowPlayingServiceProtocol: AnyObject, Sendable {
 
     func update(with snapshot: NowPlayingSnapshot) async
 
-    /// Merges elapsed time, rate, and duration into the existing nowPlayingInfo dict without
-    /// touching title, artist, or artwork. Called on every periodic tick to prevent iOS
-    /// extrapolation drift on the lock screen.
     func pushPosition(
         elapsed: TimeInterval,
         rate: Float,

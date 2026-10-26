@@ -3,8 +3,6 @@ import SwiftData
 import SwiftSonic
 import OSLog
 
-// MARK: - Selection model
-
 /// Shared selection across the navigation stack. Existing playlist tracks are excluded.
 @MainActor
 @Observable
@@ -38,8 +36,6 @@ final class AddMusicSelection {
     }
 }
 
-// MARK: - Navigation routes
-
 enum AddMusicRoute: Hashable {
     case allAlbums
     case allArtists
@@ -57,8 +53,6 @@ enum AddMusicSongSource: Hashable {
     case playlist(id: String)
     case favorites
 }
-
-// MARK: - Sheet root
 
 /// The caller must confirm the append succeeded before the selection is discarded.
 struct AddMusicSheet: View {
@@ -108,8 +102,6 @@ struct AddMusicSheet: View {
         }
         .environment(selection)
     }
-
-    // MARK: Root (Home "Library" layout, browse-only)
 
     private var libraryRoot: some View {
         ScrollView {
@@ -179,8 +171,6 @@ struct AddMusicSheet: View {
     }
 }
 
-// MARK: - Library row
-
 private struct AddMusicLibraryRow: View {
     let title: String
     let systemImage: String
@@ -212,8 +202,6 @@ private struct AddMusicLibraryRow: View {
         .buttonStyle(.plain)
     }
 }
-
-// MARK: - Song row (the leaf: tap `+` to select)
 
 private struct AddMusicSongRow: View {
     let song: DisplayableSong
@@ -259,8 +247,6 @@ private struct AddMusicSongRow: View {
         }
     }
 }
-
-// MARK: - Song picker (leaf list for album / artist-all / playlist / favorites)
 
 private struct AddMusicSongPicker: View {
     let source: AddMusicSongSource
@@ -316,8 +302,6 @@ private struct AddMusicSongPicker: View {
     }
 }
 
-// MARK: - Album list (full library drill-in)
-
 private struct AddMusicAlbumList: View {
     @Environment(\.appContainer) private var container
     @State private var albums: [AlbumID3] = []
@@ -353,8 +337,6 @@ private struct AddMusicAlbumList: View {
         }
     }
 }
-
-// MARK: - Recent shelves (paged carousel, 4 song rows per page)
 
 private enum AddMusicRecentFeed: Hashable { case recentlyAdded, recentlyPlayed }
 
@@ -434,8 +416,6 @@ private struct AddMusicSongShelf: View {
         }
     }
 }
-
-// MARK: - Artist list -> artist albums -> album songs
 
 private struct AddMusicArtistList: View {
     @Environment(\.appContainer) private var container
@@ -527,8 +507,6 @@ private struct AddMusicArtistAlbumList: View {
     }
 }
 
-// MARK: - Playlist list -> playlist songs
-
 private struct AddMusicPlaylistList: View {
     @Environment(\.appContainer) private var container
     @State private var playlists: [Playlist] = []
@@ -566,8 +544,6 @@ private struct AddMusicPlaylistList: View {
     }
 }
 
-// MARK: - Downloads (offline SwiftData source)
-
 private struct AddMusicDownloadsList: View {
     @Environment(AddMusicSelection.self) private var selection
     @Query(sort: \DownloadedTrack.title) private var tracks: [DownloadedTrack]
@@ -596,8 +572,6 @@ private struct AddMusicDownloadsList: View {
         .navigationBarTitleDisplayModeInline()
     }
 }
-
-// MARK: - Search results
 
 private struct AddMusicSearchResults: View {
     let query: String
@@ -661,8 +635,6 @@ private struct AddMusicSearchResults: View {
     }
 }
 
-// MARK: - Shared row + phase helpers
-
 private struct AddMusicCoverRow: View {
     let coverArtId: String
     let title: String
@@ -707,8 +679,6 @@ private struct AddMusicPhaseView: View {
         }
     }
 }
-
-// MARK: - Commit (reconciled append and first-track cover derivation)
 
 /// Reads the playlist before appending so retries preserve duplicates and intervening edits.
 @MainActor

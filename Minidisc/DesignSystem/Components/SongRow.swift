@@ -5,10 +5,6 @@ nonisolated enum SongRowTrailingAccessory: Sendable, Equatable {
     case menu
 }
 
-/// Standard track cell for album and playlist detail screens.
-///
-/// - `showCoverArt`: show a 44pt thumbnail (useful in playlist context where tracks
-///   may come from different albums). Default `false` for album tracks.
 struct SongRow: View {
     let song: DisplayableSong
     let index: Int

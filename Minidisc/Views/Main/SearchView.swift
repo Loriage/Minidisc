@@ -216,7 +216,6 @@ struct SearchView: View {
         }
     }
 
-    // MARK: - Local (downloads) results
     // Keep this Query below the navigation owner so updates cannot recreate destinations.
 
     private struct LocalSearchResultsSection: View {
@@ -330,7 +329,7 @@ struct SearchView: View {
         @Query private var allFavorites: [FavoriteRecord]
 
         private var favoriteSongIds: Set<String> {
-            Set(allFavorites.map(\.id))
+            Set(allFavorites.filter { $0.serverId == container?.serverState.activeServer?.id && $0.itemType == "song" }.map(\.itemId))
         }
 
         var body: some View {
@@ -341,7 +340,7 @@ struct SearchView: View {
                             song: song,
                             index: index + 1,
                             showCoverArt: true,
-                            isFavorite: favoriteSongIds.contains("song:\(song.id)"),
+                            isFavorite: favoriteSongIds.contains(song.id),
                             onAddToPlaylist: { s in onAddToPlaylist(s) }
                         )
                         .contentShape(Rectangle())
@@ -362,8 +361,6 @@ struct SearchView: View {
             }
         }
     }
-
-    // MARK: - Search history list
 
     private struct SearchHistoryListView: View {
         let serverId: String
@@ -462,8 +459,6 @@ struct SearchView: View {
             }
         }
     }
-
-    // MARK: - History recording wrapper
 
     private struct HistoryRecordingView<Content: View>: View {
         let action: () async -> Void

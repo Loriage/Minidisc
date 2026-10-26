@@ -21,8 +21,6 @@ nonisolated enum ReplayGainService {
         )
     }
 
-    // MARK: - Gain computation
-
     nonisolated static func computeGain(
         enabled: Bool,
         mode: ReplayGainMode,
@@ -111,8 +109,6 @@ nonisolated enum ReplayGainService {
         return value
     }
 }
-
-// MARK: - Comparable clamping helper
 
 fileprivate extension Comparable {
     nonisolated func clamped(to range: ClosedRange<Self>) -> Self {

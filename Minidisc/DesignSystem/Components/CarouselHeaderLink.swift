@@ -74,7 +74,6 @@ struct MinidiscCarouselHeader: View {
     }
 }
 
-/// A shelf title that becomes a full-width navigation link when the shelf has hidden content.
 struct MinidiscCarouselHeaderLink<Destination: View>: View {
     private let title: Text
     private let horizontalPadding: CGFloat

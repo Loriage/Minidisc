@@ -2,8 +2,6 @@ import Testing
 import Foundation
 @testable import Minidisc
 
-// MARK: - Helpers
-
 @MainActor
 private final class VMTransport: ListenBrainzTransport {
     private var queue: [(Data, HTTPURLResponse)] = []
@@ -58,12 +56,8 @@ private func makeComponents() -> (ListenBrainzSettingsViewModel, VMTransport, St
     return (vm, transport, defaultsSuiteName)
 }
 
-// MARK: - Tests
-
 @Suite("ListenBrainzSettingsViewModel")
 struct ListenBrainzSettingsViewModelTests {
-
-    // MARK: validateUsernameInputLocally
 
     @Test("valid username clears validation error")
     @MainActor func validUsernameInputClearsError() {
@@ -105,8 +99,6 @@ struct ListenBrainzSettingsViewModelTests {
         #expect(vm.usernameInputValidationError != nil)
     }
 
-    // MARK: connect
-
     @Test("connect with 200 enables integration")
     @MainActor func connectSucceeds() async {
         let (vm, transport, _) = makeComponents()
@@ -133,8 +125,6 @@ struct ListenBrainzSettingsViewModelTests {
         #expect(vm.isProcessing == false)
     }
 
-    // MARK: disconnect
-
     @Test("disconnect disables after a successful connect")
     @MainActor func disconnectDisables() async {
         let (vm, transport, _) = makeComponents()
@@ -147,8 +137,6 @@ struct ListenBrainzSettingsViewModelTests {
         #expect(vm.snapshot.isEnabled == false)
         #expect(vm.isProcessing == false)
     }
-
-    // MARK: resetCredentials
 
     @Test("resetCredentials wipes username and snapshot")
     @MainActor func resetCredentialsClearsState() async {
@@ -164,8 +152,6 @@ struct ListenBrainzSettingsViewModelTests {
         #expect(vm.snapshot.isEnabled == false)
         #expect(vm.isProcessing == false)
     }
-
-    // MARK: Canary — username must not appear in userFacingError
 
     @Test("userFacingError never exposes canary username (404)")
     @MainActor func canaryNotInUserNotFoundError() async {

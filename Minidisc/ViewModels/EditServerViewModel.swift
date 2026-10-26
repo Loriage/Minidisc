@@ -31,7 +31,7 @@ final class EditServerViewModel {
         serverURL.lowercased().hasPrefix("http://")
     }
 
-    private let serverId: UUID
+    private var serverId: UUID
     private var initialURL: String
     private var initialUsername: String
     private var initialPassword: String = ""
@@ -101,6 +101,7 @@ final class EditServerViewModel {
                 password: password,
                 customHeaders: headers
             )
+            serverId = try await serverService.activeConnection().version.serverID
             initialURL = trimmedURL
             initialUsername = username
             initialPassword = password
@@ -117,8 +118,6 @@ final class EditServerViewModel {
     func removeCustomHeader(id: UUID) {
         customHeaders.removeAll { $0.id == id }
     }
-
-    // MARK: - Private
 
     var redactedDescription: String {
         "EditServerViewModel(username: \(username), password: [REDACTED], customHeaders: [REDACTED])"

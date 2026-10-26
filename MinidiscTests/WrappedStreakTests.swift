@@ -3,8 +3,6 @@ import Foundation
 import SwiftData
 @testable import Minidisc
 
-// MARK: - Helpers
-
 private func makeService() throws -> StatsService {
     let container = try ModelContainer.minidisc(inMemory: true)
     return StatsService(modelContainer: container)
@@ -58,8 +56,6 @@ private func makeDTO(
         serverId: serverId
     )
 }
-
-// MARK: - Suite
 
 /// Streak tests use a fixed past period so "today" is always outside the
 /// period range — this makes the reference day deterministic without

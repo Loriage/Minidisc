@@ -605,8 +605,6 @@ actor LibraryIndexStore {
         try modelContainer.erase()
     }
 
-    /// Clears metadata after a server endpoint or account changes while allowing
-    /// the stable configuration ID to be indexed again.
     func resetServer(_ serverID: UUID) throws {
         removedServerIDs.remove(serverID)
         try purge(serverID)

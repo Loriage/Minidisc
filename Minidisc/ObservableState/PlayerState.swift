@@ -2,7 +2,6 @@ import Foundation
 import Observation
 import SwiftSonic
 
-/// UI playback state, updated by PlayerService on MainActor.
 @Observable
 @MainActor
 final class PlayerState {
@@ -61,9 +60,6 @@ final class PlayerState {
     /// True when the current playback session was started via Smart Shuffle.
     /// Survives skips and pauses; resets on new explicit play, radio, stop, or cold start.
     var isSmartShuffleActive: Bool = false
-    /// User preference: when enabled, the player automatically appends a fresh smart shuffle batch
-    /// when ≤15 tracks remain. Suppressed by loop mode and live stream mode. AppContainer loads the
-    /// persisted initial value from PlaybackPreferences.
     var isAutoExtendEnabled: Bool
     /// Index separating requested tracks from the auto-extended tail; nil means no extension.
     var originalQueueEndIndex: Int?
@@ -93,8 +89,6 @@ final class PlayerState {
             self.waitingMessageTask = nil
         }
     }
-
-    // MARK: - Derived UI state
 
     var queueIcon: (symbolName: String, isActiveMode: Bool) {
         if repeatMode == .one    { return ("repeat.1", true) }

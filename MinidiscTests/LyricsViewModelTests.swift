@@ -4,8 +4,6 @@ import SwiftData
 import SwiftSonic
 @testable import Minidisc
 
-// MARK: - Mocks
-
 @MainActor
 final class MockPlayerService: PlayerServiceProtocol {
     let state: PlayerState = PlayerState()
@@ -44,8 +42,6 @@ final class MockPlayerService: PlayerServiceProtocol {
     func crossfadeSettingsDidChange() async {}
     nonisolated func stopAudioEngineSync() {}
 }
-
-// MARK: - Helpers
 
 @MainActor
 private func makeViewModel(
@@ -95,7 +91,8 @@ private func makeViewModel(
         source: .navidrome,
         lyricsService: service,
         playerService: playerService,
-        playerState: playerState
+        playerState: playerState,
+        resumeDelay: .milliseconds(1)
     )
     return (vm, playerService)
 }
@@ -121,8 +118,6 @@ private func multiLanguageList() -> LyricsList {
         StructuredLyrics(lang: "fr", synced: false, line: [Line(value: "Bonjour")])
     ])
 }
-
-// MARK: - update(elapsedMs:)
 
 @Suite("LyricsViewModel — update(elapsedMs:)")
 @MainActor
@@ -179,8 +174,6 @@ struct LyricsViewModelUpdateTests {
     }
 }
 
-// MARK: - userTapped(lineIndex:)
-
 @Suite("LyricsViewModel — userTapped(lineIndex:)")
 @MainActor
 struct LyricsViewModelSeekTests {
@@ -190,7 +183,7 @@ struct LyricsViewModelSeekTests {
         let (vm, playerService) = try makeViewModel(serverId: id, lyrics: syncedList())
         await vm.load()
 
-        vm.userTapped(lineIndex: 1) // start=1000ms, offset=0 → 1.0s
+        vm.userTapped(lineIndex: 1)
         try await Task.sleep(for: .milliseconds(50))
         #expect(playerService.seekCalledWith == 1.0)
     }
@@ -200,7 +193,7 @@ struct LyricsViewModelSeekTests {
         let (vm, playerService) = try makeViewModel(serverId: id, lyrics: syncedList(offset: 200))
         await vm.load()
 
-        vm.userTapped(lineIndex: 0) // start=0, offset=200 → (0+200)/1000 = 0.2s
+        vm.userTapped(lineIndex: 0)
         try await Task.sleep(for: .milliseconds(50))
         #expect(playerService.seekCalledWith == 0.2)
     }
@@ -229,8 +222,6 @@ struct LyricsViewModelSeekTests {
     }
 }
 
-// MARK: - Auto-scroll
-
 @Suite("LyricsViewModel — auto-scroll")
 @MainActor
 struct LyricsViewModelScrollTests {
@@ -242,21 +233,15 @@ struct LyricsViewModelScrollTests {
         #expect(vm.isUserScrolling == true)
     }
 
-    @Test func isUserScrolling_resetAfter5Seconds() async throws {
+    @Test func isUserScrolling_resetsWhenResumeTaskFinishes() async throws {
         let (vm, _) = try makeViewModel()
         vm.userStartedScrolling()
         #expect(vm.isUserScrolling == true)
 
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(10))
-        while vm.isUserScrolling, clock.now < deadline {
-            try await Task.sleep(for: .milliseconds(100))
-        }
+        await vm.resumeTask?.value
         #expect(vm.isUserScrolling == false)
     }
 }
-
-// MARK: - Language selection
 
 @Suite("LyricsViewModel — selectLanguage")
 @MainActor
@@ -294,8 +279,6 @@ struct LyricsViewModelLanguageTests {
         #expect(vm.state == stateBefore)
     }
 }
-
-// MARK: - load() — availableLanguages and auto-pick
 
 @Suite("LyricsViewModel — load()")
 @MainActor

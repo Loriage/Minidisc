@@ -81,6 +81,7 @@ struct PlaylistDetailView: View {
     @State private var localCoverId: String?
     @State private var showThemeColorSheet = false
     @State private var sortOrder: PlaylistSortOrder = .playlistOrder
+    @State private var isDismissing = false
     @State private var showDeleteAlert = false
     @State private var showAddMusic = false
 
@@ -91,8 +92,8 @@ struct PlaylistDetailView: View {
     @State private var isEditing = false
     @State private var editName: String = ""
     @State private var editComment: String = ""
-    @State private var editSongs: [DisplayableSong] = []
-    @State private var selectedSongIds: Set<String> = []
+    @State private var editSongs: [PlaylistEntry] = []
+    @State private var selectedSongIds: Set<PlaylistEntry.ID> = []
     @State private var selectedGradient: PlaylistGradientShape?
     @State private var photoIsCover = false
     @State private var coverDirty = false
@@ -143,29 +144,29 @@ struct PlaylistDetailView: View {
 
     /// The order the list and playback follow. Purely local — the stored order is untouched, so edit / remove
     /// keep working against the real positions.
-    private func sortedSongs(_ songs: [DisplayableSong]) -> [DisplayableSong] {
+    private func sortedEntries(_ songs: [DisplayableSong]) -> [PlaylistEntry] {
+        let entries = PlaylistEntry.make(songs)
         switch sortOrder {
-        case .playlistOrder:
-            return songs
-        case .title:
-            return songs.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
-        case .artist:
-            return songs.sorted { ($0.artist ?? "").localizedStandardCompare($1.artist ?? "") == .orderedAscending }
-        case .album:
-            return songs.sorted { ($0.albumName ?? "").localizedStandardCompare($1.albumName ?? "") == .orderedAscending }
+        case .playlistOrder: return entries
+        case .title: return entries.sorted { $0.song.title.localizedStandardCompare($1.song.title) == .orderedAscending }
+        case .artist: return entries.sorted { ($0.song.artist ?? "").localizedStandardCompare($1.song.artist ?? "") == .orderedAscending }
+        case .album: return entries.sorted { ($0.song.albumName ?? "").localizedStandardCompare($1.song.albumName ?? "") == .orderedAscending }
         }
     }
 
-    private func playSongs(_ requested: [DisplayableSong], startIndex: Int) async {
+    private func sortedSongs(_ songs: [DisplayableSong]) -> [DisplayableSong] {
+        sortedEntries(songs).map(\.song)
+    }
+
+    private func playSongs(_ requested: [PlaylistEntry], startIndex: Int) async {
         guard requested.indices.contains(startIndex), let vm = viewModel, let container else { return }
         let selectedID = requested[startIndex].id
         do {
             try await container.playerService.play(preparingQueue: {
-                let refreshed = await vm.playbackSongs(from: requested)
-                guard let index = refreshed.firstIndex(where: { $0.id == selectedID }) else {
+                guard let queue = await vm.playbackQueue(entries: requested, selectedID: selectedID) else {
                     throw UserFacingError.contentRemoved
                 }
-                return PreparedPlaybackQueue(tracks: refreshed, startIndex: index)
+                return queue
             })
         } catch {
             if !UserFacingError.isCancellation(error), !vm.isRemovedFromServer {
@@ -203,7 +204,8 @@ struct PlaylistDetailView: View {
             } else if isEditing {
                 editableSongRows
             } else if let vm = viewModel {
-                let songs = sortedSongs(resolvedSongs(vm))
+                let entries = sortedEntries(resolvedSongs(vm))
+                let songs = entries.map(\.song)
                 if vm.isRemovedFromServer {
                     VStack(alignment: .leading, spacing: MinidiscSpacing.s) {
                         Label("Playlist removed from server", systemImage: "music.note.list")
@@ -240,24 +242,24 @@ struct PlaylistDetailView: View {
                     )
                     .listRowSeparator(.hidden)
                     .listRowBackground(bodyColor)
-                } else {
-                    let serverId = container?.serverState.activeServer?.id ?? UUID()
+                } else if let serverId = container?.serverState.activeServer?.id {
                     // Rows are displayed in the sorted order, the view model removes by stored position.
-                    let removeTrack: ((Int) -> Void)? = vm.isOffline ? nil : { index in
-                        guard songs.indices.contains(index) else { return }
-                        let song = songs[index]
-                        guard let stored = resolvedSongs(vm).firstIndex(where: { $0.id == song.id }) else { return }
-                        Task { await vm.removeTrack(at: stored) }
+                    let removeTracks: ((IndexSet) -> Void)? = (vm.isOffline || vm.isMutatingTracks) ? nil : { indices in
+                        guard indices.allSatisfy({ entries.indices.contains($0) }) else { return }
+                        let stored = IndexSet(indices.map { entries[$0].sourceIndex })
+                        let expected = resolvedSongs(vm).map(\.id)
+                        Task { await vm.removeTracks(at: stored, expectedSongIDs: expected) }
                     }
                     PlaylistSongRows(
                         songs: songs,
+                        entries: entries,
                         serverId: serverId,
                         downloadingIds: vm.downloadingIds,
                         titleColor: headerTextColor,
                         secondaryColor: headerSecondaryColor,
                         onTap: { index in
                             Task {
-                                await playSongs(songs, startIndex: index)
+                                await playSongs(entries, startIndex: index)
                             }
                         },
                         onDownload: (vm.isOffline || vm.isDownloadingPlaylist) ? nil : { songId in
@@ -266,8 +268,8 @@ struct PlaylistDetailView: View {
                         onRemoveDownload: { songId in
                             Task { await container?.toastService.perform { try await container?.downloadService.remove(songId: songId, serverId: serverId) } }
                         },
-                        onRemove: removeTrack,
-                        onContextRemove: removeTrack,
+                        onRemove: removeTracks,
+                        onContextRemove: removeTracks.map { remove in { remove(IndexSet(integer: $0)) } },
                         onAddToPlaylist: playlistAddition.present,
                         rowBackground: bodyColor,
                         trailingAccessory: .menu
@@ -425,9 +427,8 @@ struct PlaylistDetailView: View {
             await loadCoverAppearance()
         }
         .minidiscZoomTransition(sourceID: zoomSourceId, in: zoomNamespace)
+        .onAppear { isDismissing = false }
     }
-
-    // MARK: - Toolbar
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
@@ -462,7 +463,7 @@ struct PlaylistDetailView: View {
         } else {
             ToolbarItem(placement: .navigation) {
                 Button("Back", systemImage: "chevron.left") {
-                    dismiss()
+                    dismissOnce()
                 }
                 .tint(.primary)
             }
@@ -474,7 +475,7 @@ struct PlaylistDetailView: View {
                         }
                         .disabled(container?.serverState.isOnline != true || sortedSongs(resolvedSongs(viewModel)).isEmpty)
                         Divider()
-                        let canEdit = container?.serverState.isOnline == true && viewModel?.playlistDetail != nil
+                        let canEdit = container?.serverState.isOnline == true && viewModel?.playlistDetail != nil && viewModel?.isMutatingTracks == false
                         Button("Add Music", systemImage: "plus") {
                             showAddMusic = true
                         }
@@ -576,8 +577,6 @@ struct PlaylistDetailView: View {
         return .partiallyDownloaded(downloaded: downloaded, total: total)
     }
 
-    // MARK: - In-place edit header (iOS in-place editor; reuses the validated carousel + fields)
-
     private var editHeader: some View {
         VStack(spacing: MinidiscSpacing.xl) {
             editCoverCarousel
@@ -641,7 +640,7 @@ struct PlaylistDetailView: View {
     private func enterEdit() {
         editName = viewModel?.name ?? initialName
         editComment = viewModel?.playlistDetail?.comment ?? ""
-        editSongs = resolvedSongs(viewModel)
+        editSongs = PlaylistEntry.make(resolvedSongs(viewModel))
         selectedSongIds = []
         selectedGradient = nil
         photoIsCover = false
@@ -666,12 +665,12 @@ struct PlaylistDetailView: View {
         let currentComment = viewModel?.playlistDetail?.comment ?? ""
         let commentChanged = trimmedComment != currentComment.trimmingCharacters(in: .whitespacesAndNewlines)
         let originalSongs = resolvedSongs(viewModel)
-        let songsChanged = editSongs.map(\.id) != originalSongs.map(\.id)
+        let songsChanged = editSongs.map(\.song.id) != originalSongs.map(\.id)
 
         let nameChanged = !trimmedName.isEmpty && trimmedName != currentName.trimmingCharacters(in: .whitespacesAndNewlines)
         let edits = PlaylistEdits(
             name: nameChanged ? trimmedName : nil,
-            orderedSongIDs: songsChanged ? editSongs.map(\.id) : nil,
+            orderedSongIDs: songsChanged ? editSongs.map(\.song.id) : nil,
             description: songsChanged || commentChanged ? trimmedComment : nil
         )
         guard await c.toastService.perform({
@@ -687,7 +686,7 @@ struct PlaylistDetailView: View {
         }
         await AddMusicCommitter.deriveFirstTrackCoverIfNeeded(
             wasEmpty: originalSongs.isEmpty,
-            firstSong: editSongs.first,
+            firstSong: editSongs.first?.song,
             playlistId: playlistId,
             playlistName: editName,
             coverArtId: effectiveCoverArtId,
@@ -735,13 +734,11 @@ struct PlaylistDetailView: View {
         }
     }
 
-    // MARK: - Editable track list
-
     @ViewBuilder
     private var editableSongRows: some View {
-        ForEach(editSongs) { song in
-            editTrackRow(song)
-                .tag(song.id)
+        ForEach(editSongs) { entry in
+            editTrackRow(entry.song)
+                .tag(entry.id)
                 .listRowBackground(bodyColor)
         }
         .onMove { from, to in
@@ -773,12 +770,18 @@ struct PlaylistDetailView: View {
         selectedSongIds.removeAll()
     }
 
+    private func dismissOnce() {
+        guard !isDismissing else { return }
+        isDismissing = true
+        dismiss()
+    }
+
     private func deletePlaylistInPlace(purgeDownloads: Bool) async {
         guard let c = container else { return }
         do {
             try await c.playlistService.deletePlaylist(id: playlistId, purgeDownloads: purgeDownloads)
             postPlaylistDeleted()
-            dismiss()
+            dismissOnce()
         } catch {
             Logger.playlist.error("PlaylistDetailView: in-place delete failed: \(error, privacy: .public)")
             c.toastService.showError("Failed to delete playlist")
@@ -799,8 +802,6 @@ struct PlaylistDetailView: View {
             imageToCrop = CroppableImage(image: image)
         }
     }
-
-    // MARK: - Header
 
     private func playlistHeader(vm: PlaylistDetailViewModel?) -> some View {
         VStack(spacing: 0) {
@@ -824,15 +825,15 @@ struct PlaylistDetailView: View {
                     downloadControl: downloadControl(for: vm),
                     onPlay: {
                         Task {
-                            let songs = sortedSongs(resolvedSongs(vm))
-                            guard !songs.isEmpty else { return }
-                            await playSongs(songs, startIndex: 0)
+                            let entries = sortedEntries(resolvedSongs(vm))
+                            guard !entries.isEmpty else { return }
+                            await playSongs(entries, startIndex: 0)
                         }
                     },
                     onShuffle: {
                         HapticFeedback.medium.trigger()
                         Task {
-                            let shuffled = resolvedSongs(vm).shuffled()
+                            let shuffled = PlaylistEntry.make(resolvedSongs(vm)).shuffled()
                             guard !shuffled.isEmpty else { return }
                             await playSongs(shuffled, startIndex: 0)
                         }
@@ -840,8 +841,8 @@ struct PlaylistDetailView: View {
                     onDownload: { performDownloadAction() }
                 )
 
-                if let vm, vm.isDownloadingPlaylist {
-                    let serverId = container?.serverState.activeServer?.id ?? UUID()
+                if let vm, vm.isDownloadingPlaylist,
+                   let serverId = container?.serverState.activeServer?.id {
                     PlaylistDownloadProgressView(
                         songs: vm.songs,
                         total: vm.songs.count,
@@ -886,15 +887,11 @@ struct PlaylistDetailView: View {
 
 }
 
-// MARK: - Download state
-
 private nonisolated enum PlaylistDownloadState {
     case notDownloaded
     case partiallyDownloaded(downloaded: Int, total: Int)
     case fullyDownloaded
 }
-
-// MARK: - Download progress sub-view
 
 private struct PlaylistDownloadProgressView: View {
     let songs: [DisplayableSong]
@@ -939,9 +936,8 @@ private struct PlaylistDownloadProgressView: View {
     }
 }
 
-// MARK: - Live download indicator rows
-
 struct PlaylistSongRows: View {
+    let entries: [PlaylistEntry]
     let songs: [DisplayableSong]
     let downloadingIds: Set<String>
     let titleColor: Color
@@ -949,7 +945,7 @@ struct PlaylistSongRows: View {
     let onTap: (Int) -> Void
     let onDownload: ((String) -> Void)?
     let onRemoveDownload: ((String) -> Void)?
-    let onRemove: ((Int) -> Void)?
+    let onRemove: ((IndexSet) -> Void)?
     let onReorder: ((IndexSet, Int) -> Void)?
     let onContextRemove: ((Int) -> Void)?
     let onAddToPlaylist: ((DisplayableSong) -> Void)?
@@ -962,11 +958,12 @@ struct PlaylistSongRows: View {
     @Query private var allFavorites: [FavoriteRecord]
 
     private var favoriteSongIds: Set<String> {
-        Set(allFavorites.map(\.id))
+        Set(allFavorites.filter { $0.itemType == "song" }.map(\.itemId))
     }
 
-    init(songs: [DisplayableSong], serverId: UUID, downloadingIds: Set<String> = [], titleColor: Color = .primary, secondaryColor: Color = .secondary, onTap: @escaping (Int) -> Void, onDownload: ((String) -> Void)? = nil, onRemoveDownload: ((String) -> Void)? = nil, onRemove: ((Int) -> Void)? = nil, onReorder: ((IndexSet, Int) -> Void)? = nil, onContextRemove: ((Int) -> Void)? = nil, onAddToPlaylist: ((DisplayableSong) -> Void)? = nil, rowBackground: Color? = nil, trailingAccessory: SongRowTrailingAccessory = .duration) {
+    init(songs: [DisplayableSong], entries: [PlaylistEntry]? = nil, serverId: UUID, downloadingIds: Set<String> = [], titleColor: Color = .primary, secondaryColor: Color = .secondary, onTap: @escaping (Int) -> Void, onDownload: ((String) -> Void)? = nil, onRemoveDownload: ((String) -> Void)? = nil, onRemove: ((IndexSet) -> Void)? = nil, onReorder: ((IndexSet, Int) -> Void)? = nil, onContextRemove: ((Int) -> Void)? = nil, onAddToPlaylist: ((DisplayableSong) -> Void)? = nil, rowBackground: Color? = nil, trailingAccessory: SongRowTrailingAccessory = .duration) {
         self.songs = songs
+        self.entries = entries ?? PlaylistEntry.make(songs)
         self.downloadingIds = downloadingIds
         self.titleColor = titleColor
         self.secondaryColor = secondaryColor
@@ -980,6 +977,7 @@ struct PlaylistSongRows: View {
         self.rowBackground = rowBackground
         self.trailingAccessory = trailingAccessory
         let sid = serverId
+        _allFavorites = Query(filter: #Predicate<FavoriteRecord> { $0.serverId == sid })
         _downloadedTracks = Query(
             filter: #Predicate<DownloadedTrack> { track in
                 track.serverId == sid
@@ -993,19 +991,19 @@ struct PlaylistSongRows: View {
 
     var body: some View {
         if let removeAction = onRemove {
-            ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
-                makeRow(index: index, song: song)
+            ForEach(entries.enumerated(), id: \.element.id) { index, entry in
+                makeRow(index: index, song: entry.song)
                     .listRowBackground(rowBackground)
             }
             .onDelete { indexSet in
-                for index in indexSet.sorted(by: >) { removeAction(index) }
+                removeAction(indexSet)
             }
             .onMove { source, destination in
                 onReorder?(source, destination)
             }
         } else {
-            ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
-                makeRow(index: index, song: song)
+            ForEach(entries.enumerated(), id: \.element.id) { index, entry in
+                makeRow(index: index, song: entry.song)
                     .listRowBackground(rowBackground)
             }
         }
@@ -1025,7 +1023,7 @@ struct PlaylistSongRows: View {
             coverArtSize: trailingAccessory == .menu ? 48 : 44,
             coverArtCornerRadius: trailingAccessory == .menu ? MinidiscCornerRadius.xs : MinidiscCornerRadius.standard,
             primaryContentSpacing: trailingAccessory == .menu ? MinidiscSpacing.m : MinidiscSpacing.s,
-            isFavorite: favoriteSongIds.contains("song:\(song.id)"),
+            isFavorite: favoriteSongIds.contains(song.id),
             titleColor: titleColor,
             secondaryColor: secondaryColor,
             trailingAccessory: trailingAccessory,

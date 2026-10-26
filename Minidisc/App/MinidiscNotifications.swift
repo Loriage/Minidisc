@@ -1,15 +1,9 @@
 import Foundation
 
-func postNavigateToAlbum(track: DisplayableSong) {
-    guard let albumId = track.albumId else { return }
+func postNavigateToAlbum(_ album: PlayerAlbumDestination) {
     NotificationCenter.default.post(
         name: .minidiscNavigateToAlbum,
-        object: nil,
-        userInfo: [
-            "albumId":   albumId,
-            "albumName": track.albumName ?? "",
-            "coverArtId": track.coverArtId as Any
-        ]
+        object: album
     )
 }
 

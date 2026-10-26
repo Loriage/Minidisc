@@ -371,7 +371,6 @@ private struct TrackInfoSection: View {
 
     @Query private var favoriteMatches: [FavoriteRecord]
     @Environment(PlaylistAddition.self) private var playlistAddition
-    @State private var showAlbumSheet = false
     @State private var shareRequest: DisplayableSong?
     @State private var preparedShare: PreparedTrackShare?
     @State private var trackInformation: DisplayableSong?
@@ -396,6 +395,13 @@ private struct TrackInfoSection: View {
 
     private var isFavorite: Bool { favoriteMatches.contains { $0.serverId == container?.serverState.activeServer?.id } }
     private var isOnline: Bool { container?.serverState.isOnline == true }
+
+    private var albumDestination: PlayerAlbumDestination? {
+        PlayerAlbumDestination(track: playerState.currentTrack,
+                               serverID: container?.serverState.activeServer?.id,
+                               isLiveStream: playerState.isLiveStream, isOnline: isOnline,
+                               offlineAlbumIDs: container?.offlineLibrary.snapshot.albumIDs ?? [])
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: MinidiscSpacing.m) {
@@ -446,15 +452,16 @@ private struct TrackInfoSection: View {
 
                         Divider()
                         Button {
-                            guard playerState.currentTrack?.albumId != nil else { return }
-                            showAlbumSheet = true
+                            guard let album = albumDestination else { return }
+                            postNavigateToAlbum(album)
                         } label: {
                             Label("Go to Album", systemImage: "music.note.square.stack")
                             if let albumName = playerState.currentTrack?.albumName, !albumName.isEmpty {
                                 Text(albumName)
                             }
                         }
-                        .disabled(playerState.currentTrack?.albumId == nil || !isOnline)
+                        .disabled(albumDestination == nil)
+                        .accessibilityIdentifier("player.goToAlbum")
                         Button {
                             goToArtist()
                         } label: {
@@ -505,15 +512,7 @@ private struct TrackInfoSection: View {
                 .buttonStyle(.plain)
                 .tint(.primary)
                 .accessibilityLabel("More options")
-            }
-        }
-        .sheet(isPresented: $showAlbumSheet) {
-            if let track = playerState.currentTrack,
-               let albumId = track.albumId,
-               let albumName = track.albumName {
-                NavigationStack {
-                    AlbumDetailView(albumId: albumId, albumName: albumName, coverArtId: track.coverArtId)
-                }
+                .accessibilityIdentifier("player.moreOptions")
             }
         }
         .sheet(item: $preparedShare) { share in

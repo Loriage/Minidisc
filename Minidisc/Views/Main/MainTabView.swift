@@ -9,10 +9,11 @@ struct MainTabView: View {
     @State private var discoverPath = NavigationPath()
     @SceneStorage("minidisc.selectedTab") private var selectedTab: AppTab = .home
     @State private var playerPresentation = PlayerContainerConfiguration()
+    @State private var albumNavigation = PlayerAlbumNavigation()
     @State private var playlistAddition = PlaylistAddition()
     @AppStorage("minidisc.appTheme") private var theme: AppTheme = .system
 
-    private enum AppTab: String, Hashable { case home, discover, library, lidarr, search }
+    private typealias AppTab = PlayerAlbumNavigation.Tab
 
     private var lidarrConnected: Bool { container?.lidarrSettings.isConnected == true }
 
@@ -50,13 +51,17 @@ struct MainTabView: View {
                 Tab("Home", image: "HomeTabIcon", value: AppTab.home) {
                     NavigationStack(path: $homePath) {
                         HomeView()
+                            .playerAlbumDestinations()
                     }
+                    .environment(\.albumNavigationContext, AlbumNavigationContext(navigation: albumNavigation, tab: .home))
                 }
 
                 Tab("Discover", systemImage: "square.grid.2x2.fill", value: AppTab.discover) {
                     NavigationStack(path: $discoverPath) {
                         DiscoverView()
+                            .playerAlbumDestinations()
                     }
+                    .environment(\.albumNavigationContext, AlbumNavigationContext(navigation: albumNavigation, tab: .discover))
                 }
 
             }
@@ -64,8 +69,9 @@ struct MainTabView: View {
             Tab("Library", systemImage: "music.note.square.stack.fill", value: AppTab.library) {
                 NavigationStack(path: $libraryPath) {
                     if container?.serverState.activeServer == nil { LocalMusicView() }
-                    else { LibraryView() }
+                    else { LibraryView().playerAlbumDestinations() }
                 }
+                .environment(\.albumNavigationContext, AlbumNavigationContext(navigation: albumNavigation, tab: .library))
             }
 
             if lidarrConnected {
@@ -82,9 +88,11 @@ struct MainTabView: View {
                 Tab(value: AppTab.search, role: .search) {
                     NavigationStack(path: $searchPath) {
                         SearchView(searchQuery: $searchText, path: $searchPath)
+                            .playerAlbumDestinations()
                             .navigationTitle("Search")
                             .toolbarTitleDisplayMode(.inlineLarge)
                     }
+                    .environment(\.albumNavigationContext, AlbumNavigationContext(navigation: albumNavigation, tab: .search))
                     .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always),
                                 prompt: "Artists, albums, songs, playlists…")
                 }
@@ -94,6 +102,7 @@ struct MainTabView: View {
         .accentColor(.minidiscAccent)
         .preferredColorScheme(theme.colorScheme)
         .onChange(of: container?.serverState.activeServer?.id) {
+            albumNavigation.reset()
             homePath = NavigationPath()
             libraryPath = NavigationPath()
             discoverPath = NavigationPath()
@@ -125,6 +134,25 @@ struct MainTabView: View {
             playerPresentation.reset()
             selectedTab = .home
             homePath.append(HomeDestination.artistById(id: id, name: name, coverArtId: coverArtId))
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .minidiscNavigateToAlbum)) { note in
+            guard let album = note.object as? PlayerAlbumDestination,
+                  let action = albumNavigation.action(for: album, from: selectedTab,
+                                                      activeServerID: container?.serverState.activeServer?.id) else { return }
+            playerPresentation.reset()
+            switch action {
+            case .reveal(let tab):
+                selectedTab = tab
+            case .push(let tab):
+                selectedTab = tab
+                switch tab {
+                case .home: homePath.append(album)
+                case .discover: discoverPath.append(album)
+                case .library: libraryPath.append(album)
+                case .search: searchPath.append(album)
+                case .lidarr: break // Lidarr resolves to Home before reaching this point.
+                }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .minidiscNavigateToPlaylist)) { note in
             guard let id   = note.userInfo?["playlistId"] as? String,

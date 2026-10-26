@@ -928,6 +928,90 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try await Task.sleep(for: .seconds(3))
     }
 
+    func testFixturePlayerAlbumNavigationPreservesTabAndBackStack() async throws {
+        try await openFixtureArtworkPlaylist()
+        try tap(app.buttons["playlist.detail.play"], named: "album-navigation-start-playback")
+        try require(app.buttons["Pause"].firstMatch, timeout: 8)
+        try openCurrentPlayer(title: firstTitle, named: "album-navigation-open-player")
+        let before = try playbackSeconds(searchElement("Position de lecture"))
+        try openAlbumFromPlayer()
+        XCTAssertTrue(app.tabBars.buttons["Accueil"].isSelected)
+
+        // Opening the same album again reveals the current page instead of adding a duplicate.
+        try openCurrentPlayer(title: firstTitle, named: "album-navigation-reopen-player")
+        XCTAssertGreaterThanOrEqual(try playbackSeconds(searchElement("Position de lecture")), before)
+        try await assertPlayheadAdvances()
+        try tap(app.buttons["Pause"].firstMatch, named: "album-navigation-pause")
+        try openAlbumFromPlayer()
+        try tapBack(named: "album-navigation-back-once")
+        XCTAssertEqual(searchElement("playlist.detail.title").label, "Escapade temporaire")
+
+        for tab in ["Bibliothèque", "Découvrir", "Recherche"] {
+            try tapTab(tab)
+            if tab == "Recherche" { try submitSearch("Matin tranquille") }
+            try openCurrentPlayer(title: firstTitle, named: "album-navigation-from-\(tab)")
+            try openAlbumFromPlayer()
+            XCTAssertTrue(app.tabBars.buttons[tab].isSelected)
+            XCTAssertFalse(app.buttons["Pause"].exists, "Navigation must preserve a user pause.")
+            try tapBack(named: "album-navigation-return-to-\(tab)")
+            if tab == "Recherche" {
+                XCTAssertEqual(app.searchFields.firstMatch.value as? String, "Matin tranquille")
+            } else {
+                try require(app.navigationBars[tab])
+            }
+        }
+        captureHierarchy("album-navigation-tabs-and-back-stack")
+    }
+
+    func testFixturePlayerAlbumNavigationOffline() async throws {
+        try await launchFixtureApp()
+        try tap(app.staticTexts["Escapade temporaire"].firstMatch, named: "offline-album-playlist")
+        try require(app.staticTexts[firstTitle].firstMatch, timeout: 10)
+        if app.buttons["Télécharger la playlist"].exists {
+            try tap(app.buttons["Télécharger la playlist"], named: "offline-album-download")
+        }
+        try require(app.buttons["Retirer le téléchargement"], timeout: 30)
+        try tap(app.buttons["playlist.detail.play"], named: "offline-album-start")
+        try require(app.buttons["Pause"].firstMatch, timeout: 8)
+        try tap(try visibleMiniPlayerButton("Pause"), named: "offline-album-pause")
+        try tapBack(named: "offline-album-return-home")
+        try setOfflineMode(true)
+        try tapTab("Bibliothèque")
+        try openCurrentPlayer(title: firstTitle, named: "offline-album-open-player")
+        try openAlbumFromPlayer()
+        XCTAssertTrue(app.tabBars.buttons["Bibliothèque"].isSelected)
+        try require(app.staticTexts[secondTitle].firstMatch, timeout: 10)
+        XCTAssertFalse(app.buttons["Pause"].exists)
+        captureHierarchy("album-navigation-downloaded-offline")
+        try tapBack(named: "offline-album-return-library")
+        try require(app.navigationBars["Bibliothèque"])
+        try tapTab("Accueil")
+        try setOfflineMode(false)
+    }
+
+    private func openAlbumFromPlayer() throws {
+        try tap(app.buttons["player.moreOptions"], named: "album-navigation-menu")
+        let action = app.buttons["player.goToAlbum"]
+        try require(action)
+        XCTAssertTrue(action.isEnabled)
+        try tap(action, named: "album-navigation-go")
+        XCTAssertTrue(app.buttons["Fermer le lecteur"].waitForNonExistence(timeout: 5))
+        try require(app.staticTexts["Horizons de test"].firstMatch, timeout: 10)
+        XCTAssertFalse(app.sheets.firstMatch.exists)
+    }
+
+    private func setOfflineMode(_ enabled: Bool) throws {
+        try tap(app.buttons["Réglages"], named: "album-navigation-settings")
+        try tap(app.buttons["Application"], named: "album-navigation-application-settings")
+        let toggle = app.switches["offline-mode-toggle"].firstMatch
+        try require(toggle)
+        if (toggle.value as? String == "1") != enabled {
+            try tap(toggle, named: "album-navigation-offline-toggle")
+        }
+        try tapBack(named: "album-navigation-settings-back")
+        try tap(app.buttons["Fermer"], named: "album-navigation-settings-close")
+    }
+
     func testFixturePlaylistMenuAndRowPlayback() async throws {
         try await openFixtureArtworkPlaylist()
         try tap(app.buttons["playlist.detail.play"], named: "playlist-detail-start-first-song")

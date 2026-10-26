@@ -73,3 +73,10 @@ the selected track. `testFixturePlaylistFeaturedArtistNavigation` checks the sha
 and opens the exact featured artist from its portrait. Cover-selection probes use
 `playlist.cover.option.<shape>` accessibility identifiers and
 the selected trait; they only edit the dedicated synthetic playlist.
+
+`testFixturePlayerAlbumNavigationPreservesTabAndBackStack` opens the current album from the player,
+checks real playhead progress, reopens it to detect duplicate pages, and returns to Home's playlist or
+the original Library, Discover and Search screens (including the search query). It also verifies that
+navigation preserves Pause. `testFixturePlayerAlbumNavigationOffline` downloads the fixture playlist,
+enables Offline Mode through Settings, opens its album from the player in Library, and restores online
+mode at the end. Both scenarios use the dedicated simulator and fixture described above.

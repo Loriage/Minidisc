@@ -60,6 +60,8 @@ struct AlbumDetailView: View {
     }
 
     @Environment(\.appContainer) private var container
+    @Environment(\.albumNavigationContext) private var albumNavigationContext
+    @State private var albumNavigationOwner = UUID()
     @Environment(PlaylistAddition.self) private var playlistAddition
     @State private var songSelection: SongSelectionRequest?
     @Environment(\.dismiss) private var dismiss
@@ -336,7 +338,18 @@ struct AlbumDetailView: View {
         .navigationBarTitleDisplayModeInline()
         .navigationBarBackButtonHidden(true)
         .enableSwipeBack()
-        .onAppear { isDismissing = false }
+        .onAppear {
+            isDismissing = false
+            if let context = albumNavigationContext, let serverID = container?.serverState.activeServer?.id {
+                context.navigation.appeared(albumID: albumId, serverID: serverID,
+                                            in: context.tab, owner: albumNavigationOwner)
+            }
+        }
+        .onDisappear {
+            if let context = albumNavigationContext {
+                context.navigation.disappeared(in: context.tab, owner: albumNavigationOwner)
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button("Back", systemImage: "chevron.left") {

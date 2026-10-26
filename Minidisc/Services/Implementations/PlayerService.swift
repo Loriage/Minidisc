@@ -461,8 +461,12 @@ actor PlayerService: PlayerServiceProtocol {
         startIndex: Int,
         preparedPlayback: PreparedNextPlayback?,
         engineTransition: AudioEngineTrackEnd?,
-        skippingUnavailableTracks: Bool = false
+        skippingUnavailableTracks: Bool = false,
+        requestedOrder: PreparedPlaybackQueue.Order? = nil
     ) async throws {
+        let originalOrder = requestedOrder == .shuffled ? tracks : nil
+        let tracks = requestedOrder == .shuffled ? tracks.shuffled() : tracks
+        let startIndex = requestedOrder == .shuffled ? 0 : startIndex
         guard tracks.indices.contains(startIndex) else { return }
         playbackDiagnostics.record(.command(.play(queueCount: tracks.count, startIndex: startIndex)))
         queueBuildGeneration &+= 1
@@ -516,14 +520,14 @@ actor PlayerService: PlayerServiceProtocol {
         cancelPendingInstantMix()
         cancelPendingPrefetch()
 
-        // Reset shuffle only when starting a genuinely new queue, not on internal skips
-        // (skipToNext/skipToPrevious pass state.queue unchanged, so IDs match).
+        // An explicit queue request also replaces the playback mode when its IDs happen to match.
+        // Internal skips omit requestedOrder and preserve the current mode and original order.
         let currentQueueIds = await MainActor.run { state.queue.map(\.id) }
         guard isCurrentPlaybackIntent(
             playbackGeneration: generation,
             transportIntentGeneration: transportGeneration
         ) else { return }
-        let isNewQueue = tracks.map(\.id) != currentQueueIds
+        let isNewQueue = requestedOrder != nil || tracks.map(\.id) != currentQueueIds
         if isNewQueue {
             autoExtendFetchTask?.cancel()
             autoExtendFetchTask = nil
@@ -614,6 +618,7 @@ actor PlayerService: PlayerServiceProtocol {
             source: source,
             serverId: serverId,
             isNewQueue: isNewQueue,
+            originalOrder: originalOrder,
             generation: generation,
             transportGeneration: transportGeneration,
             interruptionGeneration: interruptionGeneration,
@@ -630,6 +635,7 @@ actor PlayerService: PlayerServiceProtocol {
         source: MediaSource,
         serverId: UUID?,
         isNewQueue: Bool,
+        originalOrder: [DisplayableSong]?,
         generation: UInt64,
         transportGeneration: UInt64,
         interruptionGeneration: UInt64,
@@ -663,7 +669,7 @@ actor PlayerService: PlayerServiceProtocol {
         cancelPendingPrefetch()
 
         if isNewQueue {
-            originalQueueOrder = nil
+            originalQueueOrder = originalOrder
             queueGeneration &+= 1
         }
         let committedQueueGeneration = queueGeneration
@@ -678,7 +684,11 @@ actor PlayerService: PlayerServiceProtocol {
             state.currentRadio = nil
             state.playbackState = .loading
             if isNewQueue {
-                state.isShuffled = false
+                state.isShuffled = originalOrder != nil
+                if originalOrder != nil {
+                    state.isAutoExtendEnabled = false
+                    playbackPreferences.setAutoExtendEnabled(false)
+                }
                 state.originalQueueEndIndex = nil
                 if state.isSmartShuffleActive {
                     state.isSmartShuffleActive = false
@@ -1786,7 +1796,8 @@ actor PlayerService: PlayerServiceProtocol {
             guard request == queueBuildGeneration, transport == transportIntentGeneration,
                   !Task.isCancelled else { return }
         }
-        try await play(tracks: queue.tracks, startIndex: queue.startIndex)
+        try await play(tracks: queue.tracks, startIndex: queue.startIndex,
+                       preparedPlayback: nil, engineTransition: nil, requestedOrder: queue.order)
     }
 
     func togglePlayPause() async {

@@ -1243,6 +1243,103 @@ private actor PlaylistPreparationGate {
     func release() { continuation?.resume(); continuation = nil }
 }
 
+@Suite("Explicit shuffled playback", .serialized)
+@MainActor
+struct ShuffledPlaybackIntegrationTests {
+    @Test func downloadedShuffleKeepsItsModeAcrossNextAndRestoresOriginalOrder() async throws {
+        let h = try RecoveryHarness(startupGrace: .seconds(10))
+        await h.resolver.useDownloadedSource()
+        try await h.play(["a", "b", "c", "d"])
+        let original = h.state.queue
+        h.state.isAutoExtendEnabled = true
+        try await h.player.play(preparingQueue: {
+            PreparedPlaybackQueue(tracks: original, startIndex: 0, order: .shuffled)
+        })
+        #expect(h.state.isShuffled)
+        #expect(!h.state.isAutoExtendEnabled)
+        #expect(h.state.queue.map(\.id).sorted() == original.map(\.id).sorted())
+        #expect(h.state.currentIndex == 0)
+        #expect(h.engine.sourceURL?.isFileURL == true)
+
+        let shuffled = h.state.queue
+        try await h.player.skipToNext()
+        #expect(h.state.isShuffled)
+        #expect(h.state.queue == shuffled)
+        #expect(h.state.currentTrack?.id == shuffled[1].id)
+        let playCount = h.engine.playCount
+        await h.player.toggleShuffle()
+        #expect(!h.state.isShuffled)
+        #expect(h.state.queue == original)
+        #expect(h.state.currentIndex == original.firstIndex(where: { $0.id == shuffled[1].id }))
+        #expect(h.state.currentTrack?.id == shuffled[1].id)
+        #expect(h.engine.playCount == playCount)
+        await h.player.stop()
+    }
+
+    @Test func explicitModeAppliesEvenWhenTheQueueOrderDoesNotChange() async throws {
+        let h = try RecoveryHarness(startupGrace: .seconds(10))
+        try await h.play(["a"])
+        let tracks = h.state.queue
+        try await h.player.play(preparingQueue: {
+            PreparedPlaybackQueue(tracks: tracks, startIndex: 0, order: .shuffled)
+        })
+        #expect(h.state.isShuffled)
+        try await h.player.play(preparingQueue: {
+            PreparedPlaybackQueue(tracks: tracks, startIndex: 0)
+        })
+        #expect(!h.state.isShuffled)
+        await h.player.stop()
+    }
+
+    @Test func pauseWinsOverShufflePreparation() async throws {
+        let h = try RecoveryHarness(startupGrace: .seconds(10))
+        try await h.play()
+        let original = h.state.queue
+        let gate = PlaylistPreparationGate()
+        let request = Task {
+            try await h.player.play(preparingQueue: {
+                await gate.wait()
+                return PreparedPlaybackQueue(tracks: original, startIndex: 0, order: .shuffled)
+            })
+        }
+        try await h.waitUntil { await gate.isWaiting }
+        await h.player.pause()
+        await gate.release()
+        try await request.value
+        #expect(!h.state.isShuffled)
+        #expect(h.state.queue == original)
+        #expect(h.state.playbackState == .paused)
+        #expect(h.engine.playCount == 1)
+        await h.player.stop()
+    }
+
+    @Test func cancelledShuffleResolutionKeepsThePreviousOriginalOrder() async throws {
+        let h = try RecoveryHarness(startupGrace: .seconds(10))
+        try await h.play(["a", "b", "c"])
+        let original = h.state.queue
+        await h.player.toggleShuffle()
+        let shuffled = h.state.queue
+        let newTracks = [DisplayableSong(from: Song(id: "new", title: "New"))]
+        await h.resolver.blockResolution(of: "new")
+        let request = Task {
+            try await h.player.play(preparingQueue: {
+                PreparedPlaybackQueue(tracks: newTracks, startIndex: 0, order: .shuffled)
+            })
+        }
+        try await h.waitUntil { await h.resolver.isResolvingBlockedTrack }
+        await h.player.pause()
+        await h.resolver.releaseResolution()
+        try await request.value
+        #expect(h.state.isShuffled)
+        #expect(h.state.queue == shuffled)
+        #expect(h.state.playbackState == .paused)
+        #expect(h.engine.playCount == 1)
+        await h.player.toggleShuffle()
+        #expect(h.state.queue == original)
+        await h.player.stop()
+    }
+}
+
 
 @Suite @MainActor
 struct LocalMusicPlaybackTests {

@@ -31,13 +31,16 @@ nonisolated struct PlaylistEntry: Identifiable, Equatable, Sendable {
 
     /// Retain the selected occurrence when validation removes other songs from the queue.
     static func playbackQueue(requested: [PlaylistEntry], selectedID: ID,
-                              available: [DisplayableSong]) -> PreparedPlaybackQueue? {
+                              available: [DisplayableSong],
+                              order: PreparedPlaybackQueue.Order = .ordered) -> PreparedPlaybackQueue? {
         let current = Dictionary(make(available).map { ($0.id, $0.song) }, uniquingKeysWith: { first, _ in first })
         let retained = requested.compactMap { entry -> PlaylistEntry? in
             guard let song = current[entry.id] else { return nil }
             return PlaylistEntry(id: entry.id, sourceIndex: entry.sourceIndex, song: song)
         }
-        guard let index = retained.firstIndex(where: { $0.id == selectedID }) else { return nil }
-        return PreparedPlaybackQueue(tracks: retained.map(\.song), startIndex: index)
+        guard !retained.isEmpty else { return nil }
+        // Shuffle chooses its starting track after validation, even if the old first item disappeared.
+        guard let index = order == .shuffled ? 0 : retained.firstIndex(where: { $0.id == selectedID }) else { return nil }
+        return PreparedPlaybackQueue(tracks: retained.map(\.song), startIndex: index, order: order)
     }
 }

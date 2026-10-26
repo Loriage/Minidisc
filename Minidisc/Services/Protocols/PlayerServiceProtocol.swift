@@ -57,15 +57,15 @@ protocol PlayerServiceProtocol: AnyObject, Sendable {
 }
 
 nonisolated struct PreparedPlaybackQueue: Sendable {
+    enum Order: Sendable {
+        case ordered
+        /// Mix the entire validated queue and start at its first shuffled item.
+        case shuffled
+    }
+
     let tracks: [DisplayableSong]
     let startIndex: Int
     var repeatMode: RepeatMode? = nil
-}
-
-extension PlayerServiceProtocol {
-    nonisolated func play(preparingQueue: @escaping @Sendable () async throws -> PreparedPlaybackQueue) async throws {
-        let queue = try await preparingQueue()
-        if let repeatMode = queue.repeatMode { await setRepeatMode(repeatMode) }
-        try await play(tracks: queue.tracks, startIndex: queue.startIndex)
-    }
+    /// Tracks remain in their original order until the player commits the requested mode.
+    var order: Order = .ordered
 }

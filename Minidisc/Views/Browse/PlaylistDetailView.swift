@@ -158,12 +158,13 @@ struct PlaylistDetailView: View {
         sortedEntries(songs).map(\.song)
     }
 
-    private func playSongs(_ requested: [PlaylistEntry], startIndex: Int) async {
+    private func playSongs(_ requested: [PlaylistEntry], startIndex: Int,
+                           order: PreparedPlaybackQueue.Order = .ordered) async {
         guard requested.indices.contains(startIndex), let vm = viewModel, let container else { return }
         let selectedID = requested[startIndex].id
         do {
             try await container.playerService.play(preparingQueue: {
-                guard let queue = await vm.playbackQueue(entries: requested, selectedID: selectedID) else {
+                guard let queue = await vm.playbackQueue(entries: requested, selectedID: selectedID, order: order) else {
                     throw UserFacingError.contentRemoved
                 }
                 return queue
@@ -833,9 +834,9 @@ struct PlaylistDetailView: View {
                     onShuffle: {
                         HapticFeedback.medium.trigger()
                         Task {
-                            let shuffled = PlaylistEntry.make(resolvedSongs(vm)).shuffled()
-                            guard !shuffled.isEmpty else { return }
-                            await playSongs(shuffled, startIndex: 0)
+                            let entries = sortedEntries(resolvedSongs(vm))
+                            guard !entries.isEmpty else { return }
+                            await playSongs(entries, startIndex: 0, order: .shuffled)
                         }
                     },
                     onDownload: { performDownloadAction() }

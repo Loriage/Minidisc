@@ -963,6 +963,66 @@ final class MinidiscUXVerificationTests: XCTestCase {
         captureHierarchy("album-navigation-tabs-and-back-stack")
     }
 
+    func testFixtureOfflinePlaylistShuffleCanRestorePlaylistOrder() async throws {
+        try await launchFixtureApp()
+        try setOfflineMode(false)
+        try await setFixtureState(["queue_catalog": true])
+        try tap(app.buttons["home.playlist.ux-playlist"], named: "shuffle-playlist")
+        try require(app.staticTexts["Aurore"].firstMatch, timeout: 10)
+        if !app.buttons["Retirer le téléchargement"].exists {
+            try tap(app.buttons["playlist.detail.download"], named: "shuffle-download")
+        }
+        try require(app.buttons["Retirer le téléchargement"], timeout: 30)
+        try tapBack(named: "shuffle-home")
+        try setOfflineMode(true)
+        try tap(app.buttons["home.playlist.ux-playlist"], named: "shuffle-offline-playlist")
+        try tap(app.buttons["playlist.detail.shuffle"], named: "shuffle-start")
+        try require(app.buttons["Pause"].firstMatch, timeout: 8)
+
+        let original = ["ux-song-1", "ux-song-2", "ux-search-song-prefix", "ux-search-song-exact"]
+        let titleToID = [firstTitle: original[0], secondTitle: original[1],
+                         "Aurore au piano": original[2], "Aurore": original[3]]
+        let miniTitle = app.staticTexts["player.mini.title"]
+        let firstID = try XCTUnwrap(titleToID[miniTitle.label])
+        try tap(miniTitle, named: "shuffle-player")
+        try require(app.buttons["Fermer le lecteur"])
+        try await assertPlayheadAdvances()
+        try tap(app.buttons["Pause"].firstMatch, named: "shuffle-pause")
+        if orderedQueueIdentifiers().isEmpty {
+            try tap(app.buttons["File d'attente"], named: "shuffle-show-queue")
+        }
+        try require(app.buttons["Lecture aléatoire activée"])
+        let upNext = orderedQueueIdentifiers()
+        XCTAssertEqual(upNext.count, 3)
+        XCTAssertEqual(Set(upNext + ["queue.track.\(firstID).0"]),
+                       Set(original.map { "queue.track.\($0).0" }))
+        captureHierarchy("shuffle-offline-active")
+
+        try tap(app.buttons["Fermer le lecteur"], named: "shuffle-close")
+        let nextTitle = try XCTUnwrap(titleToID.first { "queue.track.\($0.value).0" == upNext.first }?.key)
+        try tap(try visibleMiniPlayerButton("Passer au suivant"), named: "shuffle-next")
+        let nextAppears = expectation(for: NSPredicate(format: "label == %@", nextTitle), evaluatedWith: miniTitle)
+        await fulfillment(of: [nextAppears], timeout: 8)
+        try tap(miniTitle, named: "shuffle-reopen")
+        try require(app.buttons["Fermer le lecteur"])
+        if orderedQueueIdentifiers().isEmpty {
+            try tap(app.buttons["File d'attente"], named: "shuffle-reopen-queue")
+        }
+        try require(app.buttons["Lecture aléatoire activée"])
+        XCTAssertEqual(orderedQueueIdentifiers(), Array(upNext.dropFirst()))
+        try tap(app.buttons["Lecture aléatoire activée"], named: "shuffle-disable")
+        try require(app.buttons["Lecture aléatoire désactivée"])
+        let nextID = try XCTUnwrap(titleToID[nextTitle])
+        let index = try XCTUnwrap(original.firstIndex(of: nextID))
+        XCTAssertEqual(orderedQueueIdentifiers(), original.dropFirst(index + 1).map { "queue.track.\($0).0" })
+        captureHierarchy("shuffle-offline-original-order-restored")
+        try tap(app.buttons["Fermer le lecteur"], named: "shuffle-close-restored")
+        XCTAssertEqual(miniTitle.label, nextTitle)
+        try tap(try visibleMiniPlayerButton("Pause"), named: "shuffle-finish-paused")
+        try tapBack(named: "shuffle-return-home")
+        try setOfflineMode(false)
+    }
+
     func testFixturePlayerAlbumNavigationOffline() async throws {
         try await launchFixtureApp()
         try tap(app.staticTexts["Escapade temporaire"].firstMatch, named: "offline-album-playlist")
@@ -1003,11 +1063,13 @@ final class MinidiscUXVerificationTests: XCTestCase {
     private func setOfflineMode(_ enabled: Bool) throws {
         try tap(app.buttons["Réglages"], named: "album-navigation-settings")
         try tap(app.buttons["Application"], named: "album-navigation-application-settings")
-        let toggle = app.switches["offline-mode-toggle"].firstMatch
-        try require(toggle)
+        let row = app.switches["offline-mode-toggle"].firstMatch
+        try require(row)
+        let toggle = row.switches.firstMatch.exists ? row.switches.firstMatch : row
         if (toggle.value as? String == "1") != enabled {
             try tap(toggle, named: "album-navigation-offline-toggle")
         }
+        XCTAssertEqual(toggle.value as? String, enabled ? "1" : "0")
         try tapBack(named: "album-navigation-settings-back")
         try tap(app.buttons["Fermer"], named: "album-navigation-settings-close")
     }

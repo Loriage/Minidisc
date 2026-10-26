@@ -38,4 +38,15 @@ import SwiftSonic
         #expect(draft[0].id == original[2].id)
         #expect(Set(draft.map(\.id)).count == draft.count)
     }
+
+    @Test func shuffleValidatesAvailableOccurrencesBeforeChoosingItsFirstTrack() throws {
+        let requested = PlaylistEntry.make(songs(["missing", "a", "b", "a"]))
+        let queue = try #require(PlaylistEntry.playbackQueue(requested: requested,
+            selectedID: requested[0].id, available: songs(["a", "b", "a"]), order: .shuffled))
+        #expect(queue.order == .shuffled)
+        #expect(queue.startIndex == 0)
+        #expect(queue.tracks.map(\.id) == ["a", "b", "a"])
+        #expect(PlaylistEntry.playbackQueue(requested: requested, selectedID: requested[0].id,
+            available: [], order: .shuffled) == nil)
+    }
 }

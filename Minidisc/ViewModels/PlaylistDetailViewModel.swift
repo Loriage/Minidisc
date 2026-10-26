@@ -118,10 +118,11 @@ final class PlaylistDetailViewModel {
         return requested.compactMap { current[$0.id] }
     }
 
-    func playbackQueue(entries: [PlaylistEntry], selectedID: PlaylistEntry.ID) async -> PreparedPlaybackQueue? {
+    func playbackQueue(entries: [PlaylistEntry], selectedID: PlaylistEntry.ID,
+                       order: PreparedPlaybackQueue.Order = .ordered) async -> PreparedPlaybackQueue? {
         _ = await playbackSongs(from: entries.map(\.song))
         guard !Task.isCancelled else { return nil }
-        return PlaylistEntry.playbackQueue(requested: entries, selectedID: selectedID, available: songs)
+        return PlaylistEntry.playbackQueue(requested: entries, selectedID: selectedID, available: songs, order: order)
     }
 
     private func isCurrent(_ generation: UInt64, serverId: UUID) -> Bool {

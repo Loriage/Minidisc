@@ -168,7 +168,8 @@ struct MusicIntentService {
             let tracks = try await self.tracks(reference, context: context)
             try await self.validate(context)
             guard !tracks.isEmpty else { throw MusicIntentError.empty }
-            return PreparedPlaybackQueue(tracks: shuffle ? tracks.shuffled() : tracks, startIndex: 0, repeatMode: repeatMode)
+            return PreparedPlaybackQueue(tracks: tracks, startIndex: 0, repeatMode: repeatMode,
+                                         order: shuffle ? .shuffled : .ordered)
         })
     }
 

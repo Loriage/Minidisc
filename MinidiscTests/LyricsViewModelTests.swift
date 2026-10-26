@@ -10,6 +10,7 @@ final class MockPlayerService: PlayerServiceProtocol {
     var seekCalledWith: TimeInterval?
 
     func play(tracks: [DisplayableSong], startIndex: Int) async throws {}
+    func play(preparingQueue: @escaping @Sendable () async throws -> PreparedPlaybackQueue) async throws {}
     func resume() async {}
     func pause() async {}
     func stop() async {}

@@ -176,6 +176,16 @@ struct PlaylistDetailOfflineTests {
         #expect(vm.isOffline == true)
     }
 
+    @Test func offlineShufflePreservesDownloadedPlaylistOrderForThePlayer() async throws {
+        let vm = makeVM(playlistData: downloadedPlaylist, isOnline: false)
+        await vm.load()
+        let entries = PlaylistEntry.make(vm.songs)
+        let queue = try #require(await vm.playbackQueue(entries: entries, selectedID: entries[0].id, order: .shuffled))
+        #expect(queue.order == .shuffled)
+        #expect(queue.tracks.map(\.id) == ["1", "2"])
+        #expect(vm.songs.map(\.id) == ["1", "2"])
+    }
+
     @Test("empty-success playlist response with a downloaded copy loads local, not Empty")
     func emptySuccessFallsBackToLocal() async {
         let vm = makeVM(playlistData: downloadedPlaylist, isOnline: true, apiPlaylist: emptySuccessPlaylist)

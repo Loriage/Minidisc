@@ -129,21 +129,27 @@ private struct SearchMatchRow: View {
     var body: some View {
         switch match {
         case .song(let song):
-            SongRow(song: song, index: 1, showCoverArt: true, isFavorite: isFavorite,
+            SongRow(song: song, index: 1, showCoverArt: true,
+                    secondaryText: song.isLocalFile && container?.localMusic.catalog.availableSongIDs.contains(song.id) != true
+                        ? String(localized: "Unavailable on this device", table: "LocalMusic") : nil,
+                    isFavorite: isFavorite,
                     trailingAccessory: .menu, onAddToPlaylist: onAddToPlaylist, onTap: {
                 Task {
                     await container?.toastService.perform {
-                        try await container?.playerService.play(tracks: songs, startIndex: songs.firstIndex { $0.id == song.id } ?? 0)
+                        guard let container else { return }
+                        let playable = container.localMusic.catalog.playable(songs)
+                        guard let index = playable.firstIndex(where: { $0.id == song.id }) else { throw LocalMusicError.unavailable }
+                        try await container.playerService.play(tracks: playable, startIndex: index)
                     }
                 }
             })
         case .album(let album):
-            NavigationLink(value: album) {
+            MusicAlbumLink(album: album) {
                 AlbumRow(albumId: album.id, name: album.name, artist: album.artist,
                          year: album.year, coverArtId: album.coverArt)
             }
         case .artist(let artist):
-            NavigationLink(value: artist) { ArtistRow(artist: artist) }
+            MusicArtistLink(artist: artist) { ArtistRow(artist: artist) }
         case .playlist(let playlist):
             NavigationLink(value: HomeDestination.playlist(playlist)) {
                 SearchPlaylistRow(playlist: playlist)

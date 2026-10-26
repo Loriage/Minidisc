@@ -141,7 +141,8 @@ final class AppContainer {
             catalog: catalog,
             indexStore: indexStore,
             offlineFavorites: favoritesStore,
-            offlineReader: offlineReader
+            offlineReader: offlineReader,
+            localMusicStore: localStore
         )
         libraryService = library
         libraryIndexMaintenance = LibraryIndexMaintenanceService(

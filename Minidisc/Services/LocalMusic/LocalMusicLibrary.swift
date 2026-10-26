@@ -42,7 +42,7 @@ nonisolated enum LocalMusicError: Error, LocalizedError, Codable, Equatable {
     }
 }
 
-/// The player and its standby item retain this lease for as long as AVPlayer uses the URL.
+/// The player and its standby item retain this lease for as long as the audio engine uses the URL.
 nonisolated final class LocalFileAccess: Sendable {
     let url: URL
     private let root: URL
@@ -310,7 +310,12 @@ actor LocalMusicStore {
 @Observable @MainActor
 final class LocalMusicLibrary {
     let store: LocalMusicStore
-    private(set) var snapshot = LocalMusicSnapshot()
+    private(set) var snapshot = LocalMusicSnapshot() {
+        didSet {
+            if oldValue.tracks != snapshot.tracks { catalog = LocalMusicCatalog(tracks: snapshot.tracks) }
+        }
+    }
+    private(set) var catalog = LocalMusicCatalog()
     private(set) var isRefreshing = false
     @ObservationIgnored private var refreshRequested = false
     var errorMessage: String?
@@ -328,17 +333,22 @@ final class LocalMusicLibrary {
             }
         }
         snapshot = await store.current()
-        do { snapshot = try await store.refresh() }
+        do {
+            snapshot = try await store.refresh()
+            errorMessage = nil
+        }
         catch is CancellationError { }
         catch { errorMessage = error.localizedDescription }
     }
 
     func add(_ urls: [URL]) async {
+        errorMessage = nil
         do { try await store.add(urls); await refresh() }
         catch { errorMessage = LocalMusicError.folderAccess.localizedDescription }
     }
 
     func remove(_ folder: LocalMusicFolder) async {
+        errorMessage = nil
         do { try await store.remove(folder.id); snapshot = await store.current() }
         catch { errorMessage = error.localizedDescription }
     }

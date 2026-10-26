@@ -102,10 +102,12 @@ struct LocalMusicPlaybackControls: View {
                 Label("Play", systemImage: "play.fill")
                     .frame(maxWidth: .infinity).padding(.vertical, MinidiscSpacing.s)
             }
+            .accessibilityIdentifier("localMusic.play")
             Button { play(shuffled: true) } label: {
                 Label("Shuffle", systemImage: "shuffle")
                     .frame(maxWidth: .infinity).padding(.vertical, MinidiscSpacing.s)
             }
+            .accessibilityIdentifier("localMusic.shuffle")
         }
         .buttonStyle(.bordered)
         .tint(foregroundColor)
@@ -113,12 +115,13 @@ struct LocalMusicPlaybackControls: View {
     }
 
     private func play(shuffled: Bool) {
-        let songs = tracks.filter(\.isAvailable).map(\.song)
-        guard !songs.isEmpty else { return }
+        let tracks = tracks
         HapticFeedback.medium.trigger()
         Task {
             await container?.toastService.perform {
-                try await container?.playerService.play(tracks: shuffled ? songs.shuffled() : songs, startIndex: 0)
+                try await container?.playerService.play(preparingQueue: {
+                    try LocalMusicTrack.playbackQueue(tracks, order: shuffled ? .shuffled : .ordered)
+                })
             }
         }
     }
@@ -150,11 +153,12 @@ struct LocalMusicTrackRows: View {
     }
 
     private func play(_ track: LocalMusicTrack) {
-        let queue = tracks.filter { $0.isAvailable || $0.id == track.id }.map(\.song)
-        guard let index = queue.firstIndex(where: { $0.id == track.id }) else { return }
+        let tracks = tracks
         Task {
             await container?.toastService.perform {
-                try await container?.playerService.play(tracks: queue, startIndex: index)
+                try await container?.playerService.play(preparingQueue: {
+                    try LocalMusicTrack.playbackQueue(tracks, startingAt: track.id)
+                })
             }
         }
     }

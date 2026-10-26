@@ -495,6 +495,7 @@ extension View {
     ///   - coverImage: Pre-loaded image from ArtworkImageCache. Pass nil to show a placeholder.
     ///   - songs: Pre-loaded tracks. Pass `[]` (default) on list rows to hide play actions.
     ///   - favoriteType: Pass `.album` for albums; `nil` for playlists (not supported by Subsonic).
+    @ViewBuilder
     func collectionContextMenu(
         itemType: PinnedItemType,
         itemId: String,
@@ -507,20 +508,25 @@ extension View {
         onEdit: (() -> Void)? = nil,
         onDelete: (() -> Void)? = nil
     ) -> some View {
-        modifier(CollectionContextMenuModifier(
-            itemType: itemType,
-            itemId: itemId,
-            displayName: displayName,
-            displaySubtitle: displaySubtitle,
-            coverArtId: coverArtId,
-            coverImage: coverImage,
-            songs: songs,
-            favoriteType: favoriteType,
-            onEdit: onEdit,
-            onDelete: onDelete
-        ))
+        if LocalMusicCatalog.isCollectionID(itemId) {
+            self.modifier(LocalCollectionContextMenu(id: itemId))
+        } else {
+            modifier(CollectionContextMenuModifier(
+                itemType: itemType,
+                itemId: itemId,
+                displayName: displayName,
+                displaySubtitle: displaySubtitle,
+                coverArtId: coverArtId,
+                coverImage: coverImage,
+                songs: songs,
+                favoriteType: favoriteType,
+                onEdit: onEdit,
+                onDelete: onDelete
+            ))
+        }
     }
 
+    @ViewBuilder
     func lazyCollectionContextMenu(
         itemType: PinnedItemType,
         itemId: String,
@@ -531,15 +537,19 @@ extension View {
         favoriteType: FavoriteType? = nil,
         songLoader: @escaping () async throws -> [DisplayableSong]
     ) -> some View {
-        modifier(LazyCollectionContextMenuModifier(
-            itemType: itemType,
-            itemId: itemId,
-            displayName: displayName,
-            displaySubtitle: displaySubtitle,
-            coverArtId: coverArtId,
-            coverImage: coverImage,
-            favoriteType: favoriteType,
-            songLoader: songLoader
-        ))
+        if LocalMusicCatalog.isCollectionID(itemId) {
+            self.modifier(LocalCollectionContextMenu(id: itemId))
+        } else {
+            modifier(LazyCollectionContextMenuModifier(
+                itemType: itemType,
+                itemId: itemId,
+                displayName: displayName,
+                displaySubtitle: displaySubtitle,
+                coverArtId: coverArtId,
+                coverImage: coverImage,
+                favoriteType: favoriteType,
+                songLoader: songLoader
+            ))
+        }
     }
 }

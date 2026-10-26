@@ -410,7 +410,7 @@ private struct TrackInfoSection: View {
             .contentShape(Rectangle())
 
             HStack(spacing: MinidiscSpacing.s) {
-                if !playerState.isLiveStream {
+                if !playerState.isLiveStream && playerState.currentTrack?.isLocalFile != true {
                     Button {
                         toggleFavorite()
                     } label: {
@@ -426,7 +426,9 @@ private struct TrackInfoSection: View {
                 }
 
                 Menu {
-                    if !playerState.isLiveStream {
+                    if playerState.currentTrack?.isLocalFile == true {
+                        localMusicMenu
+                    } else if !playerState.isLiveStream {
                         ControlGroup {
                             if let track = playerState.currentTrack {
                                 Button {
@@ -495,12 +497,13 @@ private struct TrackInfoSection: View {
                         .disabled(!isOnline || playerState.currentTrack == nil || playerState.currentTrack?.isLocalFile == true)
                         Divider()
                     }
-                    Button {
-                        Task { await triggerSmartShuffle() }
-                    } label: {
-                        Label("Smart Shuffle", systemImage: "shuffle.circle")
+                    if container?.serverState.activeServer != nil && playerState.currentTrack?.isLocalFile != true {
+                        Button {
+                            Task { await triggerSmartShuffle() }
+                        } label: {
+                            Label("Smart Shuffle", systemImage: "shuffle.circle")
+                        }
                     }
-                    .disabled(container?.serverState.activeServer == nil)
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.title2.weight(.semibold))
@@ -597,7 +600,7 @@ private struct TrackInfoSection: View {
                     artistLabel(artist, usesMarquee: !compact)
                 }
                 .buttonStyle(.plain)
-                .disabled(!isOnline)
+                .disabled(!isOnline && song?.isLocalFile != true)
             } else {
                 artistLabel(artist, usesMarquee: false)
             }
@@ -658,6 +661,10 @@ private struct TrackInfoSection: View {
 
     private func goToArtist() {
         guard let track = playerState.currentTrack else { return }
+        if track.isLocalFile {
+            navigateToLocalMusic(.artists)
+            return
+        }
         if track.artistId != nil {
             postNavigateToArtist(track: track)
             return
@@ -669,6 +676,20 @@ private struct TrackInfoSection: View {
                   let found = result.artist?.first else { return }
             postNavigateToArtist(artistId: found.id, artistName: found.name, coverArtId: found.coverArt)
         }
+    }
+
+    @ViewBuilder
+    private var localMusicMenu: some View {
+        Button("Go to Album", systemImage: "music.note.square.stack") { navigateToLocalMusic(.albums) }
+            .accessibilityIdentifier("player.goToAlbum")
+        Button("Go to Artist", systemImage: "music.mic") { navigateToLocalMusic(.artists) }
+            .accessibilityIdentifier("player.goToArtist")
+        Button("Get Info", systemImage: "info.circle") { trackInformation = playerState.currentTrack }
+    }
+
+    private func navigateToLocalMusic(_ category: LocalMusicCategory) {
+        guard let destination = LocalMusicDestination(track: playerState.currentTrack, category: category) else { return }
+        NotificationCenter.default.post(name: .minidiscNavigateToAlbum, object: destination)
     }
 
     private func triggerSmartShuffle() async {

@@ -77,6 +77,19 @@ enum LibrarySearchRanking {
         }
     }
 
+    static func mergingLocal(_ catalog: LocalMusicCatalog, into matches: [LibrarySearchMatch], query: String) -> [LibrarySearchMatch] {
+        let local = catalog.songs.map(LibrarySearchMatch.song)
+            + catalog.albums.map(LibrarySearchMatch.album) + catalog.artists.map(LibrarySearchMatch.artist)
+        let combined = matches + local.filter { score($0, query: query) > 0 }
+        var seen = Set<String>()
+        return combined.filter { seen.insert($0.id).inserted }.sorted {
+            let lhs = score($0, query: query), rhs = score($1, query: query)
+            if lhs != rhs { return lhs > rhs }
+            let order = $0.title.localizedStandardCompare($1.title)
+            return order == .orderedSame ? $0.id < $1.id : order == .orderedAscending
+        }
+    }
+
     static func score(_ match: LibrarySearchMatch, query: String) -> Int {
         let query = normalized(query)
         guard !query.isEmpty else { return 0 }

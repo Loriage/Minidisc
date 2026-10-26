@@ -11,6 +11,7 @@ actor LibraryService: LibraryServiceProtocol {
     private let catalog: LibraryCatalog
     private let indexStore: LibraryIndexStore
     private let offlineReader: OfflineBrowsingReader?
+    private let localMusicStore: LocalMusicStore?
     private let offlineFavorites: OfflineFavoritesStore?
     private let clientFactory: @Sendable (ServerConnection) -> SwiftSonicClient
     private var cachedClient: SwiftSonicClient?
@@ -32,6 +33,7 @@ actor LibraryService: LibraryServiceProtocol {
         indexStore: LibraryIndexStore,
         offlineFavorites: OfflineFavoritesStore? = nil,
         offlineReader: OfflineBrowsingReader? = nil,
+        localMusicStore: LocalMusicStore? = nil,
         clientFactory: @escaping @Sendable (ServerConnection) -> SwiftSonicClient = { $0.makeSwiftSonicClient() }
     ) {
         self.serverService = serverService
@@ -42,6 +44,7 @@ actor LibraryService: LibraryServiceProtocol {
         self.indexStore = indexStore
         self.offlineFavorites = offlineFavorites
         self.offlineReader = offlineReader
+        self.localMusicStore = localMusicStore
         self.clientFactory = clientFactory
     }
 
@@ -340,12 +343,19 @@ actor LibraryService: LibraryServiceProtocol {
     }
 
     func smartShuffleQueue(targetSize: Int) async throws -> [DisplayableSong] {
-        let isOnline = await MainActor.run { serverService.state.isOnline }
-        if isOnline {
-            return try await onlineSmartShuffle(targetSize: targetSize)
-        } else {
-            return await offlineSmartShuffle(targetSize: targetSize)
+        let local = await localMusicStore?.current().tracks.filter(\.isAvailable).map(\.song) ?? []
+        let isOnline = await MainActor.run { serverService.state.activeServer != nil && serverService.state.isOnline }
+        let server: [DisplayableSong]
+        do {
+            if isOnline { server = try await onlineSmartShuffle(targetSize: targetSize) }
+            else { server = await offlineSmartShuffle(targetSize: targetSize) }
+        } catch {
+            if UserFacingError.isCancellation(error) || local.isEmpty { throw error }
+            // Local files remain playable when the server cannot provide a mix.
+            server = []
         }
+        try Task.checkCancellation()
+        return Array((server + local).shuffled().prefix(max(0, targetSize)))
     }
 
     private func onlineSmartShuffle(targetSize: Int) async throws -> [DisplayableSong] {

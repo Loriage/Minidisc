@@ -23,12 +23,15 @@ struct AlbumCarouselCollectionView: View {
         ScrollView {
             LazyVGrid(columns: columns, alignment: .leading, spacing: MinidiscSpacing.l) {
                 ForEach(container?.visibleAlbums(albums) ?? []) { album in
-                    NavigationLink {
-                        AlbumDetailView(album: album)
-                    } label: {
-                        AlbumGridCell(album: album)
+                    if let group = container?.localMusic.catalog.groups[album.id] {
+                        NavigationLink { LocalMusicCollectionView(group: group, category: .albums) } label: {
+                            AlbumGridCell(album: album)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        NavigationLink { AlbumDetailView(album: album) } label: { AlbumGridCell(album: album) }
+                            .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(MinidiscSpacing.l)

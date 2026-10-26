@@ -5,12 +5,14 @@ import OSLog
 
 struct AlbumsListView: View {
     @Environment(\.appContainer) private var container
+    private var isOnline: Bool { container?.serverState.activeServer != nil && container?.serverState.isOnline == true }
     @State private var viewModel: AlbumListViewModel?
     @AppStorage("minidisc.albumSort") private var albumSort: AlbumSort = .recentlyAdded
     @AppStorage("minidisc.albumListGrid") private var gridLayout = false
 
     private func displayedAlbums(_ vm: AlbumListViewModel) -> [AlbumID3] {
-        container?.serverState.isOnline == false ? container?.offlineLibrary.snapshot.albums ?? [] : vm.albums
+        let server = !isOnline ? container?.offlineLibrary.snapshot.albums ?? [] : vm.albums
+        return server + (container?.localMusic.catalog.albums ?? [])
     }
     private func sortedAlbums(_ vm: AlbumListViewModel) -> [AlbumID3] { albumSort.sorted(displayedAlbums(vm)) }
 
@@ -48,15 +50,15 @@ struct AlbumsListView: View {
                 return
             }
             if viewModel == nil { viewModel = AlbumListViewModel(libraryService: svc) }
-            if container?.serverState.isOnline == true { await viewModel?.load() }
+            if isOnline { await viewModel?.load() }
         }
     }
 
     @ViewBuilder
     private func content(_ vm: AlbumListViewModel) -> some View {
-        if container?.serverState.isOnline != false && vm.isLoading && displayedAlbums(vm).isEmpty {
+        if isOnline && vm.isLoading && displayedAlbums(vm).isEmpty {
             LoadingStateView()
-        } else if container?.serverState.isOnline == false && displayedAlbums(vm).isEmpty {
+        } else if container?.serverState.activeServer != nil && !isOnline && displayedAlbums(vm).isEmpty {
             OfflineBrowsingEmptyView()
         } else if let error = vm.error, displayedAlbums(vm).isEmpty {
             EmptyStateView(
@@ -84,7 +86,7 @@ struct AlbumsListView: View {
         let albums = sortedAlbums(vm)
         AlphabetIndexedContent(entries: albumIndex(vm), prepareJump: { albumSort = .name }) {
             List(albums) { album in
-                NavigationLink(value: HomeDestination.album(album)) {
+                MusicAlbumLink(album: album) {
                     AlbumRow(
                         albumId: album.id,
                         name: album.name,
@@ -107,7 +109,7 @@ struct AlbumsListView: View {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 110, maximum: 180), spacing: MinidiscSpacing.l)], spacing: MinidiscSpacing.l) {
                     ForEach(sortedAlbums(vm)) { album in
-                        NavigationLink(value: HomeDestination.album(album)) {
+                        MusicAlbumLink(album: album) {
                             AlbumGridCell(album: album)
                         }
                         .buttonStyle(.plain)
@@ -130,11 +132,12 @@ struct AlbumsListView: View {
     }
 
     private func refresh(_ viewModel: AlbumListViewModel) async {
-        if container?.serverState.isOnline == true {
+        if isOnline {
             _ = try? await container?.libraryCatalog.refreshAlbums()
         }
-        if container?.serverState.isOnline == true { await viewModel.load() }
+        if isOnline { await viewModel.load() }
         else { await container?.offlineLibrary.refresh() }
+        await container?.localMusic.refresh()
     }
 
 }

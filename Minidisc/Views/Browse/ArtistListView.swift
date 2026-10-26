@@ -4,6 +4,7 @@ import SwiftSonic
 
 struct ArtistListView: View {
     @Environment(\.appContainer) private var container
+    private var isOnline: Bool { container?.serverState.activeServer != nil && container?.serverState.isOnline == true }
     @State private var viewModel: ArtistListViewModel?
     @AppStorage("minidisc.artistSort") private var artistSort: ArtistSort = .name
     @AppStorage("minidisc.artistListGrid") private var gridLayout = false
@@ -40,19 +41,20 @@ struct ArtistListView: View {
         .task(id: loadID) {
             guard let svc = container?.libraryService else { return }
             if viewModel == nil { viewModel = ArtistListViewModel(libraryService: svc) }
-            if container?.serverState.isOnline == true { await viewModel?.load() }
+            if isOnline { await viewModel?.load() }
         }
     }
 
     private func displayedArtists(_ vm: ArtistListViewModel) -> [ArtistID3] {
-        container?.serverState.isOnline == false ? container?.offlineLibrary.snapshot.artists ?? [] : vm.indexes.flatMap(\.artist)
+        let server = !isOnline ? container?.offlineLibrary.snapshot.artists ?? [] : vm.indexes.flatMap(\.artist)
+        return server + (container?.localMusic.catalog.artists ?? [])
     }
 
     @ViewBuilder
     private func browseContent(_ vm: ArtistListViewModel) -> some View {
-        if container?.serverState.isOnline != false && vm.isLoading && displayedArtists(vm).isEmpty {
+        if isOnline && vm.isLoading && displayedArtists(vm).isEmpty {
             LoadingStateView()
-        } else if container?.serverState.isOnline == false && displayedArtists(vm).isEmpty {
+        } else if container?.serverState.activeServer != nil && !isOnline && displayedArtists(vm).isEmpty {
             OfflineBrowsingEmptyView()
         } else if let error = vm.error, displayedArtists(vm).isEmpty {
             EmptyStateView(
@@ -77,7 +79,7 @@ struct ArtistListView: View {
     private func flatList(_ vm: ArtistListViewModel) -> some View {
         AlphabetIndexedContent(entries: artistIndex(vm), prepareJump: { artistSort = .name }) {
             List(artistSort.sorted(displayedArtists(vm))) { artist in
-                NavigationLink(value: HomeDestination.artist(artist)) {
+                MusicArtistLink(artist: artist) {
                     ArtistRow(artist: artist)
                 }
                 .id(artist.id)
@@ -93,7 +95,7 @@ struct ArtistListView: View {
             ScrollView {
                 LazyVGrid(columns: gridColumns, spacing: MinidiscSpacing.l) {
                     ForEach(artistSort.sorted(displayedArtists(vm))) { artist in
-                        NavigationLink(value: HomeDestination.artist(artist)) {
+                        MusicArtistLink(artist: artist) {
                             ArtistGridCard(artist: artist)
                         }
                         .buttonStyle(.plain)
@@ -116,11 +118,12 @@ struct ArtistListView: View {
     }
 
     private func refresh(_ viewModel: ArtistListViewModel) async {
-        if container?.serverState.isOnline == true {
+        if isOnline {
             _ = try? await container?.libraryCatalog.refreshArtists()
         }
-        if container?.serverState.isOnline == true { await viewModel.load() }
+        if isOnline { await viewModel.load() }
         else { await container?.offlineLibrary.refresh() }
+        await container?.localMusic.refresh()
     }
 }
 

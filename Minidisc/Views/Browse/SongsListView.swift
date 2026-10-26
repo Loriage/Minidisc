@@ -5,6 +5,7 @@ import OSLog
 
 struct SongsListView: View {
     @Environment(\.appContainer) private var container
+    private var isOnline: Bool { container?.serverState.activeServer != nil && container?.serverState.isOnline == true }
     @State private var songSelection: SongSelectionRequest?
     @State private var viewModel: SongsListViewModel?
     @AppStorage("minidisc.songSort") private var songSort: SongSort = .title
@@ -26,7 +27,7 @@ struct SongsListView: View {
                 Button("Select Songs", systemImage: "checkmark.circle") {
                     songSelection = SongSelectionRequest(songs: viewModel?.displaySongs ?? [])
                 }
-                .disabled(container?.serverState.isOnline != true || viewModel?.displaySongs.isEmpty != false)
+                .disabled(!isOnline || viewModel?.displaySongs.isEmpty != false)
             }
             ToolbarItem(placement: .primaryAction) {
                 SongSortMenu(sort: $songSort)
@@ -36,7 +37,7 @@ struct SongsListView: View {
         .task(id: loadID) {
             guard let svc = container?.libraryService else { return }
             if viewModel == nil { viewModel = SongsListViewModel(libraryService: svc) }
-            if container?.serverState.isOnline == true { await viewModel?.load(sort: songSort) }
+            if isOnline { await viewModel?.load(sort: songSort) }
         }
         .onChange(of: songSort) { _, newSort in
             Task { await viewModel?.changeSort(newSort) }
@@ -44,17 +45,17 @@ struct SongsListView: View {
     }
 
     private func displayedSongs(_ vm: SongsListViewModel) -> [DisplayableSong] {
-        guard container?.serverState.isOnline == false else { return vm.displaySongs }
-        let songs = container?.offlineLibrary.snapshot.songs ?? []
+        let server = !isOnline ? container?.offlineLibrary.snapshot.songs ?? [] : vm.displaySongs
+        let songs = server + (container?.localMusic.catalog.songs ?? [])
         let byID = Dictionary(songs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return songSort.sorted(songs.map { $0.asSong() }).compactMap { byID[$0.id] }
     }
 
     @ViewBuilder
     private func content(_ vm: SongsListViewModel) -> some View {
-        if container?.serverState.isOnline != false && vm.isLoading && displayedSongs(vm).isEmpty {
+        if isOnline && vm.isLoading && displayedSongs(vm).isEmpty {
             loadingProgress(vm)
-        } else if container?.serverState.isOnline == false && displayedSongs(vm).isEmpty {
+        } else if container?.serverState.activeServer != nil && !isOnline && displayedSongs(vm).isEmpty {
             OfflineBrowsingEmptyView()
         } else if let error = vm.error, displayedSongs(vm).isEmpty {
             EmptyStateView(
@@ -90,7 +91,7 @@ struct SongsListView: View {
         let songs = displayedSongs(vm)
         return ScrollViewReader { proxy in
             List {
-                if container?.serverState.isOnline != false && vm.didTruncate {
+                if isOnline && vm.didTruncate {
                     Text("Showing the first \(songs.count.formatted()) songs.")
                         .font(.minidiscCaption)
                         .foregroundStyle(.secondary)
@@ -98,10 +99,8 @@ struct SongsListView: View {
                         .listRowBackground(Color.clear)
                 }
                 playShuffleHeader(songs)
-                if let serverID = container?.serverState.activeServer?.id {
-                    SongListFavoriteRows(songs: songs, serverID: serverID) { index in
-                        play(songs, at: index)
-                    }
+                SongListFavoriteRows(songs: songs, serverID: container?.serverState.activeServer?.id) { index in
+                    play(songs, at: index)
                 }
             }
             .listStyle(.plain)
@@ -124,54 +123,40 @@ struct SongsListView: View {
         }
     }
 
-    @ViewBuilder
     private func playShuffleHeader(_ songs: [DisplayableSong]) -> some View {
         HStack(spacing: MinidiscSpacing.m) {
-            Button {
-                HapticFeedback.medium.trigger()
-                Task {
-                    guard !songs.isEmpty else { return }
-                    await container?.toastService.perform { try await container?.playerService.play(tracks: songs, startIndex: 0) }
-                }
-            } label: {
+            Button { play(songs, order: .ordered) } label: {
                 Label("Play", systemImage: "play.fill")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, MinidiscSpacing.s)
+                    .frame(maxWidth: .infinity).padding(.vertical, MinidiscSpacing.s)
             }
-
-            Button {
-                HapticFeedback.medium.trigger()
-                Task {
-                    guard !songs.isEmpty else { return }
-                    let idx = Int.random(in: 0..<songs.count)
-                    await container?.toastService.perform { try await container?.playerService.play(tracks: songs, startIndex: idx) }
-                    if container?.playerState.isShuffled != true {
-                        await container?.playerService.toggleShuffle()
-                    }
-                }
-            } label: {
+            Button { play(songs, order: .shuffled) } label: {
                 Label("Shuffle", systemImage: "shuffle")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, MinidiscSpacing.s)
+                    .frame(maxWidth: .infinity).padding(.vertical, MinidiscSpacing.s)
             }
+            .accessibilityIdentifier("library.songs.shuffle")
         }
         .buttonStyle(.bordered)
         .tint(.minidiscAccent)
-        .disabled(songs.isEmpty)
+        .disabled(container?.localMusic.catalog.playable(songs).isEmpty != false)
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
         .padding(.vertical, 4)
     }
 
-    private func play(_ songs: [DisplayableSong], at index: Int) {
+    private func play(_ songs: [DisplayableSong], at index: Int? = nil,
+                      order: PreparedPlaybackQueue.Order = .ordered) {
+        guard let container else { return }
+        let playable = container.localMusic.catalog.playable(songs)
+        let selected = index.map { songs[$0] }
         Task {
-            do {
-                try await container?.playerService.play(tracks: songs, startIndex: index)
-            } catch {
-                Logger.player.error("[PLAYBACK] play failed: \(error, privacy: .public)")
-                if !UserFacingError.isCancellation(error) {
-                    container?.toastService.showError(UserFacingError.from(error).displayMessage)
-                }
+            await container.toastService.perform {
+                if let selected, !playable.contains(where: { $0.id == selected.id }) { throw LocalMusicError.unavailable }
+                guard !playable.isEmpty else { throw LocalMusicError.unavailable }
+                try await container.playerService.play(preparingQueue: {
+                    PreparedPlaybackQueue(tracks: playable,
+                        startIndex: selected.flatMap { selected in playable.firstIndex { $0.id == selected.id } } ?? 0,
+                        order: order)
+                })
             }
         }
     }
@@ -181,32 +166,40 @@ struct SongsListView: View {
     }
 
     private func refresh(_ viewModel: SongsListViewModel) async {
-        if container?.serverState.isOnline == true {
+        if isOnline {
             try? await container?.libraryCatalog.refreshTracks()
         }
-        if container?.serverState.isOnline == true { await viewModel.load(sort: songSort) }
+        if isOnline { await viewModel.load(sort: songSort) }
         else { await container?.offlineLibrary.refresh() }
+        await container?.localMusic.refresh()
     }
 }
 
 /// One server-scoped fetch for the list; no synchronous store access in row builders.
 private struct SongListFavoriteRows: View {
+    @Environment(\.appContainer) private var container
     let songs: [DisplayableSong]
     let onPlay: (Int) -> Void
     @Query private var favorites: [FavoriteRecord]
 
-    init(songs: [DisplayableSong], serverID: UUID, onPlay: @escaping (Int) -> Void) {
+    init(songs: [DisplayableSong], serverID: UUID?, onPlay: @escaping (Int) -> Void) {
         self.songs = songs
         self.onPlay = onPlay
-        _favorites = Query(filter: #Predicate<FavoriteRecord> {
-            $0.serverId == serverID && $0.itemType == "song"
-        })
+        if let serverID {
+            _favorites = Query(filter: #Predicate<FavoriteRecord> {
+                $0.serverId == serverID && $0.itemType == "song"
+            })
+        } else {
+            _favorites = Query(filter: #Predicate<FavoriteRecord> { _ in false })
+        }
     }
 
     var body: some View {
         let favoriteIDs = Set(favorites.map(\.itemId))
         ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
             SongRow(song: song, index: index + 1, showCoverArt: true,
+                    secondaryText: song.isLocalFile && container?.localMusic.catalog.availableSongIDs.contains(song.id) != true
+                        ? String(localized: "Unavailable on this device", table: "LocalMusic") : nil,
                     isFavorite: favoriteIDs.contains(song.id))
                 .contentShape(Rectangle())
                 .onTapGesture { onPlay(index) }

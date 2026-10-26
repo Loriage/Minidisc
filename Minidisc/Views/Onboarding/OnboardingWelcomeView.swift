@@ -3,12 +3,12 @@ import UIKit
 
 struct OnboardingWelcomeView: View {
     let onServerConnected: () -> Void
+    let onLocalFiles: () -> Void
 
     @Environment(\.appContainer) private var container
     @State private var viewModel: OnboardingViewModel?
     @State private var showingServerForm = false
     @State private var appeared = false
-    @AppStorage("minidisc.localMusicEnabled") private var localMusicEnabled = false
 
     var body: some View {
         ZStack {
@@ -61,7 +61,7 @@ struct OnboardingWelcomeView: View {
                     .offset(y: appeared ? 0 : 24)
                     .animation(.spring(duration: 0.5, bounce: 0.3).delay(0.05), value: appeared)
 
-                Text("Stream your library from your own server.\nNo subscriptions. No big tech.")
+                Text("Listen to your own music, from Files or your server.\nNo subscription required.", tableName: "LocalMusic")
                     .font(.system(.body, design: .rounded))
                     .foregroundStyle(MinidiscColors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -75,10 +75,20 @@ struct OnboardingWelcomeView: View {
 
             Spacer(minLength: MinidiscSpacing.xl)
 
-            Button { localMusicEnabled = true } label: {
+            Button {
+                triggerHaptic()
+                onLocalFiles()
+            } label: {
                 Text("Use Local Files", tableName: "LocalMusic")
+                    .font(.system(.body, design: .rounded, weight: .semibold))
+                    .frame(maxWidth: .infinity)
             }
-            .padding(.bottom, MinidiscSpacing.l)
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .tint(MinidiscColors.accent)
+            .accessibilityIdentifier("onboarding.localFiles")
+            .padding(.horizontal, MinidiscSpacing.xxxl)
+            .padding(.bottom, MinidiscSpacing.m)
 
             getStartedButton
                 .padding(.horizontal, MinidiscSpacing.xxxl)
@@ -94,16 +104,17 @@ struct OnboardingWelcomeView: View {
             triggerHaptic()
             showingServerForm = true
         } label: {
-            Text("Get Started")
+            Text("Connect a Server", tableName: "LocalMusic")
                 .font(.system(.body, design: .rounded, weight: .semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.bordered)
         .controlSize(.large)
         .tint(MinidiscColors.accent)
         .disabled(viewModel == nil)
+        .accessibilityIdentifier("onboarding.connectServer")
     }
 
     private func triggerHaptic() {

@@ -986,6 +986,262 @@
           }
         }
       }
+    },
+    "Listen to your own music, from Files or your server.\nNo subscription required.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listen to your own music, from Files or your server.\nNo subscription required."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Écoutez votre musique, depuis Fichiers ou votre serveur.\nSans abonnement."
+          }
+        }
+      }
+    },
+    "Connect a Server": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect a Server"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecter un serveur"
+          }
+        }
+      }
+    },
+    "Open My Library": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open My Library"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrir ma bibliothèque"
+          }
+        }
+      }
+    },
+    "Your Music, on This Device": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your Music, on This Device"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre musique, sur cet appareil"
+          }
+        }
+      }
+    },
+    "Choose a music folder in Files. Minidisc finds songs in its subfolders and organizes them into albums and artists. No server is needed.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a music folder in Files. Minidisc finds songs in its subfolders and organizes them into albums and artists. No server is needed."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choisissez un dossier de musique dans Fichiers. Minidisc trouve les morceaux dans ses sous-dossiers et les classe par albums et artistes. Aucun serveur nécessaire."
+          }
+        }
+      }
+    },
+    "%lld songs · %lld available": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld songs · %lld available"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld morceaux · %lld disponibles"
+          }
+        }
+      }
+    },
+    "Restore Access": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore Access"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rétablir l’accès"
+          }
+        }
+      }
+    },
+    "Updating Your Music…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updating Your Music…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualisation de votre musique…"
+          }
+        }
+      }
+    },
+    "Refresh Music": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh Music"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualiser la musique"
+          }
+        }
+      }
+    },
+    "Changes in your folders are checked while Minidisc is open. You can also refresh after adding music in Files.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Changes in your folders are checked while Minidisc is open. You can also refresh after adding music in Files."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les changements dans vos dossiers sont vérifiés lorsque Minidisc est ouvert. Vous pouvez aussi actualiser après avoir ajouté de la musique dans Fichiers."
+          }
+        }
+      }
+    },
+    "Some songs are unavailable. Check your music folders.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Some songs are unavailable. Check your music folders."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Certains morceaux sont indisponibles. Vérifiez vos dossiers de musique."
+          }
+        }
+      }
+    },
+    "Add Music": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Music"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajouter de la musique"
+          }
+        }
+      }
+    },
+    "Search Your Music": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search Your Music"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rechercher dans votre musique"
+          }
+        }
+      }
+    },
+    "Find songs, albums and artists in your music folders.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Find songs, albums and artists in your music folders."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retrouvez les morceaux, albums et artistes de vos dossiers de musique."
+          }
+        }
+      }
+    },
+    "Music Sources": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Music Sources"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sources musicales"
+          }
+        }
+      }
+    },
+    "Artists, albums, songs…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Artists, albums, songs…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Artistes, albums, morceaux…"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

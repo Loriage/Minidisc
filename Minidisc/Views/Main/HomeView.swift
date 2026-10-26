@@ -11,11 +11,22 @@ struct HomeView: View {
     private struct LoadIdentity: Hashable { let serverID: UUID?; let online: Bool }
     @Namespace private var homeZoomNamespace
 
-    private var isOnline: Bool { container?.serverState.isOnline == true }
+    private var isOnline: Bool { container?.serverState.activeServer != nil && container?.serverState.isOnline == true }
 
     var body: some View {
         Group {
-            if let vm = viewModel {
+            if container?.serverState.activeServer == nil {
+                if container?.localMusic.snapshot.tracks.isEmpty != false {
+                    MusicLibraryEmptyView()
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: MinidiscSpacing.xxl) { LocalMusicHomeSections() }
+                            .padding(.top, MinidiscSpacing.m)
+                            .padding(.bottom, MinidiscSpacing.xl)
+                    }
+                    .refreshable { await container?.localMusic.refresh() }
+                }
+            } else if let vm = viewModel {
                 content(vm)
             } else {
                 LoadingStateView()
@@ -60,17 +71,17 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: MinidiscSpacing.xxl) {
                     OfflineHomeInfo()
                     HomeFavoriteSongsSection(songs: favorites.songs)
-                    HomeAlbumSection(title: "Albums", albums: container?.offlineLibrary.snapshot.albums ?? [], identifier: "home.offlineAlbums")
+                    HomeAlbumSection(title: "Albums", albums: (container?.offlineLibrary.snapshot.albums ?? []) + (container?.localMusic.catalog.albums ?? []), identifier: "home.offlineAlbums")
                 }
             }
-        } else if let error = vm.error, vm.isEmpty, !vm.isLoading {
+        } else if let error = vm.error, vm.isEmpty, !vm.isLoading, container?.localMusic.snapshot.tracks.isEmpty != false {
             EmptyStateView(
                 systemImage: "exclamationmark.triangle",
                 title: "Unable to Load",
                 subtitle: LocalizedStringKey(error.displayMessage),
                 action: .init(label: "Retry") { Task { await vm.load() } }
             )
-        } else if vm.isEmpty && !vm.isLoading {
+        } else if vm.isEmpty && !vm.isLoading && container?.localMusic.snapshot.tracks.isEmpty != false {
             EmptyStateView(
                 systemImage: "music.note.list",
                 title: "No music yet",
@@ -125,7 +136,7 @@ struct HomeView: View {
                     if isOnline, vm.recentlyAdded.isEmpty, vm.pendingSections.contains(.recent) {
                         HomeShelfPlaceholder(title: "Recently Added", side: 160)
                     }
-                    HomeAlbumSection(title: "Recently Added", albums: container?.visibleAlbums(vm.otherAdditions) ?? [], identifier: "home.recentlyAdded")
+                    HomeAlbumSection(title: "Recently Added", albums: AlbumSort.recentlyAdded.sorted((container?.visibleAlbums(vm.otherAdditions) ?? []) + (container?.localMusic.catalog.albums ?? [])), identifier: "home.recentlyAdded")
                     ForEach(genres) { shelf in
                         MinidiscShelf {
                             MinidiscCarouselHeaderLink(
@@ -148,7 +159,10 @@ struct HomeView: View {
                 .padding(.bottom, MinidiscSpacing.xl)
             }
             .minidiscSongSwipeContainer()
-            .refreshable { await vm.load(isOnline: isOnline, preserveLayout: true) }
+            .refreshable {
+                await vm.load(isOnline: isOnline, preserveLayout: true)
+                await container?.localMusic.refresh()
+            }
         }
     }
 

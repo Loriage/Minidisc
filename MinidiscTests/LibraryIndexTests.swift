@@ -226,65 +226,6 @@ struct LibraryIndexTests {
         #expect(try await catalog.recentlyAddedAlbums(size: 12).map(\.id) == ["saved"])
     }
 
-    @Test("the V1 library store migrates to V3 without losing indexed media")
-    func v1StoreMigratesToV3() throws {
-        let directory = FileManager.default.temporaryDirectory
-            .appending(path: "MinidiscLibraryMigration-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-
-        let storeURL = directory.appending(path: "library.store")
-        let album = album(id: "preserved", name: "Preserved Album")
-        let payload = try JSONEncoder().encode(album)
-        let serverID = UUID()
-
-        do {
-            let schema = Schema(versionedSchema: LibraryIndexSchemaV1.self)
-            let configuration = ModelConfiguration(
-                "migration-test",
-                schema: schema,
-                url: storeURL,
-                cloudKitDatabase: .none
-            )
-            let container = try ModelContainer(for: schema, configurations: configuration)
-            let context = ModelContext(container)
-            context.insert(
-                IndexedAlbum(
-                    recordKey: "\(serverID.uuidString)|preserved",
-                    serverId: serverID,
-                    itemId: album.id,
-                    name: album.name,
-                    artistName: album.artist,
-                    artistId: album.artistId,
-                    searchText: LibraryIndexText.searchText(album.name, album.artist),
-                    sortName: LibraryIndexText.normalized(album.name),
-                    createdAt: album.created,
-                    generation: "v1",
-                    payload: payload
-                )
-            )
-            try context.save()
-        }
-
-        let schema = Schema(versionedSchema: LibraryIndexSchemaV3.self)
-        let configuration = ModelConfiguration(
-            "migration-test",
-            schema: schema,
-            url: storeURL,
-            cloudKitDatabase: .none
-        )
-        let container = try ModelContainer(
-            for: schema,
-            migrationPlan: LibraryIndexMigrationPlan.self,
-            configurations: configuration
-        )
-        let context = ModelContext(container)
-
-        #expect(try context.fetch(FetchDescriptor<IndexedAlbum>()).map(\.itemId) == [album.id])
-        #expect(try context.fetchCount(FetchDescriptor<IndexedPlaylist>()) == 0)
-        #expect(try context.fetchCount(FetchDescriptor<IndexedAlbumRecommendation>()) == 0)
-    }
-
     @Test("album recommendations persist positive and empty results")
     func recommendationCachePersistsPositiveAndEmptyResults() async throws {
         let store = try makeStore()

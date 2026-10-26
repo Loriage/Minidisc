@@ -377,13 +377,13 @@ extension ModelContainer {
 
     /// A discardable metadata index kept separate from downloads, playback history,
     /// and server configuration so rebuilding it cannot affect user-owned local data.
-    static func libraryIndex(inMemory: Bool = false) throws -> ModelContainer {
-        let schema = Schema(versionedSchema: LibraryIndexSchemaV3.self)
-        let config = ModelConfiguration(
-            "minidisc-library-index",
-            schema: schema,
-            isStoredInMemoryOnly: inMemory
-        )
+    static func libraryIndex(inMemory: Bool = false, storeURL: URL? = nil) throws -> ModelContainer {
+        let schema = Schema(versionedSchema: LibraryIndexSchemaV4.self)
+        let config = if let storeURL {
+            ModelConfiguration("minidisc-library-index", schema: schema, url: storeURL, cloudKitDatabase: .none)
+        } else {
+            ModelConfiguration("minidisc-library-index", schema: schema, isStoredInMemoryOnly: inMemory)
+        }
         return try ModelContainer(
             for: schema,
             migrationPlan: LibraryIndexMigrationPlan.self,

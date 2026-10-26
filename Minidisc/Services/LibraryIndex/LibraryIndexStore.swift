@@ -638,6 +638,7 @@ actor LibraryIndexStore {
         try context.delete(model: IndexedAlbumRecommendation.self, where: #Predicate { $0.serverId == sid })
         try context.delete(model: LibraryIndexState.self, where: #Predicate { $0.serverId == sid })
         try context.delete(model: PlaylistIndexState.self, where: #Predicate { $0.serverId == sid })
+        try context.delete(model: LibraryIndexSchemaV4.TrackSearchIndexState.self, where: #Predicate { $0.serverId == sid })
         try context.save()
     }
 

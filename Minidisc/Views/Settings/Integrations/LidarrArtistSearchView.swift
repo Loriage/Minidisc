@@ -5,14 +5,16 @@ struct LidarrArtistSearchView: View {
     @Environment(\.appContainer) private var container
     @Environment(\.dismiss) private var dismiss
 
-    @State private var query = ""
+    @State private var query: String
     @State private var results: [LidarrArtistLookup] = []
     @State private var isSearching = false
     @State private var errorMessage: String?
     @State private var client: LidarrClient?
     @State private var selected: LidarrArtistLookup?
     @State private var searchTask: Task<Void, Never>?
-
+    
+    init(query: String = "") { _query = State(initialValue: query)}  // Initializer included to accept calling LidarrArtistSearchView from either the Lidarr tab context or the ArtistDetailView context.
+    
     private let columns = [GridItem(.adaptive(minimum: 140, maximum: 180), spacing: MinidiscSpacing.m)]
 
     var body: some View {
@@ -62,6 +64,10 @@ struct LidarrArtistSearchView: View {
             }
             .task {
                 if client == nil { client = await container?.lidarrSettings.makeClient() }
+                
+                if client != nil && !query.isEmpty {
+                    scheduleSearch(query)
+                }
             }
         }
     }

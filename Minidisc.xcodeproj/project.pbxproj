@@ -438,7 +438,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Minidisc/Minidisc.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 35;
+				CURRENT_PROJECT_VERSION = 36;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = VZFD28P342;
 				ENABLE_PREVIEWS = YES;
@@ -465,7 +465,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				MARKETING_VERSION = 26.10.1;
+				MARKETING_VERSION = 26.11.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nohitdev.minidisc;
 				PRODUCT_NAME = Minidisc;
 				SDKROOT = iphoneos;
@@ -492,7 +492,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Minidisc/Minidisc.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 35;
+				CURRENT_PROJECT_VERSION = 36;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = VZFD28P342;
 				ENABLE_PREVIEWS = YES;
@@ -519,7 +519,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				MARKETING_VERSION = 26.10.1;
+				MARKETING_VERSION = 26.11.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nohitdev.minidisc;
 				PRODUCT_NAME = Minidisc;
 				SDKROOT = iphoneos;

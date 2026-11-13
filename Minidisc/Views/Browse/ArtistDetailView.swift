@@ -868,8 +868,7 @@ struct OutOfLibraryArtistSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appContainer) private var container
-    
-    @State private var showLidarrSearch = false
+        
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -964,24 +963,22 @@ struct OutOfLibraryArtistSheet: View {
     }
     
     private func internalLinkButton(title: LocalizedStringKey, mbid: String, secondary: Bool) -> some View { // Internal link button is created for a consistent appearance across local out-of-library experiences.
-        Button {
-            showLidarrSearch = true
+        NavigationLink {
+            LidarrArtistSearchView(query: "lidarr:\(mbid)")
         } label: {
             HStack {
                 Text(title)
                 Spacer(minLength: 0)
                 Image(systemName: "magnifyingglass")
             }
-            .font(.minidiscCellTitle)
-            .padding(MinidiscSpacing.m)
-            .frame(maxWidth: .infinity)
-            .background(secondary
-                ? Color.secondary.opacity(0.08)
-                : Color.minidiscAccent.opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard, style: .continuous))
-            .foregroundStyle(secondary ? Color.secondary : Color.minidiscAccent)
+                .font(.minidiscCellTitle)
+                .padding(MinidiscSpacing.m)
+                .frame(maxWidth: .infinity)
+                .background(secondary
+                            ? Color.secondary.opacity(0.08)
+                            : Color.minidiscAccent.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard, style: .continuous))
+                .foregroundStyle(secondary ? Color.secondary : Color.minidiscAccent)
         }
-        .buttonStyle(.plain)
-        .sheet(isPresented: $showLidarrSearch) { LidarrArtistSearchView(query: "lidarr:\(mbid)") }
     }
 }

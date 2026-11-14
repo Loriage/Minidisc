@@ -4,10 +4,9 @@
     {
       "identity" : "audiostreaming",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/dimitris-c/AudioStreaming",
+      "location" : "https://github.com/Loriage/AudioStreaming",
       "state" : {
-        "revision" : "e28a74b7b8632fc14312b7a79dcd82fa302779af",
-        "version" : "1.4.5"
+        "revision" : "e28a74b7b8632fc14312b7a79dcd82fa302779af"
       }
     },
     {

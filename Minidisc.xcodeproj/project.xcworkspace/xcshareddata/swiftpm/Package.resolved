@@ -1,12 +1,12 @@
 {
-  "originHash" : "cf786534fe0832de566d89e1917d3a3639a6fad0bec92103d8e89eb86d6bcaaf",
+  "originHash" : "6d0850c7ab1933ffc1e2ea86a1bfb4aaf037fd97b9bd3faf149150377929f7fd",
   "pins" : [
     {
       "identity" : "audiostreaming",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Loriage/AudioStreaming",
       "state" : {
-        "revision" : "e28a74b7b8632fc14312b7a79dcd82fa302779af"
+        "revision" : "3ba068ef4d1348f5352e1f464bdcbb3ea48a608e"
       }
     },
     {
@@ -16,6 +16,15 @@
       "state" : {
         "revision" : "c0e822e18738ad913864e98d9614927ac1e9337c",
         "version" : "0.1.2"
+      }
+    },
+    {
+      "identity" : "opus-binary-xcframework",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sbooth/opus-binary-xcframework",
+      "state" : {
+        "revision" : "8e23828b9d88f0ff1ff2d7c4bcb65739a4bdeff8",
+        "version" : "0.3.0"
       }
     },
     {

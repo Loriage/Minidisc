@@ -694,7 +694,7 @@
 			repositoryURL = "https://github.com/Loriage/AudioStreaming";
 			requirement = {
 				kind = revision;
-				revision = e28a74b7b8632fc14312b7a79dcd82fa302779af;
+				revision = 3ba068ef4d1348f5352e1f464bdcbb3ea48a608e;
 			};
 		};
 		DBA4A77B2F9BE3C8008BC5A9 /* XCRemoteSwiftPackageReference "swiftsonic" */ = {

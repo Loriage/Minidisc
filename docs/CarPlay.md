@@ -56,6 +56,12 @@ signing (`CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-`) so the CarPlay entitle
 is embedded. In Simulator choose **I/O > External Displays > CarPlay**, following
 [Apple's simulator guide](https://developer.apple.com/documentation/carplay/using-the-carplay-simulator).
 
+Device Hub also provides a CarPlay Simulator window backed by a connected iPhone.
+For this path, install a development-signed device build and check that both its
+code signature and embedded provisioning profile contain the audio entitlement.
+After Apple approves the capability, an automatic-signing build with
+`-allowProvisioningUpdates` can refresh the development profile.
+
 Verify browsing and playback, changes made from the phone, a cold launch from the
 CarPlay launcher, disconnect/reconnect, server switching during a slow request,
 offline mode and unavailable local files. On a real CarPlay system, also verify a

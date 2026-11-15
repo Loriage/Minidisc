@@ -9,7 +9,7 @@ private final class AudioFixtureBundle: NSObject {}
 @Suite("AudioStreaming — real PCM playback", .serialized)
 @MainActor
 struct AudioStreamingDecoderTests {
-    @Test(arguments: ["stream-cbr.mp3", "stream-vbr.mp3", "stream-aac.m4a", "stream-flac44.flac", "stream-flac96.flac"])
+    @Test(arguments: ["stream-cbr.mp3", "stream-vbr.mp3", "stream-aac.m4a", "stream-flac44.flac", "stream-flac96.flac", "stream-opus.opus"])
     func fileDurationCanCorrectCatalogMetadata(filename: String) async throws {
         try configureSession()
         let url = try #require(Bundle(for: AudioFixtureBundle.self).url(forResource: filename, withExtension: nil))
@@ -24,7 +24,7 @@ struct AudioStreamingDecoderTests {
         #expect(abs(engine.duration - 6) < 0.15)
     }
 
-    @Test(arguments: ["stream-cbr.mp3", "stream-vbr.mp3", "stream-aac.m4a", "stream-flac44.flac", "stream-flac96.flac"])
+    @Test(arguments: ["stream-cbr.mp3", "stream-vbr.mp3", "stream-aac.m4a", "stream-flac44.flac", "stream-flac96.flac", "stream-opus.opus"])
     func compressedFilePauseSeekAndResume(filename: String) async throws {
         try configureSession()
         let url = try #require(Bundle(for: AudioFixtureBundle.self).url(forResource: filename, withExtension: nil))

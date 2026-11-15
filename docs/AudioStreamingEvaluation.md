@@ -4,7 +4,7 @@
 
 ## État de la branche après expérimentation
 
-À la demande de l’utilisateur, **AudioStreaming 1.4.5 est désormais le moteur par défaut sur cette branche**. La dépendance est fixée à cette version dans SwiftPM. `AudioStreamingDriver` adapte la bibliothèque et `AudioStreamingEngine` préserve le contrat de `PlayerService` : tokens par chargement, file native, deux lecteurs pour le crossfade, ReplayGain séparé, pause, seek confirmé et reconstruction après reset.
+Le moteur par défaut est le [fork Loriage/AudioStreaming](https://github.com/Loriage/AudioStreaming), basé sur 1.4.5 avec le support Opus. SwiftPM fixe sa révision à `e92f3e8f9fd93803ac18e8f4d81cb54edba836d4`. `AudioStreamingDriver` adapte la bibliothèque et `AudioStreamingEngine` préserve le contrat de `PlayerService` : tokens par chargement, file native, deux lecteurs pour le crossfade, ReplayGain séparé, pause, seek confirmé et reconstruction après reset.
 
 Le moteur AVPlayer reste disponible pour les comparaisons : lancer l’application avec la variable d’environnement **`MINIDISC_AUDIO_ENGINE=avplayer`**. Ce choix n’est pas un réglage utilisateur et ne change ni les téléchargements, ni le cache audio, ni le scrobbling, ni la résolution des sources.
 

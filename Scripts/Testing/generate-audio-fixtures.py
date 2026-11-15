@@ -14,6 +14,7 @@ formats = [
     ("stream-aac.m4a", 48000, ["-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart"]),
     ("stream-flac44.flac", 44100, ["-c:a", "flac"]),
     ("stream-flac96.flac", 96000, ["-c:a", "flac"]),
+    ("stream-opus.opus", 48000, ["-c:a", "libopus", "-b:a", "128k"]),
 ]
 for filename, rate, codec in formats:
     subprocess.run([

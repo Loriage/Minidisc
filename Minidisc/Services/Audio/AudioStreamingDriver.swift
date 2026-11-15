@@ -60,8 +60,6 @@ nonisolated final class AudioStreamingDriver: StreamingAudioDriver, AudioPlayerD
     var position: Double { player.progress }
     var duration: Double { player.duration }
     var renderedFrames: Int { player.framesPlayed }
-    // The decoder can support seeking before a streamed file's exact duration
-    // is known; AudioStreamingEngine already keeps the catalogue duration.
     var isSeekable: Bool { player.isSeekable }
     var volume: Float {
         get { player.volume }

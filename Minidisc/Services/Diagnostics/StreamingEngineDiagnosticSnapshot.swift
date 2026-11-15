@@ -15,6 +15,6 @@ nonisolated struct StreamingEngineDiagnosticSnapshot: Sendable, Equatable {
     let airPlay: Bool
 
     var description: String {
-        "engine=AudioStreaming version=1.4.5+opus.3ba068e item=\(token.rawValue) state=\(state) position=\(position) duration=\(duration) rendered-frames=\(renderedFrames) intent-play=\(intended) seeking=\(seeking) queued=\(queued) overlap=\(overlapping) airplay=\(airPlay) pcm-hz=44100"
+        "engine=AudioStreaming version=1.4.5+opus.e92f3e8 item=\(token.rawValue) state=\(state) position=\(position) duration=\(duration) rendered-frames=\(renderedFrames) intent-play=\(intended) seeking=\(seeking) queued=\(queued) overlap=\(overlapping) airplay=\(airPlay) pcm-hz=44100"
     }
 }

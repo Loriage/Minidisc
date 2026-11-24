@@ -101,6 +101,9 @@ struct LidarrArtistShortcutView: View {
 
     private func load() async {
         let request = requestID
+        if loadedRequest == request {
+            guard case .loading = phase else { return }
+        }
         loadedRequest = request
         phase = .loading
         showSearch = false

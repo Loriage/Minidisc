@@ -13,7 +13,7 @@ import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-STATE = {"removed": False, "fail_stream": False, "slow_stream": False, "search_catalog": False, "queue_catalog": False, "home_catalog": False, "browse_catalog": False, "playlist_artwork_catalog": False, "lidarr_catalog": False, "lidarr_missing": False, "lidarr_already_added": False}
+STATE = {"removed": False, "fail_stream": False, "slow_stream": False, "search_catalog": False, "queue_catalog": False, "home_catalog": False, "browse_catalog": False, "playlist_artwork_catalog": False, "lidarr_catalog": False, "lidarr_missing": False, "lidarr_already_added": False, "lidarr_tags_fail": False, "lidarr_tags_empty": False}
 # Mode changes represent completed server scans, so persistent app indexes can refresh.
 LAST_SCAN = time.time()
 LOCK = threading.RLock()
@@ -357,7 +357,7 @@ class Handler(BaseHTTPRequestHandler):
             if data.get("foreignArtistId") != LIDARR_MBID:
                 return self.send(b'{"error":"Unexpected fixture artist"}', status=400)
             with LOCK:
-                LIDARR_ADDITIONS.append({"foreignArtistId": data["foreignArtistId"], "rootFolderPath": data.get("rootFolderPath")})
+                LIDARR_ADDITIONS.append({"foreignArtistId": data["foreignArtistId"], "rootFolderPath": data.get("rootFolderPath"), "tags": data.get("tags"), "searchForMissingAlbums": data.get("addOptions", {}).get("searchForMissingAlbums")})
             return self.send(json.dumps({"id": 42, **data}).encode())
         if urlparse(self.path).path == "/__state":
             data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
@@ -414,6 +414,10 @@ class Handler(BaseHTTPRequestHandler):
                 result = [{"id": 1, "name": "Fixture profile"}]
             elif parsed.path == "/api/v1/rootfolder":
                 result = [{"id": 1, "path": "/fixture/music", "accessible": True, "freeSpace": 1000000}]
+            elif parsed.path == "/api/v1/tag":
+                if state["lidarr_tags_fail"]:
+                    return self.send(b'{"message":"Fixture tag catalog unavailable"}', status=503)
+                result = [] if state["lidarr_tags_empty"] else [{"id": 42, "label": "alternate-client"}, {"id": 7, "label": "lossless"}]
             else:
                 result = []
             return self.send(json.dumps(result).encode())

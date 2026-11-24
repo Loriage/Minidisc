@@ -41,7 +41,7 @@ private struct LidarrTagSelectionView: View {
                     } label: {
                         HStack {
                             Text(tag.label)
-                                .foregroundStyle(.primary)
+                                .foregroundStyle(Color.primary)
                             Spacer()
                             if selection.contains(tag.id) {
                                 Image(systemName: "checkmark")

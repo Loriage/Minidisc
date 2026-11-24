@@ -7,13 +7,13 @@ nonisolated struct LidarrArtistLookup: Decodable, Sendable, Identifiable {
     let artistName: String
     let disambiguation: String?
     let overview: String?
-    /// Lidarr's own artist id, present only when the artist is already in the library.
+    /// Lidarr's artist id; nil or zero means the artist is not in its library.
     let existingId: Int?
     let remotePoster: String?
     let images: [LidarrImage]?
 
     var id: String { foreignArtistId }
-    var isAlreadyAdded: Bool { existingId != nil }
+    var isAlreadyAdded: Bool { (existingId ?? 0) > 0 }
 
     var posterURL: URL? {
         if let remotePoster, let url = URL(string: remotePoster) { return url }

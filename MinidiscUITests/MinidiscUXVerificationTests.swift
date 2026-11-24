@@ -1,5 +1,5 @@
 import XCTest
-#if compiler(>=6.4) && canImport(AppIntentsTesting)
+#if compiler(>=6.4) && canImport(AppIntentsTesting) && !DISABLE_APP_INTENTS_TESTING
 import AppIntentsTesting
 #endif
 
@@ -16,7 +16,7 @@ final class MinidiscUXVerificationTests: XCTestCase {
         continueAfterFailure = false
     }
 
-    #if compiler(>=6.4) && canImport(AppIntentsTesting)
+    #if compiler(>=6.4) && canImport(AppIntentsTesting) && !DISABLE_APP_INTENTS_TESTING
     @available(iOS 27.0, *)
     func testFixtureMusicShortcutsColdStart() async throws {
         try await launchFixtureApp()
@@ -240,13 +240,97 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try await launchFixtureApp()
     }
 
+    func testFixtureLidarrArtistShortcut() async throws {
+        try await launchFixtureApp()
+        try await setFixtureState(["lidarr_catalog": true, "reset_lidarr": true])
+        try tap(app.buttons["Réglages"], named: "lidarr-settings")
+        try tap(app.buttons["Intégrations"], named: "lidarr-integrations")
+        try tap(app.collectionViews.buttons["Lidarr"].firstMatch, named: "lidarr-connection")
+        let address = app.textFields["lidarr.settings.url"]
+        try require(address)
+        if (address.value as? String ?? "").isEmpty || address.value as? String == "http://nas.local:8686" {
+            try enter("http://127.0.0.1:18992", into: address)
+            try enter("fixture-only", into: app.secureTextFields["lidarr.settings.api-key"])
+            app.swipeUp()
+            try tap(app.buttons["lidarr.settings.connect"], named: "lidarr-connect")
+            try require(app.staticTexts["Connecté."], timeout: 10)
+        } else {
+            XCTAssertEqual(address.value as? String, "http://127.0.0.1:18992")
+        }
+        try tapBack(named: "lidarr-back-integrations")
+        try tapBack(named: "lidarr-back-settings")
+        try tap(app.buttons["Fermer"], named: "lidarr-close-settings")
+        try openBrowse("Artistes")
+        try tap(app.staticTexts["Atelier Minidisc"].firstMatch, named: "lidarr-source-artist")
+        let similar = app.staticTexts["Lidarr Fixture Artist"].firstMatch
+        for _ in 0..<8 {
+            if similar.exists && similar.isHittable { break }
+            app.swipeUp()
+        }
+        try tap(similar, named: "lidarr-outside-library")
+        try tap(app.buttons["artist.add-to-lidarr"], named: "lidarr-direct-add")
+        let confirm = app.buttons["lidarr.confirm-add"]
+        try require(confirm, timeout: 10)
+        let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: confirm)
+        XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 10), .completed)
+        XCTAssertFalse(app.searchFields.firstMatch.exists)
+        var journal = try await lidarrFixtureJournal()
+        XCTAssertEqual((journal["additions"] as? [[String: Any]])?.count, 0)
+        XCTAssertEqual(journal["queries"] as? [String], ["lidarr:b071f9fa-14b0-4217-8e97-eb41da73f598"])
+        captureHierarchy("lidarr-direct-confirmation")
+        try tap(confirm, named: "lidarr-confirm-add")
+        try require(app.buttons["artist.add-to-lidarr"], timeout: 10)
+        journal = try await lidarrFixtureJournal()
+        let additions = try XCTUnwrap(journal["additions"] as? [[String: Any]])
+        XCTAssertEqual(additions.count, 1)
+        XCTAssertEqual(additions.first?["foreignArtistId"] as? String, "b071f9fa-14b0-4217-8e97-eb41da73f598")
+        XCTAssertEqual(additions.first?["rootFolderPath"] as? String, "/fixture/music")
+
+        try await setFixtureState(["lidarr_already_added": true, "reset_lidarr": true])
+        try tap(app.buttons["artist.add-to-lidarr"], named: "lidarr-existing")
+        try tap(app.buttons["lidarr.shortcut.open-existing"], named: "lidarr-open-existing")
+        try require(app.navigationBars["Lidarr Fixture Artist"])
+        XCTAssertFalse(confirm.exists)
+        journal = try await lidarrFixtureJournal()
+        XCTAssertEqual((journal["additions"] as? [[String: Any]])?.count, 0)
+        captureHierarchy("lidarr-existing-detail")
+        try tapBack(named: "lidarr-existing-back")
+        try tapBack(named: "lidarr-shortcut-back")
+
+        try await setFixtureState(["lidarr_already_added": false, "lidarr_missing": true, "reset_lidarr": true])
+        try tap(app.buttons["artist.add-to-lidarr"], named: "lidarr-missing")
+        try tap(app.buttons["lidarr.shortcut.search"], named: "lidarr-manual-fallback")
+        try require(app.searchFields.firstMatch)
+        XCTAssertEqual(app.searchFields.firstMatch.value as? String, "Lidarr Fixture Artist")
+        try tap(app.staticTexts["Lidarr Fixture Artist"].firstMatch, named: "lidarr-search-result")
+        try require(confirm)
+        journal = try await lidarrFixtureJournal()
+        XCTAssertEqual(journal["queries"] as? [String], ["lidarr:b071f9fa-14b0-4217-8e97-eb41da73f598", "Lidarr Fixture Artist"])
+        XCTAssertEqual((journal["additions"] as? [[String: Any]])?.count, 0)
+        captureHierarchy("lidarr-manual-confirmation")
+    }
+
+    private func lidarrFixtureJournal() async throws -> [String: Any] {
+        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:18992/__lidarr"))
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.connectionProxyDictionary = ["HTTPEnable": 0, "HTTPSEnable": 0, "SOCKSEnable": 0]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let (data, response) = try await session.data(from: url)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+        XCTAssertEqual(http.statusCode, 200)
+        XCTAssertEqual(http.value(forHTTPHeaderField: "X-Minidisc-UX-Fixture"), "1")
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
     private func launchFixtureApp(searchCatalog: Bool = false, queueCatalog: Bool = false, homeCatalog: Bool = false, browseCatalog: Bool = false, playlistArtworkCatalog: Bool = false, contentSize: String? = nil) async throws {
         try await requireLocalFixture()
         try await setFixtureState([
             "search_catalog": searchCatalog, "queue_catalog": queueCatalog, "home_catalog": homeCatalog,
             "browse_catalog": browseCatalog, "playlist_artwork_catalog": playlistArtworkCatalog,
             "reset_playlists": true, "reset_requests": true, "removed": false,
-            "fail_stream": false, "slow_stream": false
+            "fail_stream": false, "slow_stream": false,
+            "lidarr_catalog": false, "lidarr_missing": false, "lidarr_already_added": false
         ])
         app.launchArguments = ["-AppleLanguages", "(fr)", "-AppleLocale", "fr_FR"]
         if let contentSize { app.launchArguments += ["-UIPreferredContentSizeCategoryName", contentSize] }

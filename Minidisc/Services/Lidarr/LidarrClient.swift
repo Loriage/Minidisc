@@ -71,6 +71,10 @@ actor LidarrClient {
         try await get(path: "/api/v1/artist")
     }
 
+    func artist(id: Int) async throws -> LidarrArtist {
+        try await get(path: "/api/v1/artist/\(id)")
+    }
+
     func albums(artistId: Int) async throws -> [LidarrAlbum] {
         try await get(path: "/api/v1/album", query: [URLQueryItem(name: "artistId", value: String(artistId))])
     }

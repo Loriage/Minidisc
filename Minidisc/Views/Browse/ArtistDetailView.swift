@@ -867,6 +867,7 @@ struct OutOfLibraryArtistSheet: View {
     let providers: [ExternalReleaseProvider]
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.appContainer) private var container
 
     var body: some View {
         NavigationStack {
@@ -901,6 +902,7 @@ struct OutOfLibraryArtistSheet: View {
                 }
             }
         }
+        .toastOverlay(reservesMiniPlayerSpace: false)
     }
 
     @ViewBuilder
@@ -912,6 +914,10 @@ struct OutOfLibraryArtistSheet: View {
                         externalLinkButton(title: "View on \(provider.name)", url: url, secondary: false)
                     }
                 }
+            }
+
+            if container?.lidarrSettings.isConnected == true {
+                lidarrButton
             }
 
             if let mbid = artist.mbid {
@@ -953,5 +959,24 @@ struct OutOfLibraryArtistSheet: View {
             .foregroundStyle(secondary ? Color.secondary : Color.minidiscAccent)
         }
         .buttonStyle(.plain)
+    }
+    private var lidarrButton: some View {
+        NavigationLink {
+            LidarrArtistShortcutView(artist: artist)
+        } label: {
+            HStack {
+                Text("Add to Lidarr")
+                Spacer(minLength: 0)
+                Image(systemName: "plus")
+            }
+            .font(.minidiscCellTitle)
+            .padding(MinidiscSpacing.m)
+            .frame(maxWidth: .infinity)
+            .background(Color.minidiscAccent.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard, style: .continuous))
+            .foregroundStyle(Color.minidiscAccent)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("artist.add-to-lidarr")
     }
 }

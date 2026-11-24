@@ -62,9 +62,11 @@ struct LidarrSettingsView: View {
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .keyboardType(.URL)
+                .accessibilityIdentifier("lidarr.settings.url")
             SecureField("API key", text: $apiKeyInput)
                 .textContentType(.password)
                 .autocorrectionDisabled()
+                .accessibilityIdentifier("lidarr.settings.api-key")
 
             Button {
                 Task { await testAndSave() }
@@ -78,6 +80,7 @@ struct LidarrSettingsView: View {
                 }
             }
             .disabled(!canConnect || isTesting)
+            .accessibilityIdentifier("lidarr.settings.connect")
 
             if let testResult {
                 switch testResult {

@@ -1,7 +1,18 @@
 import SwiftUI
-import OSLog
 
 struct LidarrAddArtistSheet: View {
+    let artist: LidarrArtistLookup
+    let client: LidarrClient
+    let onAdded: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            LidarrAddArtistForm(artist: artist, client: client, onAdded: onAdded)
+        }
+    }
+}
+
+struct LidarrAddArtistForm: View {
     let artist: LidarrArtistLookup
     let client: LidarrClient
     let onAdded: () -> Void
@@ -27,7 +38,7 @@ struct LidarrAddArtistSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
             Form {
                 Section {
                     HStack(spacing: MinidiscSpacing.m) {
@@ -93,6 +104,7 @@ struct LidarrAddArtistSheet: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(!canAdd)
+                    .accessibilityIdentifier("lidarr.confirm-add")
                 }
             }
             .task { await loadOptions() }
@@ -149,6 +161,7 @@ struct LidarrAddArtistSheet: View {
         )
         do {
             try await client.addArtist(request)
+            NotificationCenter.default.post(name: .lidarrLibraryDidChange, object: nil)
             onAdded()
             dismiss()
         } catch {

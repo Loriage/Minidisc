@@ -13,7 +13,7 @@ import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-STATE = {"removed": False, "fail_stream": False, "slow_stream": False, "search_catalog": False, "queue_catalog": False, "home_catalog": False, "browse_catalog": False, "playlist_artwork_catalog": False}
+STATE = {"removed": False, "fail_stream": False, "slow_stream": False, "search_catalog": False, "queue_catalog": False, "home_catalog": False, "browse_catalog": False, "playlist_artwork_catalog": False, "lidarr_catalog": False, "lidarr_missing": False, "lidarr_already_added": False}
 # Mode changes represent completed server scans, so persistent app indexes can refresh.
 LAST_SCAN = time.time()
 LOCK = threading.RLock()
@@ -21,6 +21,10 @@ PLAYLIST_OVERRIDES = {}
 DELETED_PLAYLISTS = set()
 MUTATIONS = []
 REQUESTS = []
+LIDARR_MBID = "b071f9fa-14b0-4217-8e97-eb41da73f598"
+LIDARR_NAME = "Lidarr Fixture Artist"
+LIDARR_ADDITIONS = []
+LIDARR_QUERIES = []
 SONGS = [
     {"id": "ux-song-1", "title": "Matin tranquille", "artist": "Atelier Minidisc", "artistId": "ux-artist", "album": "Horizons de test", "albumId": "ux-album", "duration": 30, "track": 1, "size": 960044, "suffix": "wav", "contentType": "audio/wav", "isDir": False, "coverArt": "ux-cover"},
     {"id": "ux-song-2", "title": "Une très longue promenade au bord de la mer pour vérifier la lisibilité", "artist": "Atelier Minidisc", "artistId": "ux-artist", "album": "Horizons de test", "albumId": "ux-album", "duration": 30, "track": 2, "size": 960044, "suffix": "wav", "contentType": "audio/wav", "isDir": False, "coverArt": "ux-cover"},
@@ -348,6 +352,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         global LAST_SCAN
+        if urlparse(self.path).path == "/api/v1/artist":
+            data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+            if data.get("foreignArtistId") != LIDARR_MBID:
+                return self.send(b'{"error":"Unexpected fixture artist"}', status=400)
+            with LOCK:
+                LIDARR_ADDITIONS.append({"foreignArtistId": data["foreignArtistId"], "rootFolderPath": data.get("rootFolderPath")})
+            return self.send(json.dumps({"id": 42, **data}).encode())
         if urlparse(self.path).path == "/__state":
             data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
             with LOCK:
@@ -361,11 +372,16 @@ class Handler(BaseHTTPRequestHandler):
                     MUTATIONS.clear()
                 if data.get("reset_requests") is True:
                     REQUESTS.clear()
+                if data.get("reset_lidarr") is True:
+                    LIDARR_ADDITIONS.clear()
+                    LIDARR_QUERIES.clear()
                 response = dict(STATE)
                 if "reset_playlists" in data:
                     response["reset_playlists"] = data["reset_playlists"] is True
                 if "reset_requests" in data:
                     response["reset_requests"] = data["reset_requests"] is True
+                if "reset_lidarr" in data:
+                    response["reset_lidarr"] = data["reset_lidarr"] is True
             return self.send(json.dumps(response).encode())
         self.do_GET()
 
@@ -376,6 +392,31 @@ class Handler(BaseHTTPRequestHandler):
         with LOCK:
             state = dict(STATE)
         catalog = fixture_catalog(state)
+        if parsed.path == "/__lidarr":
+            with LOCK:
+                snapshot = {"additions": list(LIDARR_ADDITIONS), "queries": list(LIDARR_QUERIES)}
+            return self.send(json.dumps(snapshot).encode())
+        if parsed.path.startswith("/api/v1/"):
+            artist = {"id": 42, "artistName": LIDARR_NAME, "foreignArtistId": LIDARR_MBID, "monitored": True}
+            if parsed.path == "/api/v1/system/status":
+                result = {"version": "3.0", "instanceName": "Minidisc UX Fixture", "appName": "Lidarr"}
+            elif parsed.path == "/api/v1/artist/lookup":
+                term = query.get("term", [""])[0]
+                with LOCK:
+                    LIDARR_QUERIES.append(term)
+                    del LIDARR_QUERIES[:-100]
+                result = [] if state["lidarr_missing"] and term.startswith("lidarr:") else [{**artist, "id": 42 if state["lidarr_already_added"] else 0}]
+            elif parsed.path == "/api/v1/artist/42":
+                result = artist
+            elif parsed.path == "/api/v1/artist":
+                result = [artist] if state["lidarr_already_added"] else []
+            elif parsed.path in ("/api/v1/qualityprofile", "/api/v1/metadataprofile"):
+                result = [{"id": 1, "name": "Fixture profile"}]
+            elif parsed.path == "/api/v1/rootfolder":
+                result = [{"id": 1, "path": "/fixture/music", "accessible": True, "freeSpace": 1000000}]
+            else:
+                result = []
+            return self.send(json.dumps(result).encode())
         if endpoint == "__state":
             return self.send(json.dumps(state).encode())
         if endpoint == "__mutations":
@@ -484,7 +525,8 @@ class Handler(BaseHTTPRequestHandler):
                 songs = [item for item in songs if item["artist"] == name]
             response[key] = {"song": paged(songs, query, "size" if endpoint == "getRandomSongs" else "count")}
         elif endpoint == "getArtistInfo2":
-            response["artistInfo2"] = {"biography": "Artiste local de vérification", "similarArtist": []}
+            similar = [{"id": "ux-lidarr-similar", "name": LIDARR_NAME, "musicBrainzId": LIDARR_MBID}] if state["lidarr_catalog"] else []
+            response["artistInfo2"] = {"biography": "Artiste local de vérification", "similarArtist": similar}
         elif endpoint == "getAlbumInfo2":
             response["albumInfo"] = {}
         return self.send(json.dumps({"subsonic-response": response}).encode())

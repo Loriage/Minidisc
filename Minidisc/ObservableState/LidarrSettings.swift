@@ -20,6 +20,7 @@ final class LidarrSettings {
 
     @ObservationIgnored private var _baseURL: String
     private(set) var isConnected: Bool = false
+    private(set) var connectionRevision = 0
 
     var baseURL: String {
         access(keyPath: \.baseURL)
@@ -54,6 +55,7 @@ final class LidarrSettings {
         defaults.set(trimmedURL, forKey: Self.baseURLKey)
         withMutation(keyPath: \.baseURL) { _baseURL = trimmedURL }
         withMutation(keyPath: \.isConnected) { isConnected = true }
+        connectionRevision += 1
     }
 
     func disconnect() async {
@@ -61,6 +63,7 @@ final class LidarrSettings {
         defaults.removeObject(forKey: Self.baseURLKey)
         withMutation(keyPath: \.baseURL) { _baseURL = "" }
         withMutation(keyPath: \.isConnected) { isConnected = false }
+        connectionRevision += 1
     }
 
     func makeClient() async -> LidarrClient? {

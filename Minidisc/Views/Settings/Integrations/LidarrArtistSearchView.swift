@@ -2,6 +2,16 @@ import SwiftUI
 import OSLog
 
 struct LidarrArtistSearchView: View {
+    var query = ""
+
+    var body: some View {
+        NavigationStack {
+            LidarrArtistSearchContent(query: query)
+        }
+    }
+}
+
+struct LidarrArtistSearchContent: View {
     @Environment(\.appContainer) private var container
     @Environment(\.dismiss) private var dismiss
 
@@ -12,13 +22,15 @@ struct LidarrArtistSearchView: View {
     @State private var client: LidarrClient?
     @State private var selected: LidarrArtistLookup?
     @State private var searchTask: Task<Void, Never>?
-    
-    init(query: String = "") { _query = State(initialValue: query)}  // Initializer included to accept calling LidarrArtistSearchView from either the Lidarr tab context or the ArtistDetailView context.
-    
+
+    init(query: String = "") {
+        _query = State(initialValue: query)
+    }
+
     private let columns = [GridItem(.adaptive(minimum: 140, maximum: 180), spacing: MinidiscSpacing.m)]
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
             Group {
                 if client == nil {
                     EmptyStateView(
@@ -62,14 +74,21 @@ struct LidarrArtistSearchView: View {
                     }
                 }
             }
-            .task {
-                if client == nil { client = await container?.lidarrSettings.makeClient() }
-                
-                if client != nil && !query.isEmpty {
-                    scheduleSearch(query)
-                }
-            }
         }
+        .task(id: container?.lidarrSettings.connectionRevision) {
+            let revision = container?.lidarrSettings.connectionRevision
+            searchTask?.cancel()
+            selected = nil
+            client = nil
+            results = []
+            errorMessage = nil
+            isSearching = false
+            let connectedClient = await container?.lidarrSettings.makeClient()
+            guard !Task.isCancelled, revision == container?.lidarrSettings.connectionRevision else { return }
+            client = connectedClient
+            if client != nil && !query.isEmpty { scheduleSearch(query) }
+        }
+        .onDisappear { searchTask?.cancel() }
     }
 
     private var resultsGrid: some View {

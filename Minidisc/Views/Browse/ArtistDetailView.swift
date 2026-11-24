@@ -868,7 +868,7 @@ struct OutOfLibraryArtistSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appContainer) private var container
-        
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -916,12 +916,11 @@ struct OutOfLibraryArtistSheet: View {
                 }
             }
 
+            if container?.lidarrSettings.isConnected == true {
+                lidarrButton
+            }
+
             if let mbid = artist.mbid {
-                
-                if container?.lidarrSettings.isConnected == true {
-                    internalLinkButton(title: "Search in Lidarr", mbid: mbid, secondary: !providers.isEmpty)
-                }
-                
                 if let lbURL = URL(string: "https://listenbrainz.org/artist/\(mbid)/") {
                     externalLinkButton(
                         title: "View on ListenBrainz",
@@ -961,24 +960,23 @@ struct OutOfLibraryArtistSheet: View {
         }
         .buttonStyle(.plain)
     }
-    
-    private func internalLinkButton(title: LocalizedStringKey, mbid: String, secondary: Bool) -> some View { // Internal link button is created for a consistent appearance across local out-of-library experiences.
+    private var lidarrButton: some View {
         NavigationLink {
-            LidarrArtistSearchView(query: "lidarr:\(mbid)")
+            LidarrArtistShortcutView(artist: artist)
         } label: {
             HStack {
-                Text(title)
+                Text("Add to Lidarr")
                 Spacer(minLength: 0)
-                Image(systemName: "magnifyingglass")
+                Image(systemName: "plus")
             }
-                .font(.minidiscCellTitle)
-                .padding(MinidiscSpacing.m)
-                .frame(maxWidth: .infinity)
-                .background(secondary
-                            ? Color.secondary.opacity(0.08)
-                            : Color.minidiscAccent.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard, style: .continuous))
-                .foregroundStyle(secondary ? Color.secondary : Color.minidiscAccent)
+            .font(.minidiscCellTitle)
+            .padding(MinidiscSpacing.m)
+            .frame(maxWidth: .infinity)
+            .background(Color.minidiscAccent.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: MinidiscCornerRadius.standard, style: .continuous))
+            .foregroundStyle(Color.minidiscAccent)
         }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("artist.add-to-lidarr")
     }
 }

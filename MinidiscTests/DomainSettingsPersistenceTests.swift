@@ -111,6 +111,24 @@ struct DomainSettingsPersistenceTests {
         #expect(LidarrSettings(keychain: keychain, defaults: defaults).baseURL.isEmpty)
     }
 
+    @Test("Lidarr requests are invalidated when credentials change at the same URL or disconnect")
+    func lidarrConnectionRevision() async throws {
+        let (defaults, suiteName) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = LidarrSettings(keychain: SettingsKeychain(), defaults: defaults)
+        let initial = settings.connectionRevision
+        try await settings.connect(baseURL: "https://lidarr.example.com", apiKey: "first", headers: [:])
+        let connected = settings.connectionRevision
+        #expect(connected != initial)
+        try await settings.connect(baseURL: "https://lidarr.example.com", apiKey: "second", headers: [:])
+        let updated = settings.connectionRevision
+        #expect(updated != connected)
+        #expect(await settings.currentCredentials()?.apiKey == "second")
+        await settings.disconnect()
+        #expect(settings.connectionRevision != updated)
+        #expect(await settings.makeClient() == nil)
+    }
+
     private func isolatedDefaults() -> (UserDefaults, String) {
         let suiteName = "app.minidisc.tests.settings.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

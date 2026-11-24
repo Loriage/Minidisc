@@ -13,7 +13,7 @@ nonisolated struct LidarrArtistLookup: Decodable, Sendable, Identifiable {
     let images: [LidarrImage]?
 
     var id: String { foreignArtistId }
-    var isAlreadyAdded: Bool { existingId != nil }
+    var isAlreadyAdded: Bool { (existingId ?? 0) > 0 }
 
     var posterURL: URL? {
         if let remotePoster, let url = URL(string: remotePoster) { return url }

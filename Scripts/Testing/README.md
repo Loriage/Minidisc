@@ -26,6 +26,11 @@ rtk proxy xcodebuild test \
 
 Keep ad hoc code signing enabled: the simulated app writes its fixture credentials to Keychain, which requires its entitlements. Building with `CODE_SIGNING_ALLOWED=NO` fails that onboarding step.
 
+When using a newer Xcode with an iOS 26.2 simulator, append
+`SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) DISABLE_APP_INTENTS_TESTING'` to run the UI
+scenarios without loading the newer AppIntentsTesting framework. Run the Siri scenario separately
+on a compatible runtime, without this flag.
+
 Run `testOnboardingAccessibilityXXXL` separately on a fresh installation, before connecting the fixture account; it skips when onboarding has already been completed. Use the same command with `-only-testing:MinidiscUITests/MinidiscUXVerificationTests/testOnboardingAccessibilityXXXL`. The playback scenario can initialize the fixture account itself and does not depend on another test running first.
 
 The scenarios connect to the fixture when needed and attach accessibility hierarchies to the test result. `UX_STEP` markers identify capture points. For a screenshot of a confirmed step, use `xcrun simctl io <simulator-UDID> screenshot <output.png>` through `rtk proxy`. Direct `simctl` capture avoids the screenshot timeout encountered with XCTest on the tested iOS 27 simulator.
@@ -62,6 +67,12 @@ playlist controls. A skipped scenario means the isolated fixture was unavailable
 verification.
 
 These tests exercise visible controls and local fixture audio. They do not validate physical network handoffs, audio-route changes or iOS background scheduling over a long period. Stop the Python process when finished.
+
+`testFixtureLidarrArtistShortcut` connects Lidarr to the same loopback fixture. It checks direct
+MusicBrainz lookup, explicit confirmation before adding an artist, opening an existing artist,
+and a prefilled name search when the exact lookup has no match. The `lidarr_catalog`,
+`lidarr_missing` and `lidarr_already_added` modes control those responses. `GET /__lidarr`
+records synthetic lookup terms and confirmed additions; `reset_lidarr: true` clears that journal.
 
 The playlist artwork scenarios use `playlist_artwork_catalog`: a bright four-colour cover, 14 tracks
 including a long title, and a second playlist reserved for choosing a locally generated cover.

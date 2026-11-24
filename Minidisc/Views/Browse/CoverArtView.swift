@@ -40,6 +40,7 @@ private struct CoverArtViewContent: View {
     @AppStorage("coverArtUploadVersion") private var coverArtUploadVersion = 0
     @State private var cachedImage: PlatformImage?
     @State private var url: URL?
+    @State private var isUnavailable = false
     /// Associates local image state with its source id to prevent stale artwork.
     @State private var displayedId: String?
 
@@ -64,7 +65,7 @@ private struct CoverArtViewContent: View {
                 Image(platformImage: cached)
                     .resizable()
                     .scaledToFill()
-            } else if id.hasPrefix("local:") {
+            } else if id.hasPrefix("local:") || isUnavailable {
                 placeholder
             } else {
                 AsyncImage(url: url) { phase in
@@ -89,9 +90,10 @@ private struct CoverArtViewContent: View {
                 }
             }
         }
-        .task(id: "\(loadingEnabled):\(id):\(coverArtUploadVersion)") {
+        .task(id: "\(loadingEnabled):\(id):\(resolvedTier.rawValue):\(coverArtUploadVersion):\(container?.serverState.isOnline ?? true)") {
             guard loadingEnabled else { return }
             url = nil
+            isUnavailable = false
             let t = resolvedTier
             let online = container?.serverState.isOnline ?? true
 
@@ -101,7 +103,10 @@ private struct CoverArtViewContent: View {
                 return
             }
 
-            if online || id.hasPrefix("local:"), let image = await artworkCache.load(coverArtId: id, tier: t) {
+            let image = online
+                ? await artworkCache.load(coverArtId: id, tier: t)
+                : await artworkCache.loadCached(coverArtId: id, tier: t)
+            if let image {
                 guard !Task.isCancelled else { return }
                 apply(image, for: id)
                 return
@@ -114,27 +119,14 @@ private struct CoverArtViewContent: View {
             }
             if displayedId == id { return }
 
-            // Prefer the tiered cache, then the untagged file stored for offline tracks.
-            for diskId in ["\(id)@\(t.rawValue)", id] {
-                if let baseURL = await container?.downloadService.localCoverArtURL(forId: diskId),
-                   let image = await Self.decodedImage(at: baseURL, maxDimension: t.decodePixels) {
-                    guard !Task.isCancelled else { return }
-                    apply(image, for: id)
-                    return
-                }
-                guard !Task.isCancelled else { return }
-            }
-
-            if t != .thumb, let ramThumb = artworkCache.cachedImage(for: id, tier: .thumb) {
-                apply(ramThumb, for: id)
-                return
-            }
-
             cachedImage = nil
             displayedId = nil
+            isUnavailable = !online
+            guard online else { return }
             let fallbackURL = await container?.libraryService.coverArtURL(id: id, size: size)
             guard !Task.isCancelled else { return }
             url = fallbackURL
+            isUnavailable = fallbackURL == nil
         }
     }
 
@@ -142,15 +134,6 @@ private struct CoverArtViewContent: View {
         cachedImage = image
         displayedId = resolvedId
         url = nil
-    }
-
-    /// Decodes a local cover file off the main actor at `maxDimension`, reusing the cache's ImageIO
-    /// thumbnail path so the base-file fallback decodes identically to the tiered cache.
-    private static func decodedImage(at url: URL, maxDimension: Int) async -> PlatformImage? {
-        await Task.detached(priority: .userInitiated) {
-            guard let data = try? Data(contentsOf: url) else { return nil as PlatformImage? }
-            return ArtworkImageCache.thumbnailImage(from: data, maxDimension: maxDimension)
-        }.value
     }
 
     private var placeholder: some View {

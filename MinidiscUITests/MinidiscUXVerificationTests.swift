@@ -168,6 +168,33 @@ final class MinidiscUXVerificationTests: XCTestCase {
         capturePlayerScreenshot("Offline-favorites-storage")
     }
 
+    func testFixtureOfflineArtworkQuality() async throws {
+        try await launchFixtureApp()
+        let quality = app.buttons["settings.artwork-quality"]
+        func openQualitySettings() throws {
+            try tap(app.buttons["Réglages"], named: "artwork-settings")
+            try tap(app.buttons["Stockage"], named: "artwork-storage")
+            for _ in 0..<8 {
+                if quality.exists && quality.isHittable && quality.frame.maxY < app.frame.maxY - 100 { break }
+                app.swipeUp(velocity: .slow)
+            }
+            try require(quality)
+        }
+        try openQualitySettings()
+        try tap(quality, named: "artwork-quality-picker")
+        capturePlayerScreenshot("Artwork-quality-options")
+        try tap(app.buttons["Résolution d’origine"].firstMatch, named: "artwork-quality-original")
+        XCTAssertTrue(quality.label.contains("Résolution d’origine") || quality.value as? String == "Résolution d’origine")
+        capturePlayerScreenshot("Artwork-quality-storage")
+        app.terminate()
+        app.launch()
+        try require(app.tabBars.buttons["Accueil"], timeout: 10)
+        try openQualitySettings()
+        XCTAssertTrue(quality.label.contains("Résolution d’origine") || quality.value as? String == "Résolution d’origine")
+        try tap(quality, named: "artwork-quality-restore")
+        try tap(app.buttons["Standard (600 px)"].firstMatch, named: "artwork-quality-standard")
+    }
+
     func testFixtureSiriSettings() async throws {
         try await launchFixtureApp()
         try tap(app.buttons["Réglages"], named: "siri-settings")

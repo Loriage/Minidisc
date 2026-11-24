@@ -54,7 +54,7 @@ actor NowPlayingService: NowPlayingServiceProtocol {
             await refreshLikeCommandState()
 
             if let coverArtId = snapshot.coverArtId,
-               let cachedImage = await artworkImageCache.cached(for: coverArtId, tier: .hero) {
+               let cachedImage = await artworkImageCache.loadCached(coverArtId: coverArtId, tier: .hero) {
                 guard generation == contentGeneration else { return }
                 await presenter.setArtwork(
                     image: cachedImage,
@@ -89,7 +89,7 @@ actor NowPlayingService: NowPlayingServiceProtocol {
         guard generation == contentGeneration, currentSong?.songId == snapshot.songId else { return }
 
         if let coverArtId = snapshot.coverArtId,
-           let cachedImage = await artworkImageCache.cached(for: coverArtId, tier: .hero) {
+           let cachedImage = await artworkImageCache.loadCached(coverArtId: coverArtId, tier: .hero) {
             guard generation == contentGeneration, currentSong?.songId == snapshot.songId else { return }
             await presenter.setArtwork(
                 image: cachedImage,
@@ -99,7 +99,8 @@ actor NowPlayingService: NowPlayingServiceProtocol {
             return
         }
 
-        if let artworkURL = snapshot.artworkURL,
+        if await artworkImageCache.isNetworkAccessAllowed,
+           let artworkURL = snapshot.artworkURL,
            let data = await artworkLoader.data(for: artworkURL, headers: snapshot.artworkHeaders) {
             guard generation == contentGeneration, currentSong?.songId == snapshot.songId else { return }
             await presenter.setArtwork(data: data, fallback: snapshot, generation: generation)

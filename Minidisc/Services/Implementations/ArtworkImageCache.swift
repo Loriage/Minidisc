@@ -104,7 +104,6 @@ private extension CoverFetchGate {
 }
 
 /// Two-tier LRU cover cache resolved from RAM, disk, then the server.
-/// Legacy untagged files are skipped because decoding them can starve audio.
 @MainActor
 @Observable
 final class ArtworkImageCache {
@@ -144,6 +143,9 @@ final class ArtworkImageCache {
     /// Mirrors `CacheSettings.cacheArtwork`: when false, fetched covers stay memory-only and are not
     /// written to the persisted cover store. Set by AppContainer at launch and by the Settings toggle.
     var persistCoversEnabled = true
+    @ObservationIgnored var networkAccessAllowed: @MainActor @Sendable () -> Bool = { true }
+
+    var isNetworkAccessAllowed: Bool { networkAccessAllowed() }
 
     private var cache: [String: PlatformImage] = [:]
     private var accessOrder: [String] = []
@@ -267,6 +269,38 @@ final class ArtworkImageCache {
     }
 
     var localArtworkProvider: (@Sendable (String) async -> Data?)?
+
+    func loadCached(coverArtId: String?, tier: ArtworkTier = .thumb,
+                    fallbackToThumbnail: Bool = true) async -> PlatformImage? {
+        guard !Task.isCancelled, let coverArtId else { return nil }
+        if let image = cached(for: coverArtId, tier: tier) { return image }
+        if coverArtId.hasPrefix("local:") { return await load(coverArtId: coverArtId, tier: tier) }
+        let epoch = cacheEpoch
+        let generation = coverGeneration(for: coverArtId)
+        guard await acquireDiskAccess(for: coverArtId) else { return nil }
+        defer { releaseDiskAccess(for: coverArtId) }
+        var candidates = [("\(coverArtId)@\(tier.rawValue)", tier), (coverArtId, tier)]
+        if tier == .thumb { candidates.append(("\(coverArtId)@hero", tier)) }
+        if tier == .hero, fallbackToThumbnail { candidates.append(("\(coverArtId)@thumb", .thumb)) }
+        for (id, decodedTier) in candidates {
+            guard !Task.isCancelled, cacheEpoch == epoch,
+                  coverGeneration(for: coverArtId) == generation else { return nil }
+            guard let url = await localCoverURLProvider(id) else { continue }
+            guard await decodeGate.acquireOrCancel() else { return nil }
+            let image = await Task.detached(priority: .utility) {
+                guard let data = try? Data(contentsOf: url) else { return nil as PlatformImage? }
+                return Self.thumbnailImage(from: data, maxDimension: decodedTier.decodePixels)
+            }.value
+            await decodeGate.release()
+            guard !Task.isCancelled, cacheEpoch == epoch,
+                  coverGeneration(for: coverArtId) == generation else { return nil }
+            if let image {
+                store(image: image, forKey: cacheKey(id: coverArtId, tier: decodedTier))
+                return image
+            }
+        }
+        return fallbackToThumbnail ? cached(for: coverArtId, tier: .thumb) : nil
+    }
 
     @discardableResult
     func load(coverArtId: String?, tier: ArtworkTier = .thumb) async -> PlatformImage? {
@@ -406,62 +440,22 @@ final class ArtworkImageCache {
         ) else { return nil }
 
         let tieredDiskId = "\(coverArtId)@\(tier.rawValue)"
-        do {
-            guard await acquireDiskAccess(for: coverArtId) else { return nil }
-            defer { releaseDiskAccess(for: coverArtId) }
-            guard canCommitLoad(
-                key: key,
-                loadID: loadID,
-                coverArtId: coverArtId,
-                epoch: epoch,
-                coverGeneration: coverGeneration
-            ) else { return nil }
-            if let localURL = await localCoverURLProvider(tieredDiskId) {
-                guard canCommitLoad(
-                    key: key,
-                    loadID: loadID,
-                    coverArtId: coverArtId,
-                    epoch: epoch,
-                    coverGeneration: coverGeneration
-                ) else { return nil }
-                guard await decodeGate.acquireOrCancel() else { return nil }
-                let image = await Task.detached(priority: .utility) {
-                    let diskStart = CFAbsoluteTimeGetCurrent()
-                    guard let data = try? Data(contentsOf: localURL) else { return nil as PlatformImage? }
-                    let diskMs = Int((CFAbsoluteTimeGetCurrent() - diskStart) * 1000)
-                    let decodeStart = CFAbsoluteTimeGetCurrent()
-                    let image = ArtworkImageCache.thumbnailImage(from: data, maxDimension: maxDim)
-                    let decodeMs = Int((CFAbsoluteTimeGetCurrent() - decodeStart) * 1000)
-                    if diskMs + decodeMs > 50 {
-                        Logger.artworkCache.warning("[DISK-SLOW] id=\(coverArtId, privacy: .public) tier=\(tier.rawValue, privacy: .public) disk=\(diskMs)ms decode=\(decodeMs)ms (background thread)")
-                    } else {
-                        Logger.artworkCache.debug("[DISK] id=\(coverArtId, privacy: .public) tier=\(tier.rawValue, privacy: .public) disk=\(diskMs)ms decode=\(decodeMs)ms")
-                    }
-                    return image
-                }.value
-                await decodeGate.release()
-                guard canCommitLoad(
-                    key: key,
-                    loadID: loadID,
-                    coverArtId: coverArtId,
-                    epoch: epoch,
-                    coverGeneration: coverGeneration
-                ) else { return nil }
-                if let image {
-                    store(image: image, forKey: key)
-                    Logger.artworkCache.debug("ArtworkImageCache: disk hit \(coverArtId, privacy: .public) tier=\(tier.rawValue, privacy: .public) (\(self.cache.count, privacy: .public)/\(self.maxEntries, privacy: .public))")
-                    revalidateIfDue(coverArtId: coverArtId, tier: tier)
-                    return image
-                }
-            }
+        if let image = await loadCached(coverArtId: coverArtId, tier: tier, fallbackToThumbnail: false) {
+            revalidateIfDue(coverArtId: coverArtId, tier: tier)
+            return image
+        }
+        guard networkAccessAllowed() else {
+            return await loadCached(coverArtId: coverArtId, tier: tier)
         }
 
         guard await fetchGate.acquireOrCancel() else { return nil }
         Logger.artworkCache.debug("[NET-COVER] start id=\(coverArtId, privacy: .public) tier=\(tier.rawValue, privacy: .public) size=\(maxDim)px")
         let serverArtwork = await fetchServerArtwork(coverArtId: coverArtId, tier: tier)
         await fetchGate.release()
-        guard let serverArtwork,
-              canCommitLoad(
+        guard let serverArtwork else {
+            return await loadCached(coverArtId: coverArtId, tier: tier)
+        }
+        guard canCommitLoad(
                   key: key,
                   loadID: loadID,
                   coverArtId: coverArtId,
@@ -496,7 +490,7 @@ final class ArtworkImageCache {
 
     private func fetchServerArtwork(coverArtId: String, tier: ArtworkTier) async -> ServerArtwork? {
         let maxDim = tier.decodePixels
-        guard !Task.isCancelled,
+        guard networkAccessAllowed(), !Task.isCancelled,
               let serverURL = await coverArtURLProvider(coverArtId, maxDim),
               !Task.isCancelled else { return nil }
         let t0 = Date()
@@ -533,7 +527,7 @@ final class ArtworkImageCache {
 
     /// Revalidates expired entries in the background while callers retain the cached image.
     private func revalidateIfDue(coverArtId: String, tier: ArtworkTier) {
-        guard revalidating[coverArtId] == nil,
+        guard networkAccessAllowed(), revalidating[coverArtId] == nil,
               !revalidationDeferred.contains(coverArtId),
               revalidationStore.isDue(id: coverArtId) else { return }
 
@@ -566,6 +560,7 @@ final class ArtworkImageCache {
         epoch: UInt64,
         coverGeneration: UInt64
     ) async {
+        guard networkAccessAllowed(), await localCoverURLProvider(coverArtId) == nil else { return }
         guard isCurrentRevalidation(
             coverArtId: coverArtId,
             revalidationID: revalidationID,
@@ -662,7 +657,7 @@ final class ArtworkImageCache {
                 epoch: epoch,
                 coverGeneration: generation
             ) else { return }
-            for staleKey in tieredKeys + [coverArtId] {
+            for staleKey in tieredKeys {
                 await removeCoverOperation(staleKey)
                 guard isCurrentRevalidation(
                     coverArtId: coverArtId,

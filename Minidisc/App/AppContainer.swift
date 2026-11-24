@@ -38,6 +38,7 @@ final class AppContainer {
     let sessionService: PlaybackSessionService
     let dominantColorExtractor = DominantColorExtractor()
     let artworkImageCache: ArtworkImageCache
+    let offlineArtworkSync: OfflineArtworkSync
     let statsService: StatsService
     private let _player: PlayerService
     let wrappedPlaylistService: WrappedPlaylistService
@@ -126,7 +127,8 @@ final class AppContainer {
         radioService = RadioService(serverService: server)
 
         let download = DownloadService(serverService: server, modelContainer: modelContainer, toastService: toastService,
-                                       transferTransport: inMemory ? nil : BackgroundDownloadTransport.shared, diagnostics: playbackDiagnostics)
+                                       transferTransport: inMemory ? nil : BackgroundDownloadTransport.shared, diagnostics: playbackDiagnostics,
+                                       artworkQuality: { [cacheSettings] in await cacheSettings.artworkQuality })
         downloadService = download
         let offlineReader = OfflineBrowsingReader(models: modelContainer, downloads: download, cache: cache,
                                                   favorites: favoritesStore, index: indexStore)
@@ -155,6 +157,9 @@ final class AppContainer {
         artworkImageCache = ArtworkImageCache(downloadService: download, libraryService: library)
         artworkImageCache.localArtworkProvider = { id in await localStore.artwork(id) }
         artworkImageCache.persistCoversEnabled = cacheSettings.cacheArtwork
+        artworkImageCache.networkAccessAllowed = { [serverState] in serverState.isOnline }
+        offlineArtworkSync = OfflineArtworkSync(state: serverState, settings: cacheSettings, downloads: download,
+                                                artwork: artworkImageCache, defaults: userDefaults)
         offlineFavoritesSync = OfflineFavoritesSync(
             store: favoritesStore, settings: cacheSettings, streamSettings: streamSettings,
             server: server, downloads: download, cache: cache, artwork: artworkImageCache

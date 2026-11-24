@@ -80,6 +80,10 @@ It also checks an empty tag catalog and a failed fetch followed by Retry. The `l
 and `lidarr_tags_fail` modes exercise these states; the additions journal includes `tags` and
 `searchForMissingAlbums` to verify that routing tags are present before an automatic search.
 
+`testFixtureOfflineArtworkQuality` verifies the localized artwork quality picker and its
+persistence after relaunch. `OfflineArtworkTests` covers cold disk loading and system-player
+artwork; `ArtworkQualityTests` covers upgrades, invalid responses and network restrictions.
+
 The playlist artwork scenarios use `playlist_artwork_catalog`: a bright four-colour cover, 14 tracks
 including a long title, and a second playlist reserved for choosing a locally generated cover.
 `testFixturePlaylistArtworkAndSongMenu` checks the full-size cover, separate playback/menu targets,

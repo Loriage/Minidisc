@@ -49,7 +49,7 @@ struct DownloadedCoverRepairTests {
         let downloads = DownloadService(serverService: server, modelContainer: models, toastService: ToastService(),
             baseDirectory: base, coverDataLoader: { request in
                 requests.withLock { $0.append(request) }
-                return (Data([1]), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+                return (Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVQI12NgAAAAAgAB4iG8MwAAAABJRU5ErkJggg==")!, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
             })
         #expect(await downloads.healMissingDownloadedCovers(serverID: snapshot.id, allowsCellular: false,
                                                            shouldContinue: { false }) == 0)
@@ -81,7 +81,7 @@ struct DownloadedCoverRepairTests {
                     try models.mainContext.delete(model: DownloadedTrack.self)
                     try models.mainContext.save()
                 }
-                return (Data([1]), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+                return (Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVQI12NgAAAAAgAB4iG8MwAAAABJRU5ErkJggg==")!, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
             })
         #expect(await downloads.healMissingDownloadedCovers(serverID: snapshot.id, allowsCellular: true,
                                                            shouldContinue: { true }) == 0)

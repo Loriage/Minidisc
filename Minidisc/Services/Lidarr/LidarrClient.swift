@@ -63,6 +63,10 @@ actor LidarrClient {
         try await get(path: "/api/v1/rootfolder")
     }
 
+    func tags() async throws -> [LidarrTag] {
+        try await get(path: "/api/v1/tag")
+    }
+
     func addArtist(_ request: LidarrAddArtistRequest) async throws {
         try await postJSON(path: "/api/v1/artist", body: request)
     }

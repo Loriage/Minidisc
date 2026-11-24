@@ -74,6 +74,12 @@ and a prefilled name search when the exact lookup has no match. The `lidarr_cata
 `lidarr_missing` and `lidarr_already_added` modes control those responses. `GET /__lidarr`
 records synthetic lookup terms and confirmed additions; `reset_lidarr: true` clears that journal.
 
+`testFixtureLidarrArtistTags` verifies selecting and deselecting tags, sending their IDs in the
+initial add request through both entry points, and starting each new artist with no selection.
+It also checks an empty tag catalog and a failed fetch followed by Retry. The `lidarr_tags_empty`
+and `lidarr_tags_fail` modes exercise these states; the additions journal includes `tags` and
+`searchForMissingAlbums` to verify that routing tags are present before an automatic search.
+
 The playlist artwork scenarios use `playlist_artwork_catalog`: a bright four-colour cover, 14 tracks
 including a long title, and a second playlist reserved for choosing a locally generated cover.
 `testFixturePlaylistArtworkAndSongMenu` checks the full-size cover, separate playback/menu targets,

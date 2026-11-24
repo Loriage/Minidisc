@@ -22,6 +22,8 @@ struct LidarrAddArtistForm: View {
     @State private var rootFolders: [LidarrRootFolder] = []
     @State private var qualityProfiles: [LidarrProfile] = []
     @State private var metadataProfiles: [LidarrProfile] = []
+    @State private var tags: [LidarrTag] = []
+    @State private var selectedTags: Set<Int> = []
 
     @State private var selectedRootFolder: Int?
     @State private var selectedQuality: Int?
@@ -30,11 +32,15 @@ struct LidarrAddArtistForm: View {
     @State private var searchOnAdd = true
 
     @State private var isLoading = true
+    @State private var didLoadOptions = false
+    @State private var optionsError: String?
+    @State private var loadAttempt = 0
     @State private var isAdding = false
     @State private var errorMessage: String?
 
     private var canAdd: Bool {
-        selectedRootFolder != nil && selectedQuality != nil && selectedMetadata != nil && !isAdding
+        !isLoading && optionsError == nil && selectedRootFolder != nil
+            && selectedQuality != nil && selectedMetadata != nil && !isAdding
     }
 
     var body: some View {
@@ -54,6 +60,15 @@ struct LidarrAddArtistForm: View {
 
                 if isLoading {
                     Section { HStack { Spacer(); ProgressView(); Spacer() } }
+                } else if let optionsError {
+                    Section {
+                        Label("Couldn't Load Artist Options", systemImage: "exclamationmark.triangle")
+                        Text(optionsError)
+                            .font(.minidiscCaption)
+                            .foregroundStyle(.secondary)
+                        Button("Retry") { loadAttempt += 1 }
+                            .accessibilityIdentifier("lidarr.options.retry")
+                    }
                 } else {
                     Section {
                         Picker("Root Folder", selection: $selectedRootFolder) {
@@ -71,6 +86,8 @@ struct LidarrAddArtistForm: View {
                                 Text(profile.name).tag(Int?.some(profile.id))
                             }
                         }
+                        LidarrTagsField(tags: tags, selection: $selectedTags)
+                            .disabled(isAdding)
                         Picker("Monitor", selection: $monitor) {
                             ForEach(LidarrMonitorOption.allCases) { option in
                                 Text(option.displayName).tag(option)
@@ -107,8 +124,8 @@ struct LidarrAddArtistForm: View {
                     .accessibilityIdentifier("lidarr.confirm-add")
                 }
             }
-            .task { await loadOptions() }
         }
+        .task(id: loadAttempt) { await loadOptions() }
     }
 
     @ViewBuilder
@@ -125,25 +142,33 @@ struct LidarrAddArtistForm: View {
     }
 
     private func loadOptions() async {
+        guard !didLoadOptions else { return }
+        isLoading = true
+        optionsError = nil
         do {
             async let folders = client.rootFolders()
             async let quality = client.qualityProfiles()
             async let metadata = client.metadataProfiles()
-            let (f, q, m) = try await (folders, quality, metadata)
+            async let availableTags = client.tags()
+            let (f, q, m, t) = try await (folders, quality, metadata, availableTags)
+            try Task.checkCancellation()
             rootFolders = f
             qualityProfiles = q
             metadataProfiles = m
+            tags = t.sorted { $0.label.localizedStandardCompare($1.label) == .orderedAscending }
             selectedRootFolder = f.first?.id
             selectedQuality = q.first?.id
             selectedMetadata = m.first?.id
+            didLoadOptions = true
         } catch {
-            errorMessage = friendlyMessage(error)
+            guard !Task.isCancelled else { return }
+            optionsError = friendlyMessage(error)
         }
         isLoading = false
     }
 
     private func add() async {
-        guard let rootId = selectedRootFolder,
+        guard canAdd, let rootId = selectedRootFolder,
               let root = rootFolders.first(where: { $0.id == rootId }),
               let qualityId = selectedQuality,
               let metadataId = selectedMetadata else { return }
@@ -157,7 +182,8 @@ struct LidarrAddArtistForm: View {
             metadataProfileId: metadataId,
             rootFolderPath: root.path,
             monitor: monitor,
-            searchForMissingAlbums: searchOnAdd
+            searchForMissingAlbums: searchOnAdd,
+            tags: selectedTags
         )
         do {
             try await client.addArtist(request)

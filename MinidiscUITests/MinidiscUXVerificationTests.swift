@@ -241,33 +241,7 @@ final class MinidiscUXVerificationTests: XCTestCase {
     }
 
     func testFixtureLidarrArtistShortcut() async throws {
-        try await launchFixtureApp()
-        try await setFixtureState(["lidarr_catalog": true, "reset_lidarr": true])
-        try tap(app.buttons["Réglages"], named: "lidarr-settings")
-        try tap(app.buttons["Intégrations"], named: "lidarr-integrations")
-        try tap(app.collectionViews.buttons["Lidarr"].firstMatch, named: "lidarr-connection")
-        let address = app.textFields["lidarr.settings.url"]
-        try require(address)
-        if (address.value as? String ?? "").isEmpty || address.value as? String == "http://nas.local:8686" {
-            try enter("http://127.0.0.1:18992", into: address)
-            try enter("fixture-only", into: app.secureTextFields["lidarr.settings.api-key"])
-            app.swipeUp()
-            try tap(app.buttons["lidarr.settings.connect"], named: "lidarr-connect")
-            try require(app.staticTexts["Connecté."], timeout: 10)
-        } else {
-            XCTAssertEqual(address.value as? String, "http://127.0.0.1:18992")
-        }
-        try tapBack(named: "lidarr-back-integrations")
-        try tapBack(named: "lidarr-back-settings")
-        try tap(app.buttons["Fermer"], named: "lidarr-close-settings")
-        try openBrowse("Artistes")
-        try tap(app.staticTexts["Atelier Minidisc"].firstMatch, named: "lidarr-source-artist")
-        let similar = app.staticTexts["Lidarr Fixture Artist"].firstMatch
-        for _ in 0..<8 {
-            if similar.exists && similar.isHittable { break }
-            app.swipeUp()
-        }
-        try tap(similar, named: "lidarr-outside-library")
+        try await openFixtureLidarrArtist()
         try tap(app.buttons["artist.add-to-lidarr"], named: "lidarr-direct-add")
         let confirm = app.buttons["lidarr.confirm-add"]
         try require(confirm, timeout: 10)
@@ -310,6 +284,107 @@ final class MinidiscUXVerificationTests: XCTestCase {
         captureHierarchy("lidarr-manual-confirmation")
     }
 
+    func testFixtureLidarrArtistTags() async throws {
+        try await openFixtureLidarrArtist()
+        try await setFixtureState(["lidarr_tags_fail": true])
+        try tap(app.buttons["artist.add-to-lidarr"], named: "lidarr-tags-failure")
+        try require(app.buttons["lidarr.options.retry"], timeout: 10)
+        let confirm = app.buttons["lidarr.confirm-add"]
+        XCTAssertFalse(confirm.isEnabled)
+        var journal = try await lidarrFixtureJournal()
+        XCTAssertEqual((journal["additions"] as? [[String: Any]])?.count, 0)
+
+        try await setFixtureState(["lidarr_tags_fail": false])
+        try tap(app.buttons["lidarr.options.retry"], named: "lidarr-tags-retry")
+        try tap(app.buttons["lidarr.tags"], named: "lidarr-tags-picker")
+        let lossless = app.buttons["lidarr.tag.7"]
+        let alternate = app.buttons["lidarr.tag.42"]
+        try require(lossless)
+        XCTAssertFalse(lossless.isSelected)
+        XCTAssertFalse(alternate.isSelected)
+        try tap(lossless, named: "lidarr-select-lossless")
+        try tap(alternate, named: "lidarr-select-client")
+        XCTAssertTrue(lossless.isSelected)
+        XCTAssertTrue(alternate.isSelected)
+        try tap(lossless, named: "lidarr-deselect-lossless")
+        XCTAssertFalse(lossless.isSelected)
+        XCTAssertTrue(alternate.isSelected)
+        try tap(lossless, named: "lidarr-reselect-lossless")
+        captureHierarchy("lidarr-tags-selected")
+        try tap(app.navigationBars["Tags"].buttons.firstMatch, named: "lidarr-tags-back")
+        try require(confirm)
+        XCTAssertTrue(app.buttons["lidarr.tags"].label.contains("alternate-client"))
+        XCTAssertTrue(app.buttons["lidarr.tags"].label.contains("lossless"))
+        journal = try await lidarrFixtureJournal()
+        XCTAssertEqual(journal["queries"] as? [String], ["lidarr:b071f9fa-14b0-4217-8e97-eb41da73f598"])
+        try tap(confirm, named: "lidarr-add-with-tags")
+        try require(app.buttons["artist.add-to-lidarr"], timeout: 10)
+        journal = try await lidarrFixtureJournal()
+        var additions = try XCTUnwrap(journal["additions"] as? [[String: Any]])
+        XCTAssertEqual(additions.count, 1)
+        XCTAssertEqual(additions.first?["tags"] as? [Int], [7, 42])
+        XCTAssertEqual(additions.first?["searchForMissingAlbums"] as? Bool, true)
+
+        try await setFixtureState(["lidarr_tags_empty": true, "reset_lidarr": true])
+        try tap(app.buttons["artist.add-to-lidarr"], named: "lidarr-empty-tags")
+        try tap(app.buttons["lidarr.tags"], named: "lidarr-empty-tags-picker")
+        try require(app.staticTexts["Aucun tag n’est configuré dans Lidarr."])
+        try tap(app.navigationBars["Tags"].buttons.firstMatch, named: "lidarr-empty-tags-back")
+        try tap(confirm, named: "lidarr-add-without-tags")
+        try require(app.buttons["artist.add-to-lidarr"], timeout: 10)
+        journal = try await lidarrFixtureJournal()
+        additions = try XCTUnwrap(journal["additions"] as? [[String: Any]])
+        XCTAssertEqual(additions.count, 1)
+        XCTAssertEqual(additions.first?["tags"] as? [Int], [])
+
+        try await setFixtureState(["lidarr_tags_empty": false, "lidarr_missing": true, "reset_lidarr": true])
+        try tap(app.buttons["artist.add-to-lidarr"], named: "lidarr-tags-manual-search")
+        try tap(app.buttons["lidarr.shortcut.search"], named: "lidarr-tags-search")
+        try tap(app.staticTexts["Lidarr Fixture Artist"].firstMatch, named: "lidarr-tags-search-result")
+        try tap(app.buttons["lidarr.tags"], named: "lidarr-tags-from-search")
+        XCTAssertFalse(lossless.isSelected)
+        XCTAssertFalse(alternate.isSelected)
+        try tap(alternate, named: "lidarr-single-tag")
+        try tap(app.navigationBars["Tags"].buttons.firstMatch, named: "lidarr-search-tags-back")
+        try tap(confirm, named: "lidarr-search-add-with-tag")
+        try require(app.buttons["artist.add-to-lidarr"], timeout: 10)
+        journal = try await lidarrFixtureJournal()
+        additions = try XCTUnwrap(journal["additions"] as? [[String: Any]])
+        XCTAssertEqual(additions.count, 1)
+        XCTAssertEqual(additions.first?["tags"] as? [Int], [42])
+        captureHierarchy("lidarr-tags-verified")
+    }
+
+    private func openFixtureLidarrArtist() async throws {
+        try await launchFixtureApp()
+        try await setFixtureState(["lidarr_catalog": true, "reset_lidarr": true])
+        try tap(app.buttons["Réglages"], named: "lidarr-settings")
+        try tap(app.buttons["Intégrations"], named: "lidarr-integrations")
+        try tap(app.collectionViews.buttons["Lidarr"].firstMatch, named: "lidarr-connection")
+        let address = app.textFields["lidarr.settings.url"]
+        try require(address)
+        if (address.value as? String ?? "").isEmpty || address.value as? String == "http://nas.local:8686" {
+            try enter("http://127.0.0.1:18992", into: address)
+            try enter("fixture-only", into: app.secureTextFields["lidarr.settings.api-key"])
+            app.swipeUp()
+            try tap(app.buttons["lidarr.settings.connect"], named: "lidarr-connect")
+            try require(app.staticTexts["Connecté."], timeout: 10)
+        } else {
+            XCTAssertEqual(address.value as? String, "http://127.0.0.1:18992")
+        }
+        try tapBack(named: "lidarr-back-integrations")
+        try tapBack(named: "lidarr-back-settings")
+        try tap(app.buttons["Fermer"], named: "lidarr-close-settings")
+        try openBrowse("Artistes")
+        try tap(app.staticTexts["Atelier Minidisc"].firstMatch, named: "lidarr-source-artist")
+        let similar = app.staticTexts["Lidarr Fixture Artist"].firstMatch
+        for _ in 0..<8 {
+            if similar.exists && similar.isHittable { break }
+            app.swipeUp()
+        }
+        try tap(similar, named: "lidarr-outside-library")
+    }
+
     private func lidarrFixtureJournal() async throws -> [String: Any] {
         let url = try XCTUnwrap(URL(string: "http://127.0.0.1:18992/__lidarr"))
         let configuration = URLSessionConfiguration.ephemeral
@@ -330,7 +405,8 @@ final class MinidiscUXVerificationTests: XCTestCase {
             "browse_catalog": browseCatalog, "playlist_artwork_catalog": playlistArtworkCatalog,
             "reset_playlists": true, "reset_requests": true, "removed": false,
             "fail_stream": false, "slow_stream": false,
-            "lidarr_catalog": false, "lidarr_missing": false, "lidarr_already_added": false
+            "lidarr_catalog": false, "lidarr_missing": false, "lidarr_already_added": false,
+            "lidarr_tags_fail": false, "lidarr_tags_empty": false
         ])
         app.launchArguments = ["-AppleLanguages", "(fr)", "-AppleLocale", "fr_FR"]
         if let contentSize { app.launchArguments += ["-UIPreferredContentSizeCategoryName", contentSize] }

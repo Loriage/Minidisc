@@ -248,6 +248,11 @@ nonisolated struct LidarrProfile: Decodable, Sendable, Identifiable {
     let name: String
 }
 
+nonisolated struct LidarrTag: Decodable, Sendable, Identifiable {
+    let id: Int
+    let label: String
+}
+
 nonisolated struct LidarrRootFolder: Decodable, Sendable, Identifiable {
     let id: Int
     let path: String
@@ -279,6 +284,7 @@ nonisolated struct LidarrAddArtistRequest: Encodable, Sendable {
     let rootFolderPath: String
     let monitored: Bool
     let monitorNewItems: String
+    let tags: [Int]
     let addOptions: AddOptions
 
     nonisolated struct AddOptions: Encodable, Sendable {
@@ -292,7 +298,8 @@ nonisolated struct LidarrAddArtistRequest: Encodable, Sendable {
         metadataProfileId: Int,
         rootFolderPath: String,
         monitor: LidarrMonitorOption,
-        searchForMissingAlbums: Bool
+        searchForMissingAlbums: Bool,
+        tags: Set<Int> = []
     ) {
         self.foreignArtistId = artist.foreignArtistId
         self.artistName = artist.artistName
@@ -301,6 +308,7 @@ nonisolated struct LidarrAddArtistRequest: Encodable, Sendable {
         self.rootFolderPath = rootFolderPath
         self.monitored = monitor != .none
         self.monitorNewItems = monitor == .all ? "all" : "none"
+        self.tags = tags.sorted()
         self.addOptions = AddOptions(monitor: monitor.rawValue, searchForMissingAlbums: searchForMissingAlbums)
     }
 }

@@ -1,5 +1,4 @@
 import SwiftUI
-import OSLog
 
 struct LidarrArtistSearchView: View {
     var query = ""

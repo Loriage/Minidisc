@@ -1,5 +1,4 @@
 import SwiftUI
-import OSLog
 
 struct LidarrAddArtistSheet: View {
     let artist: LidarrArtistLookup

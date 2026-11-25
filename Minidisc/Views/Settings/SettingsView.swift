@@ -768,6 +768,7 @@ private struct PlaybackSettingsView: View {
                         } label: {
                             Text("Quality on Wi-Fi").foregroundStyle(.primary)
                         }
+                        .accessibilityIdentifier("settings.stream.wifi-quality")
                         .pickerStyle(.menu)
                         .tint(.secondary)
 
@@ -781,6 +782,7 @@ private struct PlaybackSettingsView: View {
                         } label: {
                             Text("Quality on cellular").foregroundStyle(.primary)
                         }
+                        .accessibilityIdentifier("settings.stream.cellular-quality")
                         .pickerStyle(.menu)
                         .tint(.secondary)
                     }

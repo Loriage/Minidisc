@@ -69,6 +69,36 @@ final class MinidiscUXVerificationTests: XCTestCase {
     }
     #endif
 
+    func testFixtureOpusPlaybackSettings() async throws {
+        try await launchFixtureApp()
+        try tap(app.buttons["Réglages"], named: "opus-settings")
+        try tap(app.buttons["Lecture"], named: "opus-playback-settings")
+        let wifi = app.buttons["settings.stream.wifi-quality"]
+        let cellular = app.buttons["settings.stream.cellular-quality"]
+        try tap(wifi.staticTexts.firstMatch, named: "wifi-quality-options")
+        try require(app.buttons["Opus 128 kbps"].firstMatch)
+        try require(app.buttons["Opus 192 kbps"].firstMatch)
+        try tap(app.buttons["Original"].firstMatch, named: "wifi-original")
+        try tap(cellular.staticTexts.firstMatch, named: "cellular-quality-options")
+        try require(app.buttons["Opus 128 kbps"].firstMatch)
+        try require(app.buttons["Opus 192 kbps"].firstMatch)
+        capturePlayerScreenshot("Opus-playback-options")
+        try tap(app.buttons["Opus 192 kbps"].firstMatch, named: "cellular-opus-192")
+        XCTAssertTrue(wifi.staticTexts["Original"].exists)
+        XCTAssertTrue(cellular.staticTexts["Opus 192 kbps"].exists)
+        app.terminate()
+        app.launch()
+        try require(app.tabBars.buttons["Accueil"], timeout: 10)
+        try tap(app.buttons["Réglages"], named: "opus-settings-relaunch")
+        try tap(app.buttons["Lecture"], named: "opus-playback-relaunch")
+        try require(cellular)
+        XCTAssertTrue(wifi.staticTexts["Original"].exists)
+        XCTAssertTrue(cellular.staticTexts["Opus 192 kbps"].exists)
+        capturePlayerScreenshot("Opus-playback-settings")
+        try tap(cellular.staticTexts.firstMatch, named: "restore-cellular-quality")
+        try tap(app.buttons["Original"].firstMatch, named: "cellular-original")
+    }
+
     func testFixtureMoodPlaylistSettings() async throws {
         try await launchFixtureApp()
         try tap(app.buttons["Réglages"], named: "mood-settings")

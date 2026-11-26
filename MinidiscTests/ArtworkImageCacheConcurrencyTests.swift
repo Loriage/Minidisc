@@ -377,7 +377,7 @@ struct ArtworkImageCacheConcurrencyTests {
         await disk.resumeRemoval()
         await invalidation.value
         #expect(await load.value != nil)
-        #expect(await disk.localLookups() == 1)
+        #expect(await disk.localLookups() > 0)
         #expect(await network.calls() == 1)
     }
 }

@@ -176,6 +176,9 @@ actor DownloadService: DownloadServiceProtocol {
     private let modelContainer: ModelContainer
     private let downloadsDirectory: URL
     private let coverArtsDirectory: URL
+    private let coverQualityURL: URL
+    private var coverQualities: [String: ArtworkQuality]
+    private let artworkQuality: @Sendable () async -> ArtworkQuality
     private let offlineLibraryReader: OfflineLibraryReader
     private let offlineRemovalCoordinator: OfflineLibraryRemovalCoordinator
     private var progressContinuation: AsyncStream<[DownloadProgress]>.Continuation?
@@ -197,13 +200,15 @@ actor DownloadService: DownloadServiceProtocol {
     init(serverService: any ServerServiceProtocol, modelContainer: ModelContainer, toastService: ToastService,
          transferTransport: (any DownloadTransport)? = nil, journalURL: URL? = nil,
          diagnostics: PlaybackDiagnostics? = nil, baseDirectory: URL? = nil,
-         coverDataLoader: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil) {
+         coverDataLoader: (@Sendable (URLRequest) async throws -> (Data, URLResponse))? = nil,
+         artworkQuality: @escaping @Sendable () async -> ArtworkQuality = { .standard }) {
         self.serverService = serverService
         self.modelContainer = modelContainer
         self.toastService = toastService
         self.transferTransport = transferTransport
         self.diagnostics = diagnostics
         self.coverDataLoader = coverDataLoader
+        self.artworkQuality = artworkQuality
         self.journalURL = journalURL ?? (transferTransport == nil
             ? URL.temporaryDirectory.appendingPathComponent("minidisc-test-downloads-\(UUID())/queue.json")
             : URL.applicationSupportDirectory.appendingPathComponent("minidisc-downloads/queue.json"))
@@ -219,6 +224,10 @@ actor DownloadService: DownloadServiceProtocol {
         let downloadsDirectory = base.appendingPathComponent("downloads", isDirectory: true)
         self.downloadsDirectory = downloadsDirectory
         self.coverArtsDirectory = base.appendingPathComponent("coverarts", isDirectory: true)
+        let qualityURL = base.appendingPathComponent("cover-quality.json")
+        self.coverQualityURL = qualityURL
+        self.coverQualities = (try? JSONDecoder().decode([String: ArtworkQuality].self,
+                                                      from: Data(contentsOf: qualityURL))) ?? [:]
         self.offlineLibraryReader = OfflineLibraryReader(
             modelContainer: modelContainer,
             downloadsDirectory: downloadsDirectory
@@ -353,6 +362,7 @@ actor DownloadService: DownloadServiceProtocol {
         do {
             try FileManager.default.createDirectory(at: coverArtsDirectory, withIntermediateDirectories: true)
             try data.write(to: url, options: .atomic)
+            if coverQualities.removeValue(forKey: coverArtId) != nil { saveCoverQualities() }
         } catch {
             Logger.download.debug("Failed to persist cover '\(coverArtId, privacy: .public)': \(error, privacy: .public)")
         }
@@ -363,6 +373,7 @@ actor DownloadService: DownloadServiceProtocol {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         do {
             try FileManager.default.removeItem(at: url)
+            if coverQualities.removeValue(forKey: coverArtId) != nil { saveCoverQualities() }
         } catch {
             Logger.download.debug("Failed to remove cover '\(coverArtId, privacy: .public)': \(error, privacy: .public)")
         }
@@ -389,9 +400,9 @@ actor DownloadService: DownloadServiceProtocol {
 
     func healMissingDownloadedCovers(serverID: UUID, allowsCellular: Bool,
                                      shouldContinue: @escaping @Sendable () async -> Bool) async -> Int {
+        let quality = await artworkQuality()
         let ids = downloadedCoverIDs(serverID: serverID).filter { id in
-            let url = coverArtsDirectory.appendingPathComponent(id)
-            return ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) == 0
+            !coverSatisfiesQuality(id: id, quality: quality)
         }
         var repaired = 0
         let ordered = Array(ids).sorted()
@@ -440,6 +451,7 @@ actor DownloadService: DownloadServiceProtocol {
             if !referencedIds.contains(coverArtId) {
                 do {
                     try fm.removeItem(at: fileURL)
+                    coverQualities.removeValue(forKey: filename)
                 } catch {
                     Logger.download.debug("DownloadService: garbageCollect removeItem failed — \(error)")
                 }
@@ -448,6 +460,7 @@ actor DownloadService: DownloadServiceProtocol {
         }
         if deletedCount > 0 {
             Logger.download.info("Garbage collected \(deletedCount) orphaned cover(s).")
+            saveCoverQualities()
         }
         return deletedCount
     }
@@ -992,24 +1005,34 @@ actor DownloadService: DownloadServiceProtocol {
         progressContinuation?.yield([progress])
     }
 
-    /// Downloads a cover art image to `coverArtsDirectory/<id>`. No-op if the file already exists.
-    /// Throws on network or write error — callers must catch and treat as best-effort.
+    private func coverSatisfiesQuality(id: String, quality: ArtworkQuality) -> Bool {
+        let url = coverArtsDirectory.appendingPathComponent(id)
+        return ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) > 0
+            && (coverQualities[id] ?? .standard).satisfies(quality)
+    }
+
+    private func saveCoverQualities() {
+        do {
+            try JSONEncoder().encode(coverQualities).write(to: coverQualityURL, options: .atomic)
+        } catch {
+            Logger.download.debug("Unable to save cover quality metadata: \(error, privacy: .private)")
+        }
+    }
+
     @discardableResult
     private func _downloadCoverArt(id: String, serverID: UUID? = nil,
                                    allowsCellular: Bool = true, repairing: Bool = false) async throws -> Bool {
         try checkDownloadCancellation()
+        let quality = await artworkQuality()
         let fileURL = coverArtsDirectory.appendingPathComponent(id)
-        guard ((try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) == 0 else {
-            Logger.download.debug("Cover art '\(id, privacy: .public)' already on disk — skipping.")
-            return false
-        }
+        guard !coverSatisfiesQuality(id: id, quality: quality) else { return false }
 
         let connection = try await serverService.activeConnection()
         try checkDownloadCancellation()
         if let serverID, connection.version.serverID != serverID { throw CancellationError() }
         let client = connection.makeSwiftSonicClient()
         try checkDownloadCancellation()
-        guard let artURL = client.coverArtURL(id: id, size: 600) else {
+        guard let artURL = client.coverArtURL(id: id, size: quality.pixels) else {
             throw MinidiscError.mediaNotFound(songId: id)
         }
 
@@ -1040,8 +1063,26 @@ actor DownloadService: DownloadServiceProtocol {
             throw MinidiscError.downloadFailed(songId: id, underlying: HTTPError(statusCode: code))
         }
 
+        let valid = await Task.detached(priority: .utility) {
+            ArtworkImageCache.thumbnailImage(from: data, maxDimension: 1) != nil
+        }.value
+        guard valid else { throw URLError(.cannotDecodeContentData) }
+        guard quality == (await artworkQuality()) else { throw CancellationError() }
+        let current = try await serverService.activeConnection()
+        try checkDownloadCancellation()
+        guard current.version == connection.version else { throw CancellationError() }
+        if repairing, !downloadedCoverIDs(serverID: current.version.serverID).contains(id) {
+            throw CancellationError()
+        }
+        guard !coverSatisfiesQuality(id: id, quality: quality) else { return false }
+
         try FileManager.default.createDirectory(at: coverArtsDirectory, withIntermediateDirectories: true)
         try data.write(to: fileURL, options: .atomic)
+        coverQualities[id] = quality
+        saveCoverQualities()
+        for tier in ["thumb", "hero"] {
+            try? FileManager.default.removeItem(at: coverArtsDirectory.appendingPathComponent("\(id)@\(tier)"))
+        }
         Logger.download.info("Cover art '\(id, privacy: .public)' downloaded (\(data.count) bytes)")
         return true
     }

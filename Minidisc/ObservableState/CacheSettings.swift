@@ -10,6 +10,7 @@ final class CacheSettings {
     @ObservationIgnored private var _cacheFormat: CacheFormat
     @ObservationIgnored private var _cacheOverCellular: Bool
     @ObservationIgnored private var _cacheArtwork: Bool
+    @ObservationIgnored private var _artworkQuality: ArtworkQuality
     @ObservationIgnored private var _keepFavoritesOffline: Bool
 
     var capacityMegabytes: Int {
@@ -81,6 +82,17 @@ final class CacheSettings {
         }
     }
 
+    var artworkQuality: ArtworkQuality {
+        get {
+            access(keyPath: \.artworkQuality)
+            return _artworkQuality
+        }
+        set {
+            withMutation(keyPath: \.artworkQuality) { _artworkQuality = newValue }
+            defaults.set(newValue.rawValue, forKey: Self.artworkQualityKey)
+        }
+    }
+
     static let defaultCapacityMegabytes = 512
     static let minCapacityMegabytes = 128
     static let maxCapacityMegabytes = 2_048
@@ -95,9 +107,11 @@ final class CacheSettings {
     private static let cacheOverCellularKey = "minidisc.cache.cellular"
     private static let keepFavoritesOfflineKey = "minidisc.cache.favoritesOffline"
     private static let cacheArtworkKey = "minidisc.cache.artwork"
+    private static let artworkQualityKey = "minidisc.cache.artworkQuality"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        self._artworkQuality = ArtworkQuality(rawValue: defaults.string(forKey: Self.artworkQualityKey) ?? "") ?? .standard
         self._keepFavoritesOffline = defaults.object(forKey: Self.keepFavoritesOfflineKey) as? Bool ?? true
 
         if defaults.object(forKey: Self.capacityMegabytesKey) != nil {

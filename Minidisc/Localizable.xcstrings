@@ -209,6 +209,110 @@
         }
       }
     },
+    "Downloaded covers use the selected quality and are kept offline. Existing covers update when your connection settings allow. Turning caching off only affects artwork from streaming." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les pochettes téléchargées utilisent la qualité choisie et restent disponibles hors ligne. Les pochettes existantes sont mises à jour lorsque vos réglages de connexion le permettent. La désactivation du cache concerne uniquement les pochettes de la musique écoutée en streaming."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heruntergeladene Cover verwenden die gewählte Qualität und bleiben offline verfügbar. Vorhandene Cover werden aktualisiert, wenn deine Verbindungseinstellungen es erlauben. Das Deaktivieren des Caches betrifft nur Cover beim Streaming."
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Τα ληφθέντα εξώφυλλα χρησιμοποιούν την επιλεγμένη ποιότητα και διατηρούνται εκτός σύνδεσης. Τα υπάρχοντα εξώφυλλα ενημερώνονται όταν το επιτρέπουν οι ρυθμίσεις σύνδεσης. Η απενεργοποίηση της προσωρινής αποθήκευσης επηρεάζει μόνο τα εξώφυλλα της μουσικής σε ροή."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las carátulas descargadas usan la calidad seleccionada y se conservan sin conexión. Las existentes se actualizan cuando los ajustes de conexión lo permiten. Desactivar la caché solo afecta a las carátulas de la música en streaming."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le copertine scaricate usano la qualità selezionata e restano disponibili offline. Le copertine esistenti vengono aggiornate quando le impostazioni di connessione lo consentono. Disattivare la cache influisce solo sulle copertine della musica in streaming."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロードしたアートワークは選択した画質でオフラインに保存されます。既存のアートワークは接続設定で許可されたときに更新されます。キャッシュをオフにしても、影響するのはストリーミングのアートワークのみです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已下载的封面会按所选画质保存，供离线使用。连接设置允许时会更新现有封面。关闭缓存仅影响流媒体音乐的封面。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已下載的封面會以所選畫質儲存，供離線使用。連線設定允許時會更新現有封面。關閉快取僅影響串流音樂的封面。"
+          }
+        }
+      }
+    },
+    "High (1,200 px)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haute (1 200 px)"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hoch (1.200 px)"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Υψηλή (1.200 px)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alta (1.200 px)"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alta (1.200 px)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高画質（1,200 px）"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高清（1,200 像素）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高畫質（1,200 像素）"
+          }
+        }
+      }
+    },
     "MP3 192 kbps" : {
       "shouldTranslate" : false
     },
@@ -315,6 +419,58 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lidarr 中尚未設定標籤。"
+          }
+        }
+      }
+    },
+    "Offline artwork quality" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qualité des pochettes hors ligne"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qualität der Offline-Cover"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ποιότητα εξωφύλλων εκτός σύνδεσης"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Calidad de las carátulas sin conexión"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qualità delle copertine offline"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オフラインのアートワーク画質"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "离线封面画质"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "離線封面畫質"
           }
         }
       }
@@ -429,6 +585,58 @@
         }
       }
     },
+    "Original resolution" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Résolution d’origine"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originalauflösung"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Αρχική ανάλυση"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resolución original"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Risoluzione originale"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "元の解像度"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原始分辨率"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原始解析度"
+          }
+        }
+      }
+    },
     "Search in Lidarr" : {
       "localizations" : {
         "de" : {
@@ -481,6 +689,58 @@
         }
       }
     },
+    "Standard (600 px)" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standard (600 px)"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standard (600 px)"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Τυπική (600 px)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estándar (600 px)"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standard (600 px)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "標準（600 px）"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标准（600 像素）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "標準（600 像素）"
+          }
+        }
+      }
+    },
     "Tags" : {
       "localizations" : {
         "de" : {
@@ -529,6 +789,58 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "標籤"
+          }
+        }
+      }
+    },
+    "Updating downloaded artwork…" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mise à jour des pochettes téléchargées…"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heruntergeladene Cover werden aktualisiert…"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ενημέρωση ληφθέντων εξωφύλλων…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actualizando las carátulas descargadas…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiornamento delle copertine scaricate…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロード済みのアートワークを更新中…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在更新已下载的封面…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在更新已下載的封面…"
           }
         }
       }

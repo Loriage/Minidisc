@@ -392,6 +392,19 @@ struct StorageSettingsView: View {
                 }
 
                 if let cacheSettings {
+                    @Bindable var cacheSettings = cacheSettings
+                    Picker("Offline artwork quality", selection: $cacheSettings.artworkQuality) {
+                        ForEach(ArtworkQuality.allCases) { quality in
+                            Text(quality.displayName).tag(quality)
+                        }
+                    }
+                    .accessibilityIdentifier("settings.artwork-quality")
+                    if container?.offlineArtworkSync.isSyncing == true {
+                        HStack {
+                            ProgressView()
+                            Text("Updating downloaded artwork…")
+                        }
+                    }
                     Toggle(isOn: Binding(
                         get: { cacheSettings.cacheArtwork },
                         set: { newValue in
@@ -414,7 +427,7 @@ struct StorageSettingsView: View {
             } header: {
                 Text("Artwork")
             } footer: {
-                Text("Covers re-download on demand. Turning caching off keeps artwork in memory only.")
+                Text("Downloaded covers use the selected quality and are kept offline. Existing covers update when your connection settings allow. Turning caching off only affects artwork from streaming.")
             }
 
             LibraryIndexStorageSection()

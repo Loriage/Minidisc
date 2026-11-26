@@ -100,6 +100,9 @@ struct MinidiscApp: App {
                 .task(id: activeContainer?.offlineFavoritesSync.request) {
                     await activeContainer?.offlineFavoritesSync.synchronize()
                 }
+                .task(id: activeContainer?.offlineArtworkSync.request) {
+                    await activeContainer?.offlineArtworkSync.synchronize()
+                }
                 .onReceive(NotificationCenter.default.publisher(for: .minidiscFavoritesChanged)) { _ in
                     activeContainer?.offlineFavoritesSync.revision += 1
                 }
@@ -122,6 +125,7 @@ struct MinidiscApp: App {
             if newPhase == .active {
                 activeContainer?.offlineFavoritesSync.revision += 1
                 activeContainer?.offlineLibrary.revision += 1
+                activeContainer?.offlineArtworkSync.revision += 1
             }
             if newPhase == .inactive, let container = activeContainer {
                 Task { await container.playerService.saveCurrentPosition() }
@@ -230,30 +234,7 @@ struct MinidiscApp: App {
                 downloadService: downloadService
             )
             guard let newContainer else { return }
-            // Network defaults are optimistic until the first observed path. Never start a
-            // repair on those defaults, or before orphan collection has finished.
-            let clock = ContinuousClock()
-            let deadline = clock.now.advanced(by: .seconds(10))
-            while !newContainer.serverState.hasObservedNetworkPath, clock.now < deadline {
-                do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
-            }
-            let serverState = newContainer.serverState
-            let settings = newContainer.cacheSettings
-            guard let serverID = serverState.activeServer?.id else { return }
-            let repaired = await downloadService.healMissingDownloadedCovers(
-                serverID: serverID, allowsCellular: settings.cacheOverCellular
-            ) {
-                await MainActor.run {
-                    serverState.hasObservedNetworkPath && serverState.isOnline
-                        && serverState.activeServer?.id == serverID
-                        && !serverState.networkPathEvent.descriptor.isConstrained
-                        && (!serverState.isExpensive || settings.cacheOverCellular)
-                }
-            }
-            if repaired > 0 {
-                let key = "coverArtUploadVersion"
-                UserDefaults.standard.set(UserDefaults.standard.integer(forKey: key) + 1, forKey: key)
-            }
+            newContainer.offlineArtworkSync.isReady = true
         })
         await MinidiscApp.backgroundSyncCoordinator.configure(
             wrappedService: newContainer.wrappedPlaylistService,

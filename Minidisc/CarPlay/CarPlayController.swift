@@ -250,7 +250,7 @@ final class CarPlayController: NSObject, CPNowPlayingTemplateObserver, CPTabBarT
                 if content.context.access.isOnline || id.hasPrefix("local:") {
                     image = await cache.load(coverArtId: id, tier: .thumb)
                 } else {
-                    image = cache.cached(for: id, tier: .thumb)
+                    image = await cache.loadCached(coverArtId: id, tier: .thumb)
                 }
                 try self.library.validate(content.context)
                 guard self.connected else { return }

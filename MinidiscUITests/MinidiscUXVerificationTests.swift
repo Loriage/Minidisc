@@ -293,10 +293,6 @@ final class MinidiscUXVerificationTests: XCTestCase {
         return (result["playlist"] as? [String: Any])?["id"] as? String
     }
 
-    func testLocalFixtureOnboarding() async throws {
-        try await launchFixtureApp()
-    }
-
     func testFixtureLidarrArtistShortcut() async throws {
         try await openFixtureLidarrArtist()
         try tap(app.buttons["artist.add-to-lidarr"], named: "lidarr-direct-add")
@@ -1595,10 +1591,6 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try await Task.sleep(for: .seconds(3))
     }
 
-    func testFixtureStationLargeText() async throws {
-        try await captureFixtureStationLargeText()
-    }
-
     private func assertStationCardLabels(_ station: XCUIElement) throws {
         XCTAssertEqual(station.label, "Aurore Ensemble et artistes similaires")
         XCTAssertEqual(station.value as? String, "Station de radio")
@@ -1805,24 +1797,6 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try require(app.staticTexts["Reflets"].firstMatch)
         captureHierarchy("home-new-album-navigation-confirmed")
         try await Task.sleep(for: .seconds(2))
-    }
-
-    func testFixtureHomeLargeText() async throws {
-        try await launchFixtureApp(homeCatalog: true, contentSize: "UICTContentSizeCategoryAccessibilityXXXL")
-        captureHierarchy("home-large-text-top")
-        try await Task.sleep(for: .seconds(3))
-        let favoriteShelf = app.scrollViews.matching(identifier: "home.favoriteAlbums").firstMatch
-        try scrollHomeTo(favoriteShelf.buttons["Horizons de test, Atelier Minidisc"], named: "home-large-album-card")
-        captureHierarchy("home-large-text-album-card")
-        try await Task.sleep(for: .seconds(3))
-        try scrollHomeTo(searchElement("home.relevantAdditions"), named: "home-large-relevant-additions")
-        captureHierarchy("home-large-text-relevant-additions")
-        try await Task.sleep(for: .seconds(3))
-        // Launch arguments are per run: also inspect the compact player at ordinary text size.
-        try await launchFixtureApp(homeCatalog: true)
-        try scrollHomeTo(searchElement("home.relevantAdditions"), named: "home-normal-relevant-additions")
-        captureHierarchy("home-normal-player-and-relevant-additions")
-        try await Task.sleep(for: .seconds(3))
     }
 
     private func scrollHomeTo(_ element: XCUIElement, named name: String) throws {

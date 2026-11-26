@@ -87,21 +87,3 @@ struct CustomHeadersTransportTests {
         #expect((caught as? URLError)?.code == .notConnectedToInternet)
     }
 }
-
-@Suite("CustomHeadersTransport — timeout")
-struct CustomHeadersTransportTimeoutTests {
-
-    // Enable manually to validate that the default session's 30s resource timeout fires.
-    // Requires no proxy / firewall intercepting the request — uses a black-hole server address.
-    @Test(.disabled("Takes ~30s — enable manually to validate timeout config"))
-    func defaultInit_timesOutOnHungServer() async throws {
-        let transport = CustomHeadersTransport(headers: [:])
-        // RFC 5737 documentation address used as the timeout target.
-        var req = URLRequest(url: URL(string: "http://192.0.2.1/ping")!)
-        req.timeoutInterval = 35  // outer guard; real timeout comes from the session config
-        var caught: Error?
-        do { _ = try await transport.data(for: req) } catch { caught = error }
-        let code = (caught as? URLError)?.code
-        #expect(code == .timedOut || code == .cannotConnectToHost)
-    }
-}

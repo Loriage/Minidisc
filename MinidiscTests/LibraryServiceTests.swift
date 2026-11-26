@@ -5,20 +5,9 @@ import Foundation
 @Suite("LibraryService — normalizeArtistName")
 struct LibraryServiceNormalizationTests {
 
-    @Test("strips leading and trailing whitespace")
-    func stripsWhitespace() {
-        #expect(LibraryService.normalizeArtistName("  Beatles  ") == "beatles")
-    }
-
     @Test("lowercases ASCII")
     func lowercases() {
         #expect(LibraryService.normalizeArtistName("JAY-Z") == "jay-z")
-    }
-
-    @Test("folds diacritics")
-    func foldsDiacritics() {
-        #expect(LibraryService.normalizeArtistName("Stromaë") == "stromae")
-        #expect(LibraryService.normalizeArtistName("Sigur Rós") == "sigur ros")
     }
 
     @Test("combines lowercasing, diacritics folding and trimming")

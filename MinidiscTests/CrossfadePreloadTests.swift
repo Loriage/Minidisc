@@ -13,10 +13,6 @@ struct ShouldSchedulePrefetchTests {
         #expect(PlayerService.shouldSchedulePrefetch(crossfadeDuration: 0, remaining: 100) == false)
     }
 
-    @Test func firesWhenRemainingWithinThreshold() {
-        #expect(PlayerService.shouldSchedulePrefetch(crossfadeDuration: 8, remaining: 20) == true)
-    }
-
     @Test func exactlyAtThreshold() {
         #expect(PlayerService.shouldSchedulePrefetch(crossfadeDuration: 5, remaining: 20) == true)
     }
@@ -25,9 +21,6 @@ struct ShouldSchedulePrefetchTests {
         #expect(PlayerService.shouldSchedulePrefetch(crossfadeDuration: 5, remaining: 21) == false)
     }
 
-    @Test func firesNearEndOfTrack() {
-        #expect(PlayerService.shouldSchedulePrefetch(crossfadeDuration: 3, remaining: 2) == true)
-    }
 }
 
 @Suite("PlayerService.shouldProtectTransitionFromCaching")

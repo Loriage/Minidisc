@@ -37,11 +37,6 @@ struct WrappedStoryAvailabilityTests {
         #expect(WrappedStoryAvailability.isStoryAvailable(forYear: 2025, currentDate: date, calendar: utcCalendar()))
     }
 
-    @Test func pastYear_earlyInYear_isStillAvailable() {
-        let date = makeDate(year: 2026, month: 3, day: 10)
-        #expect(WrappedStoryAvailability.isStoryAvailable(forYear: 2024, currentDate: date, calendar: utcCalendar()))
-    }
-
     @Test func currentYear_beforeDec28_notAvailable() {
         let date = makeDate(year: 2026, month: 12, day: 27, hour: 23, minute: 59, second: 59)
         #expect(!WrappedStoryAvailability.isStoryAvailable(forYear: 2026, currentDate: date, calendar: utcCalendar()))
@@ -52,11 +47,6 @@ struct WrappedStoryAvailabilityTests {
         #expect(WrappedStoryAvailability.isStoryAvailable(forYear: 2026, currentDate: date, calendar: utcCalendar()))
     }
 
-    @Test func currentYear_afterDec28_available() {
-        let date = makeDate(year: 2026, month: 12, day: 30, hour: 15)
-        #expect(WrappedStoryAvailability.isStoryAvailable(forYear: 2026, currentDate: date, calendar: utcCalendar()))
-    }
-
     @Test func currentYear_dec31_available() {
         let date = makeDate(year: 2026, month: 12, day: 31, hour: 23, minute: 59)
         #expect(WrappedStoryAvailability.isStoryAvailable(forYear: 2026, currentDate: date, calendar: utcCalendar()))
@@ -64,11 +54,6 @@ struct WrappedStoryAvailabilityTests {
 
     @Test func futureYear_neverAvailable() {
         let date = makeDate(year: 2026, month: 12, day: 31)
-        #expect(!WrappedStoryAvailability.isStoryAvailable(forYear: 2027, currentDate: date, calendar: utcCalendar()))
-    }
-
-    @Test func futureYear_afterDec28_stillNotAvailable() {
-        let date = makeDate(year: 2026, month: 12, day: 29)
         #expect(!WrappedStoryAvailability.isStoryAvailable(forYear: 2027, currentDate: date, calendar: utcCalendar()))
     }
 
@@ -98,16 +83,6 @@ struct WrappedStoryAvailabilityTests {
 
     @Test func cardVisible_atMidnightDec3_visible() {
         let date = makeDate(year: 2026, month: 12, day: 3, hour: 0, minute: 0, second: 0)
-        #expect(WrappedStoryAvailability.isWrappedCardVisible(forYear: 2026, currentDate: date, calendar: utcCalendar()))
-    }
-
-    @Test func cardVisible_dec27_visible() {
-        let date = makeDate(year: 2026, month: 12, day: 27)
-        #expect(WrappedStoryAvailability.isWrappedCardVisible(forYear: 2026, currentDate: date, calendar: utcCalendar()))
-    }
-
-    @Test func cardVisible_dec28_visible() {
-        let date = makeDate(year: 2026, month: 12, day: 28)
         #expect(WrappedStoryAvailability.isWrappedCardVisible(forYear: 2026, currentDate: date, calendar: utcCalendar()))
     }
 

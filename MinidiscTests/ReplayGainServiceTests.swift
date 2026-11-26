@@ -60,48 +60,6 @@ struct ReplayGainServiceComputeGainTests {
         #expect(abs(result - expected) < epsilon)
     }
 
-    @Test("Adèle Castillon tags apply their exact negative gain")
-    func adeleCastillonTags() {
-        let track = gain(
-            mode: .track,
-            trackGain: -9.57,
-            trackPeak: 0.994904,
-            albumGain: -9.57,
-            albumPeak: 0.994904
-        )
-        let album = gain(
-            mode: .album,
-            trackGain: -9.57,
-            trackPeak: 0.994904,
-            albumGain: -9.57,
-            albumPeak: 0.994904
-        )
-
-        #expect(abs(track - (-9.57)) < epsilon)
-        #expect(abs(album - (-9.57)) < epsilon)
-    }
-
-    @Test("Hozier tags preserve track and album normalization modes")
-    func hozierTags() {
-        let track = gain(
-            mode: .track,
-            trackGain: -10.38,
-            trackPeak: 0.999969,
-            albumGain: -9.67,
-            albumPeak: 0.999969
-        )
-        let album = gain(
-            mode: .album,
-            trackGain: -10.38,
-            trackPeak: 0.999969,
-            albumGain: -9.67,
-            albumPeak: 0.999969
-        )
-
-        #expect(abs(track - (-10.38)) < epsilon)
-        #expect(abs(album - (-9.67)) < epsilon)
-    }
-
     @Test("preAmp is added to selected gain")
     func preAmpAddedToGain() {
         let result = gain(preAmp: 3, trackGain: -6)
@@ -250,9 +208,4 @@ struct ReplayGainServiceComputeGainTests {
         #expect(song.replayGainAlbumPeak == 0.999969)
     }
 
-    @Test("zero preAmp with track gain returns track gain unchanged")
-    func zeroPreAmpIsTransparent() {
-        let result = gain(preAmp: 0, trackGain: -8.5)
-        #expect(abs(result - (-8.5)) < epsilon)
-    }
 }

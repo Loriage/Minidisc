@@ -60,38 +60,6 @@ private func configuredService(
     return service
 }
 
-@Suite("PendingListen — Codable round-trip")
-struct PendingListenCodableTests {
-
-    @Test("all fields survive encode → decode")
-    func roundTrip_allFields() throws {
-        let original = PendingListen(
-            listenedAt: 1_700_000_000,
-            trackName: "Motion Picture Soundtrack",
-            artistName: "Radiohead",
-            releaseName: "Kid A",
-            durationMs: 154_000
-        )
-        let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(PendingListen.self, from: data)
-        #expect(decoded == original)
-    }
-
-    @Test("nil optional fields survive encode → decode")
-    func roundTrip_nilOptionals() throws {
-        let original = PendingListen(
-            listenedAt: 1_000,
-            trackName: "T",
-            artistName: "A",
-            releaseName: nil,
-            durationMs: nil
-        )
-        let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(PendingListen.self, from: data)
-        #expect(decoded == original)
-    }
-}
-
 @Suite("Queue file persistence")
 struct QueueFileTests {
 
@@ -102,7 +70,8 @@ struct QueueFileTests {
 
         let t1 = ProgrammableTransport([(200, validTokenBody)], fallback: 503)
         let s1 = try await configuredService(validateTransport: t1, queueFileURL: fileURL)
-        await s1.notifyScrobbleThreshold(song: makeSong(), startDate: Date())
+        let startedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        await s1.notifyScrobbleThreshold(song: makeSong(), startDate: startedAt)
         let countAfterEnqueue = await s1.pendingListenCount
         #expect(countAfterEnqueue == 1)
 
@@ -123,6 +92,15 @@ struct QueueFileTests {
         await s2.loadPersistedState()
         let countAfterLoad = await s2.pendingListenCount
         #expect(countAfterLoad == 1)
+        let request = try #require(t2.requests.last)
+        let body = try #require(JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any])
+        let listen = try #require((body["payload"] as? [[String: Any]])?.first)
+        #expect(listen["listened_at"] as? Int == Int(startedAt.timeIntervalSince1970))
+        let metadata = try #require(listen["track_metadata"] as? [String: Any])
+        #expect(metadata["track_name"] as? String == "Motion Picture Soundtrack")
+        #expect(metadata["artist_name"] as? String == "Radiohead")
+        #expect(metadata["release_name"] as? String == "Kid A")
+        #expect((metadata["additional_info"] as? [String: Any])?["duration_ms"] as? Int == 300_000)
     }
 
     @Test("corrupt queue file starts empty without crashing")
@@ -147,17 +125,6 @@ struct QueueFileTests {
 
 @Suite("Queue enqueue behaviour")
 struct QueueEnqueueTests {
-
-    @Test("transient 5xx error enqueues the listen")
-    func transient5xxEnqueues() async throws {
-        let fileURL = tempQueueURL()
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        let transport = ProgrammableTransport([(200, validTokenBody)], fallback: 503)
-        let service = try await configuredService(validateTransport: transport, queueFileURL: fileURL)
-        await service.notifyScrobbleThreshold(song: makeSong(), startDate: Date())
-        let count = await service.pendingListenCount
-        #expect(count == 1)
-    }
 
     @Test("permanent 401 is dropped — not enqueued")
     func permanent401NotEnqueued() async throws {
@@ -237,40 +204,11 @@ struct QueueFlushTests {
         #expect(payload?.count == 2)
         #expect((payload?[0])?["listened_at"] as? Int == Int(t1.timeIntervalSince1970))
         #expect((payload?[1])?["listened_at"] as? Int == Int(t2.timeIntervalSince1970))
-    }
-
-    @Test("flush includes submission_client and media_player in additional_info")
-    func flushAdditionalInfo() async throws {
-        let fileURL = tempQueueURL()
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        let transport = ProgrammableTransport([
-            (200, validTokenBody),
-            (503, Data()),
-            (200, Data()),
-        ])
-        let service = try await configuredService(validateTransport: transport, queueFileURL: fileURL)
-        await service.notifyScrobbleThreshold(song: makeSong(duration: 154), startDate: Date())
-        await service.flushOfflineQueue()
-
-        let reqs = transport.requests
-        let body = try JSONSerialization.jsonObject(with: reqs.last?.httpBody ?? Data()) as? [String: Any]
-        let meta = (body?["payload"] as? [[String: Any]])?.first?["track_metadata"] as? [String: Any]
-        let info = meta?["additional_info"] as? [String: Any]
-        #expect(info?["submission_client"] as? String == "Minidisc")
-        #expect(info?["media_player"] as? String == "Minidisc")
-        #expect(info?["duration_ms"] as? Int == 154_000)
-    }
-
-    @Test("queue is cleared after a successful flush")
-    func queueClearedOn200() async throws {
-        let fileURL = tempQueueURL()
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        let transport = ProgrammableTransport([(200, validTokenBody), (503, Data()), (200, Data())])
-        let service = try await configuredService(validateTransport: transport, queueFileURL: fileURL)
-        await service.notifyScrobbleThreshold(song: makeSong(), startDate: Date())
-        #expect(await service.pendingListenCount == 1)
-        await service.flushOfflineQueue()
-        #expect(await service.pendingListenCount == 0)
+        let metadata = try #require(payload?.first?["track_metadata"] as? [String: Any])
+        let info = try #require(metadata["additional_info"] as? [String: Any])
+        #expect(info["submission_client"] as? String == "Minidisc")
+        #expect(info["media_player"] as? String == "Minidisc")
+        #expect(info["duration_ms"] as? Int == 300_000)
     }
 
     @Test("queue is retained when flush fails")

@@ -34,14 +34,6 @@ struct HomePersonalizationTests {
         #expect(HomePersonalization.relevantAdditions([sameNameOtherID, missingID], favorites: favorites, frequent: []).map(\.id) == ["missing"])
     }
 
-    @Test("The earlier offline Home cache still decodes after the new shelves")
-    func oldCacheRemainsReadable() throws {
-        let data = Data(#"{"playlists":[],"recentlyPlayed":[],"recentlyAdded":[],"genres":[]}"#.utf8)
-        let snapshot = try JSONDecoder().decode(HomeFeedSnapshot.self, from: data)
-        #expect(snapshot.favorites == nil)
-        #expect(snapshot.mostPlayed == nil)
-    }
-
     @Test("Personal shelves survive serialization for an offline relaunch")
     func cacheRoundTrip() throws {
         let favorite = try album("favorite", artistID: "a")

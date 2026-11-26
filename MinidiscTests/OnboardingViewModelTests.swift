@@ -72,6 +72,7 @@ struct OnboardingViewModelTests {
         await vm.testConnection()
 
         #expect(vm.connectionError == .cannotConnect)
+        #expect(!vm.isLoading)
     }
 
     @Test func testConnection_authFailed_setsUnauthorizedError() async {
@@ -114,16 +115,6 @@ struct OnboardingViewModelTests {
         if case .unknown = vm.connectionError { } else {
             Issue.record("Expected .unknown, got \(String(describing: vm.connectionError))")
         }
-    }
-
-    @Test func testConnection_isLoadingFalseAfterCompletion() async {
-        let service = MockServerService()
-        service.testConnectionError = ConnectionTestError.cannotConnect
-        let vm = makeViewModel(service: service)
-
-        await vm.testConnection()
-
-        #expect(vm.isLoading == false)
     }
 
     @Test func addServer_success_noConnectionError() async {

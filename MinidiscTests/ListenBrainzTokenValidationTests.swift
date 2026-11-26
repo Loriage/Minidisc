@@ -136,29 +136,9 @@ struct ListenBrainzTokenValidationTests {
 @Suite("ListenBrainzService — normalizeServerURL")
 struct ListenBrainzURLNormalizationTests {
 
-    @Test("trailing slash stripped")
-    func trailingSlashStripped() {
-        #expect(ListenBrainzService.normalizeServerURL("https://api.listenbrainz.org/") == "https://api.listenbrainz.org")
-    }
-
-    @Test("multiple trailing slashes stripped")
-    func multipleTrailingSlashesStripped() {
-        #expect(ListenBrainzService.normalizeServerURL("https://myserver.com///") == "https://myserver.com")
-    }
-
-    @Test("leading and trailing whitespace trimmed")
-    func whitespaceTrimmed() {
-        #expect(ListenBrainzService.normalizeServerURL("  https://api.listenbrainz.org  ") == "https://api.listenbrainz.org")
-    }
-
-    @Test("whitespace and trailing slash both handled")
-    func whitespaceAndSlashHandled() {
-        #expect(ListenBrainzService.normalizeServerURL("  https://api.listenbrainz.org/  ") == "https://api.listenbrainz.org")
-    }
-
-    @Test("URL with path component preserved")
-    func pathComponentPreserved() {
-        #expect(ListenBrainzService.normalizeServerURL("https://myhost.com/lb") == "https://myhost.com/lb")
+    @Test("normalization trims whitespace and trailing slashes while preserving the server path")
+    func trimsFormattingAndPreservesPath() {
+        #expect(ListenBrainzService.normalizeServerURL("  https://myhost.com/lb///  ") == "https://myhost.com/lb")
     }
 
     @Test("clean URL unchanged")

@@ -212,6 +212,13 @@ nonisolated enum LocalMusicFixture {
         let updated = try await relaunched.refresh()
         #expect(updated.tracks.first(where: { $0.song.title == "First" })?.addedAt == addedAt)
         #expect(try #require(updated.tracks.first(where: { $0.song.title == "Second" })?.addedAt) >= addedAt)
+
+        let track = try #require(initial.tracks.first)
+        var legacy = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(track)) as? [String: Any])
+        legacy.removeValue(forKey: "addedAt")
+        let decoded = try JSONDecoder().decode(LocalMusicTrack.self, from: JSONSerialization.data(withJSONObject: legacy))
+        #expect(decoded.addedAt == nil)
+        #expect(decoded.song == track.song)
     }
 
     @Test func aMissingFolderKeepsItsIndexButMarksSongsUnavailable() async throws {
@@ -240,8 +247,12 @@ nonisolated enum LocalMusicFixture {
         }
     }
 
-    @Test func localReferencesSurviveQueueSerialization() throws {
+    @Test func oldQueuePayloadsStillDecodeWithoutALocalReference() throws {
         let song = LocalMusicStore.placeholder(LocalFileReference(folderID: UUID(), relativePath: "Track.wav")).song
+        var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(song)) as? [String: Any])
+        object.removeValue(forKey: "localFile")
+        let restored = try JSONDecoder().decode(DisplayableSong.self, from: JSONSerialization.data(withJSONObject: object))
+        #expect(restored.localFile == nil)
         #expect(try JSONDecoder().decode(DisplayableSong.self, from: JSONEncoder().encode(song)).localFile == song.localFile)
     }
 }

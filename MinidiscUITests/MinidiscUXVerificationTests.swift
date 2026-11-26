@@ -429,7 +429,7 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try tapBack(named: "lidarr-back-settings")
         try tap(app.buttons["Fermer"], named: "lidarr-close-settings")
         try openBrowse("Artistes")
-        try tap(app.staticTexts["Atelier Minidisc"].firstMatch, named: "lidarr-source-artist")
+        try tap(app.buttons["browse.artist.ux-artist"], named: "lidarr-source-artist")
         let similar = app.staticTexts["Lidarr Fixture Artist"].firstMatch
         for _ in 0..<8 {
             if similar.exists && similar.isHittable { break }
@@ -514,6 +514,17 @@ final class MinidiscUXVerificationTests: XCTestCase {
             try pullToRefreshCatalog(named: "fixture-songs")
             try require(app.staticTexts["Aurore"].firstMatch, timeout: 10)
             try tapBack(named: "fixture-songs-back")
+            if searchCatalog {
+                // Each search category has its own persistent index.
+                for (title, identifier, name) in [
+                    ("Albums", "browse.album.ux-search-album", "fixture-albums"),
+                    ("Artistes", "browse.artist.ux-search-artist", "fixture-artists")
+                ] {
+                    try openBrowse(title)
+                    try refreshBrowseCatalog(identifierPrefix: identifier, named: name)
+                    try tapBack(named: name + "-back")
+                }
+            }
             try tapTab("Accueil")
         }
     }
@@ -1797,6 +1808,24 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try require(app.staticTexts["Reflets"].firstMatch)
         captureHierarchy("home-new-album-navigation-confirmed")
         try await Task.sleep(for: .seconds(2))
+    }
+
+    func testFixtureHomeLargeText() async throws {
+        try await launchFixtureApp(homeCatalog: true, contentSize: "UICTContentSizeCategoryAccessibilityXXXL")
+        captureHierarchy("home-large-text-top")
+        try await Task.sleep(for: .seconds(3))
+        let favoriteShelf = app.scrollViews.matching(identifier: "home.favoriteAlbums").firstMatch
+        try scrollHomeTo(favoriteShelf.buttons["Horizons de test, Atelier Minidisc"], named: "home-large-album-card")
+        captureHierarchy("home-large-text-album-card")
+        try await Task.sleep(for: .seconds(3))
+        try scrollHomeTo(searchElement("home.relevantAdditions"), named: "home-large-relevant-additions")
+        captureHierarchy("home-large-text-relevant-additions")
+        try await Task.sleep(for: .seconds(3))
+        // Launch arguments are per run: also inspect the compact player at ordinary text size.
+        try await launchFixtureApp(homeCatalog: true)
+        try scrollHomeTo(searchElement("home.relevantAdditions"), named: "home-normal-relevant-additions")
+        captureHierarchy("home-normal-player-and-relevant-additions")
+        try await Task.sleep(for: .seconds(3))
     }
 
     private func scrollHomeTo(_ element: XCUIElement, named name: String) throws {

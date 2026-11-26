@@ -37,6 +37,11 @@ struct WrappedStoryAvailabilityTests {
         #expect(WrappedStoryAvailability.isStoryAvailable(forYear: 2025, currentDate: date, calendar: utcCalendar()))
     }
 
+    @Test func pastYear_earlyInYear_isStillAvailable() {
+        let date = makeDate(year: 2026, month: 3, day: 10)
+        #expect(WrappedStoryAvailability.isStoryAvailable(forYear: 2024, currentDate: date, calendar: utcCalendar()))
+    }
+
     @Test func currentYear_beforeDec28_notAvailable() {
         let date = makeDate(year: 2026, month: 12, day: 27, hour: 23, minute: 59, second: 59)
         #expect(!WrappedStoryAvailability.isStoryAvailable(forYear: 2026, currentDate: date, calendar: utcCalendar()))

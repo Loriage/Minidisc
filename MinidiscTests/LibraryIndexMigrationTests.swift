@@ -11,7 +11,7 @@ struct LibraryIndexMigrationTests {
     private let serverID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
     private let syncedAt = Date(timeIntervalSince1970: 1_700_000_000)
 
-    @Test(arguments: [1, 3, 4])
+    @Test(arguments: [1, 2, 3, 4])
     func installedStoreOpensWithoutLosingItsCache(version: Int) throws {
         let fixture = try #require(Bundle(for: LibraryIndexFixtureBundle.self)
             .url(forResource: "index-v\(version)", withExtension: "sqlite"))

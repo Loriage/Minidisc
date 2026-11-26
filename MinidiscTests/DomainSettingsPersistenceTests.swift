@@ -75,14 +75,14 @@ struct DomainSettingsPersistenceTests {
         #expect(restored.restoredVolume == 0.35)
     }
 
-    @Test("Cache capacity is normalized and persists in the injected defaults suite")
-    func cacheCapacityPersistence() {
+    @Test("the legacy track-count cache preference migrates to a byte capacity")
+    func cacheCapacityMigration() {
         let (defaults, suiteName) = isolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(4, forKey: "minidisc.cache.maxTracks")
 
         let settings = CacheSettings(defaults: defaults)
-        settings.capacityMegabytes = 256
-        #expect(CacheSettings(defaults: defaults).capacityMegabytes == 256)
+        #expect(settings.capacityMegabytes == 256)
         #expect(settings.capacityBytes == 256 * 1_000_000)
 
         settings.capacityMegabytes = 1_000

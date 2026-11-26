@@ -30,10 +30,10 @@ private func tempQueueURL() -> URL {
     URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString + ".json")
 }
 
-private func makeSong(duration: TimeInterval = 300) -> DisplayableSong {
+private func makeSong(duration: TimeInterval = 300, album: String? = "Kid A") -> DisplayableSong {
     DisplayableSong(
         id: "s1", title: "Motion Picture Soundtrack", artist: "Radiohead",
-        albumId: "alb1", albumName: "Kid A", artistId: "art1",
+        albumId: "alb1", albumName: album, artistId: "art1",
         genre: nil, duration: duration, trackNumber: 10, isDownloaded: false,
         coverArtId: nil, audioFormat: nil,
         replayGainTrackGain: nil, replayGainTrackPeak: nil,
@@ -63,15 +63,17 @@ private func configuredService(
 @Suite("Queue file persistence")
 struct QueueFileTests {
 
-    @Test("queue survives service restart — written by one instance, read by another")
-    func queueRoundTripAcrossInstances() async throws {
+    @Test("queued listens retain their metadata across restart", arguments: [false, true])
+    func queueRoundTripAcrossInstances(hasOptionalMetadata: Bool) async throws {
         let fileURL = tempQueueURL()
         defer { try? FileManager.default.removeItem(at: fileURL) }
 
         let t1 = ProgrammableTransport([(200, validTokenBody)], fallback: 503)
         let s1 = try await configuredService(validateTransport: t1, queueFileURL: fileURL)
         let startedAt = Date(timeIntervalSince1970: 1_700_000_000)
-        await s1.notifyScrobbleThreshold(song: makeSong(), startDate: startedAt)
+        let song = makeSong(duration: hasOptionalMetadata ? 300 : 0,
+                            album: hasOptionalMetadata ? "Kid A" : nil)
+        await s1.notifyScrobbleThreshold(song: song, startDate: startedAt)
         let countAfterEnqueue = await s1.pendingListenCount
         #expect(countAfterEnqueue == 1)
 
@@ -99,8 +101,8 @@ struct QueueFileTests {
         let metadata = try #require(listen["track_metadata"] as? [String: Any])
         #expect(metadata["track_name"] as? String == "Motion Picture Soundtrack")
         #expect(metadata["artist_name"] as? String == "Radiohead")
-        #expect(metadata["release_name"] as? String == "Kid A")
-        #expect((metadata["additional_info"] as? [String: Any])?["duration_ms"] as? Int == 300_000)
+        #expect(metadata["release_name"] as? String == (hasOptionalMetadata ? "Kid A" : nil))
+        #expect((metadata["additional_info"] as? [String: Any])?["duration_ms"] as? Int == (hasOptionalMetadata ? 300_000 : nil))
     }
 
     @Test("corrupt queue file starts empty without crashing")

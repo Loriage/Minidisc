@@ -21,6 +21,9 @@ struct ShouldSchedulePrefetchTests {
         #expect(PlayerService.shouldSchedulePrefetch(crossfadeDuration: 5, remaining: 21) == false)
     }
 
+    @Test func firesNearEndOfTrack() {
+        #expect(PlayerService.shouldSchedulePrefetch(crossfadeDuration: 3, remaining: 2) == true)
+    }
 }
 
 @Suite("PlayerService.shouldProtectTransitionFromCaching")

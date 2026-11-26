@@ -3,8 +3,6 @@ import XCTest
 import AppIntentsTesting
 #endif
 
-/// Uses only Scripts/Testing/ux-fixture-server.py on a disposable simulator.
-/// Capture externally with simctl when a UX_STEP marker is emitted.
 @MainActor
 final class MinidiscUXVerificationTests: XCTestCase {
     private let app = XCUIApplication()
@@ -2038,7 +2036,7 @@ final class MinidiscUXVerificationTests: XCTestCase {
             guard let response = response as? HTTPURLResponse,
                   response.statusCode == 200,
                   response.value(forHTTPHeaderField: "X-Minidisc-UX-Fixture") == "1" else {
-                throw XCTSkip("Start Scripts/Testing/ux-fixture-server.py before this scenario.")
+                throw XCTSkip("Start the local UX fixture server on port 18992 before this scenario.")
             }
         } catch {
             throw XCTSkip("The disposable UX fixture is not running on this simulator host.")

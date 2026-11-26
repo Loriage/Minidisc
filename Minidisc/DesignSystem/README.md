@@ -118,9 +118,6 @@ PlaylistFeaturedArtistsShelf uses the same MinidiscShelf, carousel title, 104-po
 ArtistPortraitCell as Similar Artists on an artist page. Artwork lookup and navigation stay with
 their respective screens.
 
-The isolated playlist artwork scenarios in Scripts/Testing exercise these components with real
-cover loading, cover replacement and large text; see that directory's README for reproduction.
-
 ### `SongRow`
 
 Standard track cell for album and playlist detail screens.

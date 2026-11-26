@@ -61,28 +61,3 @@ another account. Re-select music if the server address or resource IDs change.
 Mood actions resolve the current playlist for the selected mood and do not
 generate new playlists. Downloaded music uses the existing offline playback
 path; voice recognition itself may still need a connection.
-
-## Verification
-
-`MusicIntentTests` covers account separation, batch entity resolution, bounded
-local suggestions, ranking, and shared/retryable initialization. The player
-recovery tests cover a Pause arriving while a shortcut prepares its queue and
-applying the requested repeat mode.
-
-`SiriMediaIntentTests` covers media-type filtering, artist disambiguation, generic
-versus explicit requests, stable identifiers, and account changes between
-resolution and playback. `testFixtureSiriSettings` checks the localized permission
-entry point without granting permission on behalf of the person.
-`testFixtureDiscoverWeeklyShortcut` creates a disposable playlist named Discover
-Weekly, resolves it through the playlist entity query, and plays its first song
-through the installed app's shortcut.
-
-`testFixtureMusicShortcutsColdStart` uses AppIntentsTesting on the dedicated
-**Minidisc UX Verification** simulator with the local fixture described in
-[Scripts/Testing/README.md](../Scripts/Testing/README.md). It invokes the installed
-app out of process, resolves music, starts playback, opens the app and exercises
-Pause/Resume. It does not validate microphone recognition or Siri's spoken replies.
-
-On a physical device, also test Siri with the app closed and the screen locked,
-an album or playlist selected in Shortcuts, a downloaded selection offline, a
-missing Mood, and an existing shortcut after switching servers.

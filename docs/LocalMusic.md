@@ -17,23 +17,3 @@ Directories, including subdirectories, are scanned on foreground entry, every 30
 Directory enumeration uses immediately available metadata coordination. Before reading tags or resolving playback, the library checks cloud download state and allocated file storage. Cloud placeholders remain listed but are not opened for metadata or playback. Minidisc never requests a cloud download; users manage download/restore in Files. Availability is checked again when playing or resuming.
 
 The queue persists a folder ID and relative path, rather than an absolute URL. Playback retains a security-scoped access lease while its current or preloaded source is in use. Local tracks use the existing audio engine and system playback controls. Server playlist, favorite, sharing, lyrics and recommendation actions do not accept local references. Local tracks are excluded from server playback reporting and Wrapped statistics; an enabled ListenBrainz account can still scrobble their tags.
-
-## Device verification
-
-- On a fresh install, choose Local Files, cancel a folder selection, then enter the library. Verify Home, Discover, Library, Search and Settings work without a server; Settings → Music Sources can connect one later.
-- Add an on-device folder containing supported audio and a subfolder. Play, pause, seek, advance, and relaunch the app.
-- Add an iCloud folder containing both downloaded files and placeholders. Confirm placeholders show an explanation and tapping one does not download it. Download it manually in Files, then refresh.
-- Add/remove a file in Files, return to Minidisc, and verify Home, category lists and Search update.
-- Connect a server after adding local files. Verify both sources appear in the common category lists and Search; test a queue containing tracks from both sources.
-- Revoke folder access or move/delete a referenced file. Verify the unavailable message and ability to add the folder again.
-- Remove a folder from Minidisc and confirm the originals remain in Files.
-
-The simulator suite verifies indexing, persisted bookmarks, overlap deduplication, missing files/folders, cloud residency policy, legacy queue decoding and local playback without a server. Real iCloud eviction and permission revocation require a signed-in physical device.
-
-For `LocalMusicExperienceTests`, boot a dedicated simulator without a server and run
-`rtk proxy python3 Scripts/Testing/prepare-local-music-fixture.py <simulator-udid>`.
-This adds three silent WAV fixtures to Files → On My iPhone → Minidisc Test Music.
-Run the UI suite with parallel testing disabled. It selects that folder through the real
-document picker, starts local Shuffle, checks playback progress, opens the local album from
-the player, and verifies persistence after relaunch. The onboarding/settings scenario also
-works after music has been added; use a fresh app installation to include the initial choice.

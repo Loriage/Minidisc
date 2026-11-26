@@ -4161,7 +4161,7 @@ actor PlayerService: PlayerServiceProtocol {
         }
         guard let client = try? await serverService.activeConnection().makeSwiftSonicClient() else { return nil }
         let artId = song.coverArtId ?? song.id
-        return client.coverArtURL(id: artId, size: 600)
+        return client.coverArtURL(id: artId, size: await artworkImageCache.quality.pixels)
     }
 
     // MARK: - Cache download helpers

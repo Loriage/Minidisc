@@ -89,7 +89,7 @@ actor NowPlayingService: NowPlayingServiceProtocol {
         guard generation == contentGeneration, currentSong?.songId == snapshot.songId else { return }
 
         if let coverArtId = snapshot.coverArtId,
-           let cachedImage = await artworkImageCache.loadCached(coverArtId: coverArtId, tier: .hero) {
+           let cachedImage = await artworkImageCache.load(coverArtId: coverArtId, tier: .hero) {
             guard generation == contentGeneration, currentSong?.songId == snapshot.songId else { return }
             await presenter.setArtwork(
                 image: cachedImage,

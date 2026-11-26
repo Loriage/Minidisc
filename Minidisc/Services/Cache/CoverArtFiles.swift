@@ -2,6 +2,12 @@ import Foundation
 
 /// Streaming variants and permanent download covers share a directory, but not ownership.
 nonisolated enum CoverArtFiles {
+    static func streamingVariantIDs(for id: String) -> [String] {
+        ["\(id)@thumb", "\(id)@hero"] + ArtworkQuality.allCases.flatMap { quality in
+            ["\(id)@\(quality.rawValue)@thumb", "\(id)@\(quality.rawValue)@hero"]
+        }
+    }
+
     static func isStreamingVariant(_ name: String) -> Bool {
         name.hasSuffix("@thumb") || name.hasSuffix("@hero")
     }

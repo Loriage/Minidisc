@@ -49,6 +49,7 @@ protocol DownloadServiceProtocol: AnyObject, Sendable {
     func downloadedSongIds(serverId: UUID) async -> Set<String>
 
     func localCoverArtURL(forId coverArtId: String) async -> URL?
+    func localCoverArtQuality(forId coverArtId: String) async -> ArtworkQuality
 
     /// Persists cover image data to the shared cover art directory (best-effort, errors are logged).
     func persistCover(_ data: Data, forId coverArtId: String) async
@@ -99,6 +100,7 @@ protocol DownloadServiceProtocol: AnyObject, Sendable {
 }
 
 extension DownloadServiceProtocol {
+    func localCoverArtQuality(forId coverArtId: String) async -> ArtworkQuality { .standard }
     func cancelDownloads(albumId: String, serverId: UUID) async throws {}
     func cancelDownloads(playlistId: String, serverId: UUID) async throws {}
     func restorePendingDownloads() async {}

@@ -393,7 +393,7 @@ struct StorageSettingsView: View {
 
                 if let cacheSettings {
                     @Bindable var cacheSettings = cacheSettings
-                    Picker("Offline artwork quality", selection: $cacheSettings.artworkQuality) {
+                    Picker("Artwork quality", selection: $cacheSettings.artworkQuality) {
                         ForEach(ArtworkQuality.allCases) { quality in
                             Text(quality.displayName).tag(quality)
                         }
@@ -427,7 +427,7 @@ struct StorageSettingsView: View {
             } header: {
                 Text("Artwork")
             } footer: {
-                Text("Downloaded covers use the selected quality and are kept offline. Existing covers update when your connection settings allow. Turning caching off only affects artwork from streaming.")
+                Text("The selected quality applies to online and downloaded artwork. Downloaded covers are kept offline and update when your connection settings allow. Turning caching off only affects artwork from streaming.")
             }
 
             LibraryIndexStorageSection()

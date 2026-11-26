@@ -90,7 +90,7 @@ private struct CoverArtViewContent: View {
                 }
             }
         }
-        .task(id: "\(loadingEnabled):\(id):\(resolvedTier.rawValue):\(coverArtUploadVersion):\(container?.serverState.isOnline ?? true)") {
+        .task(id: "\(loadingEnabled):\(id):\(resolvedTier.rawValue):\(artworkCache.quality.rawValue):\(coverArtUploadVersion):\(container?.serverState.isOnline ?? true)") {
             guard loadingEnabled else { return }
             url = nil
             isUnavailable = false
@@ -123,7 +123,7 @@ private struct CoverArtViewContent: View {
             displayedId = nil
             isUnavailable = !online
             guard online else { return }
-            let fallbackURL = await container?.libraryService.coverArtURL(id: id, size: size)
+            let fallbackURL = await container?.libraryService.coverArtURL(id: id, size: artworkCache.quality.pixels)
             guard !Task.isCancelled else { return }
             url = fallbackURL
             isUnavailable = fallbackURL == nil

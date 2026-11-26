@@ -289,6 +289,34 @@ struct ArtworkImageCacheConcurrencyTests {
         #expect(await persistence.calls() == 0)
     }
 
+    @Test("a quality change rejects an older decode and its disk write")
+    func qualityChangeDuringDecodePreventsLateCommit() async {
+        let decodeGate = ControlledDecodeGate()
+        let persistence = PersistRecorder()
+        let cache = ArtworkImageCache(
+            revalidationStore: store(),
+            coverArtURLProvider: { _, _ in URL(string: "https://example.com/cover") },
+            persistCoverOperation: { _, _ in await persistence.record() },
+            dataLoader: { request in
+                (artworkFixtureData, HTTPURLResponse(
+                    url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+                )!)
+            },
+            imageDecoder: { data, _ in
+                await decodeGate.wait()
+                return PlatformImage(data: data)
+            }
+        )
+        let load = Task { await cache.load(coverArtId: "quality-race", tier: .hero) }
+        #expect(await eventuallyArtwork { await decodeGate.calls() == 1 })
+        cache.quality = .original
+        #expect(await load.value == nil)
+        await decodeGate.resume()
+        #expect(await eventuallyArtwork { cache.completedLoads() == 1 })
+        #expect(cache.cachedImage(for: "quality-race", tier: .hero) == nil)
+        #expect(await persistence.calls() == 0)
+    }
+
     @Test("explicit invalidation wins against a changed-cover revalidation")
     func invalidationWinsAgainstRevalidation() async {
         let loader = RevalidationDataLoader()
@@ -348,8 +376,8 @@ struct ArtworkImageCacheConcurrencyTests {
 
         await invalidation.value
         #expect(await load.value == nil)
-        #expect(await disk.removals() == 3)
-        #expect(await disk.contains("persist-race@thumb") == false)
+        #expect(await disk.removals() == 9)
+        #expect(await disk.contains("persist-race@standard@thumb") == false)
     }
 
     @Test("a load cannot read disk while invalidation is removing the cover")

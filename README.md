@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/app-icon.png" alt="Minidisc app icon" width="128" height="128">
+  <img src="assets/app-icon.png" alt="Minidisc app icon" width="128" height="128">
 </p>
 
 <h1 align="center">Minidisc</h1>
@@ -18,7 +18,7 @@
 
 |                        Home                        |                        Discover                        |                        Player                        |                        Album                        |                           Lidarr                           |
 | :------------------------------------------------: | :----------------------------------------------------: | :--------------------------------------------------: | :-------------------------------------------------: | :--------------------------------------------------------: |
-| <img src="docs/screenshots/home.jpeg" width="150"> | <img src="docs/screenshots/discover.jpeg" width="150"> | <img src="docs/screenshots/player.jpeg" width="150"> | <img src="docs/screenshots/album.jpeg" width="150"> | <img src="docs/screenshots/lidarr-album.jpeg" width="150"> |
+| <img src="assets/screenshots/home.jpeg" width="150"> | <img src="assets/screenshots/discover.jpeg" width="150"> | <img src="assets/screenshots/player.jpeg" width="150"> | <img src="assets/screenshots/album.jpeg" width="150"> | <img src="assets/screenshots/lidarr-album.jpeg" width="150"> |
 
 ## What is Minidisc?
 

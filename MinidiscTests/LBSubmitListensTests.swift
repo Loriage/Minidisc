@@ -57,33 +57,6 @@ private let defaultRoot = URL(string: "https://api.listenbrainz.org")!
 private let validTokenBody = Data(#"{"valid":true,"user_name":"alice"}"#.utf8)
 private let validTokenWithoutUsernameBody = Data(#"{"valid":true}"#.utf8)
 
-@Suite("LBTrackMetadata — field mapping")
-struct LBTrackMetadataTests {
-
-    @Test("maps title, artist, albumName from DisplayableSong")
-    func fullMapping() {
-        let meta = LBTrackMetadata(from: makeSong())
-        #expect(meta.trackName == "Paranoid Android")
-        #expect(meta.artistName == "Radiohead")
-        #expect(meta.releaseName == "OK Computer")
-    }
-
-    @Test("uses empty string for artistName when artist is nil")
-    func nilArtistBecomesEmptyString() {
-        let song = DisplayableSong(
-            id: "s", title: "T", artist: nil, albumId: nil, albumName: nil,
-            artistId: nil, genre: nil, duration: 300, trackNumber: nil,
-            isDownloaded: false, coverArtId: nil, audioFormat: nil,
-            replayGainTrackGain: nil, replayGainTrackPeak: nil,
-            replayGainAlbumGain: nil, replayGainAlbumPeak: nil,
-            replayGainBaseGain: nil, replayGainFallbackGain: nil
-        )
-        let meta = LBTrackMetadata(from: song)
-        #expect(meta.artistName == "")
-        #expect(meta.releaseName == nil)
-    }
-}
-
 @Suite("ListenBrainzClient — submitPlayingNow")
 struct LBSubmitPlayingNowTests {
 
@@ -96,37 +69,18 @@ struct LBSubmitPlayingNowTests {
         let req = try #require(transport.requests.first)
         #expect(req.httpMethod == "POST")
         #expect(req.url?.path == "/1/submit-listens")
+        #expect(req.value(forHTTPHeaderField: "Authorization") == "Token tok")
+        #expect(req.value(forHTTPHeaderField: "Content-Type") == "application/json")
 
         let dict = try JSONSerialization.jsonObject(with: req.httpBody ?? Data()) as? [String: Any]
         #expect(dict?["listen_type"] as? String == "playing_now")
         let payload = (dict?["payload"] as? [[String: Any]])?.first
         #expect(payload != nil)
         #expect(payload?["listened_at"] == nil)
-    }
-
-    @Test("Authorization header carries token")
-    func authorizationHeader() async throws {
-        let transport = RecordingTransport(status: 200)
-        let client = ListenBrainzClient(transport: transport)
-        try await client.submitPlayingNow(track: LBTrackMetadata(from: makeSong()), rootURL: defaultRoot, token: "secret_token")
-
-        let req = try #require(transport.requests.first)
-        #expect(req.value(forHTTPHeaderField: "Authorization") == "Token secret_token")
-        #expect(req.value(forHTTPHeaderField: "Content-Type") == "application/json")
-    }
-
-    @Test("track_metadata fields are snake_case encoded correctly")
-    func trackMetadataEncoding() async throws {
-        let transport = RecordingTransport(status: 200)
-        let client = ListenBrainzClient(transport: transport)
-        try await client.submitPlayingNow(track: LBTrackMetadata(from: makeSong()), rootURL: defaultRoot, token: "tok")
-
-        let req = try #require(transport.requests.first)
-        let dict = try JSONSerialization.jsonObject(with: req.httpBody ?? Data()) as? [String: Any]
-        let meta = (dict?["payload"] as? [[String: Any]])?.first?["track_metadata"] as? [String: Any]
-        #expect(meta?["track_name"] as? String == "Paranoid Android")
-        #expect(meta?["artist_name"] as? String == "Radiohead")
-        #expect(meta?["release_name"] as? String == "OK Computer")
+        let metadata = try #require(payload?["track_metadata"] as? [String: Any])
+        #expect(metadata["track_name"] as? String == "Paranoid Android")
+        #expect(metadata["artist_name"] as? String == "Radiohead")
+        #expect(metadata["release_name"] as? String == "OK Computer")
     }
 
     @Test("preserves custom rootURL path for self-hosted instances")
@@ -162,12 +116,12 @@ struct LBSubmitListenTests {
         #expect(payload?["listened_at"] as? Int == 1_700_000_000)
     }
 
-    @Test("release_name is omitted from payload when albumName is nil")
-    func releaseNameOmittedWhenNil() async throws {
+    @Test("missing artist and album metadata are encoded for submission")
+    func missingMetadataIsEncoded() async throws {
         let transport = RecordingTransport(status: 200)
         let client = ListenBrainzClient(transport: transport)
         let noAlbumSong = DisplayableSong(
-            id: "s", title: "T", artist: "A", albumId: nil, albumName: nil,
+            id: "s", title: "T", artist: nil, albumId: nil, albumName: nil,
             artistId: nil, genre: nil, duration: 300, trackNumber: nil,
             isDownloaded: false, coverArtId: nil, audioFormat: nil,
             replayGainTrackGain: nil, replayGainTrackPeak: nil,
@@ -185,6 +139,7 @@ struct LBSubmitListenTests {
         let dict = try JSONSerialization.jsonObject(with: req.httpBody ?? Data()) as? [String: Any]
         let meta = (dict?["payload"] as? [[String: Any]])?.first?["track_metadata"] as? [String: Any]
         #expect(meta?["release_name"] == nil)
+        #expect(meta?["artist_name"] as? String == "")
     }
 }
 

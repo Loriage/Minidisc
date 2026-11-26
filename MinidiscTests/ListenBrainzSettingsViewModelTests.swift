@@ -65,6 +65,10 @@ struct ListenBrainzSettingsViewModelTests {
         defer { UserDefaults.standard.removePersistentDomain(forName: defaultsSuiteName) }
         transport.enqueue(status: 200)
 
+        vm.usernameInput = "bad user"
+        vm.validateUsernameInputLocally()
+        #expect(vm.usernameInputValidationError != nil)
+
         vm.usernameInput = "Test.User_123-name"
         vm.validateUsernameInputLocally()
         #expect(vm.usernameInputValidationError == nil)
@@ -74,16 +78,6 @@ struct ListenBrainzSettingsViewModelTests {
         #expect(vm.snapshot.username == "Test.User_123-name")
         #expect(vm.userFacingError == nil)
         #expect(!vm.isProcessing)
-    }
-
-    @Test("valid username clears validation error")
-    @MainActor func validUsernameInputClearsError() {
-        let (vm, _, _) = makeComponents()
-
-        vm.usernameInput = "valid_user-123"
-        vm.validateUsernameInputLocally()
-
-        #expect(vm.usernameInputValidationError == nil)
     }
 
     @Test("empty input does not set validation error")
@@ -106,38 +100,16 @@ struct ListenBrainzSettingsViewModelTests {
         #expect(vm.usernameInputValidationError != nil)
     }
 
-    @Test("username over 40 chars sets validation error")
-    @MainActor func longUsernameSetsError() {
-        let (vm, _, _) = makeComponents()
-
-        vm.usernameInput = String(repeating: "a", count: 41)
-        vm.validateUsernameInputLocally()
-
-        #expect(vm.usernameInputValidationError != nil)
-    }
-
-    @Test("connect with 200 enables integration")
-    @MainActor func connectSucceeds() async {
-        let (vm, transport, _) = makeComponents()
-        transport.enqueue(status: 200)
-
-        vm.usernameInput = "user"
-        await vm.connect()
-
-        #expect(vm.snapshot.isEnabled == true)
-        #expect(vm.userFacingError == nil)
-        #expect(vm.isProcessing == false)
-    }
-
     @Test("connect with 404 sets userFacingError and leaves disabled")
     @MainActor func connectUserNotFound() async {
         let (vm, transport, _) = makeComponents()
         transport.enqueue(status: 404)
 
-        vm.usernameInput = "ghost"
+        vm.usernameInput = "CANARY_USER_DO_NOT_LEAK_42"
         await vm.connect()
 
         #expect(vm.userFacingError != nil)
+        #expect(vm.userFacingError?.contains(vm.usernameInput) == false)
         #expect(vm.snapshot.isEnabled == false)
         #expect(vm.isProcessing == false)
     }
@@ -170,22 +142,8 @@ struct ListenBrainzSettingsViewModelTests {
         #expect(vm.isProcessing == false)
     }
 
-    @Test("userFacingError never exposes canary username (404)")
-    @MainActor func canaryNotInUserNotFoundError() async {
-        let canary = "CANARY_USER_DO_NOT_LEAK_42"
-        let (vm, transport, _) = makeComponents()
-        transport.enqueue(status: 404, for: canary)
-
-        vm.usernameInput = canary
-        await vm.connect()
-
-        if let error = vm.userFacingError {
-            #expect(!error.contains(canary), "userFacingError must not expose the username — found canary in: \"\(error)\"")
-        }
-    }
-
     @Test("userFacingError never exposes canary username (500)")
-    @MainActor func canaryNotInHttpError() async {
+    @MainActor func canaryNotInHttpError() async throws {
         let canary = "CANARY_USER_DO_NOT_LEAK_42"
         let (vm, transport, _) = makeComponents()
         transport.enqueue(status: 500, for: canary)
@@ -193,8 +151,7 @@ struct ListenBrainzSettingsViewModelTests {
         vm.usernameInput = canary
         await vm.connect()
 
-        if let error = vm.userFacingError {
-            #expect(!error.contains(canary), "userFacingError must not expose the username — found canary in: \"\(error)\"")
-        }
+        let error = try #require(vm.userFacingError)
+        #expect(!error.contains(canary))
     }
 }

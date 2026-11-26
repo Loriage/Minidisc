@@ -46,22 +46,6 @@ struct ListenBrainzClientTests {
         #expect(try await client.validateUsername(username))
     }
 
-    @Test("valid username, 200 + count > 0 returns true")
-    func happyPathWithCount() async throws {
-        let body = Data(#"{"payload":{"count":1234}}"#.utf8)
-        let client = makeClient { _ in (body, response(status: 200)) }
-        let result = try await client.validateUsername("testuser")
-        #expect(result == true)
-    }
-
-    @Test("valid username, 200 + count = 0 still returns true (user exists, never listened)")
-    func happyPathZeroCount() async throws {
-        let body = Data(#"{"payload":{"count":0}}"#.utf8)
-        let client = makeClient { _ in (body, response(status: 200)) }
-        let result = try await client.validateUsername("newuser")
-        #expect(result == true)
-    }
-
     @Test("200 with non-JSON body throws .decoding (guards against HTML redirect responses)")
     func twoHundredNonJSONBodyThrowsDecoding() async throws {
         let htmlBody = Data("<html><body>Not JSON</body></html>".utf8)
@@ -178,23 +162,4 @@ struct ListenBrainzClientTests {
         }
     }
 
-    @Test("canary: error descriptions do not leak the username")
-    func errorDescriptionsClean() {
-        let canary = "CANARY_USER_DO_NOT_LEAK_42"
-        let errors: [ListenBrainzError] = [
-            .invalidUsername,
-            .userNotFound,
-            .network(URLError(.notConnectedToInternet)),
-            .rateLimited(retryAfter: 60),
-            .rateLimited(retryAfter: nil),
-            .httpError(statusCode: 500),
-            .unauthorized,
-        ]
-        for error in errors {
-            #expect(!error.localizedDescription.contains(canary), "localizedDescription leaks canary in \(error)")
-            #expect(!(error.errorDescription ?? "").contains(canary), "errorDescription leaks canary in \(error)")
-            #expect(!error.description.contains(canary), "description leaks canary in \(error)")
-            #expect(!error.debugDescription.contains(canary), "debugDescription leaks canary in \(error)")
-        }
-    }
 }

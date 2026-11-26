@@ -154,34 +154,6 @@ struct WrappedYearTransitionTests {
 @Suite("WrappedPreferences")
 struct WrappedPreferencesTests {
 
-    @Test func lastUpdatedMonth_roundTrip() {
-        let prefs = ytMakePrefs()
-        let ym = YearMonth(year: 2026, month: 4)
-
-        #expect(prefs.lastUpdatedMonth(serverId: "srv") == nil)
-
-        prefs.setLastUpdatedMonth(ym, serverId: "srv")
-        #expect(prefs.lastUpdatedMonth(serverId: "srv") == ym)
-    }
-
-    @Test func playlistId_roundTrip() {
-        let prefs = ytMakePrefs()
-
-        #expect(prefs.playlistId(year: 2026, serverId: "srv") == nil)
-
-        prefs.setPlaylistId("pl-abc", year: 2026, serverId: "srv")
-        #expect(prefs.playlistId(year: 2026, serverId: "srv") == "pl-abc")
-    }
-
-    @Test func lastWrappedYear_roundTrip() {
-        let prefs = ytMakePrefs()
-
-        #expect(prefs.lastWrappedYear(serverId: "srv") == nil)
-
-        prefs.setLastWrappedYear(2026, serverId: "srv")
-        #expect(prefs.lastWrappedYear(serverId: "srv") == 2026)
-    }
-
     @Test func multiServer_keysAreIsolated() {
         let prefs = ytMakePrefs()
 

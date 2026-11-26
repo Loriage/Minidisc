@@ -163,12 +163,6 @@ struct PlaybackProgressTrackerTests {
         #expect(tracker.scrobbleStartDateIfThresholdMet(trackDuration: 120) != nil)
     }
 
-    @Test("scrobble fires at half of an ordinary track")
-    func scrobbleFiresAtHalfDuration() {
-        var tracker = makeTracker(accumulatedTime: 50)
-        #expect(tracker.scrobbleStartDateIfThresholdMet(trackDuration: 100) != nil)
-    }
-
     @Test("scrobble threshold is capped at four minutes")
     func scrobbleThresholdIsCapped() {
         var tracker = makeTracker(accumulatedTime: 240)

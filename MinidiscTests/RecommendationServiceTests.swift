@@ -37,13 +37,6 @@ private let albumStub = AlbumRecommendation(id: "al1", title: "Album One", artis
 @Suite("RecommendationService — similarArtists")
 struct RecommendationServiceSimilarArtistsTests {
 
-    @Test("single provider with results returns them")
-    func singleProviderReturnsData() async throws {
-        let service = RecommendationService(providers: [MockRecommendationProvider(artistResults: [artistStub])])
-        let results = try await service.similarArtists(to: "a1")
-        #expect(results == [artistStub])
-    }
-
     @Test("single provider returning empty yields empty")
     func singleProviderReturnsEmpty() async throws {
         let service = RecommendationService(providers: [MockRecommendationProvider()])

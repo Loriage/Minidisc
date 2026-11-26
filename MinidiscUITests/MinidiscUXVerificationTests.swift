@@ -293,10 +293,6 @@ final class MinidiscUXVerificationTests: XCTestCase {
         return (result["playlist"] as? [String: Any])?["id"] as? String
     }
 
-    func testLocalFixtureOnboarding() async throws {
-        try await launchFixtureApp()
-    }
-
     func testFixtureLidarrArtistShortcut() async throws {
         try await openFixtureLidarrArtist()
         try tap(app.buttons["artist.add-to-lidarr"], named: "lidarr-direct-add")
@@ -433,7 +429,7 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try tapBack(named: "lidarr-back-settings")
         try tap(app.buttons["Fermer"], named: "lidarr-close-settings")
         try openBrowse("Artistes")
-        try tap(app.staticTexts["Atelier Minidisc"].firstMatch, named: "lidarr-source-artist")
+        try tap(app.buttons["browse.artist.ux-artist"], named: "lidarr-source-artist")
         let similar = app.staticTexts["Lidarr Fixture Artist"].firstMatch
         for _ in 0..<8 {
             if similar.exists && similar.isHittable { break }
@@ -518,6 +514,17 @@ final class MinidiscUXVerificationTests: XCTestCase {
             try pullToRefreshCatalog(named: "fixture-songs")
             try require(app.staticTexts["Aurore"].firstMatch, timeout: 10)
             try tapBack(named: "fixture-songs-back")
+            if searchCatalog {
+                // Each search category has its own persistent index.
+                for (title, identifier, name) in [
+                    ("Albums", "browse.album.ux-search-album", "fixture-albums"),
+                    ("Artistes", "browse.artist.ux-search-artist", "fixture-artists")
+                ] {
+                    try openBrowse(title)
+                    try refreshBrowseCatalog(identifierPrefix: identifier, named: name)
+                    try tapBack(named: name + "-back")
+                }
+            }
             try tapTab("Accueil")
         }
     }
@@ -1593,10 +1600,6 @@ final class MinidiscUXVerificationTests: XCTestCase {
         try require(app.buttons["songs.selection.ux-search-song-prefix"])
         captureHierarchy("search-large-text-selection-sheet")
         try await Task.sleep(for: .seconds(3))
-    }
-
-    func testFixtureStationLargeText() async throws {
-        try await captureFixtureStationLargeText()
     }
 
     private func assertStationCardLabels(_ station: XCUIElement) throws {

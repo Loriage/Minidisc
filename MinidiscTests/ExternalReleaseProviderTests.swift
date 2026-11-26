@@ -49,16 +49,6 @@ struct ExternalReleaseProviderValidationTests {
 @Suite("ExternalReleaseProvider — validate(name:)")
 struct ExternalReleaseProviderNameValidationTests {
 
-    @Test("valid name returns true")
-    func validName() {
-        #expect(ExternalReleaseProvider.validate(name: "Bandcamp") == true)
-    }
-
-    @Test("empty string returns false")
-    func emptyName() {
-        #expect(ExternalReleaseProvider.validate(name: "") == false)
-    }
-
     @Test("whitespace-only string returns false")
     func whitespaceName() {
         #expect(ExternalReleaseProvider.validate(name: "   ") == false)
@@ -83,45 +73,19 @@ struct ExternalReleaseProviderBuildURLTests {
         urlTemplate: "https://example.com/search?q=%s"
     )
 
-    @Test("simple artist + album produces correct URL")
-    func simpleArtistAlbum() {
-        let url = provider.buildURL(artistName: "Daft Punk", albumTitle: "Discovery")
-        #expect(url?.absoluteString == "https://example.com/search?q=Daft%20Punk%20Discovery")
-    }
-
-    @Test("ampersand in artist name is encoded as %26")
-    func ampersandEncoded() {
-        let url = provider.buildURL(artistName: "Simon & Garfunkel", albumTitle: "Bridge")
-        let str = url?.absoluteString ?? ""
-        #expect(str.contains("%26"), "Expected %26 for & character")
-        #expect(!str.contains("=Simon & Garfunkel"), "Raw & must not appear in query value")
-    }
-
-    @Test("apostrophe in artist name produces valid URL")
-    func apostropheProducesValidURL() {
-        let url = provider.buildURL(artistName: "Guns N' Roses", albumTitle: "Appetite for Destruction")
-        #expect(url != nil)
-    }
-
-    @Test("accented characters are percent-encoded")
-    func accentEncoded() {
-        let url = provider.buildURL(artistName: "Stromaé", albumTitle: "Racine Carrée")
-        let str = url?.absoluteString ?? ""
-        #expect(str.contains("%C3%A9"), "Accented 'é' must be percent-encoded")
-    }
-
-    @Test("slash in artist name is encoded as %2F")
-    func slashEncoded() {
-        let url = provider.buildURL(artistName: "AC/DC", albumTitle: "Back in Black")
-        let str = url?.absoluteString ?? ""
-        #expect(str.contains("%2F"), "Slash must be encoded as %2F")
-        #expect(!str.contains("AC/DC"), "Raw slash must not appear in query value")
+    @Test("reserved characters and Unicode stay inside a single search query")
+    func searchTermIsEncoded() throws {
+        let url = try #require(provider.buildURL(artistName: "AC/DC & Les Égarés", albumTitle: "Rock 'n' Roll"))
+        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        #expect(components.queryItems == [URLQueryItem(name: "q", value: "AC/DC & Les Égarés Rock 'n' Roll")])
+        #expect(url.absoluteString.contains("%26"))
+        #expect(url.absoluteString.contains("%2F"))
+        #expect(url.absoluteString.contains("%C3%89"))
     }
 
     @Test("leading and trailing whitespace is trimmed from search term")
     func whitespaceTrimmed() {
         let urlWithSpaces = provider.buildURL(artistName: "  Daft Punk  ", albumTitle: "  Discovery  ")
-        let urlClean = provider.buildURL(artistName: "Daft Punk", albumTitle: "Discovery")
-        #expect(urlWithSpaces?.absoluteString == urlClean?.absoluteString)
+        #expect(urlWithSpaces?.absoluteString == "https://example.com/search?q=Daft%20Punk%20Discovery")
     }
 }

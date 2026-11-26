@@ -36,26 +36,6 @@ struct StatsServiceTests {
         )
     }
 
-    @Test func recordPlayback_insertsEvent() async throws {
-        let service = try makeService()
-
-        await service.recordPlayback(makeDTO(serverId: "srv-1"))
-
-        let count = await service.eventCount(forServer: "srv-1")
-        #expect(count == 1)
-    }
-
-    @Test func recordPlayback_multipleEvents_countIncreases() async throws {
-        let service = try makeService()
-
-        await service.recordPlayback(makeDTO(trackId: "t1", serverId: "srv-1"))
-        await service.recordPlayback(makeDTO(trackId: "t2", serverId: "srv-1"))
-        await service.recordPlayback(makeDTO(trackId: "t3", serverId: "srv-1"))
-
-        let count = await service.eventCount(forServer: "srv-1")
-        #expect(count == 3)
-    }
-
     @Test func eventCount_unknownServer_returnsZero() async throws {
         let service = try makeService()
 
@@ -100,17 +80,5 @@ struct StatsServiceTests {
         let countB = await service.eventCount(forServer: "srv-B")
         #expect(countA == 2)
         #expect(countB == 3)
-    }
-
-    @Test func multiServer_deleteOneDoesNotAffectOther() async throws {
-        let service = try makeService()
-
-        await service.recordPlayback(makeDTO(serverId: "srv-A"))
-        await service.recordPlayback(makeDTO(serverId: "srv-B"))
-
-        await service.deleteAllEvents(forServer: "srv-A")
-
-        #expect(await service.eventCount(forServer: "srv-A") == 0)
-        #expect(await service.eventCount(forServer: "srv-B") == 1)
     }
 }

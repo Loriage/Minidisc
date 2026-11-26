@@ -654,9 +654,8 @@ final class ArtworkImageCache {
         }
     }
 
-    /// Replaces every cached copy of a cover that changed on the server, then nudges the UI to
-    /// re-read it. The tier that triggered the check is fetched now; the other tier is dropped so it
-    /// re-fetches fresh on its next access.
+    /// Invalidates cached variants and refreshes the requested tier. Other tiers can reuse the
+    /// persisted source on their next access.
     private func refetchChangedCover(
         coverArtId: String,
         tier: ArtworkTier,

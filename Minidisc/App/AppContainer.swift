@@ -194,7 +194,7 @@ final class AppContainer {
         let lb = ListenBrainzService(client: lbClient, keychain: keychain)
         listenBrainzService = lb
 
-        // Keep an explicit diagnostic fallback for A/B device runs on this migration branch.
+        // Allows selecting AVPlayer for playback diagnostics.
         let audioEngine: AudioEngine = ProcessInfo.processInfo.environment["MINIDISC_AUDIO_ENGINE"] == "avplayer"
             ? AVPlayerEngine(diagnostics: playbackDiagnostics)
             : AudioStreamingEngine(diagnostics: playbackDiagnostics)

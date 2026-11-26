@@ -97,7 +97,6 @@ private struct CoverArtViewContent: View {
             let t = resolvedTier
             let online = container?.serverState.isOnline ?? true
 
-            // Task reads do not create the global observation dependency avoided above.
             if let ram = artworkCache.cachedImage(for: id, tier: t) {
                 apply(ram, for: id)
                 return

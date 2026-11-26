@@ -103,6 +103,10 @@ struct MinidiscApp: App {
                 .task(id: activeContainer?.offlineArtworkSync.request) {
                     await activeContainer?.offlineArtworkSync.synchronize()
                 }
+                .onChange(of: activeContainer?.cacheSettings.artworkQuality) { _, quality in
+                    guard let quality else { return }
+                    activeContainer?.artworkImageCache.quality = quality
+                }
                 .onReceive(NotificationCenter.default.publisher(for: .minidiscFavoritesChanged)) { _ in
                     activeContainer?.offlineFavoritesSync.revision += 1
                 }

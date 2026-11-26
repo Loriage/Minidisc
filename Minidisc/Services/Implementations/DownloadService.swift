@@ -356,6 +356,10 @@ actor DownloadService: DownloadServiceProtocol {
         return exists ? url : nil
     }
 
+    func localCoverArtQuality(forId coverArtId: String) -> ArtworkQuality {
+        coverQualities[coverArtId] ?? .standard
+    }
+
     func persistCover(_ data: Data, forId coverArtId: String) async {
         let url = coverArtsDirectory.appendingPathComponent(coverArtId)
         Logger.download.debug("persistCover id='\(coverArtId, privacy: .public)' path='\(url.path, privacy: .public)' bytes=\(data.count, privacy: .public)")
@@ -1080,8 +1084,8 @@ actor DownloadService: DownloadServiceProtocol {
         try data.write(to: fileURL, options: .atomic)
         coverQualities[id] = quality
         saveCoverQualities()
-        for tier in ["thumb", "hero"] {
-            try? FileManager.default.removeItem(at: coverArtsDirectory.appendingPathComponent("\(id)@\(tier)"))
+        for variant in CoverArtFiles.streamingVariantIDs(for: id) {
+            try? FileManager.default.removeItem(at: coverArtsDirectory.appendingPathComponent(variant))
         }
         Logger.download.info("Cover art '\(id, privacy: .public)' downloaded (\(data.count) bytes)")
         return true

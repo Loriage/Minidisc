@@ -209,54 +209,54 @@
         }
       }
     },
-    "Downloaded covers use the selected quality and are kept offline. Existing covers update when your connection settings allow. Turning caching off only affects artwork from streaming." : {
+    "The selected quality applies to online and downloaded artwork. Downloaded covers are kept offline and update when your connection settings allow. Turning caching off only affects artwork from streaming." : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les pochettes téléchargées utilisent la qualité choisie et restent disponibles hors ligne. Les pochettes existantes sont mises à jour lorsque vos réglages de connexion le permettent. La désactivation du cache concerne uniquement les pochettes de la musique écoutée en streaming."
+            "value" : "La qualité choisie s’applique aux pochettes en ligne et téléchargées. Les pochettes téléchargées restent disponibles hors ligne et sont mises à jour lorsque vos réglages de connexion le permettent. La désactivation du cache concerne uniquement les pochettes de la musique écoutée en streaming."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heruntergeladene Cover verwenden die gewählte Qualität und bleiben offline verfügbar. Vorhandene Cover werden aktualisiert, wenn deine Verbindungseinstellungen es erlauben. Das Deaktivieren des Caches betrifft nur Cover beim Streaming."
+            "value" : "Die gewählte Qualität gilt für online geladene und heruntergeladene Cover. Heruntergeladene Cover bleiben offline verfügbar und werden aktualisiert, wenn deine Verbindungseinstellungen es erlauben. Das Deaktivieren des Caches betrifft nur Cover beim Streaming."
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Τα ληφθέντα εξώφυλλα χρησιμοποιούν την επιλεγμένη ποιότητα και διατηρούνται εκτός σύνδεσης. Τα υπάρχοντα εξώφυλλα ενημερώνονται όταν το επιτρέπουν οι ρυθμίσεις σύνδεσης. Η απενεργοποίηση της προσωρινής αποθήκευσης επηρεάζει μόνο τα εξώφυλλα της μουσικής σε ροή."
+            "value" : "Η επιλεγμένη ποιότητα ισχύει για τα εξώφυλλα σε σύνδεση και τα ληφθέντα εξώφυλλα. Τα ληφθέντα εξώφυλλα διατηρούνται εκτός σύνδεσης και ενημερώνονται όταν το επιτρέπουν οι ρυθμίσεις σύνδεσης. Η απενεργοποίηση της προσωρινής αποθήκευσης επηρεάζει μόνο τα εξώφυλλα της μουσικής σε ροή."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Las carátulas descargadas usan la calidad seleccionada y se conservan sin conexión. Las existentes se actualizan cuando los ajustes de conexión lo permiten. Desactivar la caché solo afecta a las carátulas de la música en streaming."
+            "value" : "La calidad seleccionada se aplica a las carátulas en línea y descargadas. Las carátulas descargadas se conservan sin conexión y se actualizan cuando los ajustes de conexión lo permiten. Desactivar la caché solo afecta a las carátulas de la música en streaming."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le copertine scaricate usano la qualità selezionata e restano disponibili offline. Le copertine esistenti vengono aggiornate quando le impostazioni di connessione lo consentono. Disattivare la cache influisce solo sulle copertine della musica in streaming."
+            "value" : "La qualità selezionata si applica alle copertine online e scaricate. Le copertine scaricate restano disponibili offline e vengono aggiornate quando le impostazioni di connessione lo consentono. Disattivare la cache influisce solo sulle copertine della musica in streaming."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ダウンロードしたアートワークは選択した画質でオフラインに保存されます。既存のアートワークは接続設定で許可されたときに更新されます。キャッシュをオフにしても、影響するのはストリーミングのアートワークのみです。"
+            "value" : "選択した画質はオンラインとダウンロード済みのアートワークに適用されます。ダウンロード済みのアートワークはオフラインで保持され、接続設定で許可されたときに更新されます。キャッシュをオフにしても、影響するのはストリーミングのアートワークのみです。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已下载的封面会按所选画质保存，供离线使用。连接设置允许时会更新现有封面。关闭缓存仅影响流媒体音乐的封面。"
+            "value" : "所选画质适用于在线和已下载的封面。已下载的封面会保留供离线使用，并在连接设置允许时更新。关闭缓存仅影响流媒体音乐的封面。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已下載的封面會以所選畫質儲存，供離線使用。連線設定允許時會更新現有封面。關閉快取僅影響串流音樂的封面。"
+            "value" : "所選畫質適用於線上和已下載的封面。已下載的封面會保留供離線使用，並在連線設定允許時更新。關閉快取僅影響串流音樂的封面。"
           }
         }
       }
@@ -423,54 +423,54 @@
         }
       }
     },
-    "Offline artwork quality" : {
+    "Artwork quality" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Qualité des pochettes hors ligne"
+            "value" : "Qualité des pochettes"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Qualität der Offline-Cover"
+            "value" : "Coverqualität"
           }
         },
         "el" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ποιότητα εξωφύλλων εκτός σύνδεσης"
+            "value" : "Ποιότητα εξωφύλλων"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Calidad de las carátulas sin conexión"
+            "value" : "Calidad de las carátulas"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Qualità delle copertine offline"
+            "value" : "Qualità delle copertine"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "オフラインのアートワーク画質"
+            "value" : "アートワークの画質"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "离线封面画质"
+            "value" : "封面画质"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "離線封面畫質"
+            "value" : "封面畫質"
           }
         }
       }

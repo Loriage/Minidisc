@@ -7,7 +7,7 @@ import UIKit
 @Suite("Offline artwork", .serialized)
 @MainActor
 struct OfflineArtworkTests {
-    @Test(arguments: ["cover", "cover@hero", "cover@thumb"])
+    @Test(arguments: ["cover", "cover@hero", "cover@thumb", "cover@standard@hero", "cover@high@hero", "cover@original@thumb"])
     func coldCacheUsesAvailableDiskArtwork(diskID: String) async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

@@ -166,7 +166,7 @@ final class MinidiscUXVerificationTests: XCTestCase {
         capturePlayerScreenshot("Offline-favorites-storage")
     }
 
-    func testFixtureOfflineArtworkQuality() async throws {
+    func testFixtureArtworkQuality() async throws {
         try await launchFixtureApp()
         let quality = app.buttons["settings.artwork-quality"]
         func openQualitySettings() throws {
@@ -179,6 +179,8 @@ final class MinidiscUXVerificationTests: XCTestCase {
             try require(quality)
         }
         try openQualitySettings()
+        XCTAssertTrue(quality.label.contains("Qualité des pochettes"))
+        XCTAssertFalse(quality.label.contains("hors ligne"))
         try tap(quality, named: "artwork-quality-picker")
         capturePlayerScreenshot("Artwork-quality-options")
         try tap(app.buttons["Résolution d’origine"].firstMatch, named: "artwork-quality-original")

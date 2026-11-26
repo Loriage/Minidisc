@@ -133,8 +133,9 @@ final class ArtworkImageCache {
         let continuation: CheckedContinuation<Bool, Never>
     }
 
-    typealias CoverArtURLProvider = @Sendable (String, Int) async -> URL?
+    typealias CoverArtURLProvider = @Sendable (String, Int?) async -> URL?
     typealias LocalCoverURLProvider = @Sendable (String) async -> URL?
+    typealias LocalCoverQualityProvider = @Sendable (String) async -> ArtworkQuality
     typealias PersistCoverOperation = @Sendable (Data, String) async -> Void
     typealias RemoveCoverOperation = @Sendable (String) async -> Void
     typealias HTTPDataLoader = @Sendable (URLRequest) async throws -> (Data, URLResponse)
@@ -143,6 +144,12 @@ final class ArtworkImageCache {
     /// Mirrors `CacheSettings.cacheArtwork`: when false, fetched covers stay memory-only and are not
     /// written to the persisted cover store. Set by AppContainer at launch and by the Settings toggle.
     var persistCoversEnabled = true
+    var quality: ArtworkQuality = .standard {
+        didSet {
+            guard quality != oldValue else { return }
+            clearCache()
+        }
+    }
     @ObservationIgnored var networkAccessAllowed: @MainActor @Sendable () -> Bool = { true }
 
     var isNetworkAccessAllowed: Bool { networkAccessAllowed() }
@@ -153,6 +160,7 @@ final class ArtworkImageCache {
 
     private let coverArtURLProvider: CoverArtURLProvider
     private let localCoverURLProvider: LocalCoverURLProvider
+    private let localCoverQualityProvider: LocalCoverQualityProvider
     private let persistCoverOperation: PersistCoverOperation
     private let removeCoverOperation: RemoveCoverOperation
     private let dataLoader: HTTPDataLoader
@@ -199,6 +207,9 @@ final class ArtworkImageCache {
             localCoverURLProvider: { id in
                 await downloadService.localCoverArtURL(forId: id)
             },
+            localCoverQualityProvider: { id in
+                await downloadService.localCoverArtQuality(forId: id)
+            },
             persistCoverOperation: { data, id in
                 await downloadService.persistCover(data, forId: id)
             },
@@ -223,6 +234,7 @@ final class ArtworkImageCache {
         revalidationStore: CoverRevalidationStore = CoverRevalidationStore(),
         coverArtURLProvider: @escaping CoverArtURLProvider,
         localCoverURLProvider: @escaping LocalCoverURLProvider = { _ in nil },
+        localCoverQualityProvider: @escaping LocalCoverQualityProvider = { _ in .standard },
         persistCoverOperation: @escaping PersistCoverOperation = { _, _ in },
         removeCoverOperation: @escaping RemoveCoverOperation = { _ in },
         dataLoader: @escaping HTTPDataLoader,
@@ -231,6 +243,7 @@ final class ArtworkImageCache {
         self.revalidationStore = revalidationStore
         self.coverArtURLProvider = coverArtURLProvider
         self.localCoverURLProvider = localCoverURLProvider
+        self.localCoverQualityProvider = localCoverQualityProvider
         self.persistCoverOperation = persistCoverOperation
         self.removeCoverOperation = removeCoverOperation
         self.dataLoader = dataLoader
@@ -271,20 +284,36 @@ final class ArtworkImageCache {
     var localArtworkProvider: (@Sendable (String) async -> Data?)?
 
     func loadCached(coverArtId: String?, tier: ArtworkTier = .thumb,
-                    fallbackToThumbnail: Bool = true) async -> PlatformImage? {
+                    fallbackToThumbnail: Bool = true, requireQuality: Bool = false) async -> PlatformImage? {
         guard !Task.isCancelled, let coverArtId else { return nil }
         if let image = cached(for: coverArtId, tier: tier) { return image }
         if coverArtId.hasPrefix("local:") { return await load(coverArtId: coverArtId, tier: tier) }
         let epoch = cacheEpoch
         let generation = coverGeneration(for: coverArtId)
+        let requestedQuality = quality
         guard await acquireDiskAccess(for: coverArtId) else { return nil }
         defer { releaseDiskAccess(for: coverArtId) }
-        var candidates = [("\(coverArtId)@\(tier.rawValue)", tier), (coverArtId, tier)]
-        if tier == .thumb { candidates.append(("\(coverArtId)@hero", tier)) }
-        if tier == .hero, fallbackToThumbnail { candidates.append(("\(coverArtId)@thumb", .thumb)) }
-        for (id, decodedTier) in candidates {
+        let qualities = [requestedQuality] + ArtworkQuality.allCases.reversed().filter { $0 != requestedQuality }
+        var candidates: [(String, ArtworkTier, ArtworkQuality?)] = []
+        func appendVariants(_ sourceTier: ArtworkTier, decodedTier: ArtworkTier, includeLegacy: Bool = true) {
+            for quality in qualities {
+                candidates.append(("\(coverArtId)@\(quality.rawValue)@\(sourceTier.rawValue)", decodedTier, quality))
+            }
+            if includeLegacy {
+                candidates.append(("\(coverArtId)@\(sourceTier.rawValue)",
+                                   sourceTier == .thumb ? .thumb : decodedTier,
+                                   sourceTier == .hero ? .high : nil))
+            }
+        }
+        appendVariants(tier, decodedTier: tier)
+        candidates.append((coverArtId, tier, await localCoverQualityProvider(coverArtId)))
+        if tier == .thumb { appendVariants(.hero, decodedTier: tier) }
+        if tier == .hero { appendVariants(.thumb, decodedTier: tier, includeLegacy: fallbackToThumbnail) }
+        for (id, decodedTier, sourceQuality) in candidates {
             guard !Task.isCancelled, cacheEpoch == epoch,
                   coverGeneration(for: coverArtId) == generation else { return nil }
+            let satisfiesQuality = sourceQuality?.satisfies(requestedQuality) == true
+            if requireQuality && !satisfiesQuality { continue }
             guard let url = await localCoverURLProvider(id) else { continue }
             guard await decodeGate.acquireOrCancel() else { return nil }
             let image = await Task.detached(priority: .utility) {
@@ -295,7 +324,9 @@ final class ArtworkImageCache {
             guard !Task.isCancelled, cacheEpoch == epoch,
                   coverGeneration(for: coverArtId) == generation else { return nil }
             if let image {
-                store(image: image, forKey: cacheKey(id: coverArtId, tier: decodedTier))
+                if satisfiesQuality {
+                    store(image: image, forKey: cacheKey(id: coverArtId, tier: decodedTier))
+                }
                 return image
             }
         }
@@ -439,8 +470,9 @@ final class ArtworkImageCache {
             coverGeneration: coverGeneration
         ) else { return nil }
 
-        let tieredDiskId = "\(coverArtId)@\(tier.rawValue)"
-        if let image = await loadCached(coverArtId: coverArtId, tier: tier, fallbackToThumbnail: false) {
+        let tieredDiskId = key
+        if let image = await loadCached(coverArtId: coverArtId, tier: tier,
+                                        fallbackToThumbnail: false, requireQuality: true) {
             revalidateIfDue(coverArtId: coverArtId, tier: tier)
             return image
         }
@@ -491,7 +523,7 @@ final class ArtworkImageCache {
     private func fetchServerArtwork(coverArtId: String, tier: ArtworkTier) async -> ServerArtwork? {
         let maxDim = tier.decodePixels
         guard networkAccessAllowed(), !Task.isCancelled,
-              let serverURL = await coverArtURLProvider(coverArtId, maxDim),
+              let serverURL = await coverArtURLProvider(coverArtId, quality.pixels),
               !Task.isCancelled else { return nil }
         let t0 = Date()
         let data: Data
@@ -566,7 +598,7 @@ final class ArtworkImageCache {
             revalidationID: revalidationID,
             epoch: epoch,
             coverGeneration: coverGeneration
-        ), let url = await coverArtURLProvider(coverArtId, tier.decodePixels),
+        ), let url = await coverArtURLProvider(coverArtId, quality.pixels),
            isCurrentRevalidation(
                coverArtId: coverArtId,
                revalidationID: revalidationID,
@@ -640,9 +672,7 @@ final class ArtworkImageCache {
             previousCoverGeneration: previousCoverGeneration
         ) else { return }
 
-        let tieredKeys = [ArtworkTier.thumb, .hero].map {
-            cacheKey(id: coverArtId, tier: $0)
-        }
+        let tieredKeys = CoverArtFiles.streamingVariantIDs(for: coverArtId)
         for staleKey in tieredKeys {
             cache.removeValue(forKey: staleKey)
             accessOrder.removeAll { $0 == staleKey }
@@ -716,7 +746,7 @@ final class ArtworkImageCache {
         revalidationDeferred.remove(coverArtId)
         revalidationStore.remove(id: coverArtId)
 
-        let keys = ["\(coverArtId)@thumb", "\(coverArtId)@hero", coverArtId]
+        let keys = CoverArtFiles.streamingVariantIDs(for: coverArtId) + [coverArtId]
         for key in keys {
             cancelInFlightLoad(forKey: key)
             cache.removeValue(forKey: key)
@@ -844,7 +874,7 @@ final class ArtworkImageCache {
     }
 
     private func cacheKey(id: String, tier: ArtworkTier) -> String {
-        "\(id)@\(tier.rawValue)"
+        "\(id)@\(quality.rawValue)@\(tier.rawValue)"
     }
 
     private func coverGeneration(for coverArtId: String) -> UInt64 {

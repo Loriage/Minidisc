@@ -155,6 +155,7 @@ final class AppContainer {
         )
 
         artworkImageCache = ArtworkImageCache(downloadService: download, libraryService: library)
+        artworkImageCache.quality = cacheSettings.artworkQuality
         artworkImageCache.localArtworkProvider = { id in await localStore.artwork(id) }
         artworkImageCache.persistCoversEnabled = cacheSettings.cacheArtwork
         artworkImageCache.networkAccessAllowed = { [serverState] in serverState.isOnline }

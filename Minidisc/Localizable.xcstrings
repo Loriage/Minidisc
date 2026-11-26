@@ -209,6 +209,12 @@
         }
       }
     },
+    "MP3 192 kbps" : {
+      "shouldTranslate" : false
+    },
+    "MP3 320 kbps" : {
+      "shouldTranslate" : false
+    },
     "No matching artist was found in Lidarr. You can search by name instead." : {
       "localizations" : {
         "de" : {
@@ -361,6 +367,64 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在 Lidarr 中開啟"
+          }
+        }
+      }
+    },
+    "Opus 128 kbps" : {
+      "shouldTranslate" : false
+    },
+    "Opus 192 kbps" : {
+      "shouldTranslate" : false
+    },
+    "Original" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Original"
+          }
+        },
+        "el" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Πρωτότυπο"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Original"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Original"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originale"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オリジナル"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原始音质"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "原始音質"
           }
         }
       }

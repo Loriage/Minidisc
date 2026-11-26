@@ -82,7 +82,7 @@ struct MediaAvailabilityTests {
         #expect(await resolver.availability(songId: "deleted", serverId: snapshot.id) == .missing)
         #expect(await resolver.availability(songId: "deleted", serverId: UUID()) == .unknown)
     }
-    @Test(arguments: [StreamQuality.original, .mp3_192, .mp3_320])
+    @Test(arguments: StreamQuality.allCases)
     func streamPreservesQualityWithoutInventingHTTPContentLength(quality: StreamQuality) async throws {
         let container = try ModelContainer.minidisc(inMemory: true)
         let server = MockServerService()
@@ -110,6 +110,36 @@ struct MediaAvailabilityTests {
         #expect(query.first { $0.name == "maxBitRate" }?.value == quality.subsonicMaxBitRate.map(String.init))
         #expect(query.first { $0.name == "id" }?.value == "a+id")
         #expect(source.customHeaders["X-Fixture"] == "secret")
+    }
+
+    @Test(arguments: [(StreamQuality.opus_128, "128"), (.opus_192, "192")])
+    func originalOnWiFiAndOpusOnCellular(quality: StreamQuality, expectedBitrate: String) async throws {
+        let container = try ModelContainer.minidisc(inMemory: true)
+        let server = MockServerService()
+        server.state.isOnline = true
+        let snapshot = ServerSnapshot(from: ServerConfig(displayName: "Test", baseURL: "https://example.invalid", username: "test"))
+        server.connection = try ServerConnection(version: .init(serverID: snapshot.id, revision: 1), server: snapshot,
+            credentials: .init(password: "test", customHeaders: [:]))
+        let suiteName = "stream-opus.\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = StreamSettings(defaults: defaults)
+        settings.wifiQuality = .original
+        settings.cellularQuality = quality
+        let resolver = MediaResolver(
+            downloadService: DownloadService(serverService: server, modelContainer: container, toastService: ToastService()),
+            audioStreamCache: MockAudioStreamCache(), serverService: server, serverState: server.state,
+            streamSettings: settings)
+
+        let transitions: [(Bool, String, String?)] = [(false, "raw", nil), (true, "opus", expectedBitrate), (false, "raw", nil)]
+        for (cellular, format, bitrate) in transitions {
+            settings.networkPathDidChange(isCellular: cellular)
+            let source = try await resolver.resolve(songId: "flac-track", serverId: snapshot.id)
+            let query = URLComponents(url: source.url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            #expect(query.first { $0.name == "format" }?.value == format)
+            #expect(query.first { $0.name == "maxBitRate" }?.value == bitrate)
+            #expect(query.first { $0.name == "estimateContentLength" }?.value == "false")
+        }
     }
 
 }

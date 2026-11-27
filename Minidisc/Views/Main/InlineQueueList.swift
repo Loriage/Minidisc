@@ -135,7 +135,7 @@ private struct QueueRow: View {
                     systemImage: isFavorite ? "star.slash" : "star"
                 )
             }
-            .disabled(!isOnline || song.isLocalFile)
+            .disabled(song.isLocalFile)
 
             if let onRemove {
                 Divider()

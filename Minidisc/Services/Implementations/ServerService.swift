@@ -118,6 +118,7 @@ actor ServerService: ServerServiceProtocol {
                 throw MinidiscError.serverNotFound(id: id)
             }
             context.delete(config)
+            try context.delete(model: PendingFavoriteChange.self, where: #Predicate { $0.serverId == id })
             try context.save()
             state.servers.removeAll { $0.id == id }
             if state.activeServer?.id == id {

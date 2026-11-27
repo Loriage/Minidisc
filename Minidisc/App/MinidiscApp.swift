@@ -127,6 +127,7 @@ struct MinidiscApp: App {
             playbackDiagnostics.record(.application(.lifecycle(diagnosticPhase)))
             activeContainer?.recordPlaybackDiagnosticContext()
             if newPhase == .active {
+                Task { try? await activeContainer?.favoritesService.syncFromServer() }
                 activeContainer?.offlineFavoritesSync.revision += 1
                 activeContainer?.offlineLibrary.revision += 1
                 activeContainer?.offlineArtworkSync.revision += 1

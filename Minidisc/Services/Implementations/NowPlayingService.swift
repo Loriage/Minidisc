@@ -96,6 +96,10 @@ actor NowPlayingService: NowPlayingServiceProtocol {
                 fallback: snapshot,
                 generation: generation
             )
+            if let artwork = await artworkImageCache.animatedArtwork(for: coverArtId),
+               generation == contentGeneration {
+                await presenter.setAnimatedArtwork(artwork, generation: generation)
+            }
             return
         }
 

@@ -165,6 +165,37 @@ final class NowPlayingCenterPresenter {
         setArtwork(image: image, fallback: snapshot, generation: generation)
     }
 
+    static var supportedAnimatedArtworkAspectRatios: Set<AnimatedArtwork.AspectRatio> {
+        let keys = MPNowPlayingInfoCenter.supportedAnimatedArtworkKeys
+        var ratios: Set<AnimatedArtwork.AspectRatio> = []
+        if keys.contains(MPNowPlayingInfoProperty1x1AnimatedArtwork) { ratios.insert(.square) }
+        if keys.contains(MPNowPlayingInfoProperty3x4AnimatedArtwork) { ratios.insert(.portrait) }
+        return ratios
+    }
+
+    func setAnimatedArtwork(_ artwork: AnimatedArtwork, generation: UInt64) {
+        guard generation == contentGeneration,
+              let preview = PlatformImage(data: artwork.previewData) else { return }
+        let key = artwork.isPortrait
+            ? MPNowPlayingInfoProperty3x4AnimatedArtwork
+            : MPNowPlayingInfoProperty1x1AnimatedArtwork
+        guard MPNowPlayingInfoCenter.supportedAnimatedArtworkKeys.contains(key) else { return }
+        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+        info[key] = Self.makeAnimatedArtwork(artwork, preview: preview)
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    nonisolated private static func makeAnimatedArtwork(
+        _ artwork: AnimatedArtwork, preview: PlatformImage
+    ) -> MPMediaItemAnimatedArtwork {
+        let image = SendableArtworkImage(preview)
+        return MPMediaItemAnimatedArtwork(
+            artworkID: artwork.id,
+            previewImageRequestHandler: { _ in image.image },
+            videoAssetFileURLRequestHandler: { _ in await artwork.videoURL() }
+        )
+    }
+
     func updateLikeCommand(songAvailable: Bool, isFavorite: Bool) {
         let command = MPRemoteCommandCenter.shared().likeCommand
         command.isEnabled = songAvailable

@@ -135,6 +135,10 @@ final class AppContainer {
         offlineBrowsingReader = offlineReader
         offlineLibrary = OfflineBrowsingLibrary(state: serverState, reader: offlineReader)
 
+        let favorites = FavoritesService(server: server, modelContainer: modelContainer,
+                                         offlineStore: favoritesStore, offlineReader: offlineReader)
+        favoritesService = favorites
+
         let library = LibraryService(
             serverService: server,
             modelContainer: modelContainer,
@@ -143,6 +147,7 @@ final class AppContainer {
             catalog: catalog,
             indexStore: indexStore,
             offlineFavorites: favoritesStore,
+            favoriteBrowsing: favorites,
             offlineReader: offlineReader,
             localMusicStore: localStore
         )
@@ -163,7 +168,8 @@ final class AppContainer {
                                                 artwork: artworkImageCache, defaults: userDefaults)
         offlineFavoritesSync = OfflineFavoritesSync(
             store: favoritesStore, settings: cacheSettings, streamSettings: streamSettings,
-            server: server, downloads: download, cache: cache, artwork: artworkImageCache
+            server: server, downloads: download, cache: cache, artwork: artworkImageCache,
+            fetchFavorites: { try await favorites.refreshedFavorites(for: $0) }
         )
         let moodCovers: @Sendable (PlaylistGradientSpec, String, String) async -> Void = { [artworkImageCache] spec, playlistId, title in
             let manager = await PlaylistCoverManager(
@@ -229,7 +235,6 @@ final class AppContainer {
         )
         nowPlayingService = nowPlaying
 
-        favoritesService = FavoritesService(libraryService: library, serverState: serverState, modelContainer: modelContainer)
         let pin = PinService(modelContainer: modelContainer, serverState: serverState)
         pinService = pin
         let playlist = PlaylistService(
@@ -360,6 +365,7 @@ extension ModelContainer {
             DownloadedPlaylist.self,
             QueueSnapshot.self,
             FavoriteRecord.self,
+            PendingFavoriteChange.self,
             PinnedItem.self,
             PlaybackSession.self, // kept for schema-mismatch migration safety; see session() below
             PlaybackEvent.self,

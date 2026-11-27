@@ -102,9 +102,32 @@ actor OfflineBrowsingReader {
                 members[playlist.id] = (detail.playlist.entry ?? []).map(\.id)
             }
         }
-        return OfflineBrowsingSnapshot(songs: manual + automatic + cachedSongs,
+        var result = OfflineBrowsingSnapshot(songs: manual + automatic + cachedSongs,
             playlists: savedPlaylists + indexedPlaylists, membership: members,
             favorites: HomeFavorites(songs: saved.favorites?.song ?? [], albums: saved.favorites?.album ?? [], artists: saved.favorites?.artist ?? []))
+        let context = ModelContext(models)
+        let changes = try context.fetch(FetchDescriptor<PendingFavoriteChange>(predicate: #Predicate { $0.serverId == serverID }))
+        for change in changes {
+            switch FavoriteType(rawValue: change.itemType) {
+            case .song:
+                result.favorites.songs.removeAll { $0.id == change.itemId }
+                if change.isFavorite, let song = result.songs.first(where: { $0.id == change.itemId }) {
+                    result.favorites.songs.append(song.asSong())
+                }
+            case .album:
+                result.favorites.albums.removeAll { $0.id == change.itemId }
+                if change.isFavorite, let album = result.albums.first(where: { $0.id == change.itemId }) {
+                    result.favorites.albums.append(album)
+                }
+            case .artist:
+                result.favorites.artists.removeAll { $0.id == change.itemId }
+                if change.isFavorite, let artist = result.artists.first(where: { $0.id == change.itemId }) {
+                    result.favorites.artists.append(artist)
+                }
+            case nil: break
+            }
+        }
+        return result
     }
 }
 

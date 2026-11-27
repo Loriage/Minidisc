@@ -6,6 +6,12 @@ struct FavoritesView: View {
     @Environment(\.appContainer) private var container
     @Environment(PlaylistAddition.self) private var playlistAddition
     @State private var viewModel: FavoritesViewModel?
+    @State private var revision = 0
+
+    private struct Request: Equatable {
+        let access: ServerAccessSnapshot?
+        let revision: Int
+    }
 
     var body: some View {
         Group {
@@ -18,10 +24,13 @@ struct FavoritesView: View {
         .minidiscContentWidth()
         .navigationTitle("Favorites")
         .toolbarTitleDisplayMode(.inline)
-        .task(id: container?.serverState.accessSnapshot) {
+        .task(id: Request(access: container?.serverState.accessSnapshot, revision: revision)) {
             guard let svc = container?.libraryService else { return }
             if viewModel == nil { viewModel = FavoritesViewModel(libraryService: svc) }
             if container?.serverState.isOnline == true { await viewModel?.load() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .minidiscFavoritesChanged)) { _ in
+            revision += 1
         }
     }
 

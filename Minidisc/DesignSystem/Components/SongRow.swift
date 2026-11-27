@@ -283,12 +283,10 @@ private struct SongActions: View {
                         Button("Undo", systemImage: "star.slash.fill") {
                             toggleFavorite()
                         }
-                        .disabled(!isOnline)
                     } else {
                         Button("Favorite", systemImage: "star.fill") {
                             toggleFavorite()
                         }
-                        .disabled(!isOnline)
                     }
                 }
 

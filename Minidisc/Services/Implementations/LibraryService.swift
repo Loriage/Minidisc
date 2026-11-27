@@ -13,6 +13,7 @@ actor LibraryService: LibraryServiceProtocol {
     private let offlineReader: OfflineBrowsingReader?
     private let localMusicStore: LocalMusicStore?
     private let offlineFavorites: OfflineFavoritesStore?
+    private let favoriteBrowsing: (any StarredBrowsing)?
     private let clientFactory: @Sendable (ServerConnection) -> SwiftSonicClient
     private var cachedClient: SwiftSonicClient?
     private var cachedConnectionVersion: ServerConnection.Version?
@@ -32,6 +33,7 @@ actor LibraryService: LibraryServiceProtocol {
         catalog: LibraryCatalog,
         indexStore: LibraryIndexStore,
         offlineFavorites: OfflineFavoritesStore? = nil,
+        favoriteBrowsing: (any StarredBrowsing)? = nil,
         offlineReader: OfflineBrowsingReader? = nil,
         localMusicStore: LocalMusicStore? = nil,
         clientFactory: @escaping @Sendable (ServerConnection) -> SwiftSonicClient = { $0.makeSwiftSonicClient() }
@@ -43,6 +45,7 @@ actor LibraryService: LibraryServiceProtocol {
         self.catalog = catalog
         self.indexStore = indexStore
         self.offlineFavorites = offlineFavorites
+        self.favoriteBrowsing = favoriteBrowsing
         self.offlineReader = offlineReader
         self.localMusicStore = localMusicStore
         self.clientFactory = clientFactory
@@ -150,6 +153,7 @@ actor LibraryService: LibraryServiceProtocol {
     }
 
     func getStarred2() async throws -> Starred2 {
+        if let favoriteBrowsing { return try await favoriteBrowsing.getStarred2() }
         let version = await serverService.activeConnectionVersion()
         if let version, await !serverService.state.isOnline,
            let value = try? await offlineFavorites?.snapshot(serverID: version.serverID),

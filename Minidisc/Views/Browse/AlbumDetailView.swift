@@ -375,7 +375,6 @@ struct AlbumDetailView: View {
                 }
                 .tint(palette.contentColor)
                 .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isAlbumFavorite)
-                .disabled(!isOnline)
             }
             ToolbarItem(placement: .primaryAction) {
                 Menu("More options", systemImage: "ellipsis") {

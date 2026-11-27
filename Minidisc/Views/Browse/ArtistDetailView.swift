@@ -321,7 +321,6 @@ struct ArtistDetailView: View {
                         .background(.ultraThinMaterial, in: Circle())
                 }
                 .buttonStyle(.plain)
-                .disabled(!isOnline)
             }
         }
     }

@@ -238,8 +238,10 @@ struct FullPlayerView: View {
     private func flowingCover(_ playerState: PlayerState, coverArtId: String, isSource: Bool) -> some View {
         GeometryReader { geo in
             let artworkSide = min(geo.size.width, geo.size.height)
-            CoverArtView(id: coverArtId, size: 1000,
-                         initialImage: initialArtwork?.id == coverArtId ? initialArtwork?.image : nil)
+            PlayerArtworkView(id: coverArtId,
+                              isPlaying: playerState.playbackState == .playing,
+                              animationEnabled: isSource && !playerState.isLiveStream,
+                              initialImage: initialArtwork?.id == coverArtId ? initialArtwork?.image : nil)
                 .clipShape(
                     RoundedRectangle(
                         cornerRadius: isSource ? MinidiscCornerRadius.large : MinidiscCornerRadius.standard,

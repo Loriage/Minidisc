@@ -155,6 +155,8 @@ final class ArtworkImageCache {
     var isNetworkAccessAllowed: Bool { networkAccessAllowed() }
 
     private var cache: [String: PlatformImage] = [:]
+    private var lastHeroSource: (id: String, data: Data)?
+    @ObservationIgnored private var lastAnimation: (id: String, token: UUID, task: Task<AnimatedArtwork?, Never>)?
     private var accessOrder: [String] = []
     private let maxEntries = 110
 
@@ -316,14 +318,17 @@ final class ArtworkImageCache {
             if requireQuality && !satisfiesQuality { continue }
             guard let url = await localCoverURLProvider(id) else { continue }
             guard await decodeGate.acquireOrCancel() else { return nil }
-            let image = await Task.detached(priority: .utility) {
-                guard let data = try? Data(contentsOf: url) else { return nil as PlatformImage? }
-                return Self.thumbnailImage(from: data, maxDimension: decodedTier.decodePixels)
+            let decoded = await Task.detached(priority: .utility) {
+                guard let data = try? Data(contentsOf: url),
+                      let image = Self.thumbnailImage(from: data, maxDimension: decodedTier.decodePixels)
+                else { return nil as (PlatformImage, Data)? }
+                return (image, data)
             }.value
             await decodeGate.release()
             guard !Task.isCancelled, cacheEpoch == epoch,
                   coverGeneration(for: coverArtId) == generation else { return nil }
-            if let image {
+            if let (image, data) = decoded {
+                if tier == .hero { rememberHeroSource(data, id: coverArtId) }
                 if satisfiesQuality {
                     store(image: image, forKey: cacheKey(id: coverArtId, tier: decodedTier))
                 }
@@ -345,6 +350,7 @@ final class ArtworkImageCache {
                 Self.thumbnailImage(from: data, maxDimension: tier.decodePixels)
             }.value
             guard let image, !Task.isCancelled else { return nil }
+            if tier == .hero { rememberHeroSource(data, id: coverArtId) }
             store(image: image, forKey: key)
             return image
         }
@@ -397,6 +403,77 @@ final class ArtworkImageCache {
             loadID: loadID,
             waiterID: waiterID
         )
+    }
+
+    func animatedArtwork(for coverArtId: String) async -> AnimatedArtwork? {
+        let epoch = cacheEpoch
+        let generation = coverGeneration(for: coverArtId)
+        if lastAnimation?.id != coverArtId {
+            lastAnimation?.task.cancel()
+            let supported = NowPlayingCenterPresenter.supportedAnimatedArtworkAspectRatios
+            let task = Task { [weak self] () -> AnimatedArtwork? in
+                guard let self else { return nil }
+                _ = await load(coverArtId: coverArtId, tier: .hero)
+                guard !Task.isCancelled, let data = await animationSourceData(for: coverArtId),
+                      !Task.isCancelled else { return nil }
+                return await AnimatedArtwork.prepare(data,
+                    supportedAspectRatios: supported.isEmpty ? [.square, .portrait] : supported)
+            }
+            lastAnimation = (coverArtId, UUID(), task)
+        }
+        guard let request = lastAnimation else { return nil }
+        let artwork = await request.task.value
+        guard cacheEpoch == epoch, coverGeneration(for: coverArtId) == generation,
+              !Task.isCancelled else { return nil }
+        if artwork == nil, lastAnimation?.token == request.token { lastAnimation = nil }
+        return artwork
+    }
+
+    func animationSourceData(for coverArtId: String) async -> Data? {
+        let epoch = cacheEpoch
+        let generation = coverGeneration(for: coverArtId)
+        if let source = lastHeroSource, source.id == coverArtId { return source.data }
+        if coverArtId.hasPrefix("local:") {
+            let data = await localArtworkProvider?(coverArtId)
+            guard cacheEpoch == epoch, coverGeneration(for: coverArtId) == generation else { return nil }
+            return data
+        }
+
+        let qualities = [quality] + ArtworkQuality.allCases.reversed().filter { $0 != quality }
+        let candidates = qualities.map { "\(coverArtId)@\($0.rawValue)@hero" }
+            + [coverArtId, "\(coverArtId)@hero"]
+            + qualities.map { "\(coverArtId)@\($0.rawValue)@thumb" }
+        guard await acquireDiskAccess(for: coverArtId) else { return nil }
+        var diskData: Data?
+        for id in candidates {
+            guard cacheEpoch == epoch, coverGeneration(for: coverArtId) == generation,
+                  !Task.isCancelled else { break }
+            guard let url = await localCoverURLProvider(id) else { continue }
+            diskData = await Task.detached(priority: .utility) {
+                try? Data(contentsOf: url)
+            }.value
+            if diskData != nil { break }
+        }
+        releaseDiskAccess(for: coverArtId)
+        guard cacheEpoch == epoch, coverGeneration(for: coverArtId) == generation,
+              !Task.isCancelled else { return nil }
+        if let diskData {
+            rememberHeroSource(diskData, id: coverArtId)
+            return diskData
+        }
+
+        guard networkAccessAllowed(), await fetchGate.acquireOrCancel() else { return nil }
+        let artwork = await fetchServerArtwork(coverArtId: coverArtId, tier: .hero)
+        await fetchGate.release()
+        guard networkAccessAllowed(), cacheEpoch == epoch,
+              coverGeneration(for: coverArtId) == generation, !Task.isCancelled,
+              let artwork else { return nil }
+        rememberHeroSource(artwork.data, id: coverArtId)
+        return artwork.data
+    }
+
+    private func rememberHeroSource(_ data: Data, id: String) {
+        lastHeroSource = data.count <= AnimatedArtwork.maximumSourceByteCount ? (id, data) : nil
     }
 
     private func waitForInFlightLoad(
@@ -515,6 +592,7 @@ final class ArtworkImageCache {
             ) else { return nil }
         }
 
+        if tier == .hero { rememberHeroSource(serverArtwork.data, id: coverArtId) }
         store(image: serverArtwork.image, forKey: key)
         revalidationStore.record(id: coverArtId, lastModified: serverArtwork.lastModified)
         return serverArtwork.image
@@ -777,6 +855,9 @@ final class ArtworkImageCache {
     }
 
     func clearCache() {
+        lastHeroSource = nil
+        lastAnimation?.task.cancel()
+        lastAnimation = nil
         cacheEpoch &+= 1
         let loads = inFlight.values
         inFlight.removeAll()
@@ -882,6 +963,11 @@ final class ArtworkImageCache {
 
     @discardableResult
     private func bumpCoverGeneration(for coverArtId: String) -> UInt64 {
+        if lastHeroSource?.id == coverArtId { lastHeroSource = nil }
+        if lastAnimation?.id == coverArtId {
+            lastAnimation?.task.cancel()
+            lastAnimation = nil
+        }
         let generation = coverGeneration(for: coverArtId) &+ 1
         coverGenerations[coverArtId] = generation
         return generation

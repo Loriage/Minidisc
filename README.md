@@ -135,12 +135,10 @@ Minidisc uses the [MPL-2.0](LICENSE) license.
 
 Dependencies: [SwiftSonic](https://github.com/CassetteLab/swiftsonic) and [AudioStreaming](https://github.com/Loriage/AudioStreaming) use the MIT license. The Ogg, Vorbis, and Opus codec dependencies use BSD-style licenses.
 
-> Code before commit 21f9227 used the GPL-3.0-or-later license.
-
 ## Acknowledgments
 
-- [Cassette](https://github.com/CassetteLab/cassette) by Mathieu Dubart, because Minidisc is a fork of Cassette.
-- [AudioStreaming](https://github.com/dimitris-c/AudioStreaming) by Dimitris C., the audio streaming engine behind Minidisc. Minidisc uses a [custom fork](https://github.com/Loriage/AudioStreaming) with Opus support.
-- The [Navidrome](https://www.navidrome.org) team, because Navidrome is an excellent self-hosted music server.
-- The [OpenSubsonic](https://opensubsonic.netlify.app) community, because they modernized the Subsonic API.
+- [Cassette](https://github.com/CassetteLab/cassette) by Mathieu Dubart, the original project Minidisc is built on.
+- [AudioStreaming](https://github.com/dimitris-c/AudioStreaming) by Dimitris C., powering Minidisc’s audio playback through a [custom fork](https://github.com/Loriage/AudioStreaming).
+- The [Navidrome](https://www.navidrome.org) team for their self-hosted music server.
+- The [OpenSubsonic](https://opensubsonic.netlify.app) community for extending and improving the Subsonic API.
 
